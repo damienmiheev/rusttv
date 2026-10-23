@@ -1,0 +1,194 @@
+# Package catalog (OPTIMIZER.md § Generic design; compat/README.md § Package catalog).
+# Third-party streaming apps that come preinstalled.
+# One entry per package, shared by every device that has it. Categories:
+# telemetry | ads | extras (default), casting | smart-home | voice | streaming-apps (opt-in).
+# Compiled into rusttv (crates/rusttv-core/src/catalog.rs); a test keeps entries
+# unique, valid and off compat/protected.toml.
+#
+# Entries citing cleanyourtv are derived from cleanyourtv (https://github.com/Gathin23/cleanyourtv,
+# commit f9f0c53), MIT License, Copyright (c) 2026 Gathin. The licence text is in
+# licenses/cleanyourtv/LICENSE.
+
+schema_version = 1
+
+[[packages]]
+package = "com.netflix.ninja"
+category = "streaming-apps"
+what = "Netflix"
+side_effects = "Netflix stops working, and the remote's Netflix button does nothing"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 23 models"]
+
+[[packages]]
+package = "com.netflix.tokenmanager"
+category = "streaming-apps"
+what = "Netflix partner sign-in token service"
+side_effects = "Netflix may ask you to sign in again"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "tv.wuaki.apptv"
+category = "streaming-apps"
+what = "Rakuten TV"
+side_effects = "Rakuten TV stops working, and the remote's Rakuten button with it"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 11 models"]
+
+[[packages]]
+package = "com.disney.disneyplus"
+category = "streaming-apps"
+what = "Disney+"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 12 models"]
+
+[[packages]]
+package = "com.spotify.tv.android"
+category = "streaming-apps"
+what = "Spotify"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 10 models"]
+
+[[packages]]
+package = "com.wbd.stream"
+category = "streaming-apps"
+what = "Max"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "com.hbo.hbonow"
+category = "streaming-apps"
+what = "HBO Max (old app)"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.ted.android.tv"
+category = "streaming-apps"
+what = "TED"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 9 models"]
+
+[[packages]]
+package = "tv.pluto.android"
+category = "streaming-apps"
+what = "Pluto TV"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 9 models"]
+
+[[packages]]
+package = "com.nousguide.android.rbtv"
+category = "streaming-apps"
+what = "Red Bull TV"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "au.com.stan.and"
+category = "streaming-apps"
+what = "Stan"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "com.apple.atve.androidtv.appletv"
+category = "streaming-apps"
+what = "Apple TV"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "com.iqiyi.i18n.tv"
+category = "streaming-apps"
+what = "iQIYI"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "tv.twitch.android.app"
+category = "streaming-apps"
+what = "Twitch"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "com.cbs.ott"
+category = "streaming-apps"
+what = "Paramount+"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "com.cbs.ca"
+category = "streaming-apps"
+what = "Paramount+ (Canada)"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.jio.media.stb.ondemand"
+category = "streaming-apps"
+what = "JioCinema / JioTV"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "com.boosteroidtv.streaming"
+category = "streaming-apps"
+what = "Boosteroid cloud gaming"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "com.crunchyroll.crunchyroid"
+category = "streaming-apps"
+what = "Crunchyroll"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.tiktok.tv"
+category = "streaming-apps"
+what = "TikTok"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.tubitv.ott"
+category = "streaming-apps"
+what = "Tubi"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.tubitv"
+category = "streaming-apps"
+what = "Tubi"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.pandora.android.atv"
+category = "streaming-apps"
+what = "Pandora"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "tunein.player"
+category = "streaming-apps"
+what = "TuneIn"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "au.net.abc.iview"
+category = "streaming-apps"
+what = "ABC iview"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.espn.score_center"
+category = "streaming-apps"
+what = "ESPN"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]

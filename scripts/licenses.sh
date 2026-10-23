@@ -2,7 +2,8 @@
 # Writes the third-party licence notices for everything RustTV ships:
 # Rust crates (cargo-about, about.toml), the Slint licence text, Skia and the libraries
 # compiled into it (licenses/skia/), then the NDK's LLVM runtimes
-# (licenses/llvm/) and the Rust standard library (licenses/rust-std/).
+# (licenses/llvm/), the Rust standard library (licenses/rust-std/) and the
+# cleanyourtv package data compiled into rusttv's catalog (licenses/cleanyourtv/).
 # Fails if a crate has a licence not accepted in about.toml.
 # android/build.sh runs it and Gradle packs the result into every APK.
 #
@@ -47,6 +48,9 @@ cargo about generate --fail --locked licenses/about.hbs > "$TMP"
         printf '\n=== %s ===\n\n' "$(basename "$file")"
         cat "$file"
     done
+    printf '\n------------------------------------------------------------------------------\n'
+    printf 'cleanyourtv package data in compat/packages/ (see licenses/cleanyourtv/README.md)\n\n'
+    cat licenses/cleanyourtv/LICENSE
 } >> "$TMP"
 mv "$TMP" "$OUT"
 echo "Wrote $OUT ($(wc -l < "$OUT" | tr -d ' ') lines)"

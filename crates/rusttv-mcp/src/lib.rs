@@ -1,7 +1,7 @@
 //! Read-only MCP server for RustTV.
 //!
 //! Exposes the core's read-only functions as MCP tools. Every tool result is
-//! the CLI's `rusttv.v4` JSON envelope (CLI.md § Output), so `data` is exactly
+//! the CLI's `rusttv.v5` JSON envelope (CLI.md § Output), so `data` is exactly
 //! what `rusttv <command> --json` prints and errors carry the same stable
 //! codes. The `*_plan` tools build a change plan and return its dry run with
 //! the `rusttv` command a person runs to apply it. There is deliberately no
@@ -24,19 +24,19 @@ use rmcp::model::{
 use rmcp::{ServerHandler, schemars, tool, tool_handler, tool_router};
 use rusttv_core::{
     Adb, AdbError, ApkPath, DeviceCommand, DeviceProfile, DeviceSelectionError, DryRun,
-    HOME_TAKEOVER, Plan, PlanError, PrivacyCategory,
+    HOME_TAKEOVER, LoadedChoices, Plan, PlanError, PrivacyCategory, PrivacyData,
 };
 use serde::{Deserialize, Serialize};
 
 /// Version of the JSON output contract; the same as the CLI's `--json`.
-pub const SCHEMA: &str = "rusttv.v4";
+pub const SCHEMA: &str = "rusttv.v5";
 
 /// Default and allowed range of `performance_snapshot`'s `sample_ms`, as in the CLI.
 const DEFAULT_SAMPLE_MS: u64 = 1000;
 const SAMPLE_MS_RANGE: std::ops::RangeInclusive<u64> = 100..=60_000;
 
 const INSTRUCTIONS: &str = "Read-only tools for Android TVs connected through adb. \
-Results are the `rusttv.v4` envelope of the `rusttv` CLI: on success `data` is the \
+Results are the `rusttv.v5` envelope of the `rusttv` CLI: on success `data` is the \
 same as `rusttv <command> --json`; on failure `error.code` is a stable code from \
 CLI.md. Device-targeting tools take an optional `serial`; it is required when several \
 devices are connected (`MULTIPLE_DEVICES`). Nothing here changes a device or approves \
@@ -103,22 +103,33 @@ pub struct PrivacyPlanParams {
     /// adb serial of the device (see `device_list`); needed when several are connected.
     #[serde(default)]
     pub serial: Option<String>,
-    /// Only these categories of the device's privacy profile (the CLI's `--only`). Default: all.
+    /// Narrow the categories of the person's choices file to these (the CLI's `--only`); it never adds a category. Default: the choices' categories.
     #[serde(default)]
     pub only: Vec<Category>,
+    /// Also plan packages not tested on this model, each marked UNTESTED in the dry run (the CLI's `--allow-untested`). Default false.
+    #[serde(default)]
+    pub allow_untested: bool,
 }
 
-/// A privacy profile category; a closed list, so no package can be named.
+/// A catalog category; a closed list, so no package can be named.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
 #[schemars(crate = "rmcp::schemars")]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "kebab-case")]
 pub enum Category {
-    /// Packages that collect usage data and send it off the TV.
+    /// Packages that collect usage data and send it off the TV (default).
     Telemetry,
-    /// Packages that serve or personalise ads.
+    /// Packages that serve or personalise ads (default).
     Ads,
-    /// Packages that run for nothing on this TV.
+    /// Packages that run for nothing on a TV (default).
     Extras,
+    /// Casting and screen mirroring (opt-in).
+    Casting,
+    /// Control by home-automation systems and phone apps (opt-in).
+    SmartHome,
+    /// Voice assistants other than Google's own (opt-in).
+    Voice,
+    /// Preinstalled streaming apps (opt-in).
+    StreamingApps,
 }
 
 impl From<Category> for PrivacyCategory {
@@ -127,6 +138,10 @@ impl From<Category> for PrivacyCategory {
             Category::Telemetry => Self::Telemetry,
             Category::Ads => Self::Ads,
             Category::Extras => Self::Extras,
+            Category::Casting => Self::Casting,
+            Category::SmartHome => Self::SmartHome,
+            Category::Voice => Self::Voice,
+            Category::StreamingApps => Self::StreamingApps,
         }
     }
 }
@@ -191,6 +206,9 @@ pub struct RustTvServer<A> {
     journals: Option<PathBuf>,
     /// Compat profiles the optimizer tools use; `None`: the bundled ones, as the CLI.
     profiles: Option<Vec<DeviceProfile>>,
+    /// Privacy choices the optimizer tools use; `None`: the CLI's choices
+    /// file (`<config dir>/privacy.toml`), read on every call.
+    choices: Option<LoadedChoices>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -202,6 +220,7 @@ impl<A: Adb + Send + 'static> RustTvServer<A> {
             adb: Arc::new(Mutex::new(adb)),
             journals: None,
             profiles: None,
+            choices: None,
             tool_router: Self::tool_router(),
         }
     }
@@ -218,6 +237,30 @@ impl<A: Adb + Send + 'static> RustTvServer<A> {
     pub fn with_profiles(mut self, profiles: Vec<DeviceProfile>) -> Self {
         self.profiles = Some(profiles);
         self
+    }
+
+    /// Uses `choices` instead of reading the choices file (for tests).
+    #[must_use]
+    pub fn with_choices(mut self, choices: LoadedChoices) -> Self {
+        self.choices = Some(choices);
+        self
+    }
+
+    /// The catalog, profiles and choices, as the CLI reads them.
+    fn privacy_data(&self) -> impl FnOnce() -> Result<PrivacyData, PlanError> + Send + 'static {
+        let profiles = self.profiles.clone();
+        let choices = self.choices.clone();
+        move || {
+            let choices = match choices {
+                Some(choices) => choices,
+                None => rusttv_core::load_choices(None)?,
+            };
+            let mut data = PrivacyData::bundled(choices);
+            if let Some(profiles) = profiles {
+                data.profiles = profiles;
+            }
+            Ok(data)
+        }
     }
 
     #[tool(
@@ -435,43 +478,37 @@ impl<A: Adb + Send + 'static> RustTvServer<A> {
     }
 
     #[tool(
-        description = "The device's privacy profile: whether it is tested on this model, and each package it lists (telemetry, ads, extras) with what it does, side effects, whether it is installed / enabled / disabled, and whether RustTV refuses to touch it (protected). Same as `rusttv optimize analyze --json`.",
+        description = "Every package of RustTV's catalog installed on the device, and every `extra` of the person's choices file, with its category (telemetry, ads, extras are on by default; casting, smart-home, voice, streaming-apps are opt-in), what it does, side effects, whether it was tested on this model, whether the choices select it, whether it is enabled / disabled, and whether RustTV refuses to touch it (protected). Same as `rusttv optimize analyze --json`.",
         annotations(read_only_hint = true)
     )]
     async fn optimize_analyze(
         &self,
         Parameters(params): Parameters<TargetParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let profiles = self.profiles.clone();
+        let data = self.privacy_data();
         self.run(move |adb| {
+            let data = data()?;
             let serial = resolve(adb, params.serial.as_deref())?;
-            Ok(rusttv_core::optimize_analyze(
-                adb,
-                &serial,
-                &profiles.unwrap_or_else(rusttv_core::bundled_profiles),
-            )?)
+            Ok(rusttv_core::optimize_analyze(adb, &serial, &data)?)
         })
         .await
     }
 
     #[tool(
-        description = "Plan disabling (never uninstalling) the telemetry, ads and extras packages of the device's privacy profile, or only the categories in `only`. Refused unless the profile is tested on this model (`PROFILE_NOT_TESTED`) and no listed package is protected (`PACKAGE_PROTECTED`). Changes nothing: returns the plan's dry run (`data.dry_run`, same as `rusttv optimize apply privacy --dry-run --json`) and the command a person runs at a terminal to apply it (`data.apply_command`). Show both to the user; you cannot apply or approve it.",
+        description = "Plan disabling (never uninstalling) the catalog packages the person's choices file selects (by default telemetry, ads and extras) that are enabled on the device; `only` narrows the categories. Packages not tested on this model are left out unless `allow_untested`, then each is marked UNTESTED in the notes; with nothing tested or allowed left, `PROFILE_NOT_TESTED`. Refused if a chosen package is protected (`PACKAGE_PROTECTED`). Changes nothing: returns the plan's dry run (`data.dry_run`, same as `rusttv optimize apply privacy --dry-run --json`) and the command a person runs at a terminal to apply it (`data.apply_command`). Show both to the user; you cannot apply or approve it, and you cannot name packages: the person edits their choices file.",
         annotations(read_only_hint = true)
     )]
     async fn privacy_plan(
         &self,
         Parameters(params): Parameters<PrivacyPlanParams>,
     ) -> Result<CallToolResult, ErrorData> {
-        let profiles = self.profiles.clone();
+        let data = self.privacy_data();
         self.run(move |adb| {
+            let data = data()?;
             let serial = resolve(adb, params.serial.as_deref())?;
             let only: Vec<PrivacyCategory> = params.only.into_iter().map(Into::into).collect();
-            let plan = rusttv_core::privacy_plan(
-                adb,
-                &serial,
-                &profiles.unwrap_or_else(rusttv_core::bundled_profiles),
-                &only,
-            )?;
+            let plan =
+                rusttv_core::privacy_plan(adb, &serial, &data, &only, params.allow_untested)?;
             let only = only
                 .iter()
                 .map(|category| category.as_str())
@@ -481,13 +518,16 @@ impl<A: Adb + Send + 'static> RustTvServer<A> {
             if !only.is_empty() {
                 args.extend(["--only", &only]);
             }
+            if params.allow_untested {
+                args.push("--allow-untested");
+            }
             let apply_command = command_line(&args);
             Ok(proposal(&plan, apply_command))
         })
         .await
     }
 
-    /// Runs a blocking core call and wraps its outcome in the `rusttv.v4` envelope.
+    /// Runs a blocking core call and wraps its outcome in the `rusttv.v5` envelope.
     ///
     /// Core failures are tool results with `isError` (the agent sees the code);
     /// only a crashed task or unserializable data is a protocol error.

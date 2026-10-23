@@ -2,9 +2,9 @@
 
 **None of these files were captured from a device.** They are hand-written
 stand-ins so the privacy plan (`crates/rusttv-core/src/privacy.rs`) and its
-protected-package checks can be tested against `FakeAdb`. No privacy plan has
-run on a device yet. Replace each with a real capture, and update this table,
-once one has (OPTIMIZER.md § Privacy profiles).
+protected-package checks can be tested against `FakeAdb`. Replace each with a
+real capture, and update this table, when one is taken (OPTIMIZER.md § Privacy
+profiles).
 
 They are used together with the real Philips 65OLED818 captures in
 `../philips-65oled818-api34/` (`getprop.txt`, `home-activity.txt`,
@@ -13,7 +13,7 @@ They are used together with the real Philips 65OLED818 captures in
 
 | File | Command | Stands for | Based on |
 |---|---|---|---|
-| `packages-f.txt` | `pm list packages -f` | The twelve packages of the Philips privacy profile installed, plus a few protected system packages and the RustTV launcher; APK paths are made up | Format of `../emulator-pixel3a-api34/packages-f.txt`. On 2026-10-23 the twelve were seen present and enabled on the Philips (not committed: the full list shows which apps the owner uses) |
+| `packages-f.txt` | `pm list packages -f` | The twelve packages tested on the Philips installed, three catalog packages not tested there (`org.droidtv.customautologservice`, telemetry; `org.droidtv.amazonalexa`, voice; `com.google.android.apps.mediashell`, casting), a few protected system packages and the RustTV launcher; APK paths are made up | Format of `../emulator-pixel3a-api34/packages-f.txt`. On 2026-10-23 all fifteen were seen present and enabled on the Philips (not committed: the full list shows which apps the owner uses) |
 | `ime-list.txt` | `ime list -a -s` | One input method (Gboard) | Output format of `ime list -s` (one `package/class` id per line), from AOSP `InputMethodManagerService`; not captured |
 | `accessibility-none.txt` | `settings get secure enabled_accessibility_services` | No accessibility service enabled | `settings get` prints `null` for an unset key (OPTIMIZER.md § 1) |
 

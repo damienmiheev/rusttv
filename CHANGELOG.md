@@ -15,11 +15,14 @@ First public release (ROADMAP Phase 6).
 - `launcher status`, `launcher install` / `uninstall`, and the opt-in Home
   takeover / restore (SECURITY.md), all planned, shown as a dry run, approved,
   journaled and verified by the safety engine.
-- `optimize analyze`, `optimize apply privacy` and `optimize restore`: privacy
-  profiles that disable (never uninstall) telemetry, ads and extras packages
-  on models where the profile is tested, with live protected-package checks
+- `optimize analyze`, `optimize apply privacy` and `optimize restore`: disable
+  (never uninstall) packages from a shared package catalog (`compat/packages/`:
+  telemetry, ads and extras by default; casting, smart-home, voice and
+  streaming apps opt-in), chosen in a local choices file (`keep`, `also`,
+  `extra`), with live protected-package checks. Only packages tested on the
+  model are planned unless `--allow-untested`, which marks each one UNTESTED
   (OPTIMIZER.md, SECURITY.md).
-- Stable `--json` output, schema `rusttv.v4`, and documented error codes (CLI.md).
+- Stable `--json` output, schema `rusttv.v5`, and documented error codes (CLI.md).
 
 ### MCP server (`rusttv-mcp`)
 
@@ -35,9 +38,13 @@ First public release (ROADMAP Phase 6).
 ### Compatibility and benchmarks
 
 - Device profiles: Google TV emulator (arm64) and Philips 65OLED818
-  (`compat/devices/`). Benchmark data from the Philips in `benchmarks/raw/`.
+  (`compat/devices/`, schema 4). Benchmark data from the Philips in `benchmarks/raw/`.
+- Package catalog (`compat/packages/`, 279 entries): 25 from our own checks on
+  the Philips 65OLED818 (12 tested there), the rest derived from cleanyourtv's
+  per-model lists (MIT).
 
 ### Licences
 
 - Third-party notices (Rust crates, Slint, Skia, LLVM runtimes, the Rust
-  standard library) ship in every APK and in every CLI archive.
+  standard library, cleanyourtv's package data) ship in every APK and in every
+  CLI archive.

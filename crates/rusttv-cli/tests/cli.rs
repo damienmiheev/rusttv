@@ -12,8 +12,15 @@ use std::process::{Command, Output};
 
 use serde_json::Value;
 
+/// The binary, with a config directory that has no choices file, so the
+/// tests never read the real `privacy.toml`.
 fn rusttv() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_rusttv"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_rusttv"));
+    command.env(
+        "RUSTTV_CONFIG_DIR",
+        std::env::temp_dir().join("rusttv-cli-tests-no-config"),
+    );
+    command
 }
 
 /// Runs `rusttv <args>` against the fake adb in the given scenario.
@@ -29,7 +36,7 @@ fn rusttv_with_fake_adb(scenario: &str, args: &[&str]) -> Output {
 
 fn json_stdout(output: &Output) -> Value {
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["schema"], "rusttv.v4");
+    assert_eq!(value["schema"], "rusttv.v5");
     value
 }
 
@@ -902,45 +909,123 @@ fn launcher_install_and_uninstall_without_a_terminal_are_refused_before_touching
 }
 
 #[test]
-fn optimize_analyze_json_lists_the_privacy_profile_with_package_states() {
+fn optimize_analyze_json_lists_catalog_packages_with_state_and_testing() {
     let output = rusttv_with_fake_adb("philips", &["optimize", "analyze", "--json"]);
 
     assert_eq!(output.status.code(), Some(0), "{output:?}");
     let data = &json_stdout(&output)["data"];
     assert_eq!(data["serial"], "emulator-5554");
     assert_eq!(data["profile"], "tpv-ph1m-ww-9972.toml");
-    assert_eq!(data["privacy"]["tested"], true);
-    let packages = data["privacy"]["packages"].as_array().unwrap();
-    assert_eq!(packages.len(), 12);
-    assert_eq!(packages[0]["package"], "org.droidtv.candeebug");
-    assert_eq!(packages[0]["category"], "telemetry");
-    assert_eq!(packages[0]["state"], "enabled");
-    assert_eq!(packages[0]["protected"], Value::Null);
+    assert_eq!(data["choices"], Value::Null);
+    assert_eq!(
+        data["categories"],
+        serde_json::json!(["telemetry", "ads", "extras"])
+    );
+    let packages = data["packages"].as_array().unwrap();
+    // The twelve tested packages and three untested ones of the fixture.
+    assert_eq!(packages.len(), 15);
+    let first = &packages[0];
+    assert_eq!(first["package"], "org.droidtv.candeebug");
+    assert_eq!(first["source"], "catalog");
+    assert_eq!(first["category"], "telemetry");
+    assert_eq!(first["default"], true);
+    assert_eq!(first["tested"], true);
+    assert_eq!(first["checked"], "2026-10-23");
+    assert_eq!(first["chosen"], true);
+    assert_eq!(first["state"], "enabled");
+    assert_eq!(first["protected"], Value::Null);
     assert_eq!(packages[1]["package"], "org.droidtv.gel");
     assert_eq!(packages[1]["state"], "disabled");
-    assert_eq!(packages[11]["category"], "extras");
+    let entry = |name: &str| {
+        packages
+            .iter()
+            .find(|entry| entry["package"] == name)
+            .unwrap()
+    };
+    let autolog = entry("org.droidtv.customautologservice");
+    assert_eq!(
+        (autolog["tested"].clone(), autolog["chosen"].clone()),
+        (false.into(), true.into())
+    );
+    let cast = entry("com.google.android.apps.mediashell");
+    assert_eq!(cast["category"], "casting");
+    assert_eq!(cast["default"], false);
+    assert_eq!(cast["chosen"], false);
 }
 
 #[test]
-fn optimize_analyze_text_says_the_profile_is_tested() {
+fn optimize_analyze_text_shows_tested_dates_and_opt_in() {
     let output = rusttv_with_fake_adb("philips", &["optimize", "analyze"]);
 
     assert_eq!(output.status.code(), Some(0), "{output:?}");
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(
-        stdout.contains("Privacy profile: tested on this model."),
+        stdout.contains("Profile: tpv-ph1m-ww-9972.toml"),
         "{stdout}"
     );
-    assert!(
-        stdout.contains("telemetry  disabled  org.droidtv.gel"),
-        "{stdout}"
+    let line = |package: &str| {
+        stdout
+            .lines()
+            .find(|line| line.ends_with(package))
+            .unwrap_or_else(|| panic!("{package} missing: {stdout}"))
+            .split_whitespace()
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        line("org.droidtv.gel"),
+        [
+            "telemetry",
+            "default",
+            "disabled",
+            "2026-10-23",
+            "yes",
+            "org.droidtv.gel"
+        ]
+    );
+    assert_eq!(
+        line("com.google.android.apps.mediashell"),
+        [
+            "casting",
+            "opt-in",
+            "enabled",
+            "no",
+            "no",
+            "com.google.android.apps.mediashell"
+        ]
     );
 }
 
+/// The packages a `--dry-run --json` plan disables, in order.
+fn planned_packages(data: &Value) -> Vec<String> {
+    data["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|step| {
+            step["command"]
+                .as_str()
+                .unwrap()
+                .rsplit(' ')
+                .next()
+                .unwrap()
+                .to_owned()
+        })
+        .collect()
+}
+
+fn notes(data: &Value) -> Vec<&str> {
+    data["notes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|note| note.as_str().unwrap())
+        .collect()
+}
+
 #[test]
-fn optimize_apply_privacy_dry_run_plans_the_chosen_categories() {
-    // The bundled Philips privacy profile is tested (2026-10-23). A dry run
-    // plans one step per enabled package and writes no journal.
+fn optimize_apply_privacy_dry_run_plans_the_tested_packages_of_the_categories() {
+    // Twelve packages are tested on the Philips (2026-10-23). A dry run plans
+    // one step per enabled tested package and writes no journal.
     let state = state_dir("privacy-dry-run");
     let output = rusttv_with_state(
         "philips",
@@ -958,22 +1043,9 @@ fn optimize_apply_privacy_dry_run_plans_the_chosen_categories() {
 
     assert_eq!(output.status.code(), Some(0), "{output:?}");
     let data = &json_stdout(&output)["data"];
-    let packages: Vec<&str> = data["steps"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|step| {
-            step["command"]
-                .as_str()
-                .unwrap()
-                .rsplit(' ')
-                .next()
-                .unwrap()
-        })
-        .collect();
     // gel is already disabled in this scenario, so it is skipped.
     assert_eq!(
-        packages,
+        planned_packages(data),
         [
             "org.droidtv.candeebug",
             "com.google.android.partnersetup",
@@ -985,6 +1057,13 @@ fn optimize_apply_privacy_dry_run_plans_the_chosen_categories() {
         ]
     );
     assert!(
+        notes(data).iter().any(
+            |note| note.starts_with("Not planned, UNTESTED on this model")
+                && note.contains("org.droidtv.customautologservice")
+        ),
+        "{data}"
+    );
+    assert!(
         !state.join("journals").exists()
             || std::fs::read_dir(state.join("journals")).unwrap().count() == 0
     );
@@ -992,7 +1071,7 @@ fn optimize_apply_privacy_dry_run_plans_the_chosen_categories() {
 }
 
 #[test]
-fn optimize_apply_rejects_an_unknown_category() {
+fn optimize_apply_privacy_allow_untested_marks_each_untested_package() {
     let output = rusttv_with_fake_adb(
         "philips",
         &[
@@ -1000,11 +1079,117 @@ fn optimize_apply_rejects_an_unknown_category() {
             "apply",
             "privacy",
             "--only",
-            "bloat",
+            "telemetry",
+            "--allow-untested",
             "--dry-run",
+            "--json",
         ],
     );
-    assert_eq!(output.status.code(), Some(2));
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    let planned = planned_packages(data);
+    assert_eq!(planned.last().unwrap(), "org.droidtv.customautologservice");
+    assert!(
+        notes(data).iter().any(|note| note
+            .starts_with("org.droidtv.customautologservice (telemetry): UNTESTED on this model.")),
+        "{data}"
+    );
+}
+
+#[test]
+fn optimize_apply_privacy_reads_the_choices_file() {
+    let config = state_dir("privacy-choices");
+    std::fs::write(
+        config.join("privacy.toml"),
+        "categories = [\"casting\"]\nalso = [\"org.droidtv.amazonalexa\"]\n",
+    )
+    .unwrap();
+    let dry_run = |extra: &[&str]| {
+        let mut args = vec!["optimize", "apply", "privacy", "--dry-run", "--json"];
+        args.extend_from_slice(extra);
+        let fake_adb = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/fake-adb");
+        rusttv()
+            .args(&args)
+            .env("RUSTTV_ADB", fake_adb)
+            .env("FAKE_ADB_SCENARIO", "philips")
+            .env("RUSTTV_CONFIG_DIR", &config)
+            .output()
+            .unwrap()
+    };
+
+    // Opt-in casting and Alexa, neither tested on the Philips.
+    let output = dry_run(&[]);
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let json = json_stdout(&output);
+    assert_eq!(json["error"]["code"], "PROFILE_NOT_TESTED");
+    assert!(
+        json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("--allow-untested"),
+        "{json}"
+    );
+
+    let output = dry_run(&["--allow-untested"]);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(
+        planned_packages(&json_stdout(&output)["data"]),
+        [
+            "com.google.android.apps.mediashell",
+            "org.droidtv.amazonalexa"
+        ]
+    );
+
+    // `--choices` points elsewhere; a broken file is refused, never ignored.
+    let broken = config.join("broken.toml");
+    std::fs::write(&broken, "keep = \"org.droidtv.gel\"\n").unwrap();
+    let output = dry_run(&["--choices", broken.to_str().unwrap()]);
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(json_stdout(&output)["error"]["code"], "INVALID_CHOICES");
+
+    // `optimize analyze` names the file it read.
+    let fake_adb = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/fake-adb");
+    let output = rusttv()
+        .args(["optimize", "analyze", "--json"])
+        .env("RUSTTV_ADB", fake_adb)
+        .env("FAKE_ADB_SCENARIO", "philips")
+        .env("RUSTTV_CONFIG_DIR", &config)
+        .output()
+        .unwrap();
+    let data = &json_stdout(&output)["data"];
+    assert!(
+        data["choices"].as_str().unwrap().ends_with("privacy.toml"),
+        "{data}"
+    );
+    assert_eq!(data["categories"], serde_json::json!(["casting"]));
+    std::fs::remove_dir_all(config).ok();
+}
+
+#[test]
+fn optimize_apply_rejects_an_unknown_category() {
+    for bad in ["bloat", "smart_home"] {
+        let output = rusttv_with_fake_adb(
+            "philips",
+            &["optimize", "apply", "privacy", "--only", bad, "--dry-run"],
+        );
+        assert_eq!(output.status.code(), Some(2), "{bad}");
+    }
+    // An opt-in category isn't chosen by default: `--only` narrows, never adds.
+    let output = rusttv_with_fake_adb(
+        "philips",
+        &[
+            "optimize",
+            "apply",
+            "privacy",
+            "--only",
+            "smart-home",
+            "--dry-run",
+            "--json",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(json_stdout(&output)["error"]["code"], "PRECONDITION_FAILED");
 }
 
 #[test]

@@ -2,7 +2,9 @@
 
 use std::path::Path;
 
-use rusttv_core::{Adb, FileJournal, OptimizeAnalysis, PRIVACY, PackageState, PrivacyCategory};
+use rusttv_core::{
+    Adb, FileJournal, OptimizeAnalysis, PRIVACY, PackageState, PrivacyCategory, PrivacyData,
+};
 
 use crate::launcher::{
     ChangeReport, approve_and_apply, confirm, note_journal, require_terminal, show_plan,
@@ -10,9 +12,15 @@ use crate::launcher::{
 use crate::{CliError, Target, output};
 
 /// `rusttv optimize analyze`.
-pub fn analyze(adb: &dyn Adb, target: &Target, json: bool) -> Result<(), CliError> {
+pub fn analyze(
+    adb: &dyn Adb,
+    target: &Target,
+    choices: Option<&Path>,
+    json: bool,
+) -> Result<(), CliError> {
+    let data = PrivacyData::bundled(rusttv_core::load_choices(choices)?);
     let serial = target.resolve(adb)?;
-    let analysis = rusttv_core::optimize_analyze(adb, &serial, &rusttv_core::bundled_profiles())?;
+    let analysis = rusttv_core::optimize_analyze(adb, &serial, &data)?;
     if json {
         output::print_json(&analysis);
     } else {
@@ -22,51 +30,88 @@ pub fn analyze(adb: &dyn Adb, target: &Target, json: bool) -> Result<(), CliErro
 }
 
 fn print_analysis(analysis: &OptimizeAnalysis) {
-    let Some(profile) = &analysis.profile else {
-        println!("No compatibility profile matches this device: nothing to suggest.");
-        return;
-    };
-    println!("Profile: {profile}");
-    let Some(privacy) = &analysis.privacy else {
-        println!("It has no privacy profile.");
-        return;
-    };
-    if privacy.tested {
-        println!("Privacy profile: tested on this model.");
-    } else {
-        println!(
-            "Privacy profile: NOT tested on this model yet; `optimize apply privacy` is refused."
-        );
+    match &analysis.profile {
+        Some(profile) => println!("Profile: {profile}"),
+        None => println!(
+            "No compatibility profile matches this device: no package is tested on it \
+             (`optimize apply privacy --allow-untested` plans untested ones)."
+        ),
     }
-    println!("\n{:10} {:9} PACKAGE", "CATEGORY", "STATE");
-    for entry in &privacy.packages {
+    let categories: Vec<&str> = analysis
+        .categories
+        .iter()
+        .map(|category| category.as_str())
+        .collect();
+    match &analysis.choices {
+        Some(path) => println!("Choices: {path}"),
+        None => println!("Choices: none (no choices file), the defaults"),
+    }
+    println!("Categories: {}", categories.join(", "));
+    if analysis.packages.is_empty() {
+        println!("\nNo catalog package is installed on this device.");
+        return;
+    }
+    println!(
+        "\n{:14} {:8} {:8} {:10} {:6} PACKAGE",
+        "CATEGORY", "", "STATE", "TESTED", "CHOSEN"
+    );
+    for entry in &analysis.packages {
         let state = match entry.state {
             PackageState::Absent => "absent",
             PackageState::Enabled => "enabled",
             PackageState::Disabled => "disabled",
         };
-        println!("{:10} {state:9} {}", entry.category.as_str(), entry.package);
-        println!("{:21}{}", "", entry.what);
-        println!("{:21}side effects: {}", "", entry.side_effects);
+        let (category, kind) = match entry.category {
+            Some(category) if category.is_default() => (category.as_str(), "default"),
+            Some(category) => (category.as_str(), "opt-in"),
+            None => ("extra", ""),
+        };
+        let tested = entry.checked.as_deref().unwrap_or("no");
+        let chosen = if entry.chosen { "yes" } else { "no" };
+        println!(
+            "{category:14} {kind:8} {state:8} {tested:10} {chosen:6} {}",
+            entry.package
+        );
+        let indent = "";
+        match (&entry.what, &entry.side_effects) {
+            (Some(what), Some(side_effects)) => {
+                println!("{indent:4}{what}");
+                println!("{indent:4}side effects: {side_effects}");
+            }
+            _ => println!("{indent:4}not in the catalog: nothing is known about it"),
+        }
         if let Some(why) = &entry.protected {
-            println!("{:21}PROTECTED, never disabled: {why}", "");
+            println!("{indent:4}PROTECTED, never disabled: {why}");
         }
     }
+}
+
+/// Options of `rusttv optimize apply privacy`.
+#[derive(Debug)]
+pub struct PrivacyOptions<'a> {
+    /// `--only`.
+    pub only: &'a [PrivacyCategory],
+    /// `--choices`.
+    pub choices: Option<&'a Path>,
+    /// `--allow-untested`.
+    pub allow_untested: bool,
 }
 
 /// `rusttv optimize apply privacy`.
 pub fn apply_privacy(
     adb: &dyn Adb,
     target: &Target,
-    only: &[PrivacyCategory],
+    options: &PrivacyOptions<'_>,
     dry_run: bool,
     json: bool,
 ) -> Result<(), CliError> {
     if !dry_run {
         require_terminal()?;
     }
+    let data = PrivacyData::bundled(rusttv_core::load_choices(options.choices)?);
     let serial = target.resolve(adb)?;
-    let plan = rusttv_core::privacy_plan(adb, &serial, &rusttv_core::bundled_profiles(), only)?;
+    let plan =
+        rusttv_core::privacy_plan(adb, &serial, &data, options.only, options.allow_untested)?;
     show_plan(&plan, dry_run, json);
     if dry_run {
         return Ok(());

@@ -1,0 +1,145 @@
+# Package catalog (OPTIMIZER.md § Generic design; compat/README.md § Package catalog).
+# Packages from other TV and box makers.
+# One entry per package, shared by every device that has it. Categories:
+# telemetry | ads | extras (default), casting | smart-home | voice | streaming-apps (opt-in).
+# Compiled into rusttv (crates/rusttv-core/src/catalog.rs); a test keeps entries
+# unique, valid and off compat/protected.toml.
+#
+# Entries citing cleanyourtv are derived from cleanyourtv (https://github.com/Gathin23/cleanyourtv,
+# commit f9f0c53), MIT License, Copyright (c) 2026 Gathin. The licence text is in
+# licenses/cleanyourtv/LICENSE.
+
+schema_version = 1
+
+[[packages]]
+package = "com.vestel.vestelreporter"
+category = "telemetry"
+what = "Vestel analytics uploader; starts at boot"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.xgimi.bugreportsender"
+category = "telemetry"
+what = "XGIMI bug-report uploader"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.homwee.aipont"
+category = "ads"
+what = "AI PONT brand portal and its recommendation channels"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "com.apps.channels"
+category = "ads"
+what = "\"S-Channels\" content rows on the home screen"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "android.autoinstalls.config.homwee"
+category = "ads"
+what = "Play auto-installs of partner apps"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "android.autoinstalls.config.sei"
+category = "ads"
+what = "Play auto-installs of partner apps"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "android.autoinstalls.config.sdmc"
+category = "ads"
+what = "Play auto-installs of partner apps"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "android.autoinstalls.config.scbc.device"
+category = "ads"
+what = "Play auto-installs of partner apps"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "android.autoinstalls.config.soc.amlogic"
+category = "ads"
+what = "Play auto-installs of partner apps"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "fusion.android.tv.demo"
+category = "extras"
+what = "Retail store demo mode"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 35 models"]
+
+[[packages]]
+package = "com.homwee.help"
+category = "extras"
+what = "On-screen manual"
+side_effects = "the built-in manual stops opening"
+sources = ["cleanyourtv examples, 10 models"]
+
+[[packages]]
+package = "com.apps.clear"
+category = "extras"
+what = "\"TV Booster\" cleaner"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.utsmta.app"
+category = "extras"
+what = "Factory test app; listens for USB sticks"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "com.oem.qa"
+category = "extras"
+what = "Factory test app (BoxFactoryTest)"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.nes.dvb.playtest"
+category = "extras"
+what = "DVB playback factory test"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.homwee.multiscreenshare"
+category = "casting"
+what = "Miracast and AirPlay receiver"
+side_effects = "screen mirroring to the TV stops working"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "com.homwee.mmp.screenshare"
+category = "casting"
+what = "Brand screen mirroring"
+side_effects = "screen mirroring to the TV stops working; Chromecast is separate"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "screnmirroring.com"
+category = "casting"
+what = "Miracast screen-mirroring app"
+side_effects = "screen mirroring to the TV stops working"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.homwee.alexacontrol"
+category = "voice"
+what = "Alexa integration"
+side_effects = "Alexa can't control the TV"
+sources = ["cleanyourtv examples, 3 models"]

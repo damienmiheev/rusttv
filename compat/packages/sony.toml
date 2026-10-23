@@ -1,0 +1,271 @@
+# Package catalog (OPTIMIZER.md § Generic design; compat/README.md § Package catalog).
+# Sony BRAVIA packages.
+# One entry per package, shared by every device that has it. Categories:
+# telemetry | ads | extras (default), casting | smart-home | voice | streaming-apps (opt-in).
+# Compiled into rusttv (crates/rusttv-core/src/catalog.rs); a test keeps entries
+# unique, valid and off compat/protected.toml.
+#
+# Entries citing cleanyourtv are derived from cleanyourtv (https://github.com/Gathin23/cleanyourtv,
+# commit f9f0c53), MIT License, Copyright (c) 2026 Gathin. The licence text is in
+# licenses/cleanyourtv/LICENSE.
+
+schema_version = 1
+
+[[packages]]
+package = "com.sony.dtv.da.service"
+category = "telemetry"
+what = "Sony device agent and remote-support service"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 28 models"]
+
+[[packages]]
+package = "com.sony.dtv.sonybugreportsys"
+category = "telemetry"
+what = "Sony bug-report uploader"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 18 models"]
+
+[[packages]]
+package = "com.sonyericsson.idd.agent"
+category = "telemetry"
+what = "Sony IDD usage-data agent"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 16 models"]
+
+[[packages]]
+package = "com.sony.dtv.usercontext"
+category = "telemetry"
+what = "Collects viewing context for Sony recommendations"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 9 models"]
+
+[[packages]]
+package = "com.sony.dtv.sonyselect"
+category = "ads"
+what = "Sony Select promoted-app picks"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 27 models"]
+
+[[packages]]
+package = "com.sony.dtv.promos"
+category = "ads"
+what = "My BRAVIA promotions"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 20 models"]
+
+[[packages]]
+package = "com.sony.dtv.discovery"
+category = "ads"
+what = "Sony Discover content bar"
+side_effects = "the Discover bar stops opening"
+sources = ["cleanyourtv examples, 13 models"]
+
+[[packages]]
+package = "com.sony.dtv.bivlinfo"
+category = "ads"
+what = "Content service list that feeds the Discover bar"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 13 models"]
+
+[[packages]]
+package = "com.sony.dtv.tvlaunchercustomizer"
+category = "ads"
+what = "Sony changes to the stock home screen's rows"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 9 models"]
+
+[[packages]]
+package = "com.sony.dtv.sonytab"
+category = "ads"
+what = "Sony content tab and partner rows on the stock home screen"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 11 models"]
+
+[[packages]]
+package = "com.sony.dtv.recommendationservice"
+category = "ads"
+what = "Sony recommendation service"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.sony.dtv.irbrecommendation"
+category = "ads"
+what = "Sony IRB recommendations"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.sony.dtv.networkrecommendation"
+category = "ads"
+what = "Sony network recommendations"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.sony.dtv.watchtvrecommendation"
+category = "ads"
+what = "Sony Watch TV recommendations"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "android.autoinstalls.config.sony.bravia"
+category = "ads"
+what = "Play auto-installs of Sony partner apps"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 18 models"]
+
+[[packages]]
+package = "com.sony.dtv.demomode"
+category = "extras"
+what = "Shop demo mode"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 10 models"]
+
+[[packages]]
+package = "com.sony.dtv.demosupport"
+category = "extras"
+what = "Retail demo support"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 24 models"]
+
+[[packages]]
+package = "com.sony.dtv.demosystemsupport"
+category = "extras"
+what = "Retail demo system support"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 17 models"]
+
+[[packages]]
+package = "com.sony.dtv.multiscreendemo"
+category = "extras"
+what = "Retail multi-screen demo"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 25 models"]
+
+[[packages]]
+package = "com.sony.dtv.imanual"
+category = "extras"
+what = "i-Manual on-screen guide"
+side_effects = "the built-in manual stops opening"
+sources = ["cleanyourtv examples, 13 models"]
+
+[[packages]]
+package = "com.sony.dtv.helpguidecontents"
+category = "extras"
+what = "Built-in help guide contents"
+side_effects = "the built-in help stops opening"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "com.sony.dtv.smarthelp"
+category = "extras"
+what = "Sony Smart Help"
+side_effects = "the help tile stops opening"
+sources = ["cleanyourtv examples, 23 models"]
+
+[[packages]]
+package = "com.sony.dtv.customersupport"
+category = "extras"
+what = "Sony Help / customer support tile"
+side_effects = "the help tile stops opening"
+sources = ["cleanyourtv examples, 22 models"]
+
+[[packages]]
+package = "com.sony.dtv.touchpad.tutorial"
+category = "extras"
+what = "Touchpad remote tutorial"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.sony.dtv.b2b.hotelmode"
+category = "extras"
+what = "Hotel mode service; always running"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 10 models"]
+
+[[packages]]
+package = "com.sony.huey.dlna.module"
+category = "casting"
+what = "Sony DLNA renderer"
+side_effects = "playing to the TV from DLNA apps stops working; the Media Player still plays USB files"
+sources = ["cleanyourtv examples, 10 models"]
+
+[[packages]]
+package = "com.sonyericsson.dlna"
+category = "casting"
+what = "Sony DLNA media server and renderer"
+side_effects = "playing to the TV from DLNA apps stops working"
+sources = ["cleanyourtv examples, 10 models"]
+
+[[packages]]
+package = "com.sony.dtv.airplayapp"
+category = "casting"
+what = "AirPlay receiver"
+side_effects = "AirPlay from Apple devices stops working"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.sony.dtv.seeds.iot"
+category = "smart-home"
+what = "Sony smart-home and phone-app link (BRAVIA Connect, remote start)"
+side_effects = "BRAVIA Connect and smart-home control of the TV stop working"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.sony.dtv.seeds.iot.remotestart"
+category = "smart-home"
+what = "Sony remote start from the phone app"
+side_effects = "turning the TV on from the phone app stops working"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "com.sony.dtv.seeds.auth"
+category = "smart-home"
+what = "Account link for BRAVIA Connect"
+side_effects = "BRAVIA Connect can't sign in"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "com.sony.dtv.b2b.vendorprotocol"
+category = "smart-home"
+what = "Broadcasts model, MAC and IP address over SDDP for home-automation systems (e.g. Control4)"
+side_effects = "home-automation systems no longer find the TV"
+sources = ["cleanyourtv examples, 15 models"]
+
+[[packages]]
+package = "com.sony.dtv.b2b.rs232csupport"
+category = "smart-home"
+what = "RS-232C serial control"
+side_effects = "anything that drives the TV over a serial cable stops working"
+sources = ["cleanyourtv examples, 9 models"]
+
+[[packages]]
+package = "com.sony.dtv.assistantadapter"
+category = "voice"
+what = "Sony adapter for the Google Assistant"
+side_effects = "some Assistant TV controls may stop working"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.sony.dtv.voicesearch"
+category = "voice"
+what = "Sony voice search bridge"
+side_effects = "the remote's mic button stops working"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "com.sony.dtv.smarthomesettings"
+category = "voice"
+what = "\"Works with Alexa\" setup; signs in to Amazon and runs at boot"
+side_effects = "Alexa can't control the TV"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.sonypicturescore"
+category = "streaming-apps"
+what = "Sony Pictures Core (BRAVIA CORE)"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 4 models"]

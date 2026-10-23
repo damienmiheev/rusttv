@@ -20,7 +20,10 @@ use crate::inspect::DeviceInfo;
 ///
 /// 2: optional `[launcher]` section (Home takeover, SECURITY.md).
 /// 3: optional `[privacy]` section (privacy profiles, OPTIMIZER.md).
-pub const PROFILE_SCHEMA_VERSION: u32 = 3;
+/// 4: `[privacy]` lists only which catalog packages were tested
+///    (`[[privacy.tested]]`); what they are lives in `compat/packages/`.
+///    Version 3 sections still load (see [`ProfilePrivacy`]).
+pub const PROFILE_SCHEMA_VERSION: u32 = 4;
 
 /// Every profile in `compat/devices/`, compiled into the binary.
 ///
@@ -56,64 +59,147 @@ pub struct DeviceProfile {
     /// "not tested": takeover is refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub launcher: Option<ProfileLauncher>,
-    /// Packages a privacy profile may disable on this device. Absent means
-    /// none: `optimize apply privacy` is refused.
+    /// Which catalog packages were tested on this device (privacy profiles).
+    /// Absent means none: every package counts as untested here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub privacy: Option<ProfilePrivacy>,
 }
 
-/// Privacy profile for one device and firmware family (OPTIMIZER.md
-/// § Privacy profiles, SECURITY.md § Protected package policy rule 4).
+/// Which packages of the catalog (`compat/packages/`) were tested on one
+/// device and firmware family (OPTIMIZER.md § Generic design, SECURITY.md
+/// § Protected package policy rule 4).
+///
+/// Also reads the version 3 form (`tested = true` plus `[[privacy.packages]]`
+/// with descriptions): each package with a `checked` date counts as tested
+/// if `tested` was true; the descriptions are dropped (the catalog has them).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(from = "PrivacySection")]
 pub struct ProfilePrivacy {
-    /// Set only after the profile's packages were disabled on this model,
-    /// the TV was rebooted and used normally, and a restore brought them
-    /// back. Until then `optimize apply privacy` is refused.
-    pub tested: bool,
-    /// The packages, in the order they are disabled.
-    #[serde(default)]
-    pub packages: Vec<PrivacyPackage>,
+    /// The tested packages, in the order they are disabled within a category.
+    pub tested: Vec<TestedPackage>,
 }
 
-/// One package a privacy profile disables.
+/// One package tested on a device: disabled, the TV rebooted and used
+/// normally (Home, HDMI inputs, apps, remote buttons, Settings), and a
+/// restore brought it back.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct PrivacyPackage {
-    /// The package; validated like every package name.
+pub struct TestedPackage {
+    /// The package; validated like every package name. Must be in the catalog.
     pub package: PackageName,
-    /// Why it is in the profile.
-    pub category: PrivacyCategory,
-    /// What the package does, in plain words.
-    pub what: String,
-    /// What stops working while it is disabled, in plain words.
-    pub side_effects: String,
-    /// Date it was disabled and lived with on this model, or empty if not yet.
+    /// Date it was tested on this model, `YYYY-MM-DD`.
     pub checked: String,
 }
 
-/// Why a package is in a privacy profile.
+/// The `[privacy]` section as written by schema 4, or by schema 3.
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum PrivacySection {
+    Current(CurrentPrivacy),
+    Legacy(LegacyPrivacy),
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CurrentPrivacy {
+    #[serde(default)]
+    tested: Vec<TestedPackage>,
+}
+
+/// Schema 3: a profile-level `tested` flag and a description per package.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyPrivacy {
+    tested: bool,
+    #[serde(default)]
+    packages: Vec<LegacyPackage>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyPackage {
+    package: PackageName,
+    #[serde(rename = "category")]
+    _category: PrivacyCategory,
+    #[serde(rename = "what")]
+    _what: String,
+    #[serde(rename = "side_effects")]
+    _side_effects: String,
+    checked: String,
+}
+
+impl From<PrivacySection> for ProfilePrivacy {
+    fn from(section: PrivacySection) -> Self {
+        match section {
+            PrivacySection::Current(current) => Self {
+                tested: current.tested,
+            },
+            PrivacySection::Legacy(legacy) => Self {
+                tested: legacy
+                    .packages
+                    .into_iter()
+                    .filter(|package| legacy.tested && !package.checked.is_empty())
+                    .map(|package| TestedPackage {
+                        package: package.package,
+                        checked: package.checked,
+                    })
+                    .collect(),
+            },
+        }
+    }
+}
+
+/// What a package in the catalog is for. The first three are on by default;
+/// the others are features some people use, planned only when chosen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "kebab-case")]
 pub enum PrivacyCategory {
     /// Collects usage data or crash reports and sends them off the TV.
     Telemetry,
     /// Serves or personalises ads.
     Ads,
-    /// Runs for nothing on this TV (features it doesn't use).
+    /// Runs for nothing on a TV (demo modes, manuals, printing, ...).
     Extras,
+    /// Casting and screen mirroring (Chromecast, AirPlay, Miracast, DLNA). Opt-in.
+    Casting,
+    /// Control by home-automation systems and phone apps. Opt-in.
+    SmartHome,
+    /// Voice assistants other than Google's own. Opt-in.
+    Voice,
+    /// Preinstalled streaming apps. Opt-in.
+    StreamingApps,
 }
 
 impl PrivacyCategory {
-    /// Every category, in profile order.
-    pub const ALL: [Self; 3] = [Self::Telemetry, Self::Ads, Self::Extras];
+    /// Every category, in plan order.
+    pub const ALL: [Self; 7] = [
+        Self::Telemetry,
+        Self::Ads,
+        Self::Extras,
+        Self::Casting,
+        Self::SmartHome,
+        Self::Voice,
+        Self::StreamingApps,
+    ];
 
-    /// The name used in profiles and on the command line.
+    /// The categories chosen when nobody chose: nobody needs these.
+    pub const DEFAULT: [Self; 3] = [Self::Telemetry, Self::Ads, Self::Extras];
+
+    /// Whether this category is on unless a person opts out.
+    pub fn is_default(self) -> bool {
+        Self::DEFAULT.contains(&self)
+    }
+
+    /// The name used in the catalog, choices files and on the command line.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Telemetry => "telemetry",
             Self::Ads => "ads",
             Self::Extras => "extras",
+            Self::Casting => "casting",
+            Self::SmartHome => "smart-home",
+            Self::Voice => "voice",
+            Self::StreamingApps => "streaming-apps",
         }
     }
 }
@@ -137,7 +223,10 @@ impl FromStr for PrivacyCategory {
 
 /// Returned when parsing a [`PrivacyCategory`] fails.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("`{0}` is not a privacy category; expected `telemetry`, `ads` or `extras`")]
+#[error(
+    "`{0}` is not a privacy category; expected `telemetry`, `ads`, `extras`, `casting`, \
+     `smart-home`, `voice` or `streaming-apps`"
+)]
 pub struct InvalidPrivacyCategory(String);
 
 /// Home takeover facts for one device and firmware family (SECURITY.md
@@ -476,7 +565,7 @@ mod tests {
     }
 
     #[test]
-    fn the_philips_privacy_profile_is_listed_by_category_and_tested() {
+    fn the_philips_privacy_profile_lists_the_twelve_tested_packages() {
         let properties = crate::inspect::parse_properties(include_str!(
             "fixtures/philips-65oled818-api34/getprop.txt"
         ));
@@ -486,41 +575,75 @@ mod tests {
             .and_then(|profile| profile.privacy)
             .unwrap();
         // Applied, used, rebooted and restored on the owner's TV on 2026-10-23.
-        assert!(privacy.tested);
-        assert_eq!(privacy.packages.len(), 12);
+        let tested: Vec<&str> = privacy
+            .tested
+            .iter()
+            .map(|entry| entry.package.as_str())
+            .collect();
+        assert_eq!(
+            tested,
+            [
+                "org.droidtv.candeebug",
+                "org.droidtv.gel",
+                "com.google.android.partnersetup",
+                "com.google.android.feedback",
+                "com.android.tv.feedbackconsent",
+                "com.android.adservices.api",
+                "com.android.ondevicepersonalization.services",
+                "com.android.federatedcompute.services",
+                "com.google.android.play.games",
+                "com.google.android.syncadapters.calendar",
+                "com.android.printspooler",
+                "com.google.android.onetimeinitializer",
+            ]
+        );
         assert!(
             privacy
-                .packages
+                .tested
                 .iter()
                 .all(|entry| entry.checked == "2026-10-23")
-        );
-        let categories: Vec<PrivacyCategory> = privacy
-            .packages
-            .iter()
-            .map(|entry| entry.category)
-            .collect();
-        let mut sorted = categories.clone();
-        sorted.sort_by_key(|category| PrivacyCategory::ALL.iter().position(|c| c == category));
-        assert_eq!(categories, sorted, "telemetry, then ads, then extras");
-        assert_eq!(
-            privacy.packages[0].package.as_str(),
-            "org.droidtv.candeebug"
         );
     }
 
     #[test]
-    fn privacy_entries_reject_bad_packages_and_categories() {
-        let entry = |package: &str, category: &str| {
+    fn tested_entries_reject_bad_packages_and_unknown_fields() {
+        let entry = |package: &str| {
+            format!("[[tested]]\npackage = \"{package}\"\nchecked = \"2026-10-23\"\n")
+        };
+        assert!(toml::from_str::<ProfilePrivacy>(&entry("com.example")).is_ok());
+        assert!(toml::from_str::<ProfilePrivacy>(&entry("com.x; reboot")).is_err());
+        let mut text = entry("com.example");
+        text.push_str("category = \"ads\"\n");
+        assert!(toml::from_str::<ProfilePrivacy>(&text).is_err());
+        assert_eq!("extras".parse(), Ok(PrivacyCategory::Extras));
+        assert_eq!("smart-home".parse(), Ok(PrivacyCategory::SmartHome));
+        assert!("Ads".parse::<PrivacyCategory>().is_err());
+        assert!("smart_home".parse::<PrivacyCategory>().is_err());
+    }
+
+    #[test]
+    fn a_schema_3_privacy_section_still_loads() {
+        let legacy = |tested: bool| {
             format!(
-                "tested = false\n[[packages]]\npackage = \"{package}\"\ncategory = \"{category}\"\n\
+                "tested = {tested}\n\
+                 [[packages]]\npackage = \"com.example.a\"\ncategory = \"ads\"\n\
+                 what = \"x\"\nside_effects = \"x\"\nchecked = \"2026-10-23\"\n\
+                 [[packages]]\npackage = \"com.example.b\"\ncategory = \"extras\"\n\
                  what = \"x\"\nside_effects = \"x\"\nchecked = \"\"\n"
             )
         };
-        assert!(toml::from_str::<ProfilePrivacy>(&entry("com.example", "ads")).is_ok());
-        assert!(toml::from_str::<ProfilePrivacy>(&entry("com.x; reboot", "ads")).is_err());
-        assert!(toml::from_str::<ProfilePrivacy>(&entry("com.example", "bloat")).is_err());
-        assert_eq!("extras".parse(), Ok(PrivacyCategory::Extras));
-        assert!("Ads".parse::<PrivacyCategory>().is_err());
+        let privacy: ProfilePrivacy = toml::from_str(&legacy(true)).unwrap();
+        assert_eq!(
+            privacy.tested,
+            [TestedPackage {
+                package: PackageName::new("com.example.a").unwrap(),
+                checked: "2026-10-23".to_owned(),
+            }]
+        );
+        let privacy: ProfilePrivacy = toml::from_str(&legacy(false)).unwrap();
+        assert!(privacy.tested.is_empty());
+        let bad = legacy(true).replace("\"ads\"", "\"bloat\"");
+        assert!(toml::from_str::<ProfilePrivacy>(&bad).is_err());
     }
 
     #[test]

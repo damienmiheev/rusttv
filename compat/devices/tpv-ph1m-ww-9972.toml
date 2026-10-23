@@ -1,4 +1,4 @@
-schema_version = 3
+schema_version = 4
 
 [device]
 manufacturer = "TPV"
@@ -45,93 +45,56 @@ stock_package = "com.google.android.apps.tv.launcherx"
 disable_home_packages = ["com.google.android.tungsten.setupwraith"]
 takeover_tested = true
 
-# Privacy profile (OPTIMIZER.md § Privacy profiles). Facts checked on this TV
-# on 2026-10-23 (package present and enabled, what it declares); none has been
-# disabled yet, so `tested = false` and `checked` is empty. Set them only after
-# apply, a reboot, normal use (Home, HDMI, apps, remote, Settings) and restore.
-[privacy]
-tested = true
 
-[[privacy.packages]]
+# Catalog packages (compat/packages/) tested on this model: disabled with
+# `rusttv optimize apply privacy`, the TV rebooted and used normally (Home, HDMI,
+# apps, remote, Settings), and `rusttv optimize restore` brought them back.
+# Within a category they are disabled in this order.
+
+[[privacy.tested]]
 package = "org.droidtv.candeebug"
-category = "telemetry"
-what = "TP Vision service that collects analytics; runs as the system user and was running (about 12 MB), with one service, four broadcast receivers and a file provider"
-side_effects = "none expected"
 checked = "2026-10-23"
 
-[[privacy.packages]]
+[[privacy.tested]]
 package = "org.droidtv.gel"
-category = "telemetry"
-what = "TP Vision metrics gathering; runs as the system user and listens with 23 broadcast receivers"
-side_effects = "none expected"
 checked = "2026-10-23"
 
-[[privacy.packages]]
+[[privacy.tested]]
 package = "com.google.android.partnersetup"
-category = "telemetry"
-what = "Google partner setup: partner referrer and RLZ data; privileged app"
-side_effects = "none expected"
 checked = "2026-10-23"
 
-[[privacy.packages]]
+[[privacy.tested]]
 package = "com.google.android.feedback"
-category = "telemetry"
-what = "Google feedback sender"
-side_effects = "none expected"
 checked = "2026-10-23"
 
-[[privacy.packages]]
+[[privacy.tested]]
 package = "com.android.tv.feedbackconsent"
-category = "telemetry"
-what = "Screen asking for consent to send feedback; runs as the system user"
-side_effects = "none expected"
 checked = "2026-10-23"
 
-[[privacy.packages]]
+[[privacy.tested]]
 package = "com.android.adservices.api"
-category = "ads"
-what = "Android ad services APIs"
-side_effects = "apps that ask for the ad APIs are told they are unavailable"
 checked = "2026-10-23"
 
-[[privacy.packages]]
+[[privacy.tested]]
 package = "com.android.ondevicepersonalization.services"
-category = "ads"
-what = "On-device personalisation service, used for ad personalisation"
-side_effects = "none expected"
 checked = "2026-10-23"
 
-[[privacy.packages]]
+[[privacy.tested]]
 package = "com.android.federatedcompute.services"
-category = "ads"
-what = "Federated compute service, used for ad personalisation"
-side_effects = "none expected"
 checked = "2026-10-23"
 
-[[privacy.packages]]
+[[privacy.tested]]
 package = "com.google.android.play.games"
-category = "extras"
-what = "Google Play Games; includes an ad SDK initialiser"
-side_effects = "Play Games features stop working"
 checked = "2026-10-23"
 
-[[privacy.packages]]
+[[privacy.tested]]
 package = "com.google.android.syncadapters.calendar"
-category = "extras"
-what = "Google Calendar sync"
-side_effects = "none expected"
 checked = "2026-10-23"
 
-[[privacy.packages]]
+[[privacy.tested]]
 package = "com.android.printspooler"
-category = "extras"
-what = "Print spooler, for printing from apps"
-side_effects = "none expected"
 checked = "2026-10-23"
 
-[[privacy.packages]]
+[[privacy.tested]]
 package = "com.google.android.onetimeinitializer"
-category = "extras"
-what = "One-time task that runs during first setup"
-side_effects = "none expected"
 checked = "2026-10-23"

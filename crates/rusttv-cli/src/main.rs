@@ -44,17 +44,21 @@ enum Command {
     /// The home screen (launcher) on a device.
     #[command(subcommand)]
     Launcher(LauncherAction),
-    /// Turn off telemetry and ads with a tested privacy profile, and undo it.
+    /// Turn off telemetry, ads and other packages you choose, and undo it.
     #[command(subcommand)]
     Optimize(OptimizeAction),
 }
 
 #[derive(Debug, Subcommand)]
 enum OptimizeAction {
-    /// Show this device's privacy profile and each package's state. Read-only.
+    /// List the catalog packages on this device and what your choices would
+    /// do with them: state, category, tested on this model or not. Read-only.
     Analyze {
         #[command(flatten)]
         target: Target,
+        /// Choices file instead of `<config dir>/privacy.toml`.
+        #[arg(long)]
+        choices: Option<PathBuf>,
     },
     /// Apply a profile. Shows the plan and asks you to type a confirmation;
     /// rolls back on failure. Undo with `optimize restore`.
@@ -77,15 +81,23 @@ enum OptimizeAction {
 
 #[derive(Debug, Subcommand)]
 enum ApplyProfile {
-    /// Disable (never uninstall) the telemetry, ads and extras packages the
-    /// device's compat profile lists. Only on models where it was tested.
+    /// Disable (never uninstall) the catalog packages your choices select
+    /// (by default telemetry, ads and extras) that are installed and enabled.
+    /// Only packages tested on this model, unless --allow-untested.
     Privacy {
         #[command(flatten)]
         target: Target,
-        /// Only these categories, comma-separated: telemetry, ads, extras.
-        /// Default: all.
+        /// Narrow the categories of your choices to these, comma-separated:
+        /// telemetry, ads, extras, casting, smart-home, voice, streaming-apps.
         #[arg(long, value_delimiter = ',')]
         only: Vec<rusttv_core::PrivacyCategory>,
+        /// Choices file instead of `<config dir>/privacy.toml`.
+        #[arg(long)]
+        choices: Option<PathBuf>,
+        /// Also plan packages not tested on this model; the plan marks each
+        /// one UNTESTED.
+        #[arg(long)]
+        allow_untested: bool,
         /// Only show the plan; change nothing.
         #[arg(long)]
         dry_run: bool,
@@ -333,14 +345,26 @@ fn main() -> ExitCode {
             *dry_run,
             cli.json,
         ),
-        Command::Optimize(OptimizeAction::Analyze { target }) => {
-            optimize::analyze(&adb, target, cli.json)
+        Command::Optimize(OptimizeAction::Analyze { target, choices }) => {
+            optimize::analyze(&adb, target, choices.as_deref(), cli.json)
         }
         Command::Optimize(OptimizeAction::Apply(ApplyProfile::Privacy {
             target,
             only,
+            choices,
+            allow_untested,
             dry_run,
-        })) => optimize::apply_privacy(&adb, target, only, *dry_run, cli.json),
+        })) => optimize::apply_privacy(
+            &adb,
+            target,
+            &optimize::PrivacyOptions {
+                only,
+                choices: choices.as_deref(),
+                allow_untested: *allow_untested,
+            },
+            *dry_run,
+            cli.json,
+        ),
         Command::Optimize(OptimizeAction::Restore {
             target,
             journal,
