@@ -44,6 +44,7 @@ the software renderer are unchanged.
 
 Measured on the Philips with ~31 banners: native heap after a cold start
 30.4 → 27.6 MB (−2.9 MB); the owner checked the banners on the TV.
+Reported upstream as https://github.com/slint-ui/slint/issues/14398.
 
 **Upstream (GL context patch):** reported as https://github.com/slint-ui/slint/issues/14397 (2026-10-23).
 
