@@ -4,10 +4,13 @@ The contract for scripts and AI agents. All commands are **read-only** except
 `performance benchmark`, which stops and starts the apps it measures (risk
 class R1, transient), `launcher takeover` / `launcher restore`, which
 disable or re-enable the stock launcher, and `launcher install` /
-`launcher uninstall`, which install or remove the RustTV launcher (all R3),
+`launcher uninstall`, which install or remove the RustTV launcher, and
+`optimize apply privacy` / `optimize restore`, which disable or re-enable the
+packages of a privacy profile (all R3),
 only after a person approves the plan at a terminal (see [Changing a device](#changing-a-device)). Run
 `rusttv <command> --help` for every option. Agents can use the read-only
-commands, and the `--dry-run` of `launcher install` / `uninstall` / `restore`, as MCP tools too: see [MCP.md](MCP.md).
+commands, and the `--dry-run` of `launcher install` / `uninstall` / `restore`
+and `optimize apply privacy`, as MCP tools too: see [MCP.md](MCP.md).
 
 ## Commands
 
@@ -24,6 +27,9 @@ commands, and the `--dry-run` of `launcher install` / `uninstall` / `restore`, a
 | `launcher install [--apk <file>] [--dry-run]` | Install the RustTV launcher (`ai.rusttv.launcher`) with `adb install --pkg ai.rusttv.launcher`, which makes Android refuse an APK of any other package. The APK is `android/app/build/outputs/apk/release/app-<abi>-release.apk` (from `android/build.sh`, relative to the current directory, so run from the repository root) for the device's primary ABI, the first of `ro.product.cpu.abilist` (`arm64-v8a`, `armeabi-v7a` or `x86_64`; `INVALID_APK` otherwise), or `--apk <file>` (any directory; file name of ASCII letters, digits, `.`, `_`, `-` ending in `.apk`). Checks RustTV is installed and can handle Home; a fresh install is uninstalled again otherwise. If RustTV is already installed it is an **upgrade** (`adb install -r`, keeps its data) that can't be undone: the plan says so, and it is refused while Home depends on RustTV (as for `uninstall`). Typed confirmation. Doesn't change which app Home opens. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `launcher uninstall [--dry-run]` | Uninstall the RustTV launcher and its data (`pm uninstall ai.rusttv.launcher`; it can remove no other package). Refused (`PRECONDITION_FAILED`) while a Home takeover is active: a takeover journal for this firmware that isn't restored, a journal file that can't be read (it may be one; check it, then move it out of the journal directory), or no system launcher other than RustTV handling Home. Run `launcher restore` first, so the TV is never left with only Android's fallback Home. Then checks RustTV is gone and Home opens the launcher it opened before (or the system launcher, if it opened RustTV). Can't be undone; reinstall with `launcher install`. Typed confirmation. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `launcher restore [--journal <file> \| --from-profile] [--dry-run]` | Undo `launcher takeover`: re-enable the stock launcher (and any other package the takeover disabled) from the takeover's journal (by default the newest one for the device's firmware; each journal file that can't be read is named in a warning on stderr, also with `--json`, and skipped). Without a journal (lost, or the takeover ran on another computer), `--from-profile` rebuilds one from the device's compiled-in profile: it re-enables the packages that profile's takeover disables, only where they are disabled now, and saves the result as a new `<ms>-home-takeover-from-profile.toml` journal. Typed confirmation. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
+| `optimize analyze` | The device's privacy profile (from its bundled compat profile, OPTIMIZER.md § Privacy profiles): whether it is tested on this model, and each listed package with its category, what it does, side effects, whether it is installed / enabled / disabled, and whether RustTV refuses to touch it (protected). Read-only | [OptimizeAnalysis](#optimizeanalysis) |
+| `optimize apply privacy [--only telemetry,ads,extras] [--dry-run]` | **Disable** (never uninstall) the packages the device's privacy profile lists, in profile order; `--only` limits it to those categories (default all). Only on devices whose bundled compat profile has `[privacy] tested = true` (`PROFILE_NOT_TESTED` otherwise, even with `--dry-run`). Every listed package is checked live first (SECURITY.md § Protected package policy): if one handles or can handle Home, provides an input method or an enabled accessibility service, or is on `compat/protected.toml`, nothing is planned (`PACKAGE_PROTECTED`). Packages not installed or already disabled are skipped and named in the notes. After the last step Home must open the same activity as before and the Home candidates must be unchanged, otherwise everything is rolled back. Typed confirmation `privacy`. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
+| `optimize restore [--journal <file>] [--dry-run]` | Undo `optimize apply privacy`: re-enable what the privacy journal disabled (by default the newest one for the device's firmware; unreadable journal files are named in a warning on stderr and skipped). Packages already enabled again (e.g. in Settings) are skipped and named in the notes; if every one is, `PRECONDITION_FAILED`. Only re-enables: a journal asking for anything else is refused. Typed confirmation `restore`. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `compat profile` | Compatibility profile for `compat/devices/` (TOML on stdout; `--json` wraps it) | `{"path": string, "profile": object}` |
 
 Commands that target a device take `--serial <serial>`. Without it, the only
@@ -39,7 +45,7 @@ lifecycle:
    what is checked after, and how each step is undone. `--dry-run` stops here
    and prints it (`--json`: a [DryRun](#dryrun)).
 2. **Approve**: the plan is applied only after a person types its
-   `confirmation` word (`takeover`, `restore`, `install`, `uninstall`) at an
+   `confirmation` word (`takeover`, `privacy`, `restore`, `install`, `uninstall`) at an
    interactive terminal.
    There is no `--yes` flag. Without a terminal on stdin (scripts, agents,
    MCP) the command fails with `NOT_APPROVED` before contacting the device.
@@ -54,15 +60,19 @@ lifecycle:
    the RustTV launcher can't be undone (putting the old version back needs
    its APK): such a step is always a plan's last, its `undo` is null, the
    plan's notes say so, and a failed check after it is `ROLLBACK_FAILED`.
-4. **Restore** later from the journal (`launcher restore`). Restoring is never
+4. **Restore** later from the journal (`launcher restore`, `optimize restore`). Restoring is never
    rolled back; a failed step is reported with its manual command. If the
    firmware changed since the journal was written, the plan warns and restore
    still runs.
 
 Journals are TOML files in `<state dir>/journals/`, named
 `<unix ms>-<plan>.toml`. `launcher restore` only restores takeover
-journals; install and uninstall journals are a record (undo an install with
-`launcher uninstall`). A journal file that can't be read (edited, or
+journals and `optimize restore` only privacy journals (`<ms>-privacy.toml`),
+so either can be undone without the other; install and uninstall journals are
+a record (undo an install with `launcher uninstall`). Each `optimize apply
+privacy` writes its own journal (a second run only disables what the first
+left enabled); `optimize restore` restores the newest, so run it once per
+journal. A journal file that can't be read (edited, or
 written by an incompatible build) is never ignored silently: `launcher restore`
 warns about it, and `launcher install` (upgrade) and `launcher uninstall` refuse
 with `PRECONDITION_FAILED` until it is moved out of the directory. The state directory is `RUSTTV_STATE_DIR` if set,
@@ -77,12 +87,15 @@ Without `--json`: human-readable text on stdout, errors and hints on stderr.
 With `--json`, stdout carries exactly one JSON object, success or failure:
 
 ```json
-{"schema":"rusttv.v3","ok":true,"data":{}}
-{"schema":"rusttv.v3","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
+{"schema":"rusttv.v4","ok":true,"data":{}}
+{"schema":"rusttv.v4","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
 ```
 
-- `schema` identifies the contract version. Within `rusttv.v3`, fields are only
+- `schema` identifies the contract version. Within `rusttv.v4`, fields are only
   added, never renamed, removed or changed in meaning; anything else bumps it.
+  - `rusttv.v4`: new error codes `PROFILE_NOT_TESTED` and `PACKAGE_PROTECTED`
+    (`optimize apply privacy`); new commands `optimize analyze`, `optimize
+    apply privacy`, `optimize restore`. Everything else is unchanged.
   - `rusttv.v3`: in [BenchmarkReport](#benchmarkreport), `apps[].idle_pss_kib`
     is renamed `idle_pss_kib_after_resumes` (same measurement), and
     `apps[].idle_pss_kib_fresh`, `apps[].idle_pss_growth_kib` and
@@ -127,6 +140,8 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
 | `NOT_APPROVED` | 1 | No interactive terminal, or the confirmation wasn't typed; nothing changed |
 | `JOURNAL_FAILED` | 1 | A journal couldn't be read or written; if a change had started, it was rolled back |
 | `TAKEOVER_NOT_TESTED` | 1 | No bundled compat profile matches this device's model and firmware family, or it doesn't record a tested takeover of the stock launcher Home opens; nothing changed |
+| `PROFILE_NOT_TESTED` | 1 | `optimize apply`: no bundled compat profile matches this device's model and firmware family, it has no privacy profile, or the privacy profile isn't marked `tested = true` on this model; nothing changed |
+| `PACKAGE_PROTECTED` | 1 | `optimize apply`: the profile lists a package RustTV never disables (it handles or can handle Home, provides an input method or an enabled accessibility service, or is on `compat/protected.toml`); the message names each one and why; nothing changed |
 | `INVALID_APK` | 1 | `launcher install` found no APK to install: no APK is built for the device's primary ABI, the file is missing or not a file, or its path isn't absolute UTF-8 with a plain `.apk` file name; nothing changed |
 | `NO_JOURNAL` | 1 | `restore` found no journal to restore for this device; pass `--journal <file>` |
 | `ROLLED_BACK` | 1 | A step or its check failed; every step that ran was undone and verified |
@@ -202,7 +217,7 @@ Google TV the stock launcher's priority 2 beats every other launcher's 0);
 ### DryRun
 
 `plan` (e.g. `home-takeover`, `home-takeover-restore`, `launcher-install`,
-`launcher-uninstall`); `serial`;
+`launcher-uninstall`, `privacy`, `privacy-restore`); `serial`;
 `fingerprint` (`ro.build.fingerprint` the plan is for); `max_risk` (`R0` to
 `R3`); `confirmation` (the word to type); `steps`: in order, each with
 `risk`, `command` (exact adb command line), `records` (original state checked
@@ -210,6 +225,17 @@ and journaled first, or null), `verify` (array of checks after the command),
 `undo` (adb command line, or null), `poll_ms` (how long the checks are
 retried before the step fails, or null); `notes` (array of strings for people:
 recovery hints, warnings).
+
+### OptimizeAnalysis
+
+`serial`; `profile` (file name of the bundled compat profile matching the
+device, e.g. `tpv-ph1m-ww-9972.toml`, or null); `privacy` (null when no
+profile matches or it has no privacy profile): `tested` (boolean; `optimize
+apply privacy` is refused while false) and `packages`, in profile order, each
+with `package`, `category` (`telemetry` \| `ads` \| `extras`), `what`,
+`side_effects`, `checked` (date it was disabled and lived with on this model,
+or empty), `state` (`absent` \| `enabled` \| `disabled`) and `protected`
+(why RustTV refuses to disable it, or null).
 
 ### ChangeReport
 

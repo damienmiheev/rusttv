@@ -222,8 +222,13 @@ pub struct UnreadableJournal {
 /// can't be are listed in [`JournalSearch::unreadable`], not skipped silently.
 pub fn find_restorable_journal(dir: &Path, plan: &str, fingerprint: &str) -> JournalSearch {
     let not_found = || {
+        let from_profile = if plan == crate::takeover::HOME_TAKEOVER {
+            ", or `--from-profile` to re-enable what this device's profile says a takeover disables"
+        } else {
+            ""
+        };
         PlanError::no_journal(format!(
-            "no {plan} journal to restore for firmware `{fingerprint}` in {}; pass `--journal <file>`, or `--from-profile` to re-enable what this device's profile says a takeover disables",
+            "no {plan} journal to restore for firmware `{fingerprint}` in {}; pass `--journal <file>`{from_profile}",
             dir.display()
         ))
     };

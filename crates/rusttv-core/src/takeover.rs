@@ -361,6 +361,7 @@ mod tests {
                 notes: String::new(),
             },
             launcher,
+            privacy: None,
         }
     }
 

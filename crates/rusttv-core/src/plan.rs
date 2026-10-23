@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::adb::Adb;
 use crate::apps::{PackageListError, package_names};
 use crate::bench::Sleep;
-use crate::command::{DeviceCommand, InvalidApk, PackageName, RiskClass};
+use crate::command::{Component, DeviceCommand, InvalidApk, PackageName, RiskClass};
 use crate::error::AdbError;
 use crate::inspect::parse_properties;
 use crate::journal::{Journal, JournalStatus, JournalStep, JournalStore, StepStatus};
@@ -53,6 +53,10 @@ pub enum Check {
     PackageNotInstalled(PackageName),
     /// An activity of this package can handle Home (`query-activities`).
     HomeCandidate(PackageName),
+    /// The Home button opens exactly this activity.
+    HomeActivityIs(Component),
+    /// The activities that can handle Home are exactly these (any order).
+    HomeCandidatesAre(Vec<Component>),
 }
 
 impl Check {
@@ -108,6 +112,27 @@ impl Check {
                     .iter()
                     .any(|candidate| candidate.package() == package.as_str()))
             }
+            Self::HomeActivityIs(component) => {
+                let output = adb.run(serial, &DeviceCommand::HomeActivity)?;
+                Ok(
+                    parse_home_activity(&output).is_some_and(|(package, activity)| {
+                        format!("{package}/{activity}") == component.as_str()
+                    }),
+                )
+            }
+            Self::HomeCandidatesAre(expected) => {
+                let output = adb.run(serial, &DeviceCommand::HomeCandidates)?;
+                let mut now: Vec<String> = parse_home_candidates(&output)
+                    .into_iter()
+                    .map(|candidate| candidate.component)
+                    .collect();
+                let mut expected: Vec<&str> = expected.iter().map(Component::as_str).collect();
+                now.sort_unstable();
+                now.dedup();
+                expected.sort_unstable();
+                expected.dedup();
+                Ok(now == expected)
+            }
         }
     }
 }
@@ -122,6 +147,11 @@ impl fmt::Display for Check {
             Self::PackageInstalled(package) => write!(f, "{package} is installed"),
             Self::PackageNotInstalled(package) => write!(f, "{package} is not installed"),
             Self::HomeCandidate(package) => write!(f, "{package} can handle Home"),
+            Self::HomeActivityIs(component) => write!(f, "Home opens {component}"),
+            Self::HomeCandidatesAre(components) => {
+                let names: Vec<&str> = components.iter().map(Component::as_str).collect();
+                write!(f, "the Home candidates are still {}", names.join(", "))
+            }
         }
     }
 }
@@ -248,6 +278,12 @@ impl Plan {
             steps,
             notes,
         })
+    }
+
+    /// The plan with `notes` added after its own.
+    pub(crate) fn with_notes(mut self, notes: impl IntoIterator<Item = String>) -> Self {
+        self.notes.extend(notes);
+        self
     }
 
     /// Short name of the kind of plan, e.g. `home-takeover`.
@@ -734,12 +770,16 @@ enum PlanErrorKind {
     NoJournal(String),
     #[error("{0}")]
     NotTested(String),
+    #[error("{0}")]
+    ProfileNotTested(String),
+    #[error("{0}")]
+    Protected(String),
     #[error(transparent)]
     InvalidApk(#[from] InvalidApk),
     #[error("{0}; every completed step was undone and verified")]
     RolledBack(String),
     #[error(
-        "{reason}; rolling back ALSO failed: {}. Recovery is not guaranteed; run those commands by hand, or `rusttv launcher restore` once the device is reachable",
+        "{reason}; rolling back ALSO failed: {}. Recovery is not guaranteed; run those commands by hand, or restore from the journal (`rusttv launcher restore`, or `rusttv optimize restore` for a privacy plan) once the device is reachable",
         problems.join("; ")
     )]
     RollbackFailed {
@@ -776,6 +816,8 @@ impl PlanError {
             PlanErrorKind::Journal(_) => "JOURNAL_FAILED",
             PlanErrorKind::NoJournal(_) => "NO_JOURNAL",
             PlanErrorKind::NotTested(_) => "TAKEOVER_NOT_TESTED",
+            PlanErrorKind::ProfileNotTested(_) => "PROFILE_NOT_TESTED",
+            PlanErrorKind::Protected(_) => "PACKAGE_PROTECTED",
             PlanErrorKind::InvalidApk(_) => "INVALID_APK",
             PlanErrorKind::RolledBack(_) => "ROLLED_BACK",
             PlanErrorKind::RollbackFailed { .. } => "ROLLBACK_FAILED",
@@ -811,6 +853,14 @@ impl PlanError {
         PlanErrorKind::NotTested(reason).into()
     }
 
+    pub(crate) fn profile_not_tested(reason: String) -> Self {
+        PlanErrorKind::ProfileNotTested(reason).into()
+    }
+
+    pub(crate) fn protected(reason: String) -> Self {
+        PlanErrorKind::Protected(reason).into()
+    }
+
     pub(crate) fn invalid_apk(reason: String) -> Self {
         PlanErrorKind::InvalidApk(InvalidApk::new(reason)).into()
     }
@@ -826,6 +876,8 @@ pub(crate) fn every_plan_error() -> Vec<PlanError> {
         PlanErrorKind::Journal(String::new()).into(),
         PlanErrorKind::NoJournal(String::new()).into(),
         PlanErrorKind::NotTested(String::new()).into(),
+        PlanErrorKind::ProfileNotTested(String::new()).into(),
+        PlanErrorKind::Protected(String::new()).into(),
         PlanErrorKind::InvalidApk(InvalidApk::new(String::new())).into(),
         PlanErrorKind::RolledBack(String::new()).into(),
         PlanErrorKind::RollbackFailed {
@@ -844,6 +896,8 @@ pub(crate) fn every_plan_error() -> Vec<PlanError> {
             | PlanErrorKind::Journal(_)
             | PlanErrorKind::NoJournal(_)
             | PlanErrorKind::NotTested(_)
+            | PlanErrorKind::ProfileNotTested(_)
+            | PlanErrorKind::Protected(_)
             | PlanErrorKind::InvalidApk(_)
             | PlanErrorKind::RolledBack(_)
             | PlanErrorKind::RollbackFailed { .. }

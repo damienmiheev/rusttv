@@ -29,7 +29,7 @@ fn rusttv_with_fake_adb(scenario: &str, args: &[&str]) -> Output {
 
 fn json_stdout(output: &Output) -> Value {
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["schema"], "rusttv.v3");
+    assert_eq!(value["schema"], "rusttv.v4");
     value
 }
 
@@ -899,4 +899,197 @@ fn launcher_install_and_uninstall_without_a_terminal_are_refused_before_touching
             "{command}"
         );
     }
+}
+
+#[test]
+fn optimize_analyze_json_lists_the_privacy_profile_with_package_states() {
+    let output = rusttv_with_fake_adb("philips", &["optimize", "analyze", "--json"]);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    assert_eq!(data["serial"], "emulator-5554");
+    assert_eq!(data["profile"], "tpv-ph1m-ww-9972.toml");
+    assert_eq!(data["privacy"]["tested"], false);
+    let packages = data["privacy"]["packages"].as_array().unwrap();
+    assert_eq!(packages.len(), 12);
+    assert_eq!(packages[0]["package"], "org.droidtv.candeebug");
+    assert_eq!(packages[0]["category"], "telemetry");
+    assert_eq!(packages[0]["state"], "enabled");
+    assert_eq!(packages[0]["protected"], Value::Null);
+    assert_eq!(packages[1]["package"], "org.droidtv.gel");
+    assert_eq!(packages[1]["state"], "disabled");
+    assert_eq!(packages[11]["category"], "extras");
+}
+
+#[test]
+fn optimize_analyze_text_says_the_profile_is_not_tested() {
+    let output = rusttv_with_fake_adb("philips", &["optimize", "analyze"]);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("NOT tested on this model"), "{stdout}");
+    assert!(
+        stdout.contains("telemetry  disabled  org.droidtv.gel"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn optimize_apply_privacy_dry_run_is_refused_while_the_profile_is_untested() {
+    // The bundled Philips privacy profile isn't tested yet, so even a dry run
+    // stops here. The plan itself is tested in rusttv-core.
+    let state = state_dir("privacy-untested");
+    let output = rusttv_with_state(
+        "philips",
+        &state,
+        &[
+            "optimize",
+            "apply",
+            "privacy",
+            "--only",
+            "telemetry,ads",
+            "--dry-run",
+            "--json",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let json = json_stdout(&output);
+    assert_eq!(json["error"]["code"], "PROFILE_NOT_TESTED");
+    let message = json["error"]["message"].as_str().unwrap();
+    assert!(message.contains("tpv-ph1m-ww-9972.toml"), "{message}");
+    assert_eq!(
+        std::fs::read_dir(state.join("journals")).unwrap().count(),
+        0
+    );
+    std::fs::remove_dir_all(state).unwrap();
+}
+
+#[test]
+fn optimize_apply_rejects_an_unknown_category() {
+    let output = rusttv_with_fake_adb(
+        "philips",
+        &[
+            "optimize",
+            "apply",
+            "privacy",
+            "--only",
+            "bloat",
+            "--dry-run",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn optimize_apply_and_restore_without_a_terminal_are_refused_before_touching_a_device() {
+    for command in [
+        &["optimize", "apply", "privacy", "--json"][..],
+        &["optimize", "restore", "--json"][..],
+    ] {
+        let output = rusttv_with_fake_adb("no-devices", command);
+        assert_eq!(output.status.code(), Some(1), "{command:?}");
+        assert_eq!(
+            json_stdout(&output)["error"]["code"],
+            "NOT_APPROVED",
+            "{command:?}"
+        );
+    }
+}
+
+/// A privacy journal for the Philips getprop fixture's fingerprint.
+const PRIVACY_JOURNAL: &str = r#"schema_version = 1
+plan = "privacy"
+serial = "emulator-5554"
+fingerprint = "Philips/PH1M_WW_9972/PH1M_WW_9972:14/UKN2.241117.001/3000518:user/release-keys"
+started_at_unix_ms = 1761220000000
+status = "applied"
+
+[[steps]]
+adb = "adb -s emulator-5554 shell pm disable-user --user 0 org.droidtv.candeebug"
+command = { kind = "disable_package", arg = "org.droidtv.candeebug" }
+original_state = { kind = "package_enabled", arg = "org.droidtv.candeebug" }
+status = "done"
+
+[[steps]]
+adb = "adb -s emulator-5554 shell pm disable-user --user 0 org.droidtv.gel"
+command = { kind = "disable_package", arg = "org.droidtv.gel" }
+original_state = { kind = "package_enabled", arg = "org.droidtv.gel" }
+status = "done"
+"#;
+
+#[test]
+fn optimize_restore_dry_run_re_enables_only_what_is_still_disabled() {
+    let state = state_dir("privacy-restore");
+    let journal = state.join("journals/1761220000000-privacy.toml");
+    std::fs::write(&journal, PRIVACY_JOURNAL).unwrap();
+    // A newer takeover journal next to it is not a privacy journal.
+    std::fs::write(
+        state.join("journals/1761220000001-home-takeover.toml"),
+        TAKEOVER_JOURNAL,
+    )
+    .unwrap();
+
+    let output = rusttv_with_state(
+        "philips",
+        &state,
+        &["optimize", "restore", "--dry-run", "--json"],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    assert_eq!(data["plan"], "privacy-restore");
+    assert_eq!(data["confirmation"], "restore");
+    let steps = data["steps"].as_array().unwrap();
+    // candeebug is enabled on the device again: skipped, and said so.
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["command"],
+        "adb -s emulator-5554 shell pm enable --user 0 org.droidtv.gel"
+    );
+    let notes: Vec<&str> = data["notes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|note| note.as_str().unwrap())
+        .collect();
+    assert!(
+        notes
+            .iter()
+            .any(|note| note.starts_with("Skipped org.droidtv.candeebug")),
+        "{notes:?}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&journal).unwrap(),
+        PRIVACY_JOURNAL,
+        "a dry run doesn't write the journal"
+    );
+
+    // `launcher restore` doesn't pick up the privacy journal.
+    std::fs::remove_file(state.join("journals/1761220000001-home-takeover.toml")).unwrap();
+    let output = rusttv_with_state(
+        "philips",
+        &state,
+        &["launcher", "restore", "--dry-run", "--json"],
+    );
+    assert_eq!(json_stdout(&output)["error"]["code"], "NO_JOURNAL");
+    std::fs::remove_dir_all(state).unwrap();
+}
+
+#[test]
+fn optimize_restore_without_a_journal_says_so() {
+    let state = state_dir("privacy-restore-none");
+    let output = rusttv_with_state(
+        "philips",
+        &state,
+        &["optimize", "restore", "--dry-run", "--json"],
+    );
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let json = json_stdout(&output);
+    assert_eq!(json["error"]["code"], "NO_JOURNAL");
+    let message = json["error"]["message"].as_str().unwrap();
+    assert!(message.contains("no privacy journal"), "{message}");
+    assert!(!message.contains("--from-profile"), "{message}");
+    std::fs::remove_dir_all(state).unwrap();
 }

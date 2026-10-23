@@ -8,14 +8,19 @@
 
 use std::collections::HashMap;
 
+use std::fmt;
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
+use crate::command::PackageName;
 use crate::inspect::DeviceInfo;
 
 /// Version of the profile format. Bump it when fields change meaning.
 ///
 /// 2: optional `[launcher]` section (Home takeover, SECURITY.md).
-pub const PROFILE_SCHEMA_VERSION: u32 = 2;
+/// 3: optional `[privacy]` section (privacy profiles, OPTIMIZER.md).
+pub const PROFILE_SCHEMA_VERSION: u32 = 3;
 
 /// Every profile in `compat/devices/`, compiled into the binary.
 ///
@@ -51,7 +56,89 @@ pub struct DeviceProfile {
     /// "not tested": takeover is refused.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub launcher: Option<ProfileLauncher>,
+    /// Packages a privacy profile may disable on this device. Absent means
+    /// none: `optimize apply privacy` is refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub privacy: Option<ProfilePrivacy>,
 }
+
+/// Privacy profile for one device and firmware family (OPTIMIZER.md
+/// § Privacy profiles, SECURITY.md § Protected package policy rule 4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProfilePrivacy {
+    /// Set only after the profile's packages were disabled on this model,
+    /// the TV was rebooted and used normally, and a restore brought them
+    /// back. Until then `optimize apply privacy` is refused.
+    pub tested: bool,
+    /// The packages, in the order they are disabled.
+    #[serde(default)]
+    pub packages: Vec<PrivacyPackage>,
+}
+
+/// One package a privacy profile disables.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PrivacyPackage {
+    /// The package; validated like every package name.
+    pub package: PackageName,
+    /// Why it is in the profile.
+    pub category: PrivacyCategory,
+    /// What the package does, in plain words.
+    pub what: String,
+    /// What stops working while it is disabled, in plain words.
+    pub side_effects: String,
+    /// Date it was disabled and lived with on this model, or empty if not yet.
+    pub checked: String,
+}
+
+/// Why a package is in a privacy profile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrivacyCategory {
+    /// Collects usage data or crash reports and sends them off the TV.
+    Telemetry,
+    /// Serves or personalises ads.
+    Ads,
+    /// Runs for nothing on this TV (features it doesn't use).
+    Extras,
+}
+
+impl PrivacyCategory {
+    /// Every category, in profile order.
+    pub const ALL: [Self; 3] = [Self::Telemetry, Self::Ads, Self::Extras];
+
+    /// The name used in profiles and on the command line.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Telemetry => "telemetry",
+            Self::Ads => "ads",
+            Self::Extras => "extras",
+        }
+    }
+}
+
+impl fmt::Display for PrivacyCategory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for PrivacyCategory {
+    type Err = InvalidPrivacyCategory;
+
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|category| category.as_str() == name)
+            .ok_or_else(|| InvalidPrivacyCategory(name.to_owned()))
+    }
+}
+
+/// Returned when parsing a [`PrivacyCategory`] fails.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("`{0}` is not a privacy category; expected `telemetry`, `ads` or `extras`")]
+pub struct InvalidPrivacyCategory(String);
 
 /// Home takeover facts for one device and firmware family (SECURITY.md
 /// § Home takeover, rule 2).
@@ -237,6 +324,7 @@ pub fn profile_from_info(info: &DeviceInfo) -> Result<DeviceProfile, MissingFiel
             notes: String::new(),
         },
         launcher: None,
+        privacy: None,
     })
 }
 
@@ -358,6 +446,7 @@ mod tests {
         generated.tested.clone_from(&committed.tested);
         // Written by hand from what was seen on the device, like `tested`.
         generated.launcher.clone_from(&committed.launcher);
+        generated.privacy.clone_from(&committed.privacy);
         assert_eq!(generated, committed);
     }
 
@@ -384,6 +473,54 @@ mod tests {
             launcher.disable_home_packages,
             ["com.google.android.tungsten.setupwraith"]
         );
+    }
+
+    #[test]
+    fn the_philips_privacy_profile_is_listed_by_category_and_not_yet_tested() {
+        let properties = crate::inspect::parse_properties(include_str!(
+            "fixtures/philips-65oled818-api34/getprop.txt"
+        ));
+        let privacy = bundled_profiles()
+            .into_iter()
+            .find(|profile| profile.matches(&properties))
+            .and_then(|profile| profile.privacy)
+            .unwrap();
+        // The owner tests it on the TV before anything is marked.
+        assert!(!privacy.tested);
+        assert_eq!(privacy.packages.len(), 12);
+        assert!(
+            privacy
+                .packages
+                .iter()
+                .all(|entry| entry.checked.is_empty())
+        );
+        let categories: Vec<PrivacyCategory> = privacy
+            .packages
+            .iter()
+            .map(|entry| entry.category)
+            .collect();
+        let mut sorted = categories.clone();
+        sorted.sort_by_key(|category| PrivacyCategory::ALL.iter().position(|c| c == category));
+        assert_eq!(categories, sorted, "telemetry, then ads, then extras");
+        assert_eq!(
+            privacy.packages[0].package.as_str(),
+            "org.droidtv.candeebug"
+        );
+    }
+
+    #[test]
+    fn privacy_entries_reject_bad_packages_and_categories() {
+        let entry = |package: &str, category: &str| {
+            format!(
+                "tested = false\n[[packages]]\npackage = \"{package}\"\ncategory = \"{category}\"\n\
+                 what = \"x\"\nside_effects = \"x\"\nchecked = \"\"\n"
+            )
+        };
+        assert!(toml::from_str::<ProfilePrivacy>(&entry("com.example", "ads")).is_ok());
+        assert!(toml::from_str::<ProfilePrivacy>(&entry("com.x; reboot", "ads")).is_err());
+        assert!(toml::from_str::<ProfilePrivacy>(&entry("com.example", "bloat")).is_err());
+        assert_eq!("extras".parse(), Ok(PrivacyCategory::Extras));
+        assert!("Ads".parse::<PrivacyCategory>().is_err());
     }
 
     #[test]

@@ -1,0 +1,121 @@
+# Protected packages: RustTV never disables these (SECURITY.md § Protected
+# package policy, rule 3), whatever a profile says. Compiled into the binary
+# (crates/rusttv-core/src/privacy.rs), so editing a copy on disk changes nothing.
+#
+# `match` is how `pattern` is compared with a package name:
+#   exact    - the whole name
+#   prefix   - the name starts with it
+#   contains - the name contains it
+# Rules 1-2 (Home, input methods, accessibility services) are also checked
+# live on the device before every plan; this list covers what can't be.
+schema_version = 1
+
+[[packages]]
+pattern = "android"
+match = "exact"
+reason = "the Android framework"
+
+[[packages]]
+pattern = "com.android.systemui"
+match = "exact"
+reason = "system UI"
+
+[[packages]]
+pattern = "com.android.settings"
+match = "exact"
+reason = "Settings"
+
+[[packages]]
+pattern = "com.android.tv.settings"
+match = "exact"
+reason = "TV Settings, also Android's fallback Home"
+
+[[packages]]
+pattern = "com.android.providers.settings"
+match = "exact"
+reason = "stores every setting"
+
+[[packages]]
+pattern = "com.android.shell"
+match = "exact"
+reason = "the adb shell; disabling it would cut off ADB and so restore"
+
+[[packages]]
+pattern = "com.android.packageinstaller"
+match = "exact"
+reason = "package installer"
+
+[[packages]]
+pattern = "com.google.android.packageinstaller"
+match = "exact"
+reason = "package installer"
+
+[[packages]]
+pattern = "com.android.networkstack"
+match = "prefix"
+reason = "network stack"
+
+[[packages]]
+pattern = "com.android.bluetooth"
+match = "exact"
+reason = "Bluetooth, which pairs the remote"
+
+[[packages]]
+pattern = "com.google.android.gms"
+match = "exact"
+reason = "Google Play services"
+
+[[packages]]
+pattern = "com.android.vending"
+match = "exact"
+reason = "Google Play Store"
+
+[[packages]]
+pattern = "com.google.android.tungsten.setupwraith"
+match = "exact"
+reason = "setup wizard; only Home takeover may disable it"
+
+[[packages]]
+pattern = "com.google.android.apps.tv.launcherx"
+match = "exact"
+reason = "stock launcher; only Home takeover may disable it"
+
+[[packages]]
+pattern = "com.google.android.tvlauncher"
+match = "exact"
+reason = "stock launcher; only Home takeover may disable it"
+
+[[packages]]
+pattern = "com.android.providers.tv"
+match = "exact"
+reason = "TV provider (channels and inputs)"
+
+[[packages]]
+pattern = "tvinput"
+match = "contains"
+reason = "TV input (HDMI, tuner)"
+
+[[packages]]
+pattern = "com.google.android.katniss"
+match = "exact"
+reason = "Google Assistant and voice search on the remote"
+
+[[packages]]
+pattern = "com.google.android.inputmethod"
+match = "prefix"
+reason = "keyboard (input method)"
+
+[[packages]]
+pattern = "com.mediatek.tv.service"
+match = "exact"
+reason = "MediaTek TV service"
+
+[[packages]]
+pattern = "org.droidtv"
+match = "exact"
+reason = "TP Vision TV service"
+
+[[packages]]
+pattern = "ai.rusttv.launcher"
+match = "exact"
+reason = "RustTV's own launcher; remove it with `rusttv launcher uninstall`"
