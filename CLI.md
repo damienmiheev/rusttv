@@ -77,12 +77,16 @@ Without `--json`: human-readable text on stdout, errors and hints on stderr.
 With `--json`, stdout carries exactly one JSON object, success or failure:
 
 ```json
-{"schema":"rusttv.v2","ok":true,"data":{}}
-{"schema":"rusttv.v2","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
+{"schema":"rusttv.v3","ok":true,"data":{}}
+{"schema":"rusttv.v3","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
 ```
 
-- `schema` identifies the contract version. Within `rusttv.v2`, fields are only
+- `schema` identifies the contract version. Within `rusttv.v3`, fields are only
   added, never renamed, removed or changed in meaning; anything else bumps it.
+  - `rusttv.v3`: in [BenchmarkReport](#benchmarkreport), `apps[].idle_pss_kib`
+    is renamed `idle_pss_kib_after_resumes` (same measurement), and
+    `apps[].idle_pss_kib_fresh`, `apps[].idle_pss_growth_kib` and
+    `options.fresh_settle_ms` are new. Everything else is unchanged.
   - `rusttv.v2`: `pm list packages` printing an error is now the
     `PACKAGE_LIST_FAILED` error. In `rusttv.v1` it read as an empty list
     (e.g. `apps list` returned `[]`); success output is unchanged.
@@ -176,9 +180,14 @@ largest first).
 
 `rusttv_version`; `device` (`serial`, `manufacturer`, `model`, `api_level`,
 `build_fingerprint`); `options` (`runs`, `warmup`, `pause_ms`, `settle_ms`,
-`cpu_window_ms`, `idle_samples`); `apps`: one per `--app`, with `component`,
-`cold_start_ms`, `resume_ms`, `idle_pss_kib`, `idle_cpu_percent` (each a
-[Stats](#stats) or null) and `discarded_runs`; `runs`: every launch with
+`fresh_settle_ms`, `cpu_window_ms`, `idle_samples`); `apps`: one per `--app`,
+with `component`, `cold_start_ms`, `resume_ms`, `idle_pss_kib_fresh`
+(after a fresh cold start and `fresh_settle_ms`, before any series),
+`idle_pss_kib_after_resumes` (after the cold-start and resume series and
+`settle_ms`; with one app there is no resume series), `idle_cpu_percent`
+(after the series; each a [Stats](#stats) or null), `idle_pss_growth_kib`
+(median after resumes minus median fresh; positive when the series left the
+app bigger; null when either is missing) and `discarded_runs`; `runs`: every launch with
 `component`, `kind` (`cold` \| `resume`), `round`, `launch_state` (Android's
 `COLD`/`WARM`/`HOT`/...), `total_time_ms`, `wait_time_ms`, `counted`,
 `discarded_because` (string or null).

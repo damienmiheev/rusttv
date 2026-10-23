@@ -127,18 +127,35 @@ fn print_report(report: &BenchmarkReport) {
     for app in &report.apps {
         println!("\n{}", app.component);
         println!(
-            "  {:12} {}",
+            "  {:22} {}",
             "cold start",
             stats(app.cold_start_ms, " ms", 1.0)
         );
-        println!("  {:12} {}", "resume", stats(app.resume_ms, " ms", 1.0));
+        println!("  {:22} {}", "resume", stats(app.resume_ms, " ms", 1.0));
         println!(
-            "  {:12} {}",
-            "idle PSS",
-            stats(app.idle_pss_kib, " MiB", 1024.0)
+            "  {:22} {}",
+            "idle PSS fresh",
+            stats(app.idle_pss_kib_fresh, " MiB", 1024.0)
         );
         println!(
-            "  {:12} {}",
+            "  {:22} {}",
+            "idle PSS after resumes",
+            stats(app.idle_pss_kib_after_resumes, " MiB", 1024.0)
+        );
+        // A clear growth means the app keeps memory per pause/resume.
+        println!(
+            "  {:22} {}",
+            "idle PSS growth",
+            app.idle_pss_growth_kib.map_or_else(
+                || "not measured".to_owned(),
+                |kib| format!(
+                    "{:+.1} MiB (median after resumes - median fresh)",
+                    kib / 1024.0
+                )
+            )
+        );
+        println!(
+            "  {:22} {}",
             "idle CPU",
             stats(app.idle_cpu_percent, "%", 1.0)
         );

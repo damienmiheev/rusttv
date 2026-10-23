@@ -144,9 +144,14 @@ enum PerformanceAction {
         /// Pause after stopping or switching apps, in milliseconds.
         #[arg(long, default_value_t = BenchmarkOptions::default().pause_ms)]
         pause_ms: u64,
-        /// How long an app idles in front before memory is read, in milliseconds.
+        /// How long an app idles in front before memory is read after the
+        /// resume series, in milliseconds.
         #[arg(long, default_value_t = BenchmarkOptions::default().settle_ms)]
         settle_ms: u64,
+        /// How long an app idles after a fresh cold start before memory is
+        /// read, in milliseconds; long enough to get past the start-up peak.
+        #[arg(long, default_value_t = BenchmarkOptions::default().fresh_settle_ms)]
+        fresh_settle_ms: u64,
         /// Window for idle CPU usage, in milliseconds (0 skips it).
         #[arg(long, default_value_t = BenchmarkOptions::default().cpu_window_ms)]
         cpu_window_ms: u64,
@@ -291,6 +296,7 @@ fn main() -> ExitCode {
             warmup,
             pause_ms,
             settle_ms,
+            fresh_settle_ms,
             cpu_window_ms,
             idle_samples,
         }) => {
@@ -299,6 +305,7 @@ fn main() -> ExitCode {
                 warmup: *warmup,
                 pause_ms: *pause_ms,
                 settle_ms: *settle_ms,
+                fresh_settle_ms: *fresh_settle_ms,
                 cpu_window_ms: *cpu_window_ms,
                 idle_samples: *idle_samples,
             };
