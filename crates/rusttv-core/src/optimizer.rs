@@ -1007,7 +1007,7 @@ mod tests {
     fn an_untested_device_is_refused_unless_allowed_and_then_marked() {
         let dir = Dir::new("untested");
         let adb = tv(ONE, ONE, ONE);
-        let bundled = bundled_profiles();
+        let bundled = tested_profiles(false, None);
         let error = optimizer_plan(&adb, SERIAL, &profile(), &bundled, &dir.0, false).unwrap_err();
         assert_eq!(error.code(), "OPTIMIZE_NOT_TESTED");
         assert!(error.to_string().contains("--allow-untested"), "{error}");
@@ -1593,7 +1593,7 @@ mod tests {
             let device = devices.iter().find(|device| device.matches(&properties));
             optimizer_statuses(adb, SERIAL, &properties, device, &dir.0).unwrap()[0].clone()
         };
-        let untested = bundled_profiles();
+        let untested = tested_profiles(false, None);
         let first = status(&tv(ONE, NULL, ONE), &untested);
         assert_eq!(first.status, OptimizerState::NotTested);
         assert_eq!(first.settings[0].current.as_deref(), Some("1.0"));

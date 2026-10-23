@@ -611,8 +611,8 @@ mod tests {
     }
 
     #[test]
-    fn the_philips_profile_is_not_optimizer_tested() {
-        // Owner decision 2026-10-23: nothing measured on the Philips yet.
+    fn the_philips_profile_records_reduced_animations_as_tested() {
+        // Measured A–B–A on the owner's TV on 2026-10-23.
         let properties = crate::inspect::parse_properties(include_str!(
             "fixtures/philips-65oled818-api34/getprop.txt"
         ));
@@ -620,7 +620,15 @@ mod tests {
             .into_iter()
             .find(|profile| profile.matches(&properties))
             .unwrap();
-        assert!(!profile.optimizer.iter().any(|entry| entry.tested));
+        assert!(
+            profile
+                .optimizer
+                .iter()
+                .any(|entry| entry.profile == "reduced-animations"
+                    && entry.version == 1
+                    && entry.tested
+                    && entry.evidence.is_some())
+        );
     }
 
     #[test]

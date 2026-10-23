@@ -1332,10 +1332,13 @@ fn optimize_analyze_reports_the_optimizer_profile_and_current_settings() {
     let profile = &optimizer[0];
     assert_eq!(profile["profile"], "reduced-animations");
     assert_eq!(profile["version"], 1);
-    // The Philips profile records no optimizer test (owner decision).
-    assert_eq!(profile["status"], "not_tested");
-    assert_eq!(profile["tested"], false);
-    assert_eq!(profile["evidence"], Value::Null);
+    // Measured A–B–A on the Philips (2026-10-23): tested, with evidence.
+    assert_eq!(profile["status"], "suggested");
+    assert_eq!(profile["tested"], true);
+    assert_eq!(
+        profile["evidence"],
+        "benchmarks/raw/philips-65oled818/2026-10-23/reduced-animations/report.md"
+    );
     assert_eq!(profile["journal"], Value::Null);
     assert_eq!(
         profile["settings"],
@@ -1349,7 +1352,7 @@ fn optimize_analyze_reports_the_optimizer_profile_and_current_settings() {
     let output = rusttv_with_fake_adb("philips", &["optimize", "analyze"]);
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(
-        stdout.contains("reduced-animations v1: not tested on this model"),
+        stdout.contains("reduced-animations v1: suggested"),
         "{stdout}"
     );
     assert!(
@@ -1360,9 +1363,10 @@ fn optimize_analyze_reports_the_optimizer_profile_and_current_settings() {
 
 #[test]
 fn optimize_apply_reduced_animations_is_refused_on_an_untested_model() {
+    // The synthetic Google TV device matches no compat profile.
     let state = state_dir("animations-untested");
     let output = rusttv_with_state(
-        "philips",
+        "tv-fresh",
         &state,
         &[
             "optimize",
@@ -1377,13 +1381,16 @@ fn optimize_apply_reduced_animations_is_refused_on_an_untested_model() {
     let json = json_stdout(&output);
     assert_eq!(json["error"]["code"], "OPTIMIZE_NOT_TESTED");
     let message = json["error"]["message"].as_str().unwrap();
-    assert!(message.contains("tpv-ph1m-ww-9972.toml"), "{message}");
+    assert!(
+        message.contains("no profile in compat/devices/"),
+        "{message}"
+    );
     assert!(message.contains("--allow-untested"), "{message}");
     std::fs::remove_dir_all(state).unwrap();
 }
 
 #[test]
-fn optimize_apply_reduced_animations_allow_untested_dry_run_plans_three_settings() {
+fn optimize_apply_reduced_animations_dry_run_plans_three_settings_on_the_tested_philips() {
     let state = state_dir("animations-dry-run");
     let output = rusttv_with_state(
         "philips",
@@ -1392,7 +1399,6 @@ fn optimize_apply_reduced_animations_allow_untested_dry_run_plans_three_settings
             "optimize",
             "apply",
             "reduced-animations",
-            "--allow-untested",
             "--dry-run",
             "--json",
         ],
@@ -1429,7 +1435,7 @@ fn optimize_apply_reduced_animations_allow_untested_dry_run_plans_three_settings
         "{data}"
     );
     assert!(
-        notes(data)
+        !notes(data)
             .iter()
             .any(|note| note.starts_with("UNTESTED on this model")),
         "{data}"

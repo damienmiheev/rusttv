@@ -1056,7 +1056,7 @@ async fn optimize_analyze_returns_the_same_data_as_the_cli() {
     assert_eq!(analysis["packages"][1]["state"], "disabled");
     assert_eq!(analysis["packages"][1]["tested"], true);
     assert_eq!(analysis["optimizer"][0]["profile"], "reduced-animations");
-    assert_eq!(analysis["optimizer"][0]["status"], "not_tested");
+    assert_eq!(analysis["optimizer"][0]["status"], "suggested");
     assert_eq!(
         analysis["optimizer"][0]["settings"][1]["current"],
         Value::Null
@@ -1064,18 +1064,11 @@ async fn optimize_analyze_returns_the_same_data_as_the_cli() {
     assert_eq!(adb.changes(), []);
 }
 
-/// The bundled profiles, with the Philips one recording `reduced-animations` v1 as tested.
-fn animations_tested_profiles() -> Vec<rusttv_core::DeviceProfile> {
+/// The bundled profiles, with the Philips one recording no optimizer test.
+fn animations_untested_profiles() -> Vec<rusttv_core::DeviceProfile> {
     let mut profiles = bundled_profiles();
     for profile in &mut profiles {
-        if profile.device.model.starts_with("Philips") {
-            profile.optimizer = vec![rusttv_core::ProfileOptimizer {
-                profile: "reduced-animations".to_owned(),
-                version: 1,
-                tested: true,
-                evidence: None,
-            }];
-        }
+        profile.optimizer.clear();
     }
     profiles
 }
@@ -1084,10 +1077,14 @@ fn animations_tested_profiles() -> Vec<rusttv_core::DeviceProfile> {
 async fn optimize_plan_returns_the_cli_dry_run_and_the_command_to_apply_it() {
     let dir = Dir::new("optimize-plan");
     let adb = SharedAdb::new(philips_privacy());
-    let mut client =
-        Client::serve(RustTvServer::new(adb.clone()).with_journals_dir(dir.journals())).await;
+    let mut client = Client::serve(
+        RustTvServer::new(adb.clone())
+            .with_journals_dir(dir.journals())
+            .with_profiles(animations_untested_profiles()),
+    )
+    .await;
 
-    // The bundled Philips profile records no optimizer test.
+    // A Philips profile without the optimizer test.
     let refused = client
         .call(
             "optimize_plan",
@@ -1111,7 +1108,7 @@ async fn optimize_plan_returns_the_cli_dry_run_and_the_command_to_apply_it() {
         &philips_privacy(),
         SERIAL,
         &profile,
-        &bundled_profiles(),
+        &animations_untested_profiles(),
         &dir.journals(),
         true,
     )
@@ -1131,13 +1128,9 @@ async fn optimize_plan_returns_the_cli_dry_run_and_the_command_to_apply_it() {
         format!("rusttv optimize apply reduced-animations --serial {SERIAL} --allow-untested")
     );
 
-    // On a model whose profile records the test, no flag is needed.
-    let mut client = Client::serve(
-        RustTvServer::new(adb.clone())
-            .with_journals_dir(dir.journals())
-            .with_profiles(animations_tested_profiles()),
-    )
-    .await;
+    // The bundled Philips profile records the test (2026-10-23): no flag needed.
+    let mut client =
+        Client::serve(RustTvServer::new(adb.clone()).with_journals_dir(dir.journals())).await;
     let proposal = data(
         client
             .call(

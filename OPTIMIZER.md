@@ -4,8 +4,11 @@ Status (2026-10-23): § 1–6 (R2 animation settings) are **built** for the
 three animation scales and tested against fakes only (`crates/rusttv-core/src/optimizer.rs`,
 `compat/optimizer/reduced-animations.toml`), with the owner's adjustments of
 2026-10-23 (*As built* notes below). **Not built yet:** the general `rusttv
-restore --journal` (§ 4), emulator device-tests (§ 6 step 3), the Philips run
-and benefit measurement (§ 6 step 4), `disable_window_blurs`. No device
+restore --journal` (§ 4), emulator device-tests (§ 6 step 3),
+`disable_window_blurs`. **Tested on the owner's Philips 65OLED818
+(2026-10-23):** apply and restore worked, measured A–B–A (open app −34 %,
+Home −42 %; `benchmarks/raw/philips-65oled818/2026-10-23/reduced-animations/report.md`);
+its profile records `reduced-animations` v1 as tested with that evidence. No device
 profile records the profile as tested, so `apply` needs `--allow-untested`
 everywhere for now.
 § Privacy profiles (R3) is **built** in its generic form (catalog, device
@@ -107,9 +110,9 @@ Reports, per optimizer profile:
 | `already_set` | Current values already equal the profile's |
 
 The `suggested` entry quotes the evidence (metric, median and IQR before and
-after, device, date, path to raw data), never a general claim. No profile has
-evidence today, so `analyze` will suggest nothing until the Philips run in
-§ 6 produces some.
+after, device, date, path to raw data), never a general claim. Only the
+Philips 65OLED818 has evidence (2026-10-23), so `analyze` suggests the profile
+there and nowhere else.
 
 *As built (2026-10-23):* `rusttv optimize analyze` keeps its privacy output
 and adds `optimizer` (JSON `rusttv.v6`, CLI.md): per bundled profile its
