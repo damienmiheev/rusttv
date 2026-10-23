@@ -54,3 +54,23 @@ CLI:
 ## Recommended first coding milestone
 
 Start Milestone 1, PR 1–2: the workspace skeleton with CI and the typed, read-only `DeviceCommand` + `Adb` trait. It is pure Rust with no Android build tooling, so it is the best place to learn ownership, error handling, and testing, and it creates the safety boundary (no free-form shell) before any other code depends on it.
+
+## Parked ideas
+
+Decided "not for now"; raise again when the core launcher is done.
+
+- **Content rows on Home (like a "top shelf": Continue watching, app
+  recommendations)** — parked 2026-10-23. Findings:
+  - Apps publish this data to Android's TV provider, but only apps signed by
+    the device maker or installed on the system partition may read all of it
+    (`ACCESS_ALL_EPG_DATA`; [Android docs](https://developer.android.com/training/tv/tif/channel),
+    [AOSP](https://source.android.com/docs/devices/tv)).
+  - On Google TV, many apps send Continue watching and recommendations to
+    Google's servers instead, which only the stock launcher shows.
+  - Possible partial route: the *Watch Next* and channel rows apps still
+    publish locally, readable with a permission the user grants
+    ([cleanyourtv#363](https://github.com/Gathin23/cleanyourtv/pull/363); one
+    developer's findings, not documented behaviour).
+  - First step when picked up: a read-only count, on the Philips, of how many
+    Watch Next and channel rows the installed apps publish (no titles), to see
+    whether there would be any content to show.
