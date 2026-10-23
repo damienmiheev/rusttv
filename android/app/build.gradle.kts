@@ -44,3 +44,33 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 }
+
+// Third-party notices written by scripts/licenses.sh (android/build.sh runs it),
+// packed into every APK as assets/licenses/THIRD_PARTY_NOTICES.txt. A missing
+// file fails the build, so no APK ships without them.
+abstract class CopyNoticesTask : DefaultTask() {
+    @get:InputFiles
+    abstract val notices: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val source = notices.singleFile
+        if (!source.isFile) {
+            throw GradleException("$source is missing: run scripts/licenses.sh first (android/build.sh does)")
+        }
+        source.copyTo(outputDir.file("licenses/THIRD_PARTY_NOTICES.txt").get().asFile, overwrite = true)
+    }
+}
+
+val copyNotices = tasks.register<CopyNoticesTask>("copyThirdPartyNotices") {
+    notices.from(rootProject.file("../THIRD_PARTY_NOTICES.txt"))
+}
+
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(copyNotices, CopyNoticesTask::outputDir)
+    }
+}

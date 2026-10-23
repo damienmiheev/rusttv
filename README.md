@@ -60,7 +60,7 @@ Launcher, without a TV (desktop dev mode with made-up apps; arrows move, Return 
 cargo run -p rusttv-launcher --features test-util --bin rusttv-launcher-desktop
 ```
 
-Launcher APK (arm64): `android/build.sh`. Needs the Android SDK (platform 34), NDK 30, JDK 17 and `cargo install cargo-ndk`.
+Launcher APK (arm64): `android/build.sh`. Needs the Android SDK (platform 34), NDK 30, JDK 17, `cargo install cargo-ndk` and `cargo install cargo-about --version 0.9.2 --locked --features cli` (for the third-party notices packed into the APK).
 
 To connect over the network, first enable Developer options and network/wireless debugging on the TV. The first connection shows a prompt on the TV asking you to allow this computer. If `adb` is not on your `PATH`, set `RUSTTV_ADB=/path/to/adb`.
 

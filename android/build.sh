@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds one launcher APK per ABI (arm64-v8a, armeabi-v7a, x86_64): the Rust
 # library with cargo-ndk, then Gradle. Requires the Android SDK (platform 34),
-# NDK 30, JDK 17, cargo-ndk, curl and shasum.
+# NDK 30, JDK 17, cargo-ndk, cargo-about, curl and shasum.
 set -eu
 cd "$(dirname "$0")"
 SDK="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
@@ -44,6 +44,9 @@ export SKIA_BINARIES_URL="file://$SKIA_DIR/skia-binaries-{key}.tar.gz"
 
 cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 -o app/src/main/jniLibs \
     build -p rusttv-launcher --lib --profile android-release
+# Third-party notices; Gradle copies them into every APK as
+# assets/licenses/THIRD_PARTY_NOTICES.txt and fails if they are missing.
+../scripts/licenses.sh
 ./gradlew -q assembleRelease
 ls -la app/build/outputs/apk/release/app-arm64-v8a-release.apk \
     app/build/outputs/apk/release/app-armeabi-v7a-release.apk \
