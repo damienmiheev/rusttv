@@ -120,80 +120,44 @@ impl Bitmap {
     }
 }
 
+/// The hero backdrop for an app: a soft glow of its main colour on a dark base.
+///
+/// Drawn by Slint as a radial gradient, so no backdrop bitmap is kept: a
+/// full-screen bitmap per app cost up to ~20 MB on the Philips TV.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Glow {
+    /// The dark background, the main colour's hue barely tinted.
+    pub base: [u8; 3],
+    /// The glow's colour; equal to `base` when the artwork has no usable colour.
+    pub colour: [u8; 3],
+    /// Where the main colour sits in the artwork, 0..1 from the left and top.
+    pub x: f32,
+    pub y: f32,
+    /// How strongly the glow shows, 0..1; 0 when there is no main colour.
+    pub strength: f32,
+}
+
 impl Bitmap {
-    /// Gaussian-like blur: three box-blur passes of `radius` in each direction,
-    /// with edge pixels repeated beyond the border.
-    ///
-    /// Used for the hero backdrop, on a small image, so
-    /// the plain per-pixel loops are cheap enough.
-    pub(crate) fn blur(&self, radius: u32) -> Self {
-        let mut blurred = self.clone();
-        for _ in 0..3 {
-            blurred = blurred.box_blur(radius, true).box_blur(radius, false);
-        }
-        blurred
-    }
-
-    /// One box-blur pass along rows (`horizontal`) or columns.
-    fn box_blur(&self, radius: u32, horizontal: bool) -> Self {
-        let (width, height) = (self.width as usize, self.height as usize);
-        let (lines, length) = if horizontal {
-            (height, width)
-        } else {
-            (width, height)
-        };
-        let index = |line: usize, position: usize| {
-            if horizontal {
-                (line * width + position) * 4
-            } else {
-                (position * width + line) * 4
-            }
-        };
-        let radius = radius as usize;
-        let count = (2 * radius + 1) as u32;
-        let mut rgba = vec![0; self.rgba.len()];
-        for line in 0..lines {
-            for position in 0..length {
-                let mut sum = [0_u32; 4];
-                for offset in 0..=2 * radius {
-                    // Clamp to the edge: (position + offset - radius) within 0..length.
-                    let source = (position + offset).saturating_sub(radius).min(length - 1);
-                    let start = index(line, source);
-                    for (total, byte) in sum.iter_mut().zip(&self.rgba[start..start + 4]) {
-                        *total += u32::from(*byte);
-                    }
-                }
-                let start = index(line, position);
-                for (target, total) in rgba[start..start + 4].iter_mut().zip(sum) {
-                    // An average of bytes fits in a byte.
-                    *target = (total / count) as u8;
-                }
-            }
-        }
-        Self {
-            width: self.width,
-            height: self.height,
-            rgba,
-        }
-    }
-
-    /// Turns artwork into a soft glow of its main colour on a dark base.
+    /// The hero backdrop for this artwork (see [`Glow`]).
     ///
     /// The main colour is picked the way Android picks wallpaper colours
     /// (Material's quantizer and `Score`, with olive tones fixed by its
     /// `DislikeAnalyzer`). The glow is that hue at HCT tone `glow_tone` and the
     /// base the same hue, barely tinted, at `base_tone`; HCT keeps every hue
-    /// equally dark. The glow sits where pixels of that hue are, blurred with
-    /// `radius` (see [`Bitmap::blur`]), at `gain` times their blurred weight.
-    /// Artwork without a usable colour gives a flat neutral base.
-    pub(crate) fn glow(&self, radius: u32, gain: u32, base_tone: f64, glow_tone: f64) -> Self {
+    /// equally dark. The glow is centred where pixels of that hue are, and is
+    /// stronger the more of the artwork they cover. Artwork without a usable
+    /// colour gives a flat neutral base. Meant for a small copy (see
+    /// [`Bitmap::shrink`]): it converts every pixel to HCT.
+    pub(crate) fn glow(&self, base_tone: f64, glow_tone: f64) -> Glow {
         /// Chroma of the glow; Material's target chroma for source colours.
         const GLOW_CHROMA: f64 = 48.0;
         /// Chroma of the tinted base, like Material's dark surfaces.
         const BASE_CHROMA: f64 = 6.0;
-        /// Pixels this close in hue (degrees) and at least this colourful shape the glow.
+        /// Pixels this close in hue (degrees) and at least this colourful place the glow.
         const HUE_RANGE: f64 = 30.0;
         const MIN_CHROMA: f64 = 10.0;
+        /// Even a small logo glows this strongly; full strength from 1/8 coverage.
+        const MIN_STRENGTH: f32 = 0.55;
 
         let opaque: Vec<Rgb> = self
             .rgba
@@ -211,66 +175,56 @@ impl Bitmap {
             .copied()
             .filter(|&colour| colour != none)
             .map(|colour| fix_if_disliked(Hct::new(colour)));
-
-        let (base, glow) = match &accent {
-            Some(accent) => (
-                Hct::from(accent.get_hue(), BASE_CHROMA, base_tone),
-                Hct::from(
-                    accent.get_hue(),
-                    accent.get_chroma().min(GLOW_CHROMA),
-                    glow_tone,
-                ),
-            ),
-            None => (
-                Hct::from(0.0, 0.0, base_tone),
-                Hct::from(0.0, 0.0, base_tone),
-            ),
+        let rgb = |hct: Hct| {
+            let rgb = Rgb::from(hct);
+            [rgb.red, rgb.green, rgb.blue]
         };
-        let (base, glow) = (Rgb::from(base), Rgb::from(glow));
 
-        // Where the accent hue is: chroma-weighted, in the alpha channel, blurred.
-        let mut mask = Self {
-            width: self.width,
-            height: self.height,
-            rgba: vec![0; self.rgba.len()],
+        let Some(accent) = accent else {
+            let base = rgb(Hct::from(0.0, 0.0, base_tone));
+            return Glow {
+                base,
+                colour: base,
+                x: 0.5,
+                y: 0.5,
+                strength: 0.0,
+            };
         };
-        if let Some(accent) = &accent {
-            for (target, &[red, green, blue, alpha]) in mask
-                .rgba
-                .as_chunks_mut::<4>()
-                .0
-                .iter_mut()
-                .zip(self.rgba.as_chunks::<4>().0)
-            {
-                let pixel = Hct::new(Rgb::new(red, green, blue));
-                let distance = (pixel.get_hue() - accent.get_hue()).abs();
-                let distance = distance.min(360.0 - distance);
-                if alpha >= 128 && pixel.get_chroma() >= MIN_CHROMA && distance <= HUE_RANGE {
-                    // A share of 255, so a byte.
-                    target[3] = ((pixel.get_chroma() / GLOW_CHROMA).min(1.0) * 255.0) as u8;
-                }
+
+        // Where the accent hue is: a chroma-weighted centroid and coverage.
+        let (mut total, mut sum_x, mut sum_y) = (0.0_f64, 0.0_f64, 0.0_f64);
+        let width = self.width.max(1) as usize;
+        for (index, &[red, green, blue, alpha]) in self.rgba.as_chunks::<4>().0.iter().enumerate() {
+            let pixel = Hct::new(Rgb::new(red, green, blue));
+            let distance = (pixel.get_hue() - accent.get_hue()).abs();
+            let distance = distance.min(360.0 - distance);
+            if alpha >= 128 && pixel.get_chroma() >= MIN_CHROMA && distance <= HUE_RANGE {
+                let weight = (pixel.get_chroma() / GLOW_CHROMA).min(1.0);
+                total += weight;
+                sum_x += weight * ((index % width) as f64 + 0.5);
+                sum_y += weight * ((index / width) as f64 + 0.5);
             }
         }
-
-        let mut rgba = mask.blur(radius).rgba;
-        let pairs = [
-            (base.red, glow.red),
-            (base.green, glow.green),
-            (base.blue, glow.blue),
-        ];
-        for [red, green, blue, alpha] in rgba.as_chunks_mut::<4>().0 {
-            let strength = (u32::from(*alpha) * gain).min(255);
-            for (channel, (from, to)) in [red, green, blue].into_iter().zip(pairs) {
-                // A mix of two bytes is a byte.
-                *channel =
-                    ((u32::from(from) * (255 - strength) + u32::from(to) * strength) / 255) as u8;
-            }
-            *alpha = u8::MAX;
-        }
-        Self {
-            width: self.width,
-            height: self.height,
-            rgba,
+        let pixels = (self.width as f64 * self.height as f64).max(1.0);
+        let (x, y) = if total > 0.0 {
+            (
+                sum_x / total / self.width.max(1) as f64,
+                sum_y / total / self.height.max(1) as f64,
+            )
+        } else {
+            (0.5, 0.5)
+        };
+        let coverage = (total / pixels) as f32;
+        Glow {
+            base: rgb(Hct::from(accent.get_hue(), BASE_CHROMA, base_tone)),
+            colour: rgb(Hct::from(
+                accent.get_hue(),
+                accent.get_chroma().min(GLOW_CHROMA),
+                glow_tone,
+            )),
+            x: x as f32,
+            y: y as f32,
+            strength: MIN_STRENGTH + (1.0 - MIN_STRENGTH) * (coverage * 8.0).min(1.0),
         }
     }
 }
@@ -554,27 +508,11 @@ mod tests {
         assert_eq!(empty.shrink(2, 1).rgba(), [0; 8]);
     }
 
-    #[test]
-    fn blurring_spreads_a_dot_and_keeps_flat_areas() {
-        // 9×1 black, with one white pixel in the middle.
-        let mut rgba = [0, 0, 0, 255].repeat(9);
-        rgba[16..20].copy_from_slice(&[255, 255, 255, 255]);
-        let blurred = Bitmap::new(9, 1, rgba).unwrap().blur(1);
-        let red: Vec<u8> = blurred.rgba().chunks(4).map(|pixel| pixel[0]).collect();
-        // Peak in the middle, falling off symmetrically, no longer a hard dot.
-        assert!(red[4] < 255 && red[4] > red[3] && red[3] > red[2]);
-        assert_eq!(red[3], red[5]);
-        assert!(blurred.rgba().chunks(4).all(|pixel| pixel[3] == 255));
-
-        let flat = Bitmap::new(3, 2, [10, 20, 30, 255].repeat(6)).unwrap();
-        assert_eq!(flat.blur(4), flat);
-    }
-
     const BASE_TONE: f64 = 12.0;
     const GLOW_TONE: f64 = 30.0;
 
-    fn is_grey(pixel: &[u8]) -> bool {
-        pixel[0] == pixel[1] && pixel[1] == pixel[2]
+    fn is_grey(rgb: [u8; 3]) -> bool {
+        rgb[0] == rgb[1] && rgb[1] == rgb[2]
     }
 
     #[test]
@@ -587,49 +525,47 @@ mod tests {
         ]
         .repeat(4)
         .concat();
-        let glow = Bitmap::new(4, 3, rgba)
-            .unwrap()
-            .glow(2, 4, BASE_TONE, GLOW_TONE);
-        let first = glow.rgba()[..4].to_vec();
-        assert!(is_grey(&first) && first[0] < 40, "{first:?}");
-        assert!(glow.rgba().chunks(4).all(|pixel| pixel == first));
+        let glow = Bitmap::new(4, 3, rgba).unwrap().glow(BASE_TONE, GLOW_TONE);
+        assert!(is_grey(glow.base) && glow.base[0] < 40, "{glow:?}");
+        assert_eq!(glow.strength, 0.0);
     }
 
     #[test]
-    fn a_small_colourful_logo_glows_in_its_colour() {
-        // 20×1 white, two red pixels in the middle.
+    fn a_small_colourful_logo_glows_in_its_colour_where_it_is() {
+        // 20×1 white, two red pixels near the left.
         let mut rgba = [255, 255, 255, 255].repeat(20);
-        rgba[36..44].copy_from_slice(&[230, 20, 20, 255, 230, 20, 20, 255]);
-        let glow = Bitmap::new(20, 1, rgba)
-            .unwrap()
-            .glow(2, 4, BASE_TONE, GLOW_TONE);
-        let pixels: Vec<&[u8]> = glow.rgba().chunks(4).collect();
-        // Red at the logo, fading towards the base at the ends; dark, never bright.
-        assert!(pixels[9][0] > pixels[9][1] + 40 && pixels[9][0] > pixels[9][2] + 40);
-        assert!(pixels[9][0] > pixels[5][0] && pixels[5][0] >= pixels[0][0]);
-        assert!(pixels.iter().all(|pixel| pixel[0] < 140 && pixel[3] == 255));
+        rgba[8..16].copy_from_slice(&[230, 20, 20, 255, 230, 20, 20, 255]);
+        let glow = Bitmap::new(20, 1, rgba).unwrap().glow(BASE_TONE, GLOW_TONE);
+        let [red, green, blue] = glow.colour;
+        assert!(red > green + 40 && red > blue + 40, "{glow:?}");
+        assert!(red < 140, "dark enough for white text: {glow:?}");
+        // Pixels 2 and 3 of 20: centre at 3/20.
+        assert!((glow.x - 0.15).abs() < 0.01, "{glow:?}");
+        assert!(glow.strength > 0.5 && glow.strength <= 1.0, "{glow:?}");
     }
 
     #[test]
     fn a_multicoloured_logo_glows_in_one_colour() {
-        // Mostly green with a little blue: the glow is green, the blue adds nothing.
+        // Mostly green with a little blue: the glow is green.
         let green = [20, 170, 60, 255];
         let blue = [30, 80, 230, 255];
         let pixels = [green; 9].into_iter().chain([blue; 3]).collect::<Vec<_>>();
         let glow = Bitmap::new(12, 1, pixels.concat())
             .unwrap()
-            .glow(3, 4, BASE_TONE, GLOW_TONE);
-        for pixel in glow.rgba().chunks(4) {
-            assert!(pixel[1] > pixel[0] && pixel[1] > pixel[2], "{pixel:?}");
-        }
+            .glow(BASE_TONE, GLOW_TONE);
+        let [red, green, blue] = glow.colour;
+        assert!(green > red && green > blue, "{glow:?}");
+        // Centred on the green part (pixels 0..9 of 12).
+        assert!(glow.x < 0.5, "{glow:?}");
     }
 
     #[test]
     fn transparent_pixels_carry_no_colour() {
         let glow = Bitmap::new(2, 1, vec![255, 0, 0, 0, 255, 0, 0, 0])
             .unwrap()
-            .glow(0, 4, BASE_TONE, GLOW_TONE);
-        assert!(glow.rgba().chunks(4).all(is_grey));
+            .glow(BASE_TONE, GLOW_TONE);
+        assert_eq!(glow.strength, 0.0);
+        assert!(is_grey(glow.base));
     }
 
     #[test]

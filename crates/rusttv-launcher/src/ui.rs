@@ -49,13 +49,8 @@ const HERO_DELAY: Duration = Duration::from_millis(150);
 /// How long the "couldn't open" message stays.
 const TOAST_TIME: Duration = Duration::from_secs(3);
 
-/// Size of the hero backdrop image before blurring; Slint scales it up to
-/// cover the screen.
-const BACKDROP_SIZE: (u32, u32) = (48, 27);
-
-/// Blur radius for the backdrop, in backdrop pixels: wide enough that logo
-/// shapes and text become soft colour.
-const BACKDROP_BLUR: u32 = 5;
+/// Size of the small copy of each banner kept to compute its hero glow.
+const GLOW_SOURCE_SIZE: (u32, u32) = (48, 27);
 
 /// HCT tone of the backdrop base: near black, like Material's dark surfaces.
 const BACKDROP_BASE_TONE: f64 = 12.0;
@@ -63,10 +58,6 @@ const BACKDROP_BASE_TONE: f64 = 12.0;
 /// HCT tone of the colour glow: Material's dark-theme "primary container"
 /// tone, colourful but dark enough for the white title.
 const BACKDROP_GLOW_TONE: f64 = 30.0;
-
-/// How strongly sparse colour shows: a logo covering a sixth of the blur
-/// area already glows at full strength.
-const BACKDROP_GAIN: u32 = 6;
 
 /// Settings for [`run`].
 #[derive(Debug, Clone, Default)]
@@ -265,10 +256,10 @@ struct Controller {
     home: Home,
     platform: Box<dyn Platform>,
     options: RunOptions,
-    /// Platform data per app id, for labels and pictures.
-    apps: HashMap<String, AppEntry>,
-    /// Hero backdrops per app id, made on first focus.
-    backdrops: HashMap<String, slint::Image>,
+    /// What the window shows of each app, by app id.
+    apps: HashMap<String, AppView>,
+    /// Hero glows per app id, computed on first focus.
+    glows: HashMap<String, generated::Glow>,
     /// Tiles currently in the window's model, to rebuild it only when they change.
     shown: Vec<TileId>,
     tiles: Rc<VecModel<TileData>>,
@@ -312,7 +303,7 @@ impl Controller {
                 platform,
                 options,
                 apps: HashMap::new(),
-                backdrops: HashMap::new(),
+                glows: HashMap::new(),
                 shown: Vec::new(),
                 tiles,
                 hero: None,
@@ -362,10 +353,10 @@ impl Controller {
         match self.platform.list_apps() {
             Ok(entries) => {
                 let apps: Vec<App> = entries.iter().map(|entry| entry.app.clone()).collect();
-                self.backdrops.clear();
+                self.glows.clear();
                 self.apps = entries
                     .into_iter()
-                    .map(|entry| (entry.app.id.clone(), entry))
+                    .map(|entry| (entry.app.id.clone(), AppView::new(entry)))
                     .collect();
                 if self.home.set_apps(&apps) {
                     self.save_order();
@@ -396,10 +387,7 @@ impl Controller {
         match effect {
             Some(Effect::Launch(id)) => self.launch(&id),
             Some(Effect::ShowLaunchError(id)) => {
-                let label = self
-                    .apps
-                    .get(&id)
-                    .map_or(id.as_str(), |entry| &entry.app.label);
+                let label = self.apps.get(&id).map_or(id.as_str(), |app| &app.label);
                 self.show_toast(format!("Couldn't open {label}"));
             }
             Some(Effect::SaveOrder) => self.save_order(),
@@ -547,42 +535,41 @@ impl Controller {
             .as_ref()
             .map(|id| self.tile_data(id))
             .unwrap_or_default();
-        let backdrop = match &focused {
-            Some(TileId::App(component)) => self.backdrop(component),
+        let glow = match &focused {
+            Some(TileId::App(component)) => self.glow(component),
             _ => None,
         }
         .unwrap_or_default();
         // Fill the hidden layer, then make it the front one.
         if self.hero_a_front {
             window.set_hero_b(data);
-            window.set_hero_b_backdrop(backdrop);
+            window.set_hero_b_glow(glow);
         } else {
             window.set_hero_a(data);
-            window.set_hero_a_backdrop(backdrop);
+            window.set_hero_a_glow(glow);
         }
         self.hero_a_front = !self.hero_a_front;
         window.set_hero_a_front(self.hero_a_front);
         self.hero = focused;
     }
 
-    /// The blurred, darkened backdrop for an app; `None` if it has no artwork.
-    fn backdrop(&mut self, component: &str) -> Option<slint::Image> {
-        if let Some(cached) = self.backdrops.get(component) {
+    /// The hero glow for an app; `None` if it has no artwork.
+    fn glow(&mut self, component: &str) -> Option<generated::Glow> {
+        if let Some(cached) = self.glows.get(component) {
             return Some(cached.clone());
         }
-        let bitmap = match &self.apps.get(component)?.artwork {
-            Artwork::Banner(bitmap) | Artwork::Icon(bitmap) => bitmap,
-            Artwork::Missing => return None,
+        let source = self.apps.get(component)?.glow_source.as_ref()?;
+        let glow = source.glow(BACKDROP_BASE_TONE, BACKDROP_GLOW_TONE);
+        let colour = |[red, green, blue]: [u8; 3]| slint::Color::from_rgb_u8(red, green, blue);
+        let glow = generated::Glow {
+            base: colour(glow.base),
+            color: colour(glow.colour),
+            x: glow.x,
+            y: glow.y,
+            strength: glow.strength,
         };
-        let backdrop = image(&bitmap.shrink(BACKDROP_SIZE.0, BACKDROP_SIZE.1).glow(
-            BACKDROP_BLUR,
-            BACKDROP_GAIN,
-            BACKDROP_BASE_TONE,
-            BACKDROP_GLOW_TONE,
-        ));
-        self.backdrops
-            .insert(component.to_owned(), backdrop.clone());
-        Some(backdrop)
+        self.glows.insert(component.to_owned(), glow.clone());
+        Some(glow)
     }
 
     fn tile_data(&self, id: &TileId) -> TileData {
@@ -592,22 +579,48 @@ impl Controller {
                 ..TileData::default()
             };
         };
-        let Some(entry) = self.apps.get(component) else {
+        let Some(app) = self.apps.get(component) else {
             return TileData {
                 label: component.as_str().into(),
                 kind: 2,
                 ..TileData::default()
             };
         };
-        let (image, kind) = match &entry.artwork {
-            Artwork::Banner(bitmap) => (image(bitmap), 0),
-            Artwork::Icon(bitmap) => (image(bitmap), 1),
-            Artwork::Missing => (slint::Image::default(), 2),
-        };
         TileData {
-            label: entry.app.label.as_str().into(),
+            label: app.label.as_str().into(),
+            // A cheap handle: the tile and the hero share one image and texture.
+            image: app.image.clone(),
+            kind: app.kind,
+        }
+    }
+}
+
+/// What the window shows of one app, made once per app list.
+///
+/// The artwork's pixels are copied into one Slint image and dropped, so each
+/// banner is held once (a tile and the hero share the image), plus a 48×27 copy
+/// for the hero glow.
+struct AppView {
+    label: String,
+    image: slint::Image,
+    /// The `kind` of `TileData`: 0 banner, 1 icon only, 2 no artwork.
+    kind: i32,
+    glow_source: Option<Bitmap>,
+}
+
+impl AppView {
+    fn new(entry: AppEntry) -> Self {
+        let (image, kind, glow_source) = match &entry.artwork {
+            Artwork::Banner(bitmap) => (image(bitmap), 0, Some(bitmap)),
+            Artwork::Icon(bitmap) => (image(bitmap), 1, Some(bitmap)),
+            Artwork::Missing => (slint::Image::default(), 2, None),
+        };
+        Self {
+            label: entry.app.label,
             image,
             kind,
+            glow_source: glow_source
+                .map(|bitmap| bitmap.shrink(GLOW_SOURCE_SIZE.0, GLOW_SOURCE_SIZE.1)),
         }
     }
 }
