@@ -16,7 +16,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 
 use crate::adb::Adb;
-use crate::apps::parse_package_list;
+use crate::apps::{PackageListError, package_names};
 use crate::bench::Sleep;
 use crate::command::{DeviceCommand, InvalidApk, PackageName, RiskClass};
 use crate::error::AdbError;
@@ -76,8 +76,7 @@ impl Check {
         match self {
             Self::PackageEnabled(package) | Self::PackageDisabled(package) => {
                 let output = adb.run(serial, &DeviceCommand::ListDisabledPackages)?;
-                let disabled =
-                    parse_package_list(&output).any(|(name, _)| name == package.as_str());
+                let disabled = package_names(&output)?.contains(package.as_str());
                 Ok(disabled == matches!(self, Self::PackageDisabled(_)))
             }
             Self::HomeIs(package) => {
@@ -100,8 +99,7 @@ impl Check {
             }
             Self::PackageInstalled(package) | Self::PackageNotInstalled(package) => {
                 let output = adb.run(serial, &DeviceCommand::ListPackages)?;
-                let installed =
-                    parse_package_list(&output).any(|(name, _)| name == package.as_str());
+                let installed = package_names(&output)?.contains(package.as_str());
                 Ok(installed == matches!(self, Self::PackageInstalled(_)))
             }
             Self::HomeCandidate(package) => {
@@ -746,6 +744,12 @@ enum PlanErrorKind {
         .0.join("; ")
     )]
     RestoreFailed(Vec<String>),
+}
+
+impl From<PackageListError> for PlanErrorKind {
+    fn from(error: PackageListError) -> Self {
+        Self::Adb(error.into())
+    }
 }
 
 impl<E: Into<PlanErrorKind>> From<E> for PlanError {

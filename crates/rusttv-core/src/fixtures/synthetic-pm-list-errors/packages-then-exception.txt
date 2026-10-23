@@ -1,0 +1,4 @@
+package:/product/priv-app/LauncherX/LauncherX.apk=com.google.android.apps.tv.launcherx
+package:/system_ext/priv-app/TvSettings/TvSettings.apk=com.android.tv.settings
+Exception occurred while executing 'list':
+java.lang.IllegalStateException: Package manager died

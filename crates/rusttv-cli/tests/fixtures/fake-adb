@@ -12,6 +12,7 @@ captures="$(dirname "$0")/../../../rusttv-core/src/fixtures/emulator-pixel3a-api
 tv_captures="$(dirname "$0")/../../../rusttv-core/src/fixtures/google-tv-emulator-api34"
 synthetic="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-home-takeover"
 install="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-launcher-install"
+pm_errors="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-pm-list-errors"
 
 case "$FAKE_ADB_SCENARIO:$*" in
 tv:devices\ -l)
@@ -97,6 +98,20 @@ two-devices:devices*)
     ;;
 no-devices:devices*)
     printf 'List of devices attached\n\n'
+    ;;
+# The emulator, but `pm list packages -d` fails the way it does without
+# adb's shell protocol: exit 0, the error on stdout.
+pm-fails:devices\ -l)
+    cat "$captures/devices-l.txt"
+    ;;
+pm-fails:shell\ pm\ list\ packages\ -f)
+    cat "$captures/packages-f.txt"
+    ;;
+pm-fails:shell\ pm\ list\ packages\ -3)
+    cat "$captures/packages-3.txt"
+    ;;
+pm-fails:shell\ pm\ list\ packages\ -d)
+    cat "$pm_errors/cant-find-service.txt"
     ;;
 connect-ok:connect*)
     echo "connected to $2"

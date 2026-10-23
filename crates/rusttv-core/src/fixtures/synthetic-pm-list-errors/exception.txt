@@ -1,0 +1,4 @@
+Exception occurred while executing 'list':
+java.lang.SecurityException: Shell does not have permission to access user 10
+	at com.android.server.am.UserController.handleIncomingUser(UserController.java:2870)
+	at com.android.server.pm.PackageManagerShellCommand.runListPackages(PackageManagerShellCommand.java:1033)

@@ -2,6 +2,8 @@
 
 use std::io;
 
+use crate::apps::PackageListError;
+
 /// Every stable error code the core can produce, from [`AdbError::code`] and
 /// [`crate::DeviceSelectionError::code`] and [`crate::BenchmarkError::code`] and
 /// [`crate::PlanError::code`]. Documented in CLI.md; a test keeps
@@ -18,6 +20,7 @@ pub const ERROR_CODES: &[&str] = &[
     "CONNECT_FAILED",
     "COMMAND_FAILED",
     "INVALID_OUTPUT",
+    "PACKAGE_LIST_FAILED",
     "LAUNCH_FAILED",
     "INVALID_PLAN",
     "PRECONDITION_FAILED",
@@ -67,6 +70,16 @@ enum ErrorKind {
     ConnectFailed { address: String, message: String },
     #[error("`adb {0}` printed output that is not valid UTF-8")]
     InvalidOutput(String),
+    #[error(transparent)]
+    PackageList(PackageListError),
+}
+
+impl From<PackageListError> for AdbError {
+    fn from(error: PackageListError) -> Self {
+        Self {
+            kind: ErrorKind::PackageList(error),
+        }
+    }
 }
 
 impl AdbError {
@@ -81,6 +94,7 @@ impl AdbError {
             ErrorKind::CommandFailed { .. } => "COMMAND_FAILED",
             ErrorKind::ConnectFailed { .. } => "CONNECT_FAILED",
             ErrorKind::InvalidOutput(_) => "INVALID_OUTPUT",
+            ErrorKind::PackageList(_) => "PACKAGE_LIST_FAILED",
         }
     }
 
@@ -162,6 +176,7 @@ pub(crate) fn every_adb_error() -> Vec<AdbError> {
         AdbError::host_failure(&["devices"], String::new(), "boom"),
         AdbError::connect_failed("tv:5555".to_owned(), "refused".to_owned()),
         AdbError::invalid_output(&["shell"]),
+        AdbError::from(crate::apps::parse_package_list("Error: boom").unwrap_err()),
     ];
     for error in &all {
         match error.kind {
@@ -172,7 +187,8 @@ pub(crate) fn every_adb_error() -> Vec<AdbError> {
             | ErrorKind::DeviceOffline(_)
             | ErrorKind::CommandFailed { .. }
             | ErrorKind::ConnectFailed { .. }
-            | ErrorKind::InvalidOutput(_) => {}
+            | ErrorKind::InvalidOutput(_)
+            | ErrorKind::PackageList(_) => {}
         }
     }
     all

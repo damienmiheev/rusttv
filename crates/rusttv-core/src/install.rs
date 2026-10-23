@@ -4,11 +4,10 @@
 //! Both are [`Plan`]s run by the safety engine in [`crate::plan`]. They only
 //! touch RustTV's own package: the commands take no package name.
 
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::adb::Adb;
-use crate::apps::parse_package_list;
+use crate::apps::package_names;
 use crate::command::{ApkPath, DeviceCommand, PackageName};
 use crate::inspect::parse_properties;
 use crate::journal::find_restorable_journal;
@@ -199,9 +198,7 @@ fn home_without_rusttv(
 
     let status = launcher_status(adb, serial)?;
     let third_party = adb.run(serial, &DeviceCommand::ListThirdPartyPackages)?;
-    let third_party: HashSet<&str> = parse_package_list(&third_party)
-        .map(|(name, _)| name)
-        .collect();
+    let third_party = package_names(&third_party)?;
     // Candidates are sorted highest priority first. Android's fallback Home
     // (TV Settings' FallbackHome) has a negative priority.
     let system_launcher = status
@@ -600,6 +597,20 @@ mod tests {
             error.to_string().contains("nothing to uninstall"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn a_failing_package_list_is_not_read_as_rusttv_missing() {
+        let dir = Dir::new("pm-fails");
+        let failure =
+            include_str!("fixtures/synthetic-pm-list-errors/error-not-running.txt").to_owned();
+        let adb = tv(&dir, vec![failure], vec![real!("home-candidates.txt")]);
+
+        let error = uninstall_plan(&adb, SERIAL, &dir.journals()).unwrap_err();
+        assert_eq!(error.code(), "PACKAGE_LIST_FAILED");
+        let error = install_plan(&adb, SERIAL, Some(&dir.apk()), &dir.journals()).unwrap_err();
+        assert_eq!(error.code(), "PACKAGE_LIST_FAILED");
+        assert!(changes(&adb).is_empty());
     }
 
     #[test]

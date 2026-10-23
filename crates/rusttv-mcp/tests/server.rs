@@ -179,16 +179,16 @@ impl Client {
     }
 }
 
-/// `data` of a successful `rusttv.v1` envelope.
+/// `data` of a successful `rusttv.v2` envelope.
 fn data(envelope: Value) -> Value {
-    assert_eq!(envelope["schema"], "rusttv.v1");
+    assert_eq!(envelope["schema"], "rusttv.v2");
     assert_eq!(envelope["ok"], true, "{envelope}");
     envelope["data"].clone()
 }
 
-/// `error.code` of a failed `rusttv.v1` envelope.
+/// `error.code` of a failed `rusttv.v2` envelope.
 fn error_code(envelope: &Value) -> &str {
-    assert_eq!(envelope["schema"], "rusttv.v1");
+    assert_eq!(envelope["schema"], "rusttv.v2");
     assert_eq!(envelope["ok"], false, "{envelope}");
     assert!(
         envelope["error"]["message"]
@@ -304,6 +304,15 @@ async fn errors_carry_the_cli_error_codes() {
         .call("device_inspect", json!({"serial": "tv-1"}), true)
         .await;
     assert_eq!(error_code(&failed), "COMMAND_FAILED");
+
+    // `pm` printing an error is a failure, not an empty package list.
+    let adb = emulator().respond(
+        DeviceCommand::ListDisabledPackages,
+        capture!("synthetic-pm-list-errors", "cant-find-service.txt"),
+    );
+    let mut client = Client::start(adb).await;
+    let pm_failed = client.call("apps_list", json!({}), true).await;
+    assert_eq!(error_code(&pm_failed), "PACKAGE_LIST_FAILED");
 }
 
 #[tokio::test]
@@ -325,7 +334,7 @@ async fn invalid_arguments_and_unknown_tools_are_rejected() {
             .request("tools/call", json!({"name": tool, "arguments": arguments}))
             .await;
         // A JSON-RPC error, or (for arguments rmcp can't deserialize) a tool
-        // error without a `rusttv.v1` envelope: either way nothing ran.
+        // error without a `rusttv.v2` envelope: either way nothing ran.
         let rejected = response["error"]["code"].is_i64()
             || (response["result"]["isError"] == true
                 && response["result"]["structuredContent"].is_null());
