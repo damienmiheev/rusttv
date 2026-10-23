@@ -152,3 +152,28 @@ Decided "not for now"; raise again when the core launcher is done.
     more status there — avatar, Wi-Fi status, notifications — to be discussed.
   - Must be a clean design aligned with the current home screen; use the
     `emil-design-eng` skill when designing it.
+
+- **Button shortcuts and macros** — parked 2026-10-23; owner: maybe a brand
+  new module, scope and actions still open. Discussion so far:
+  - Scope is the key decision. On RustTV's home screen RustTV gets every key
+    it is sent, with no permission. Shortcuts inside other apps (e.g. while
+    Netflix plays) need an accessibility service, which can read every key
+    press in every app: a large security and privacy step needing its own
+    safety review. Home, the Assistant button and the Netflix/YouTube/Prime
+    buttons are handled by the TV before any app and can't be remapped.
+  - Triggers: a key plus short / long / double press (numbers, colour keys,
+    media keys, CH+/−, Info/Options if the TV passes them); OK, Back and the
+    arrows stay reserved for navigation.
+  - Actions from a fixed, typed list (never code): open an app, reopen the
+    last app, switch HDMI input (if Philips allows an app to), volume/mute,
+    open an Android settings page, RustTV actions (hide/move, hidden apps,
+    T9). Macros: a short sequence with waits (e.g. up to 8 steps, no loops);
+    they can't press keys inside other apps.
+  - Set up on the TV: "press the button you want to use", choose the action.
+  - Conflicts (owner): before assigning, check what each button already does —
+    RustTV's own navigation and menu keys, keys the TV or Google TV handle
+    themselves (Home, Assistant, app buttons, possibly Info/Options/colour keys
+    on Philips), and other shortcuts — and warn or refuse. First step when
+    picked up: a read-only check on the Philips of which keys reach an app
+    and which the system consumes.
+  - Depends on the Settings page above.
