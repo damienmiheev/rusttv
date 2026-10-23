@@ -98,12 +98,9 @@ impl Lifecycle {
         self.deliver(|controller| controller.input(Input::Paused));
     }
 
-    /// The launcher is on screen again; re-reads the app list, which may have changed.
+    /// The launcher is on screen again; re-reads the app list if it changed.
     pub fn resumed(&self) {
-        self.deliver(|controller| {
-            controller.reload_apps();
-            controller.render();
-        });
+        self.deliver(Controller::resume);
     }
 
     /// Runs `event` on the controller from a fresh timer callback, so it never
@@ -331,6 +328,23 @@ impl Controller {
             this.render();
         }
         controller
+    }
+
+    /// Re-reads the app list when the platform reports a change. A failed check
+    /// counts as a change, so the list is never left stale.
+    fn resume(&mut self) {
+        let changed = self.platform.take_apps_changed().unwrap_or_else(|error| {
+            log::warn!("checking for app changes failed: {error}");
+            true
+        });
+        if changed {
+            log::info!("app list changed; reloading");
+            self.reload_apps();
+            // Rebuild tiles and hero too: an updated app may have a new banner.
+            self.shown.clear();
+            self.hero = None;
+            self.render();
+        }
     }
 
     /// Re-reads the app list from the platform.

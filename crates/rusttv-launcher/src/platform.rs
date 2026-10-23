@@ -24,6 +24,10 @@ pub trait Platform {
     /// Returns once the request is handed over; the launcher learns that the
     /// app opened when it is paused.
     fn launch(&mut self, id: &str) -> Result<(), PlatformError>;
+
+    /// Whether apps were installed, updated or removed since the last call;
+    /// clears the flag. Lets the launcher skip re-reading the list on resume.
+    fn take_apps_changed(&mut self) -> Result<bool, PlatformError>;
 }
 
 /// An app and the picture shown on its tile.
@@ -362,6 +366,7 @@ pub struct FakePlatform {
     apps: Vec<AppEntry>,
     launched: Vec<String>,
     failing: BTreeSet<String>,
+    apps_changed: bool,
 }
 
 #[cfg(any(test, feature = "test-util"))]
@@ -405,6 +410,11 @@ impl FakePlatform {
         self.failing.insert(id.to_owned());
     }
 
+    /// Reports a changed app list on the next [`Platform::take_apps_changed`].
+    pub fn mark_apps_changed(&mut self) {
+        self.apps_changed = true;
+    }
+
     /// Component names of successful launches, oldest first.
     pub fn launched(&self) -> &[String] {
         &self.launched
@@ -429,6 +439,10 @@ impl Platform for FakePlatform {
         }
         self.launched.push(id.to_owned());
         Ok(())
+    }
+
+    fn take_apps_changed(&mut self) -> Result<bool, PlatformError> {
+        Ok(std::mem::take(&mut self.apps_changed))
     }
 }
 
@@ -682,6 +696,15 @@ mod tests {
         assert!(!error.is_not_launchable());
         assert!(error.to_string().starts_with("launch failed"));
         assert!(platform.launched().is_empty());
+    }
+
+    #[test]
+    fn a_changed_app_list_is_reported_once() {
+        let mut platform = FakePlatform::new([app("a")]);
+        assert!(!platform.take_apps_changed().unwrap());
+        platform.mark_apps_changed();
+        assert!(platform.take_apps_changed().unwrap());
+        assert!(!platform.take_apps_changed().unwrap());
     }
 
     #[test]

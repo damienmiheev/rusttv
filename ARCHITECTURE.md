@@ -86,7 +86,7 @@ There is intentionally no `shell(&str)`. Values that end up in `adb shell` argum
 |---|---|
 | `model.rs` | Pure state machine `Home`: tile order, D-pad focus, shelf/grid scroll, move mode, launch in flight. Time is passed in; returns `Effect`s. No Slint, no platform. |
 | `order_file.rs` | Tile order in `order.toml` (app files dir): atomic write, unreadable file kept as `.bak`. |
-| `platform.rs` | `Platform` trait (`list_apps`, `launch`), `PlatformError`, `Bitmap` (shrink, blur, hero backdrop glow), `FakePlatform` (feature `test-util`). |
+| `platform.rs` | `Platform` trait (`list_apps`, `launch`, `take_apps_changed`), `PlatformError`, `Bitmap` (shrink, blur, hero backdrop glow), `FakePlatform` (feature `test-util`). |
 | `ui.rs` + `ui/home.slint` | Rust owns state and timers and pushes properties; Slint draws, animates and forwards keys. `Lifecycle` reports pause/resume. |
 | `android.rs` | `android_main` + `AndroidPlatform` over JNI. The only module with `unsafe` (crate lint `unsafe_code = "deny"`, module `allow`, a `SAFETY:` comment per block). |
 | `bin/desktop.rs` | Desktop dev mode with `FakePlatform` (Slint winit backend + software renderer, no Skia); `--order <file>`, `--demo <dir>` snapshots. |
@@ -103,8 +103,9 @@ LauncherActivity (Kotlin, extends NativeActivity, D11)
    │     listApps(context): Array<String>          "component\nlabel", LEANBACK_LAUNCHER, without itself
    │     banner/icon(context, component, w, h): IntArray?   ARGB pixels, null if none
    │     launch(context, component): Boolean       false if the activity is gone
+   │     takeAppsChanged(): Boolean                set by the package receiver; cleared on read
    │
-Rust: trait Platform { list_apps(), launch() }
+Rust: trait Platform { list_apps(), launch(), take_apps_changed() }
    ├─ AndroidPlatform  — class loaded once via the activity's class loader; JNI calls in local
    │                     frames; Java exceptions cleared and returned as PlatformError
    └─ FakePlatform     — desktop dev mode + tests (generated banners)
@@ -112,7 +113,7 @@ Rust: trait Platform { list_apps(), launch() }
 
 - Apps are identified by component name (`package/activity`). Banner (320×180, Leanback) preferred; icon (96×96) as fallback.
 - Manifest: `MAIN`+`LEANBACK_LAUNCHER` and `MAIN`+`HOME`+`DEFAULT`; `<queries>` for `LEANBACK_LAUNCHER` (no `QUERY_ALL_PACKAGES`); `leanback` and `touchscreen` features `required="false"`; `allowBackup="false"`.
-- Lifecycle: Slint's Android event listener forwards `Pause`/`Resume` to `Lifecycle`; resume re-reads the app list. A package-change listener (refresh only when flagged) is a later step.
+- Lifecycle: Slint's Android event listener forwards `Pause`/`Resume` to `Lifecycle`. `LauncherActivity` registers a runtime receiver for package added/changed/removed/replaced (manifest receivers no longer get these since Android 8); it sets a flag in `Bridge`, and resume re-reads the app list only when `Platform::take_apps_changed` reports it.
 - ABIs: only `arm64-v8a` so far. `armeabi-v7a` (32-bit userspace TVs) and `x86_64` (emulator) are needed for the MVP criteria (ROADMAP).
 - Build: `android/build.sh` (cargo-ndk, then Gradle). Skia is a prebuilt binary fetched by `build.sh` and checked against a pinned SHA-256 (SECURITY.md § Supply chain). Release builds are signed with the debug key until release signing exists (Phase 6).
 
