@@ -1,6 +1,5 @@
 //! `rusttv launcher ...` commands.
 
-use std::env;
 use std::io::{self, IsTerminal};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -96,7 +95,7 @@ pub fn install(
         require_terminal()?;
     }
     let serial = target.resolve(adb)?;
-    let plan = rusttv_core::install_plan(adb, &serial, apk, &journals_dir()?)?;
+    let plan = rusttv_core::install_plan(adb, &serial, apk, &rusttv_core::journals_dir()?)?;
     show_plan(&plan, dry_run, json);
     if dry_run {
         return Ok(());
@@ -121,7 +120,7 @@ pub fn uninstall(
         require_terminal()?;
     }
     let serial = target.resolve(adb)?;
-    let plan = rusttv_core::uninstall_plan(adb, &serial, &journals_dir()?)?;
+    let plan = rusttv_core::uninstall_plan(adb, &serial, &rusttv_core::journals_dir()?)?;
     show_plan(&plan, dry_run, json);
     if dry_run {
         return Ok(());
@@ -143,7 +142,7 @@ fn approve_and_apply(
     json: bool,
 ) -> Result<PathBuf, CliError> {
     let approval = confirm(plan)?;
-    let path = journals_dir()?.join(journal_file_name(now_unix_ms(), name));
+    let path = rusttv_core::journals_dir()?.join(journal_file_name(now_unix_ms(), name));
     let mut store = FileJournal::new(&path);
     let journal = rusttv_core::apply(adb, plan, &approval, &mut store, &std::thread::sleep)
         .inspect_err(|_| note_journal(&path))?;
@@ -172,7 +171,11 @@ pub fn restore(
         Some(path) => (path.to_owned(), rusttv_core::load_journal(path)?),
         None => {
             let fingerprint = rusttv_core::device_fingerprint(adb, &serial)?;
-            rusttv_core::find_restorable_journal(&journals_dir()?, HOME_TAKEOVER, &fingerprint)?
+            rusttv_core::find_restorable_journal(
+                &rusttv_core::journals_dir()?,
+                HOME_TAKEOVER,
+                &fingerprint,
+            )?
         }
     };
     let plan = rusttv_core::takeover_restore_plan(adb, &serial, &journal)?;
@@ -247,30 +250,6 @@ fn note_journal(path: &Path) {
     if path.exists() {
         output::print_note(&format!("Journal: {}", path.display()));
     }
-}
-
-/// `<state dir>/journals`. The state dir is `RUSTTV_STATE_DIR` if set, else
-/// `~/Library/Application Support/rusttv` on macOS and
-/// `$XDG_STATE_HOME/rusttv` (default `~/.local/state/rusttv`) elsewhere.
-fn journals_dir() -> Result<PathBuf, CliError> {
-    let state = if let Some(dir) = env::var_os("RUSTTV_STATE_DIR") {
-        PathBuf::from(dir)
-    } else {
-        let home = env::var_os("HOME")
-            .map(PathBuf::from)
-            .filter(|home| home.is_absolute())
-            .ok_or_else(|| PlanError::journal("HOME is not set; set RUSTTV_STATE_DIR"))?;
-        if cfg!(target_os = "macos") {
-            home.join("Library/Application Support/rusttv")
-        } else {
-            env::var_os("XDG_STATE_HOME")
-                .map(PathBuf::from)
-                .filter(|dir| dir.is_absolute())
-                .unwrap_or_else(|| home.join(".local/state"))
-                .join("rusttv")
-        }
-    };
-    Ok(state.join("journals"))
 }
 
 fn now_unix_ms() -> u64 {
