@@ -12,7 +12,7 @@ Phases are gates, not dates. A phase starts only when the previous one meets its
 | 3 Diagnostics & CLI | `performance`, `apps`, `launcher status/install` commands | All commands have `--json`, schema docs, fixture tests. `launcher status` done (2026-10-23) |
 | 4 Safe optimizer | `analyze` → `plan` → `apply` → `restore` with R2 first, R3 later | Fault-injection tests pass on emulator; recovery docs; owner approval before any device run |
 | 5 MCP | `rusttv-mcp` over the same core | Read-only tools + plan creation; no approval path from MCP |
-| 6 First public release | Signed APK, CLI binaries, docs, benchmarks, compat data | Trademark/name check done; release checklist passed |
+| 6 First public release | Signed APK, CLI binaries, docs, benchmarks, compat data | Trademark/name check done; release checklist passed; third-party licence notices (Skia, Rust crates) generated and shipped with the APK and CLI binaries |
 | 7+ | Ecosystem apps, AI concierge, cloud, B2B | Only with demonstrated demand; each needs its own proposal |
 
 ## Milestone 1 — read-only CLI core
