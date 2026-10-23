@@ -13,7 +13,7 @@ They are used together with the real Philips 65OLED818 captures in
 
 | File | Command | Stands for | Based on |
 |---|---|---|---|
-| `packages-f.txt` | `pm list packages -f` | The twelve packages tested on the Philips installed, three catalog packages not tested there (`org.droidtv.customautologservice`, telemetry; `org.droidtv.amazonalexa`, voice; `com.google.android.apps.mediashell`, casting), a few protected system packages and the RustTV launcher; APK paths are made up | Format of `../emulator-pixel3a-api34/packages-f.txt`. On 2026-10-23 all fifteen were seen present and enabled on the Philips (not committed: the full list shows which apps the owner uses) |
+| `packages-f.txt` | `pm list packages -f` | The twelve packages tested on the Philips installed, three other catalog packages: `org.droidtv.amazonalexa` (voice, tested there in a second round), `com.google.android.apps.mediashell` (casting, untested) and `org.droidtv.usagelogger` (telemetry, untested; not on the Philips, made up so the tests have an untested default package), a few protected system packages and the RustTV launcher; APK paths are made up | Format of `../emulator-pixel3a-api34/packages-f.txt`. On 2026-10-23 all but `usagelogger` were seen present and enabled on the Philips (not committed: the full list shows which apps the owner uses) |
 | `ime-list.txt` | `ime list -a -s` | One input method (Gboard) | Output format of `ime list -s` (one `package/class` id per line), from AOSP `InputMethodManagerService`; not captured |
 | `accessibility-none.txt` | `settings get secure enabled_accessibility_services` | No accessibility service enabled | `settings get` prints `null` for an unset key (OPTIMIZER.md § 1) |
 

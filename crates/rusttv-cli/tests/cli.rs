@@ -922,7 +922,7 @@ fn optimize_analyze_json_lists_catalog_packages_with_state_and_testing() {
         serde_json::json!(["telemetry", "ads", "extras"])
     );
     let packages = data["packages"].as_array().unwrap();
-    // The twelve tested packages and three untested ones of the fixture.
+    // The thirteen tested packages and two untested ones of the fixture.
     assert_eq!(packages.len(), 15);
     let first = &packages[0];
     assert_eq!(first["package"], "org.droidtv.candeebug");
@@ -942,9 +942,9 @@ fn optimize_analyze_json_lists_catalog_packages_with_state_and_testing() {
             .find(|entry| entry["package"] == name)
             .unwrap()
     };
-    let autolog = entry("org.droidtv.customautologservice");
+    let usagelogger = entry("org.droidtv.usagelogger");
     assert_eq!(
-        (autolog["tested"].clone(), autolog["chosen"].clone()),
+        (usagelogger["tested"].clone(), usagelogger["chosen"].clone()),
         (false.into(), true.into())
     );
     let cast = entry("com.google.android.apps.mediashell");
@@ -1024,7 +1024,7 @@ fn notes(data: &Value) -> Vec<&str> {
 
 #[test]
 fn optimize_apply_privacy_dry_run_plans_the_tested_packages_of_the_categories() {
-    // Twelve packages are tested on the Philips (2026-10-23). A dry run plans
+    // Packages tested on the Philips (2026-10-23). A dry run plans
     // one step per enabled tested package and writes no journal.
     let state = state_dir("privacy-dry-run");
     let output = rusttv_with_state(
@@ -1059,7 +1059,7 @@ fn optimize_apply_privacy_dry_run_plans_the_tested_packages_of_the_categories() 
     assert!(
         notes(data).iter().any(
             |note| note.starts_with("Not planned, UNTESTED on this model")
-                && note.contains("org.droidtv.customautologservice")
+                && note.contains("org.droidtv.usagelogger")
         ),
         "{data}"
     );
@@ -1089,10 +1089,12 @@ fn optimize_apply_privacy_allow_untested_marks_each_untested_package() {
     assert_eq!(output.status.code(), Some(0), "{output:?}");
     let data = &json_stdout(&output)["data"];
     let planned = planned_packages(data);
-    assert_eq!(planned.last().unwrap(), "org.droidtv.customautologservice");
+    assert_eq!(planned.last().unwrap(), "org.droidtv.usagelogger");
     assert!(
-        notes(data).iter().any(|note| note
-            .starts_with("org.droidtv.customautologservice (telemetry): UNTESTED on this model.")),
+        notes(data)
+            .iter()
+            .any(|note| note
+                .starts_with("org.droidtv.usagelogger (telemetry): UNTESTED on this model.")),
         "{data}"
     );
 }
@@ -1102,7 +1104,7 @@ fn optimize_apply_privacy_reads_the_choices_file() {
     let config = state_dir("privacy-choices");
     std::fs::write(
         config.join("privacy.toml"),
-        "categories = [\"casting\"]\nalso = [\"org.droidtv.amazonalexa\"]\n",
+        "categories = [\"casting\"]\nalso = [\"org.droidtv.usagelogger\"]\n",
     )
     .unwrap();
     let dry_run = |extra: &[&str]| {
@@ -1118,7 +1120,7 @@ fn optimize_apply_privacy_reads_the_choices_file() {
             .unwrap()
     };
 
-    // Opt-in casting and Alexa, neither tested on the Philips.
+    // Opt-in casting and the usage logger, neither tested on the Philips.
     let output = dry_run(&[]);
     assert_eq!(output.status.code(), Some(1), "{output:?}");
     let json = json_stdout(&output);
@@ -1136,8 +1138,8 @@ fn optimize_apply_privacy_reads_the_choices_file() {
     assert_eq!(
         planned_packages(&json_stdout(&output)["data"]),
         [
-            "com.google.android.apps.mediashell",
-            "org.droidtv.amazonalexa"
+            "org.droidtv.usagelogger",
+            "com.google.android.apps.mediashell"
         ]
     );
 

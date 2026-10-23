@@ -565,7 +565,7 @@ mod tests {
     }
 
     #[test]
-    fn the_philips_privacy_profile_lists_the_twelve_tested_packages() {
+    fn the_philips_privacy_profile_lists_its_tested_packages() {
         let properties = crate::inspect::parse_properties(include_str!(
             "fixtures/philips-65oled818-api34/getprop.txt"
         ));
@@ -595,6 +595,17 @@ mod tests {
                 "com.google.android.syncadapters.calendar",
                 "com.android.printspooler",
                 "com.google.android.onetimeinitializer",
+                // Second round, the same day.
+                "org.droidtv.tv.frameworklogger",
+                "org.droidtv.customautologservice",
+                "tv.samba.ssm",
+                "android.autoinstalls.config.google.gtvpai",
+                "com.android.cts.ctsshim",
+                "com.android.cts.priv.ctsshim",
+                "org.droidtv.demome",
+                "org.droidtv.control4app",
+                "org.droidtv.control4UcService",
+                "org.droidtv.amazonalexa",
             ]
         );
         assert!(

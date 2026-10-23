@@ -38,7 +38,12 @@ system app ("Shell cannot change component state").
 Privacy profile tested 2026-10-23 (RustTV 0.1.0): `rusttv optimize apply privacy`
 disabled all 12 packages; HDMI inputs, YouTube and other apps, the remote's
 buttons and Settings worked; everything stayed disabled after a reboot;
-`rusttv optimize restore` re-enabled all 12. Run with Home taken over by RustTV."""
+`rusttv optimize restore` re-enabled all 12. Run with Home taken over by RustTV.
+Second round the same day: 10 more (frameworklogger, customautologservice,
+Samba ACR, Play auto-installs, both CTS shims, Demo me, Control4 app and
+service, Alexa) with `--allow-untested`: live TV, HDMI, apps, the remote and
+Settings worked, all 22 stayed disabled after a reboot, restore re-enabled the
+10, and they were re-applied as tested."""
 
 [launcher]
 stock_package = "com.google.android.apps.tv.launcherx"
@@ -97,4 +102,44 @@ checked = "2026-10-23"
 
 [[privacy.tested]]
 package = "com.google.android.onetimeinitializer"
+checked = "2026-10-23"
+
+[[privacy.tested]]
+package = "org.droidtv.tv.frameworklogger"
+checked = "2026-10-23"
+
+[[privacy.tested]]
+package = "org.droidtv.customautologservice"
+checked = "2026-10-23"
+
+[[privacy.tested]]
+package = "tv.samba.ssm"
+checked = "2026-10-23"
+
+[[privacy.tested]]
+package = "android.autoinstalls.config.google.gtvpai"
+checked = "2026-10-23"
+
+[[privacy.tested]]
+package = "com.android.cts.ctsshim"
+checked = "2026-10-23"
+
+[[privacy.tested]]
+package = "com.android.cts.priv.ctsshim"
+checked = "2026-10-23"
+
+[[privacy.tested]]
+package = "org.droidtv.demome"
+checked = "2026-10-23"
+
+[[privacy.tested]]
+package = "org.droidtv.control4app"
+checked = "2026-10-23"
+
+[[privacy.tested]]
+package = "org.droidtv.control4UcService"
+checked = "2026-10-23"
+
+[[privacy.tested]]
+package = "org.droidtv.amazonalexa"
 checked = "2026-10-23"

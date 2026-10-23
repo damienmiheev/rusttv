@@ -732,8 +732,9 @@ mod tests {
     const ODP: &str = "com.android.ondevicepersonalization.services";
     const FEDERATED: &str = "com.android.federatedcompute.services";
     const PRINTSPOOLER: &str = "com.android.printspooler";
-    /// Telemetry in the catalog, installed in the fixture, not tested on the Philips.
-    const AUTOLOG: &str = "org.droidtv.customautologservice";
+    /// Telemetry in the catalog, installed in the fixture (not on the real TV),
+    /// not tested on the Philips.
+    const AUTOLOG: &str = "org.droidtv.usagelogger";
     /// Opt-in (casting), installed in the fixture, not tested on the Philips.
     const MEDIASHELL: &str = "com.google.android.apps.mediashell";
     /// Opt-in (voice), installed in the fixture, not tested on the Philips.
