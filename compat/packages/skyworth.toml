@@ -1,0 +1,138 @@
+# Package catalog (OPTIMIZER.md § Generic design; compat/README.md § Package catalog).
+# Skyworth, Coocaa and their smartdevice packages.
+# One entry per package, shared by every device that has it. Categories:
+# telemetry | ads | extras (default), casting | smart-home | voice | streaming-apps (opt-in).
+# Compiled into rusttv (crates/rusttv-core/src/catalog.rs); a test keeps entries
+# unique, valid and off compat/protected.toml.
+#
+# Entries citing cleanyourtv are derived from cleanyourtv (https://github.com/Gathin23/cleanyourtv,
+# commit f9f0c53), MIT License, Copyright (c) 2026 Gathin. The licence text is in
+# licenses/cleanyourtv/LICENSE.
+
+schema_version = 1
+
+[[packages]]
+package = "com.skyworth.aisense"
+category = "telemetry"
+what = "Coocaa/Skyworth automatic content recognition, used to target ads"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 1 model", "cleanyourtv tools/privacy.py"]
+
+[[packages]]
+package = "com.smartdevice.acr.recommendation"
+category = "telemetry"
+what = "Automatic content recognition of what is on screen, for ad targeting"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.smartdevice.aftersale"
+category = "telemetry"
+what = "\"After-sale\" tracker: boot and network receivers, location; can install apps"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 8 models"]
+
+[[packages]]
+package = "com.smartdevice.recordactivation"
+category = "telemetry"
+what = "Records the TV's first activation"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.smartdevice.recommendation"
+category = "ads"
+what = "Sponsored recommendation rows on the stock home screen"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 11 models"]
+
+[[packages]]
+package = "com.tianci.ad"
+category = "ads"
+what = "Coocaa ad engine: boot, shutdown and screensaver ads"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "com.tianci.push"
+category = "ads"
+what = "Coocaa push channel that can launch apps and ads"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.tianci.autoinstaller"
+category = "ads"
+what = "Silently installs promoted apps"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.coocaa.messageprovider"
+category = "ads"
+what = "Coocaa system message box: notices and promotions"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "android.autoinstalls.config.skyworth"
+category = "ads"
+what = "Play auto-installs of Skyworth partner apps"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.Smartdevice.emanual"
+category = "extras"
+what = "On-screen user manual"
+side_effects = "the built-in manual stops opening"
+sources = ["cleanyourtv examples, 15 models"]
+
+[[packages]]
+package = "com.smartdevice.epopplayer"
+category = "extras"
+what = "ePop shop-floor promotion player"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "com.smartdevice.common.demonow"
+category = "extras"
+what = "\"Demo Now\" store demo"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.coocaa.demonow.lightining"
+category = "extras"
+what = "\"Demo Now\" retail mode"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.smartdevice.dailymanage"
+category = "extras"
+what = "\"Daily Manage\" / TV Guard cleaner service"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "com.tianci.appstore"
+category = "extras"
+what = "Coocaa app store"
+side_effects = "the Coocaa app store stops opening; Google Play is unaffected"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.sdt.producttest"
+category = "extras"
+what = "Skyworth factory product test"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.smartdevice.dtv.icast"
+category = "casting"
+what = "Skyworth/Coocaa AirPlay, Miracast and DLNA receiver"
+side_effects = "screen mirroring and AirPlay to the TV stop working"
+sources = ["cleanyourtv examples, 5 models"]

@@ -1,0 +1,152 @@
+# Package catalog (OPTIMIZER.md § Generic design; compat/README.md § Package catalog).
+# TP Vision (Philips) packages, `org.droidtv.*`.
+# One entry per package, shared by every device that has it. Categories:
+# telemetry | ads | extras (default), casting | smart-home | voice | streaming-apps (opt-in).
+# Compiled into rusttv (crates/rusttv-core/src/catalog.rs); a test keeps entries
+# unique, valid and off compat/protected.toml.
+#
+# Entries citing cleanyourtv are derived from cleanyourtv (https://github.com/Gathin23/cleanyourtv,
+# commit f9f0c53), MIT License, Copyright (c) 2026 Gathin. The licence text is in
+# licenses/cleanyourtv/LICENSE.
+
+schema_version = 1
+
+[[packages]]
+package = "org.droidtv.candeebug"
+category = "telemetry"
+what = "TP Vision service that collects analytics; runs as the system user and was running (about 12 MB), with one service, four broadcast receivers and a file provider"
+side_effects = "none expected"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 9 models"]
+
+[[packages]]
+package = "org.droidtv.gel"
+category = "telemetry"
+what = "TP Vision metrics gathering; runs as the system user and listens with 23 broadcast receivers"
+side_effects = "none expected"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 9 models"]
+
+[[packages]]
+package = "org.droidtv.usagelogger"
+category = "telemetry"
+what = "Philips usage logging: boot stats, remote key-press counts and panel telemetry"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 6 models", "cleanyourtv tools/privacy.py"]
+
+[[packages]]
+package = "org.droidtv.tv.frameworklogger"
+category = "telemetry"
+what = "Philips framework logger: hands reboot reasons and firmware-install records to the Philips logger"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models", "cleanyourtv tools/privacy.py"]
+
+[[packages]]
+package = "org.droidtv.customautologservice"
+category = "telemetry"
+what = "TP Vision auto-log service; runs as the system user and starts at boot (what it logs is unverified, judged by its name)"
+side_effects = "unknown; untested"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23"]
+
+[[packages]]
+package = "org.droidtv.nettvrecommender"
+category = "ads"
+what = "Philips \"Top Picks\" content promotion row"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "org.droidtv.recommendation"
+category = "ads"
+what = "Backend of the Philips \"Top Picks\" row"
+side_effects = "disable it together with org.droidtv.nettvrecommender, or the row stays as a tile with no data"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "org.droidtv.demome"
+category = "extras"
+what = "\"Demo me\": in-store demo mode, e-sticker and shop loop"
+side_effects = "none expected; on some Philips firmware it asks for TV input hardware access, so test inputs after disabling it"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "org.droidtv.nettv.market"
+category = "extras"
+what = "Philips app gallery storefront"
+side_effects = "the Philips app gallery stops opening; Google Play is unaffected"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "org.droidtv.android.fitness"
+category = "extras"
+what = "Fitness Buddy app"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "org.droidtv.dlna"
+category = "casting"
+what = "DLNA/UPnP media renderer and server"
+side_effects = "playing to the TV from DLNA apps on phones and computers stops working"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 2 models"]
+
+[[packages]]
+package = "org.droidtv.control4app"
+category = "smart-home"
+what = "Control4 home-automation integration"
+side_effects = "a Control4 system can't control the TV"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 1 model"]
+
+[[packages]]
+package = "org.droidtv.control4UcService"
+category = "smart-home"
+what = "Control4 home-automation service"
+side_effects = "a Control4 system can't control the TV"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23"]
+
+[[packages]]
+package = "org.droidtv.ipcontrol"
+category = "smart-home"
+what = "Network control of the TV, used by third-party remote and home-automation apps"
+side_effects = "apps that control volume, sound output or Ambilight over the network stop working"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 1 model"]
+
+[[packages]]
+package = "org.droidtv.amazonalexa"
+category = "voice"
+what = "Alexa built-in"
+side_effects = "Alexa can't control the TV; live TV binds to it on some models, so check channel changes and the TV guide"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 6 models", "cleanyourtv tools/privacy.py"]
+
+[[packages]]
+package = "org.droidtv.nettvapp4546"
+category = "streaming-apps"
+what = "MEGOGO"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "org.droidtv.nettvapp5326"
+category = "streaming-apps"
+what = "Toon Goggles"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "org.droidtv.nettvapp5512"
+category = "streaming-apps"
+what = "Fishing TV"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "org.droidtv.nettvapp1814"
+category = "streaming-apps"
+what = "ARTE"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "org.droidtv.nettvapp20004410"
+category = "streaming-apps"
+what = "Couchplay Games"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]

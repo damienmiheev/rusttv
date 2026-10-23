@@ -1,0 +1,40 @@
+# Package catalog (OPTIMIZER.md § Generic design; compat/README.md § Package catalog).
+# MediaTek platform packages.
+# One entry per package, shared by every device that has it. Categories:
+# telemetry | ads | extras (default), casting | smart-home | voice | streaming-apps (opt-in).
+# Compiled into rusttv (crates/rusttv-core/src/catalog.rs); a test keeps entries
+# unique, valid and off compat/protected.toml.
+#
+# Entries citing cleanyourtv are derived from cleanyourtv (https://github.com/Gathin23/cleanyourtv,
+# commit f9f0c53), MIT License, Copyright (c) 2026 Gathin. The licence text is in
+# licenses/cleanyourtv/LICENSE.
+
+schema_version = 1
+
+[[packages]]
+package = "com.mediatek.testpq"
+category = "extras"
+what = "MediaTek picture-quality test tool; starts at boot"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.mediatek.airplaydaemon"
+category = "casting"
+what = "AirPlay receiver daemon"
+side_effects = "AirPlay from Apple devices stops working"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "com.mediatek.AirplayAPK"
+category = "casting"
+what = "AirPlay receiver"
+side_effects = "AirPlay from Apple devices stops working"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.mediatek.androidbox"
+category = "casting"
+what = "MediaTek Miracast (Wi-Fi Display) receiver"
+side_effects = "screen mirroring over Miracast stops working"
+sources = ["cleanyourtv examples, 4 models"]

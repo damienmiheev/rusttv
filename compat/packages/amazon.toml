@@ -1,0 +1,257 @@
+# Package catalog (OPTIMIZER.md § Generic design; compat/README.md § Package catalog).
+# Amazon packages on Fire TV and Fire TV Edition sets.
+# One entry per package, shared by every device that has it. Categories:
+# telemetry | ads | extras (default), casting | smart-home | voice | streaming-apps (opt-in).
+# Compiled into rusttv (crates/rusttv-core/src/catalog.rs); a test keeps entries
+# unique, valid and off compat/protected.toml.
+#
+# Entries citing cleanyourtv are derived from cleanyourtv (https://github.com/Gathin23/cleanyourtv,
+# commit f9f0c53), MIT License, Copyright (c) 2026 Gathin. The licence text is in
+# licenses/cleanyourtv/LICENSE.
+
+schema_version = 1
+
+[[packages]]
+package = "com.amazon.dp.logger"
+category = "telemetry"
+what = "Fire TV device log upload"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 12 models"]
+
+[[packages]]
+package = "com.amazon.perfcollection"
+category = "telemetry"
+what = "Fire TV performance telemetry"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 11 models"]
+
+[[packages]]
+package = "com.amazon.perfc"
+category = "telemetry"
+what = "Fire TV performance telemetry"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 10 models"]
+
+[[packages]]
+package = "com.amazon.wirelessmetrics.service"
+category = "telemetry"
+what = "Uploads Wi-Fi metrics to Amazon"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 11 models"]
+
+[[packages]]
+package = "com.amazon.client.metrics.api"
+category = "telemetry"
+what = "Fire TV metrics client"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 8 models"]
+
+[[packages]]
+package = "com.amazon.device.telemetry.emitter"
+category = "telemetry"
+what = "Fire TV telemetry emitter"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "com.amazon.ceviche"
+category = "telemetry"
+what = "Fire TV data-collection pipelines"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.amazon.tv.acr"
+category = "telemetry"
+what = "Amazon automatic content recognition: what is on screen, HDMI included"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 10 models"]
+
+[[packages]]
+package = "com.amazon.wifilocker"
+category = "telemetry"
+what = "Saves the TV's Wi-Fi passwords to the Amazon cloud"
+side_effects = "Wi-Fi passwords are no longer shared with other Amazon devices"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "com.amazon.hybridadidservice"
+category = "ads"
+what = "Fire TV advertising ID service"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 9 models"]
+
+[[packages]]
+package = "com.amazon.sneakpeek"
+category = "ads"
+what = "Sponsored \"Sneak Peek\" autoplay previews on the home screen"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 9 models"]
+
+[[packages]]
+package = "com.amazon.kso.blackbird"
+category = "ads"
+what = "Home-screen ad sync and bidding: sponsored banner and rows"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 8 models"]
+
+[[packages]]
+package = "com.amazon.media.recommendations"
+category = "ads"
+what = "Sponsored and recommendation rows"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.amazon.tv.developer.dataservice"
+category = "ads"
+what = "Shares content-personalisation data with third-party apps"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.amazon.tv.easyupgrade"
+category = "ads"
+what = "\"Upgrade your Fire TV\" promotions"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "com.amazon.shoptv.client"
+category = "ads"
+what = "Amazon Shopping on TV"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 11 models"]
+
+[[packages]]
+package = "com.amazon.shoptv.firetv.client"
+category = "ads"
+what = "Amazon Shopping on TV"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "com.amazon.tv.democontent.provider"
+category = "extras"
+what = "Retail store demo videos"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "com.amazon.tmm.tutorial"
+category = "extras"
+what = "Remote tutorial"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 12 models"]
+
+[[packages]]
+package = "com.amazon.storm.lightning.tutorial"
+category = "extras"
+what = "Remote app tutorial"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 11 models"]
+
+[[packages]]
+package = "com.amazon.tv.releasenotes"
+category = "extras"
+what = "\"What's new\" release notes pop-ups"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "com.amazon.tv.earlyaccess"
+category = "extras"
+what = "Early-access preview programme stub"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.amazon.ods.kindleconnect"
+category = "casting"
+what = "\"Show on Fire TV\" from Echo devices and Fire tablets"
+side_effects = "showing things on the TV from an Echo or Fire tablet stops working"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.amazon.cast.sink"
+category = "casting"
+what = "Miracast screen-mirroring receiver"
+side_effects = "mirroring a phone or laptop screen to the TV stops working"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.amazon.tv.mattercohost"
+category = "smart-home"
+what = "Matter smart-home controller"
+side_effects = "the TV no longer controls Matter devices"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "com.amazon.smarthomemapviewapp"
+category = "smart-home"
+what = "Alexa smart-home dashboard (cameras, lights)"
+side_effects = "the smart-home dashboard stops opening"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.amazon.alexa.externalmediaplayer.fireos"
+category = "voice"
+what = "Alexa music playback"
+side_effects = "Alexa can't play music on the TV"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "com.amazon.tv.alexaalerts"
+category = "voice"
+what = "Alexa alarms, timers and reminders"
+side_effects = "Alexa alarms, timers and reminders don't show on the TV"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "com.amazon.aca"
+category = "voice"
+what = "Alexa hints and cues"
+side_effects = "Alexa suggestions stop showing"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.amazon.bueller.photos"
+category = "streaming-apps"
+what = "Amazon Photos"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 12 models"]
+
+[[packages]]
+package = "com.amazon.bueller.music"
+category = "streaming-apps"
+what = "Amazon Music"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 11 models"]
+
+[[packages]]
+package = "com.amazon.gamehub"
+category = "streaming-apps"
+what = "Amazon Luna / Games hub"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 11 models"]
+
+[[packages]]
+package = "com.amazon.minitv.android.app"
+category = "streaming-apps"
+what = "Amazon miniTV"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 9 models"]
+
+[[packages]]
+package = "com.amazon.tahoe"
+category = "streaming-apps"
+what = "Amazon Kids (FreeTime)"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 9 models"]
+
+[[packages]]
+package = "com.amazon.amazonvideo.livingroom"
+category = "streaming-apps"
+what = "Prime Video"
+side_effects = "Prime Video stops working, and the remote's Prime Video button with it"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 46 models"]

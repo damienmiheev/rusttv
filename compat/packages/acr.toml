@@ -1,0 +1,54 @@
+# Package catalog (OPTIMIZER.md § Generic design; compat/README.md § Package catalog).
+# Third-party automatic content recognition (ACR): identifies what is on screen.
+# One entry per package, shared by every device that has it. Categories:
+# telemetry | ads | extras (default), casting | smart-home | voice | streaming-apps (opt-in).
+# Compiled into rusttv (crates/rusttv-core/src/catalog.rs); a test keeps entries
+# unique, valid and off compat/protected.toml.
+#
+# Entries citing cleanyourtv are derived from cleanyourtv (https://github.com/Gathin23/cleanyourtv,
+# commit f9f0c53), MIT License, Copyright (c) 2026 Gathin. The licence text is in
+# licenses/cleanyourtv/LICENSE.
+
+schema_version = 1
+
+[[packages]]
+package = "tv.samba.ssm"
+category = "telemetry"
+what = "Samba TV / Samba Services Manager: automatic content recognition of what is on screen for ad targeting"
+side_effects = "reported to cause problems when disabled on some Sony TVs; test carefully"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 26 models"]
+
+[[packages]]
+package = "tv.samba.ssm.ui"
+category = "telemetry"
+what = "Samba TV opt-in and settings screens"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 13 models"]
+
+[[packages]]
+package = "tv.anoki.acr.anokiacroptin"
+category = "telemetry"
+what = "Anoki automatic content recognition: fingerprints what is on screen for ad targeting"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 10 models"]
+
+[[packages]]
+package = "tv.anoki.acr.controller"
+category = "telemetry"
+what = "Anoki automatic content recognition service; starts at boot"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "tv.alphonso.alphonso_eula"
+category = "telemetry"
+what = "Alphonso automatic content recognition and ad tracking; reads app usage"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "tv.inscape.tvclient.inscapeacr"
+category = "telemetry"
+what = "Inscape automatic content recognition: identifies what is on screen, HDMI included"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 1 model", "cleanyourtv tools/privacy.py"]

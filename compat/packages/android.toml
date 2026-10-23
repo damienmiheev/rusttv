@@ -1,0 +1,243 @@
+# Package catalog (OPTIMIZER.md § Generic design; compat/README.md § Package catalog).
+# AOSP and Google packages found on many Android TV / Google TV models.
+# One entry per package, shared by every device that has it. Categories:
+# telemetry | ads | extras (default), casting | smart-home | voice | streaming-apps (opt-in).
+# Compiled into rusttv (crates/rusttv-core/src/catalog.rs); a test keeps entries
+# unique, valid and off compat/protected.toml.
+#
+# Entries citing cleanyourtv are derived from cleanyourtv (https://github.com/Gathin23/cleanyourtv,
+# commit f9f0c53), MIT License, Copyright (c) 2026 Gathin. The licence text is in
+# licenses/cleanyourtv/LICENSE.
+
+schema_version = 1
+
+[[packages]]
+package = "com.google.android.partnersetup"
+category = "telemetry"
+what = "Google partner setup: partner referrer and RLZ data; privileged app"
+side_effects = "none expected"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 78 models"]
+
+[[packages]]
+package = "com.google.android.feedback"
+category = "telemetry"
+what = "Google feedback sender"
+side_effects = "none expected"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 188 models"]
+
+[[packages]]
+package = "com.android.tv.feedbackconsent"
+category = "telemetry"
+what = "Screen asking for consent to send feedback; runs as the system user"
+side_effects = "none expected"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 48 models"]
+
+[[packages]]
+package = "com.google.android.tv.bugreportsender"
+category = "telemetry"
+what = "Uploads bug reports to Google automatically"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 42 models"]
+
+[[packages]]
+package = "com.android.adservices.api"
+category = "ads"
+what = "Android ad services APIs"
+side_effects = "apps that ask for the ad APIs are told they are unavailable"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 36 models"]
+
+[[packages]]
+package = "com.android.ondevicepersonalization.services"
+category = "ads"
+what = "On-device personalisation service, used for ad personalisation"
+side_effects = "none expected"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 30 models"]
+
+[[packages]]
+package = "com.android.federatedcompute.services"
+category = "ads"
+what = "Federated compute service, used for ad personalisation"
+side_effects = "none expected"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 29 models"]
+
+[[packages]]
+package = "com.google.android.adservices.api"
+category = "ads"
+what = "Privacy Sandbox ad services (Google-signed build)"
+side_effects = "apps that ask for the ad APIs are told they are unavailable"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.google.android.ondevicepersonalization.services"
+category = "ads"
+what = "On-device ad personalisation (Google-signed build)"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.google.android.federatedcompute"
+category = "ads"
+what = "Federated learning for ad personalisation (Google-signed build)"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.google.android.ext.adservices.api"
+category = "ads"
+what = "Privacy Sandbox ad services extension (Google-signed build)"
+side_effects = "apps that ask for the ad APIs are told they are unavailable"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.google.android.tvrecommendations"
+category = "ads"
+what = "Feeds the recommendation and sponsored rows of the stock Android TV home screen"
+side_effects = "the stock home's recommendation rows go empty; on some models (Philips, OnePlus) its notification panel too; some firmware re-enables it at boot"
+sources = ["cleanyourtv examples, 101 models"]
+
+[[packages]]
+package = "com.google.android.leanbacklauncher.recommendations"
+category = "ads"
+what = "Recommendation service for the old Android TV home screen"
+side_effects = "its recommendation rows go empty"
+sources = ["cleanyourtv examples, 26 models"]
+
+[[packages]]
+package = "android.autoinstalls.config.google.gtvpai"
+category = "ads"
+what = "Play auto-installs: silently installs promoted partner apps"
+side_effects = "none reported; only read during setup"
+sources = ["cleanyourtv examples, 34 models"]
+
+[[packages]]
+package = "com.google.android.play.games"
+category = "extras"
+what = "Google Play Games; includes an ad SDK initialiser"
+side_effects = "Play Games features stop working"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 150 models"]
+
+[[packages]]
+package = "com.google.android.syncadapters.calendar"
+category = "extras"
+what = "Google Calendar sync"
+side_effects = "none expected"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 64 models"]
+
+[[packages]]
+package = "com.android.printspooler"
+category = "extras"
+what = "Print spooler, for printing from apps"
+side_effects = "none expected"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 67 models"]
+
+[[packages]]
+package = "com.google.android.onetimeinitializer"
+category = "extras"
+what = "One-time task that runs during first setup"
+side_effects = "none expected"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 37 models"]
+
+[[packages]]
+package = "com.google.android.syncadapters.contacts"
+category = "extras"
+what = "Google contacts sync"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "com.android.bips"
+category = "extras"
+what = "Default print service"
+side_effects = "printing from apps stops working"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "com.google.android.music"
+category = "extras"
+what = "Google Play Music, a discontinued service"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 13 models"]
+
+[[packages]]
+package = "com.google.android.tvtutorials"
+category = "extras"
+what = "Android TV first-run tutorials"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "com.android.smspush"
+category = "extras"
+what = "WAP push manager for SMS, unused on a TV"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "com.android.cts.ctsshim"
+category = "extras"
+what = "Android compatibility-test shim, not a user feature"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.android.cts.priv.ctsshim"
+category = "extras"
+what = "Android compatibility-test shim, not a user feature"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.google.android.apps.mediashell"
+category = "casting"
+what = "Chromecast built-in: receives casts from phones and computers"
+side_effects = "casting from phones and apps stops working; on some boxes Spotify Connect from a phone too"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 33 models"]
+
+[[packages]]
+package = "com.google.android.tv.assistant"
+category = "voice"
+what = "Google Assistant extras for TV (Assistant LED and demo service)"
+side_effects = "Assistant lights and extras stop working"
+sources = ["cleanyourtv examples, 22 models"]
+
+[[packages]]
+package = "com.google.android.speech.pumpkin"
+category = "voice"
+what = "Offline speech recognition used by voice search"
+side_effects = "the remote's mic button and in-app mic buttons may stop working"
+sources = ["cleanyourtv tools/privacy.py"]
+
+[[packages]]
+package = "com.google.android.youtube.tvmusic"
+category = "streaming-apps"
+what = "YouTube Music"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 94 models"]
+
+[[packages]]
+package = "com.google.android.youtube.tv"
+category = "streaming-apps"
+what = "YouTube"
+side_effects = "YouTube stops working, and the remote's YouTube button with it"
+sources = ["cleanyourtv examples, 13 models"]
+
+[[packages]]
+package = "com.google.android.youtube.tvkids"
+category = "streaming-apps"
+what = "YouTube Kids"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "com.google.android.youtube.tvunplugged"
+category = "streaming-apps"
+what = "YouTube TV"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "com.google.android.videos"
+category = "streaming-apps"
+what = "Google TV app: Play Movies store, purchases and watchlist"
+side_effects = "bought and rented films can't be played from it, and the Google TV home screen loses recommendations from it"
+sources = ["cleanyourtv examples, 110 models"]

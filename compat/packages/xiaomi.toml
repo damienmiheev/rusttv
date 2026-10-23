@@ -1,0 +1,250 @@
+# Package catalog (OPTIMIZER.md § Generic design; compat/README.md § Package catalog).
+# Xiaomi packages (Mi TV, Mi Box).
+# One entry per package, shared by every device that has it. Categories:
+# telemetry | ads | extras (default), casting | smart-home | voice | streaming-apps (opt-in).
+# Compiled into rusttv (crates/rusttv-core/src/catalog.rs); a test keeps entries
+# unique, valid and off compat/protected.toml.
+#
+# Entries citing cleanyourtv are derived from cleanyourtv (https://github.com/Gathin23/cleanyourtv,
+# commit f9f0c53), MIT License, Copyright (c) 2026 Gathin. The licence text is in
+# licenses/cleanyourtv/LICENSE.
+
+schema_version = 1
+
+[[packages]]
+package = "com.miui.tv.analytics"
+category = "telemetry"
+what = "Xiaomi TV analytics: reads logs and app usage"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 30 models"]
+
+[[packages]]
+package = "com.miui.analytics"
+category = "telemetry"
+what = "Xiaomi OneTrack analytics"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.xiaomi.statistic"
+category = "telemetry"
+what = "Xiaomi usage statistics upload"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 24 models"]
+
+[[packages]]
+package = "com.xiaomi.tvqs"
+category = "telemetry"
+what = "Xiaomi quality system: uploads crash and performance reports"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "com.xiaomi.tvqs.overseas.y24"
+category = "telemetry"
+what = "Xiaomi quality-statistics uploader"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.xiaomi.mitv.csi"
+category = "telemetry"
+what = "Xiaomi after-sales assistant: uploads satisfaction surveys"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.xm.webcontent"
+category = "ads"
+what = "Xiaomi promotion pages; also fetches screensaver ads"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 31 models"]
+
+[[packages]]
+package = "com.mitv.tvhome.michannel"
+category = "ads"
+what = "Mi Channel content rows on the home screen"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 17 models"]
+
+[[packages]]
+package = "com.mitv.tvhome.mitvplus"
+category = "ads"
+what = "Mi TV+ sponsored channels and promo banners"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 14 models"]
+
+[[packages]]
+package = "com.mitv.tvhome.oemtab"
+category = "ads"
+what = "Xiaomi ad row / \"Mi Home\" tab injected into the Google TV home screen"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "com.duokan.videodaily"
+category = "ads"
+what = "Short-video promotions with the Xiaomi ad SDK"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.xiaomi.floatingframe"
+category = "ads"
+what = "Floating promotion overlay service"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 8 models"]
+
+[[packages]]
+package = "com.xiaomi.mitv.tvpush.tvpushservice"
+category = "ads"
+what = "Pushes ads and notifications"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.mitv.cloudcontrol"
+category = "ads"
+what = "Xiaomi cloud control: remote configuration that can push apps"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "com.mitv.shoplugin"
+category = "ads"
+what = "TV shopping plugin (Taobao)"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 8 models"]
+
+[[packages]]
+package = "android.autoinstalls.config.xiaomi.amelie"
+category = "ads"
+what = "Play auto-installs of Xiaomi partner apps"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 9 models"]
+
+[[packages]]
+package = "android.autoinstalls.config.xioami.mibox3"
+category = "ads"
+what = "Play auto-installs of Xiaomi partner apps"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "android.autoinstalls.config.xioami.dangal"
+category = "ads"
+what = "Play auto-installs of Xiaomi partner apps"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.xiaomi.mitv.handbook"
+category = "extras"
+what = "Xiaomi on-screen user manual"
+side_effects = "the built-in manual stops opening"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "com.xiaomi.mitv.manualhelp"
+category = "extras"
+what = "Xiaomi on-screen user manual"
+side_effects = "the built-in manual stops opening"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.xiaomo.tv.milegal"
+category = "extras"
+what = "Static legal and privacy text screens"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "com.xiaomi.tweather"
+category = "extras"
+what = "Xiaomi weather"
+side_effects = "weather on the screensaver stops updating"
+sources = ["cleanyourtv examples, 5 models"]
+
+[[packages]]
+package = "com.xiaomi.mitv.calendar"
+category = "extras"
+what = "Xiaomi calendar"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.xiaomi.mitv.health"
+category = "extras"
+what = "MiHealth"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.xiaomi.mitv.smartshare"
+category = "casting"
+what = "Xiaomi screen share (Miracast and MiPlay receiver)"
+side_effects = "screen mirroring to the TV stops working"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "com.xiaomi.wfdsinkhelperservice"
+category = "casting"
+what = "Miracast receiver helper"
+side_effects = "Miracast screen mirroring stops working"
+sources = ["cleanyourtv examples, 7 models"]
+
+[[packages]]
+package = "com.mitv.milinkservice"
+category = "casting"
+what = "Mi Cast (MiLink) receiver"
+side_effects = "Mi Cast stops working; Chromecast is separate"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.xiaomi.mi_connect_service"
+category = "casting"
+what = "Mi Connect phone link"
+side_effects = "the Mi Connect phone link stops working"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.xiaomi.smarthome.tv"
+category = "smart-home"
+what = "Mi Home on the TV"
+side_effects = "long-pressing Home no longer opens Mi Home"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.xiaomi.mitv.smartpanel"
+category = "smart-home"
+what = "Xiaomi smart-home panel (long-press Menu)"
+side_effects = "the smart-home panel stops opening"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "com.xiaomi.amazon.alexa"
+category = "voice"
+what = "Xiaomi Alexa bridge"
+side_effects = "Alexa can't control the TV"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.xiaomi.voicecontrol"
+category = "voice"
+what = "Xiao Ai voice control"
+side_effects = "Xiao Ai voice commands stop working"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.xiaomi.wakeupservice"
+category = "voice"
+what = "Xiao Ai wake-word listener"
+side_effects = "the wake word stops working"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.xiaomi.mico.mqtt.service.application.tv"
+category = "voice"
+what = "Xiao Ai speaker link"
+side_effects = "Xiao Ai speakers can't control the TV"
+sources = ["cleanyourtv examples, 3 models"]

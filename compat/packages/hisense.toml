@@ -1,0 +1,145 @@
+# Package catalog (OPTIMIZER.md § Generic design; compat/README.md § Package catalog).
+# Hisense, Vu and VIDAA packages.
+# One entry per package, shared by every device that has it. Categories:
+# telemetry | ads | extras (default), casting | smart-home | voice | streaming-apps (opt-in).
+# Compiled into rusttv (crates/rusttv-core/src/catalog.rs); a test keeps entries
+# unique, valid and off compat/protected.toml.
+#
+# Entries citing cleanyourtv are derived from cleanyourtv (https://github.com/Gathin23/cleanyourtv,
+# commit f9f0c53), MIT License, Copyright (c) 2026 Gathin. The licence text is in
+# licenses/cleanyourtv/LICENSE.
+
+schema_version = 1
+
+[[packages]]
+package = "com.hisense.evservice"
+category = "telemetry"
+what = "Hisense automatic content recognition (ACR); watches HDMI too"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.vt.tv.evservice"
+category = "telemetry"
+what = "Viewing-data (ACR) service"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.hisense.logupload"
+category = "telemetry"
+what = "Hisense log uploader"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.hisense.platformreport"
+category = "telemetry"
+what = "Hisense usage and telemetry reporting"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.hisense.service.message"
+category = "ads"
+what = "Hisense push messages (HiMsgService)"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 6 models"]
+
+[[packages]]
+package = "com.hisense.business.ad"
+category = "ads"
+what = "Hisense ad SDK with shopping SDKs"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.hisense.storemode"
+category = "extras"
+what = "Retail store demo mode"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 4 models"]
+
+[[packages]]
+package = "com.hisense.demonstrate"
+category = "extras"
+what = "Sound and picture demo reels"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.vt.storemode"
+category = "extras"
+what = "Shop demo mode"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.hisense.electronictutorial"
+category = "extras"
+what = "Hisense on-screen manual"
+side_effects = "the built-in manual stops opening"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.hisense.hotelmenu"
+category = "extras"
+what = "Hotel mode menu"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.hisense.ar.baike"
+category = "extras"
+what = "AR encyclopedia app"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.hisense.tv.fitmirror"
+category = "extras"
+what = "Fitness mirror app"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.hisense.tv.foodmanage"
+category = "extras"
+what = "Recipe app"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.hisense.tv.videoconference"
+category = "extras"
+what = "Video-conferencing app"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.hisense.tv.weather"
+category = "extras"
+what = "Weather card"
+side_effects = "the weather card stops updating"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.vision.aibook"
+category = "extras"
+what = "AI picture-book app"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.jamdeo.calendar"
+category = "extras"
+what = "Hisense calendar"
+side_effects = "none reported"
+sources = ["cleanyourtv examples, 3 models"]
+
+[[packages]]
+package = "com.vt.alexa"
+category = "voice"
+what = "Hisense Alexa built-in"
+side_effects = "Alexa can't control the TV"
+sources = ["cleanyourtv examples, 3 models"]
