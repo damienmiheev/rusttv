@@ -19,12 +19,12 @@ Likelihood / Impact: H / M / L. "Validation" is how we will find out; "Remaining
 | 13 | Browser DRM limitations (future) | H | M | Servo has no Widevine | Native apps for protected playback | Phase 7 research | — |
 | 14 | Casting protocol compatibility (future) | H | M | AirPlay/Miracast are closed or fragmented | DLNA first | Phase 7 | — |
 | 15 | Third-party licensing | M | M | GPL prior art (FLauncher, UAD-ng); Slint attribution requirement | Clean-room; `cargo deny` license check; attribution on About screen | CI | Slint terms may change |
-| 16 | Supply-chain attack | M | H | Suspicious popularity metrics seen (RESEARCH §4) | Minimal deps, `cargo deny`, lockfile, no unvetted tools | CI, review | Transitive deps |
+| 16 | Supply-chain attack | M | H | Suspicious popularity metrics seen (RESEARCH §4); `skia-bindings` downloads a prebuilt Skia binary at build time | Minimal deps, `cargo deny`, lockfile, no unvetted tools | CI, review | Transitive deps |
 | 17 | LLM-generated defects | H | M | Owner new to Rust; AI-assisted | CLAUDE.md rules, tests first, clippy `-D warnings`, independent review, small PRs | CI + review | Subtle logic bugs |
 | 18 | Maintenance burden | M | M | Ambitious ecosystem vision | MVP scope only; defer ecosystem apps | Roadmap gates | — |
 | 19 | Few contributors | M | M | Typical for new OSS | Easy compat/benchmark contributions; good-first-issues | Track contributions | — |
 | 20 | Scope creep | H | H | Vision lists 12+ future apps, AI, cloud, B2B | Phase gates with exit criteria (ROADMAP.md) | Review at each phase | — |
-| 22 | Launcher APK much larger than Java launchers | H | M | Spike APK 12.4 MB vs ~0.5 MB | Investigate what the 11.8 MB library contains (fonts, renderer); size budget after measurement | Size report in CI | Store/sideload friction, install time on slow TVs |
+| 22 | Launcher APK much larger than Java launchers | H | L | Spike: 11.5 MB APK after tuning; ~10 MB is Skia, required by Slint's Android backend. Stock Google TV launcher is 44.0 MB, a minimal Java launcher ~0.5 MB | Size-tuned release profile; track size in CI; revisit software renderer only if TVs show a problem | Size report in CI; install time on the Philips TV | Low-storage TVs |
 | 21 | Many TVs use 32-bit userspace | H | M | Common on low-cost SoCs | Build `armeabi-v7a` too; CLI reports ABI list | Compat data | Rust/Skia on armv7 perf |
 
 ## Top 10 technical uncertainties

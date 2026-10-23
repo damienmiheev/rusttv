@@ -87,12 +87,12 @@ Prototype in `spikes/slint-launcher/` on the Google TV emulator (API 34, arm64).
 
 | Question | Answer |
 |---|---|
-| Slint renders on Android TV | **Yes** (FemtoVG; no Skia needed) |
+| Slint renders on Android TV | **Yes**, with Skia (Slint's Android backend always uses Skia) |
 | D-pad reaches Slint | **Yes**: arrows map to `Key.*Arrow`, OK to `Key.Return`; BACK (U+F748) must be consumed |
 | Kotlin bridge in the same APK | **Yes**, via a Kotlin `NativeActivity` subclass (no GameActivity); load app classes through the activity's class loader |
 | List, show banners, launch | **Yes**, with `<queries>` and coarse JNI calls |
 | Memory / start-up (emulator, rough) | Idle PSS 43.9 MB vs 60.9 MB stock; cold start median 189 ms vs 318 ms stock. Not publishable; must be measured on the TV |
-| APK size | **12.4 MB** (11.8 MB native library), about 25x a minimal Java launcher. Not yet investigated |
+| APK size | **11.5 MB** after tuning (native library 10.4 MB; Skia is the floor at ~10 MB). Stock Google TV launcher APK: 44.0 MB. Skia binary is downloaded from GitHub at build time (supply-chain item) |
 | Become Home on Google TV | **No, not by preference.** The stock launcher's HOME filter has priority 2; Android picks higher priority before preferred activities, and third-party apps are capped at 0. Role and preferred-activity changes succeed but are ignored |
 
 **Verdict: go for Rust + Slint as the UI technology.** All technical questions came back positive. The blocking issue is a product one: on Google TV, a third-party launcher can't take over the Home button without (a) disabling the stock launcher, which SECURITY.md forbids, (b) an accessibility-service Home override (Projectivy's approach; needs a sensitive permission, broke after a Google update), or (c) being an app the user opens or maps to a remote button. **Owner decision (2026-10-23): (a), as an opt-in "Home takeover" with strict safeguards (SECURITY.md, ARCHITECTURE D12).**

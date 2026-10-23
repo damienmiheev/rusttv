@@ -140,5 +140,5 @@ Dev/CI tools: `cargo-deny` (covers RustSec advisories + licenses, so `cargo-audi
 | D8 | 2026-10-23 | No free-form shell in the API | Allow `shell(&str)` | Never for agent paths |
 | D9 | 2026-10-23 | Slint under Royalty-free 2.0 with attribution | GPL / commercial | Slint's terms change |
 | D10 | 2026-10-23 | Sync core, no tokio in M1 | tokio from day one | MCP or parallel device ops need it |
-| D11 | 2026-10-23 | Launcher activity: Kotlin subclass of `NativeActivity`, FemtoVG renderer (spike) | GameActivity; Skia | Text input/IME or rendering quality needs GameActivity or Skia |
+| D11 | 2026-10-23 | Launcher activity: Kotlin subclass of `NativeActivity`; Slint's Android backend (Skia renderer, ~10 MB) with a size-tuned release profile (spike) | GameActivity; custom platform with Slint's software renderer (no Skia) | Text input/IME needs GameActivity, or APK size becomes a real problem on TVs |
 | D12 | 2026-10-23 | Home on Google TV: opt-in Home takeover that disables (never uninstalls) the stock launcher, with automatic rollback and `rusttv launcher restore` | App + remote-button mapping; accessibility-service Home override | Google allows third-party HOME priority, or takeover proves unreliable on tested firmware |
