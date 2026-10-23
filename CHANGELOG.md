@@ -22,7 +22,12 @@ First public release (ROADMAP Phase 6).
   `extra`), with live protected-package checks. Only packages tested on the
   model are planned unless `--allow-untested`, which marks each one UNTESTED
   (OPTIMIZER.md, SECURITY.md).
-- Stable `--json` output, schema `rusttv.v5`, and documented error codes (CLI.md).
+- `optimize apply reduced-animations` and `optimize restore
+  [privacy|reduced-animations]`: put the three animation scales at 0.5 and
+  back, leaving any setting changed since as it is. Refused on models whose
+  profile doesn't record it as tested unless `--allow-untested`; no model
+  does yet (OPTIMIZER.md § 1–6).
+- Stable `--json` output, schema `rusttv.v6`, and documented error codes (CLI.md).
 
 ### MCP server (`rusttv-mcp`)
 

@@ -43,7 +43,7 @@ rusttv/
 └── *.md
 ```
 
-`compat/optimizer/` does not exist yet; it is created when the animation profiles are built. The Phase 4 optimizer design (new typed `SetSetting`/`GetSetting` commands and `SettingIs` check on the existing plan engine) is in [OPTIMIZER.md](OPTIMIZER.md).
+`compat/optimizer/` holds the optimizer profiles (so far `reduced-animations.toml`), compiled into the binary by `crates/rusttv-core/src/optimizer.rs`. The Phase 4 optimizer (typed `SetSetting`/`GetSetting` commands and the `SettingIs` check on the existing plan engine) is described in [OPTIMIZER.md](OPTIMIZER.md).
 
 ## rusttv-core
 
@@ -131,7 +131,7 @@ Rust: trait Platform { list_apps(), launch(), take_apps_changed() }
 
 - Built on the official Rust SDK `rmcp` (D13). `RustTvServer<A: Adb>` is generic so tests use `FakeAdb`; the binary uses `SystemAdb`.
 - The core stays sync (D10): each tool call runs the core function on tokio's blocking pool, holding a mutex around the `Adb`, so calls run one at a time and `Adb` need not be `Sync`.
-- Results are the CLI's `rusttv.v5` envelope as `structuredContent`; core errors are tool errors (`isError`) with the CLI's error codes, bad arguments are rejected before any device access.
+- Results are the CLI's `rusttv.v6` envelope as `structuredContent`; core errors are tool errors (`isError`) with the CLI's error codes, bad arguments are rejected before any device access.
 - No tool runs above R0 and none approves anything. Plan tools only return a dry run and the `rusttv` command a person runs to apply it; they read journals from the CLI's state directory (`rusttv_core::journals_dir`) and write none (SECURITY.md § AI agents).
 
 ## Initial dependencies (Milestone 1)
@@ -166,3 +166,4 @@ Dev/CI tools: `cargo-deny` (covers RustSec advisories + licenses, so `cargo-audi
 | D13 | 2026-10-23 | MCP server on the official Rust SDK `rmcp` with tokio confined to `rusttv-mcp`; core stays sync and tools run it on the blocking pool | Hand-written sync JSON-RPC over stdio on `serde_json`; `rust-mcp-sdk` | `rmcp` major versions break us often, or tokio leaks into the core |
 | D14 | 2026-10-23 | Home takeover also disables any other system package with a Home activity that outranks RustTV, when the device profile lists it (`disable_home_packages`; on the Philips 65OLED818 the setup wizard `setupwraith`, whose `RecoveryActivity` has priority 1) | Making RustTV the Home role holder (tested on the Philips: Home still opened the stock launcher, because Android picks a strictly higher-priority Home activity without consulting the preferred one); disabling only `RecoveryActivity` (refused on Android 14: the adb shell may not change a single activity of a system app); an accessibility-service Home override; parking takeover | Disabling the extra package breaks something the owner needs, or it turns itself back on |
 | D15 | 2026-10-23 | Vendor Slint 1.18.1's `i-slint-renderer-skia` and `i-slint-backend-android-activity` with a patch that reuses one GL context and Skia context across Android windows (`third_party/`, `[patch.crates-io]`); report upstream | Living with a ~1.6 MB driver leak per return to Home; restarting the process periodically; waiting for an upstream fix | Slint ships a fix (then drop the vendored copy), or a Slint upgrade is needed |
+| D16 | 2026-10-23 | Optimizer setting steps carry their original (`SetSetting { key, to, from }`), so the inverse and journaled original come from the command alone; `plan::restore` (not rollback) skips a setting that is neither `to` nor `from` right before its undo and returns those "left as is" notes | A separate per-setting original store in the journal; overwriting drifted settings on restore | A setting kind needs an original that can't be validated as a typed value, or the owner wants restore to overwrite drift |

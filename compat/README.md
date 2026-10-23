@@ -123,11 +123,27 @@ Schema 3 profiles (a `[privacy]` section with `tested = true` and
 (SECURITY.md § Protected package policy, rule 3). It is compiled into
 `rusttv` too; add to it freely, and remove an entry only with a reason.
 
+`optimizer/` holds the optimizer profiles (OPTIMIZER.md § 3), compiled in.
+A device profile (schema 5) records one as tested on its model with
+
+```toml
+[[optimizer]]
+profile = "reduced-animations"
+version = 1          # the optimizer profile's version
+tested = true        # `optimize apply` and `optimize restore` both worked here
+evidence = "benchmarks/raw/<device>/<date>/reduced-animations/report.md"  # optional
+```
+
+Set `tested` only after apply (with `--allow-untested`) and restore worked
+on the device; add `evidence` only with a committed report measured as in
+BENCHMARK_PLAN.md (only then does `optimize analyze` suggest it).
+
 ## Format
 
 The Rust types in `crates/rusttv-core/src/compat.rs` (profiles) and
-`catalog.rs` (catalog) are the schema: unknown fields are rejected, and CI
-loads every file in `devices/` and `packages/`. Both formats are versioned
+`catalog.rs` (catalog) and `optimizer.rs` (optimizer profiles) are the
+schema: unknown fields are rejected, and CI loads every file in `devices/`,
+`packages/` and `optimizer/`. Both formats are versioned
 with `schema_version`.
 
 ## Privacy
