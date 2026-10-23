@@ -277,6 +277,9 @@ pub enum OptimizerState {
     NotTested,
     /// Every key already has the profile's value.
     AlreadySet,
+    /// A setting the status depends on can't be read now (see
+    /// [`SettingStatus::read_error`]).
+    Unknown,
 }
 
 /// One optimizer profile in `rusttv optimize analyze`.
@@ -307,8 +310,12 @@ pub struct SettingStatus {
     pub key: SettingKey,
     /// The value the profile writes.
     pub value: SettingValue,
-    /// What `settings get global <key>` prints now; `None` for `null` (unset).
+    /// The value now; `None` when unset (`settings get` prints `null`) or
+    /// when it can't be read (then `read_error` says why).
     pub current: Option<String>,
+    /// Why the value now is unknown: adb failed, or `settings get` printed
+    /// neither `null` nor a valid value. `None` when it was read.
+    pub read_error: Option<String>,
 }
 
 /// The device profile's entry for this version of `profile`, if any.
@@ -339,6 +346,10 @@ fn same_family(a: &str, b: &str) -> bool {
 /// Each bundled optimizer profile and where it stands on the device whose
 /// `getprop` is `properties`, matched to `device`. Reads the settings (R0)
 /// and the restorable journals in `journals`.
+///
+/// A setting that can't be read (adb fails, or the output is neither `null`
+/// nor a valid value) doesn't fail the analysis: that key is reported with
+/// `read_error`, and a profile whose status depends on it is `unknown`.
 pub(crate) fn optimizer_statuses(
     adb: &dyn Adb,
     serial: &str,
@@ -349,16 +360,17 @@ pub(crate) fn optimizer_statuses(
     let fingerprint = properties
         .get("ro.build.fingerprint")
         .map_or("", String::as_str);
-    let mut current = HashMap::new();
+    let mut readings: HashMap<SettingKey, Result<SettingState, String>> = HashMap::new();
     for key in SettingKey::ALL {
-        let output = adb.run(serial, &DeviceCommand::GetSetting(key))?;
-        current.insert(key, output.trim().to_owned());
+        let reading = adb
+            .run(serial, &DeviceCommand::GetSetting(key))
+            .map_err(|error| error.to_string())
+            .and_then(|output| {
+                SettingState::from_output(&output).map_err(|error| error.to_string())
+            });
+        readings.insert(key, reading);
     }
-    let state_of = |key: SettingKey| {
-        current
-            .get(&key)
-            .and_then(|output| SettingState::from_output(output).ok())
-    };
+    let state_of = |key: SettingKey| readings.get(&key).and_then(|reading| reading.as_ref().ok());
     let journals = optimizer_journals(journals)?.journals;
 
     let mut statuses = Vec::new();
@@ -375,13 +387,18 @@ pub(crate) fn optimizer_statuses(
                 && same_family(&journal.fingerprint, fingerprint)
         });
         let (status, journal) = if let Some((path, journal)) = applied {
-            let drifted = journal.steps.iter().any(|step| match &step.command {
-                DeviceCommand::SetSetting { key, to, .. } => {
-                    step.status.may_have_run() && state_of(*key).as_ref() != Some(to)
-                }
-                _ => false,
-            });
-            let status = if drifted {
+            let set: Vec<(SettingKey, &SettingState)> = journal
+                .steps
+                .iter()
+                .filter(|step| step.status.may_have_run())
+                .filter_map(|step| match &step.command {
+                    DeviceCommand::SetSetting { key, to, .. } => Some((*key, to)),
+                    _ => None,
+                })
+                .collect();
+            let status = if set.iter().any(|(key, _)| state_of(*key).is_none()) {
+                OptimizerState::Unknown
+            } else if set.iter().any(|(key, to)| state_of(*key) != Some(*to)) {
                 OptimizerState::Drifted
             } else {
                 OptimizerState::Applied
@@ -389,8 +406,14 @@ pub(crate) fn optimizer_statuses(
             (status, Some(path))
         } else if let Some((path, _)) = stale {
             (OptimizerState::Stale, Some(path))
+        } else if profile
+            .settings
+            .iter()
+            .any(|setting| state_of(setting.key).is_none())
+        {
+            (OptimizerState::Unknown, None)
         } else if profile.settings.iter().all(|setting| {
-            state_of(setting.key) == Some(SettingState::Value(setting.value.clone()))
+            state_of(setting.key) == Some(&SettingState::Value(setting.value.clone()))
         }) {
             (OptimizerState::AlreadySet, None)
         } else {
@@ -409,13 +432,21 @@ pub(crate) fn optimizer_statuses(
             settings: profile
                 .settings
                 .iter()
-                .map(|setting| SettingStatus {
-                    key: setting.key,
-                    value: setting.value.clone(),
-                    current: current
-                        .get(&setting.key)
-                        .filter(|output| *output != "null")
-                        .cloned(),
+                .map(|setting| {
+                    let reading = readings.get(&setting.key);
+                    SettingStatus {
+                        key: setting.key,
+                        value: setting.value.clone(),
+                        current: match reading {
+                            Some(Ok(SettingState::Value(value))) => Some(value.to_string()),
+                            _ => None,
+                        },
+                        read_error: match reading {
+                            Some(Err(error)) => Some(error.clone()),
+                            Some(Ok(_)) => None,
+                            None => Some("not read".to_owned()),
+                        },
+                    }
                 })
                 .collect(),
             profile: profile.name,
@@ -528,6 +559,26 @@ pub fn optimizer_plan(
             path.display()
         )));
     }
+    // An unreadable file may be an unrestored optimizer journal: refuse
+    // rather than guess (as `launcher uninstall`, SECURITY.md rule 6).
+    if !unreadable.is_empty() {
+        let paths: Vec<String> = unreadable
+            .iter()
+            .map(|file| file.path.display().to_string())
+            .collect();
+        let reasons: Vec<String> = unreadable
+            .iter()
+            .map(|file| file.error.to_string())
+            .collect();
+        return Err(PlanError::precondition(format!(
+            "can't read journal file(s) {}, and any of them may be an unrestored optimizer \
+             change. Check each file; if one still needs restoring, run `rusttv optimize restore \
+             --journal <file>` (after fixing it). Then move the file out of {}. Reason: {}",
+            paths.join(", "),
+            journals.display(),
+            reasons.join("; ")
+        )));
+    }
 
     let home = adb.run(serial, &DeviceCommand::HomeActivity)?;
     let home: Component = parse_home_activity(&home)
@@ -568,14 +619,6 @@ pub fn optimizer_plan(
         .map(|(key, to, from)| format!("{key}: {from} → {to} ({}).", effect(*key)))
         .collect();
     notes.extend(skipped);
-    notes.extend(unreadable.iter().map(|file| {
-        format!(
-            "Warning: {} can't be read ({}); if it is an optimizer journal that still needs \
-             restoring, restore it before applying this.",
-            file.path.display(),
-            file.error
-        )
-    }));
     notes.push(if tested {
         format!("Tested on this model and firmware family, according to {tested_on}.")
     } else {
@@ -1592,5 +1635,64 @@ mod tests {
             status(&tv(HALF, HALF, HALF), &untested).status,
             OptimizerState::Stale
         );
+    }
+
+    #[test]
+    fn a_setting_that_cant_be_read_is_unknown_without_failing_the_analysis() {
+        let dir = Dir::new("statuses-unknown");
+        let properties = parse_properties(GETPROP);
+        // Transition prints junk; animator has no response (adb fails).
+        let adb = FakeAdb::new()
+            .respond(DeviceCommand::GetSetting(WINDOW), ONE)
+            .respond(DeviceCommand::GetSetting(TRANSITION), INVALID);
+        let statuses = optimizer_statuses(&adb, SERIAL, &properties, None, &dir.0).unwrap();
+        let status = &statuses[0];
+        assert_eq!(status.status, OptimizerState::Unknown);
+        assert_eq!(status.settings[0].current.as_deref(), Some("1.0"));
+        assert_eq!(status.settings[0].read_error, None);
+        assert_eq!(status.settings[1].current, None);
+        assert!(
+            status.settings[1]
+                .read_error
+                .as_deref()
+                .is_some_and(|error| error.contains("fast")),
+            "{status:?}"
+        );
+        assert_eq!(status.settings[2].current, None);
+        assert!(status.settings[2].read_error.is_some(), "{status:?}");
+
+        // Applied, with a set key unreadable now: unknown too, journal named.
+        let path = dir
+            .0
+            .join(journal_file_name(1, "optimize-reduced-animations-v1"));
+        FileJournal::new(&path).save(&applied_journal()).unwrap();
+        let statuses = optimizer_statuses(&adb, SERIAL, &properties, None, &dir.0).unwrap();
+        assert_eq!(statuses[0].status, OptimizerState::Unknown);
+        assert_eq!(statuses[0].journal, Some(path.display().to_string()));
+
+        // Planning stays strict.
+        let error = plan_on(&tv(ONE, INVALID, ONE), &Dir::new("strict")).unwrap_err();
+        assert_eq!(error.code(), "PRECONDITION_FAILED");
+    }
+
+    #[test]
+    fn an_unreadable_journal_file_refuses_the_plan() {
+        let dir = Dir::new("unreadable");
+        fs::create_dir_all(&dir.0).unwrap();
+        let corrupt = dir
+            .0
+            .join("9999999999999-optimize-reduced-animations-v1.toml");
+        fs::write(&corrupt, "not a journal").unwrap();
+        let error = plan_on(&tv(ONE, NULL, ONE), &dir).unwrap_err();
+        assert_eq!(error.code(), "PRECONDITION_FAILED");
+        let message = error.to_string();
+        assert!(
+            message.contains(&corrupt.display().to_string()),
+            "{message}"
+        );
+        assert!(message.contains("Then move the file out of"), "{message}");
+        // Moved out: planned again.
+        fs::remove_file(&corrupt).unwrap();
+        assert!(plan_on(&tv(ONE, NULL, ONE), &dir).is_ok());
     }
 }

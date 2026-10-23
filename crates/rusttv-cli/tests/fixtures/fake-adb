@@ -83,6 +83,11 @@ philips:shell\ settings\ get\ global\ transition_animation_scale)
     cat "$optimizer/settings-get-null.txt"
     ;;
 philips:shell\ settings\ get\ global\ animator_duration_scale)
+    # FAKE_ADB_SETTINGS_FAIL makes this read fail like a broken `settings`.
+    if [ -n "$FAKE_ADB_SETTINGS_FAIL" ]; then
+        echo "cmd: Can't find service: settings" >&2
+        exit 1
+    fi
     cat "$optimizer/settings-get-1.0.txt"
     ;;
 emulator:devices\ -l)

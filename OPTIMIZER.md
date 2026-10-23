@@ -53,6 +53,13 @@ to running apps (`WindowManagerService.java` `SettingsObserver`,
 `dispatchNewAnimatorScaleLocked`, Android 14) **[verified]**. No reboot.
 Values are clamped by `WindowManager.fixScale` **[verified]**.
 
+Device fact (owner's Philips 65OLED818, read-only `settings get global`,
+2026-10-23): `animator_duration_scale` reads `0.6` by default, while
+`window_animation_scale` and `transition_animation_scale` read `1.0`. So the
+vendor already shortens animator animations there; `0.5` changes that key
+far less than the other two, and restore puts `0.6` back (the journaled
+original), not `1.0`.
+
 Why `0.5` and not `0`: `0` makes animator-driven UI (spinners, focus
 animations) jump or vanish in some apps **[unverified, common report]**.
 `0.5` is the conservative choice; `0` is an owner decision (Open question 1).
@@ -112,7 +119,13 @@ value and current value (`null` = unset). One status was added:
 suggested; § 3). Precedence: a restorable journal on this fingerprint
 (`applied`/`drifted`), then one on another fingerprint of the same firmware
 family (`stale`), then `already_set`, then `suggested`/`available`/
-`not_tested`. Not built: `ro.config.low_ram`,
+`not_tested`. *Owner decision 2026-10-23:* a key that can't be read (adb
+fails, or `settings get` prints neither `null` nor a valid value) doesn't
+fail the analysis: the key gets `current: null` and a `read_error`, and the
+profile's status is `unknown` when it depends on that key (any key without
+a journal; a key the journal set, with one; `stale` needs no key). The
+privacy part is listed as always. `apply` stays strict: such a key refuses
+the plan. Not built: `ro.config.low_ram`,
 `ro.surface_flinger.supports_background_blur` and `/proc/meminfo` in the
 report, and takeover journals in it.
 
@@ -285,9 +298,17 @@ returns the "left as is" notes). A key that reads as no valid value is not
 treated as drift: the undo runs and its verification reports a failure.
 "One at a time" covers restorable `optimize-*` journals of the same
 **firmware family** (not only the same fingerprint, so a `stale` one blocks
-too; the message gives `--journal <file>`); unreadable journal files are a
-warning note in the plan, not a refusal. The general `rusttv restore` is not
-built.
+too; the message gives `--journal <file>`). *Known limitation (owner,
+2026-10-23: keep it):* journals record no per-unit identity (the Philips'
+wireless-debug serial changes on every reboot), so a second TV of the same
+model and firmware family managed from the same computer is blocked too
+until the first one's journal is restored. *Owner decision 2026-10-23:* a
+`.toml` file in the journal directory that can't be read refuses the plan
+(`PRECONDITION_FAILED`, naming each file and the reason), as for `launcher
+uninstall` (SECURITY.md § Home takeover rule 6): it may be an unrestored
+optimizer journal; the person checks it, restores it if needed (`optimize
+restore --journal <file>` after fixing it), then moves it out of the
+directory. The general `rusttv restore` is not built.
 
 ### Firmware changes
 
@@ -360,6 +381,9 @@ not done.
 
 Exit criteria (ROADMAP Phase 4): steps 1–3 pass; recovery docs (manual
 path: Developer options → animation scales, or `adb shell settings delete
+global <key>` / `settings put global <key> <original>`) written; owner
+approval before any device run.
+
 ## Privacy profiles (R3): telemetry and ads
 
 *Owner decision 2026-10-23: build this on the engine.* A privacy profile
@@ -531,8 +555,6 @@ and choices file (on every call; no path parameter); `privacy_plan` takes
 `only` and `allow_untested`, never applies, and returns the CLI command
 (with `--allow-untested` when set). No tool takes a package name, applies or
 restores.
-
-applies, and returns the CLI command.
 
 ## Decisions (owner, 2026-10-23)
 

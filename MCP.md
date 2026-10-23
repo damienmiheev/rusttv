@@ -103,7 +103,7 @@ during a Home takeover, `NO_JOURNAL`, `INVALID_APK`, ...).
   `--allow-untested` if given.
 - `optimize_analyze` also reports every optimizer profile (`optimizer`: its
   status and the current value of each of its settings) and so reads the
-  journals in the CLI's state directory.
+  journals in the CLI's state directory. A setting it can't read is reported (`read_error`, status `unknown`), never an error. `optimize_plan` refuses while a journal file can't be read.
 - `optimize_plan` plans a bundled optimizer profile, named from a closed list
   (`reduced-animations`); no tool takes a setting key or value.
   `OPTIMIZE_NOT_TESTED` unless the device's compiled-in compat profile records

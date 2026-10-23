@@ -1340,9 +1340,9 @@ fn optimize_analyze_reports_the_optimizer_profile_and_current_settings() {
     assert_eq!(
         profile["settings"],
         serde_json::json!([
-            {"key": "window_animation_scale", "value": "0.5", "current": "1.0"},
-            {"key": "transition_animation_scale", "value": "0.5", "current": null},
-            {"key": "animator_duration_scale", "value": "0.5", "current": "1.0"},
+            {"key": "window_animation_scale", "value": "0.5", "current": "1.0", "read_error": null},
+            {"key": "transition_animation_scale", "value": "0.5", "current": null, "read_error": null},
+            {"key": "animator_duration_scale", "value": "0.5", "current": "1.0", "read_error": null},
         ])
     );
 
@@ -1353,7 +1353,7 @@ fn optimize_analyze_reports_the_optimizer_profile_and_current_settings() {
         "{stdout}"
     );
     assert!(
-        stdout.contains("transition_animation_scale   now unset  profile 0.5"),
+        stdout.contains("transition_animation_scale   now unset   profile 0.5"),
         "{stdout}"
     );
 }
@@ -1695,5 +1695,94 @@ fn optimize_restore_of_an_optimizer_journal_puts_back_only_what_rusttv_left() {
             .starts_with("Skipped animator_duration_scale: it is 1.0 now, not the 0.5 RustTV set")),
         "{notes:?}"
     );
+    std::fs::remove_dir_all(state).unwrap();
+}
+
+#[test]
+fn optimize_analyze_reports_a_setting_it_cant_read_as_unknown_and_still_lists_privacy() {
+    let fake_adb = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/fake-adb");
+    let analyze = |json: bool| {
+        let mut args = vec!["optimize", "analyze"];
+        if json {
+            args.push("--json");
+        }
+        rusttv()
+            .args(&args)
+            .env("RUSTTV_ADB", fake_adb)
+            .env("FAKE_ADB_SCENARIO", "philips")
+            .env("FAKE_ADB_SETTINGS_FAIL", "1")
+            .output()
+            .unwrap()
+    };
+
+    let output = analyze(true);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    assert_eq!(data["packages"].as_array().unwrap().len(), 15);
+    let profile = &data["optimizer"][0];
+    assert_eq!(profile["status"], "unknown");
+    let animator = &profile["settings"][2];
+    assert_eq!(animator["key"], "animator_duration_scale");
+    assert_eq!(animator["current"], Value::Null);
+    assert!(
+        animator["read_error"]
+            .as_str()
+            .unwrap()
+            .contains("Can't find service: settings"),
+        "{animator}"
+    );
+    assert_eq!(profile["settings"][0]["read_error"], Value::Null);
+
+    let stdout = String::from_utf8(analyze(false).stdout).unwrap();
+    assert!(
+        stdout.contains("animator_duration_scale      now unknown profile 0.5"),
+        "{stdout}"
+    );
+
+    // `apply` stays strict.
+    let output = rusttv()
+        .args([
+            "optimize",
+            "apply",
+            "reduced-animations",
+            "--allow-untested",
+            "--dry-run",
+            "--json",
+        ])
+        .env("RUSTTV_ADB", fake_adb)
+        .env("FAKE_ADB_SCENARIO", "philips")
+        .env("FAKE_ADB_SETTINGS_FAIL", "1")
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(json_stdout(&output)["error"]["code"], "COMMAND_FAILED");
+}
+
+#[test]
+fn optimize_apply_reduced_animations_is_refused_while_a_journal_file_is_unreadable() {
+    let state = state_dir("animations-unreadable");
+    let corrupt = state.join("journals/1761220000009-optimize-reduced-animations-v1.toml");
+    std::fs::write(&corrupt, "not a journal").unwrap();
+    let output = rusttv_with_state(
+        "philips",
+        &state,
+        &[
+            "optimize",
+            "apply",
+            "reduced-animations",
+            "--allow-untested",
+            "--dry-run",
+            "--json",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let json = json_stdout(&output);
+    assert_eq!(json["error"]["code"], "PRECONDITION_FAILED");
+    let message = json["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains(&corrupt.display().to_string()),
+        "{message}"
+    );
+    assert!(message.contains("move the file out of"), "{message}");
     std::fs::remove_dir_all(state).unwrap();
 }
