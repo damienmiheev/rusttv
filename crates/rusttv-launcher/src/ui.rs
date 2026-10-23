@@ -69,6 +69,18 @@ const BACKDROP_BASE_TONE: f64 = 12.0;
 /// tone, colourful but dark enough for the white title.
 const BACKDROP_GLOW_TONE: f64 = 30.0;
 
+/// Lines of the notices passed to the window at a time: more than fit, the
+/// rest is clipped (long lines wrap). Only a slice is laid out, never all
+/// ~10,000 lines.
+const NOTICES_SENT_LINES: usize = 40;
+
+/// About how many lines the notices panel shows at once; scrolling stops when
+/// the last ones are in view.
+const NOTICES_SCREEN_LINES: usize = 32;
+
+/// Lines one Up or Down press scrolls the notices; a held key repeats it.
+const NOTICES_STEP: usize = 5;
+
 /// Settings for [`run`].
 #[derive(Debug, Clone, Default)]
 pub struct RunOptions {
@@ -287,6 +299,8 @@ struct Controller {
     /// Apps whose artwork is still [`Artwork::Later`], in tile order.
     pending_artwork: VecDeque<String>,
     artwork_timer: Timer,
+    /// The licence notices while the About page is open; read when it opens.
+    notices: Option<Notices>,
 }
 
 impl Controller {
@@ -332,6 +346,7 @@ impl Controller {
                 pause_timer: Timer::default(),
                 pending_artwork: VecDeque::new(),
                 artwork_timer: Timer::default(),
+                notices: None,
             })
         });
         *controller.borrow().options.lifecycle.0.borrow_mut() = Rc::downgrade(&controller);
@@ -469,10 +484,27 @@ impl Controller {
                 self.show_toast(format!("Couldn't open {label}"));
             }
             Some(Effect::SaveOrder) => self.save_order(),
-            Some(Effect::OpenAbout) | None => {}
+            Some(Effect::OpenAbout) => self.open_notices(),
+            None => {}
+        }
+        if let Some(notices) = &mut self.notices {
+            match input {
+                Input::Up => notices.scroll_up(),
+                Input::Down => notices.scroll_down(),
+                _ => {}
+            }
         }
         self.schedule_tick();
         self.render();
+    }
+
+    /// Reads the notices for the About page; a failure is shown in their place.
+    fn open_notices(&mut self) {
+        let text = self.platform.notices().unwrap_or_else(|error| {
+            log::warn!("loading the licence notices failed: {error}");
+            format!("Couldn't load the licence notices: {error}")
+        });
+        self.notices = Some(Notices::new(text));
     }
 
     /// Writes the order file. A failure only costs the order on the next start,
@@ -587,6 +619,15 @@ impl Controller {
         }
         window.set_mode(mode_value(self.home.state()));
         window.set_pressed(self.pressed);
+        if self.home.state() != State::About && self.notices.take().is_some() {
+            // Closed: free the text until the page opens again.
+            window.set_notices("".into());
+        }
+        if let Some(notices) = &self.notices {
+            window.set_notices(notices.visible().into());
+            window.set_notices_position(notices.position());
+            window.set_notices_fraction(notices.fraction());
+        }
 
         if self.home.focused() != self.hero.as_ref() {
             let me = self.me.clone();
@@ -717,6 +758,65 @@ impl AppView {
     }
 }
 
+/// The licence notices and how far they are scrolled.
+struct Notices {
+    text: String,
+    /// Byte offset where each line starts.
+    starts: Vec<usize>,
+    /// The line at the top of the panel.
+    first: usize,
+}
+
+impl Notices {
+    fn new(text: String) -> Self {
+        let starts = std::iter::once(0)
+            .chain(text.match_indices('\n').map(|(index, _)| index + 1))
+            .collect();
+        Self {
+            text,
+            starts,
+            first: 0,
+        }
+    }
+
+    /// The top line when the last lines are in view.
+    fn last_first(&self) -> usize {
+        self.starts.len().saturating_sub(NOTICES_SCREEN_LINES)
+    }
+
+    fn scroll_up(&mut self) {
+        self.first = self.first.saturating_sub(NOTICES_STEP);
+    }
+
+    fn scroll_down(&mut self) {
+        self.first = (self.first + NOTICES_STEP).min(self.last_first());
+    }
+
+    /// The lines from the top of the panel on, [`NOTICES_SENT_LINES`] of them.
+    fn visible(&self) -> &str {
+        let start = self.starts.get(self.first).copied().unwrap_or(0);
+        let end = self
+            .starts
+            .get(self.first + NOTICES_SENT_LINES)
+            .copied()
+            .unwrap_or(self.text.len());
+        &self.text[start..end]
+    }
+
+    /// How far down the panel is scrolled, 0..1.
+    fn position(&self) -> f32 {
+        match self.last_first() {
+            0 => 0.0,
+            last => self.first as f32 / last as f32,
+        }
+    }
+
+    /// The share of all lines the panel shows, 0..1, for the scroll bar.
+    fn fraction(&self) -> f32 {
+        (NOTICES_SCREEN_LINES as f32 / self.starts.len() as f32).min(1.0)
+    }
+}
+
 /// The value of the `Mode` global in `home.slint` for a model state.
 fn mode_value(state: State) -> i32 {
     match state {
@@ -787,11 +887,12 @@ mod tests {
 
     use crate::platform::FakePlatform;
 
-    /// A [`FakePlatform`] the test can still inspect, counting list reads.
+    /// A [`FakePlatform`] the test can still inspect, counting list and notices reads.
     #[derive(Clone, Default)]
     struct Shared {
         platform: Rc<RefCell<FakePlatform>>,
         lists: Rc<Cell<usize>>,
+        notices: Rc<Cell<usize>>,
     }
 
     impl Platform for Shared {
@@ -811,6 +912,11 @@ mod tests {
         fn artwork(&self, id: &str) -> Result<Artwork, PlatformError> {
             self.platform.borrow().artwork(id)
         }
+
+        fn notices(&self) -> Result<String, PlatformError> {
+            self.notices.set(self.notices.get() + 1);
+            self.platform.borrow().notices()
+        }
     }
 
     struct Screen {
@@ -821,6 +927,8 @@ mod tests {
     }
 
     const OK: &str = "\n";
+    const UP: &str = "\u{F700}";
+    const DOWN: &str = "\u{F701}";
     const RIGHT: &str = "\u{F703}";
     const BACK: &str = "\u{F748}";
 
@@ -1019,5 +1127,118 @@ mod tests {
         let screen = screen(None);
         assert!(screen.window.invoke_key(BACK.into(), true, false));
         assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+    }
+
+    /// Focuses About (after A, B, C) and opens it.
+    fn open_about(screen: &Screen) {
+        for _ in 0..3 {
+            screen.tap(RIGHT);
+        }
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::About));
+    }
+
+    #[test]
+    fn about_reads_the_notices_only_when_it_opens() {
+        let screen = screen(None);
+        assert_eq!(screen.shared.notices.get(), 0);
+        assert_eq!(screen.window.get_notices(), "");
+
+        open_about(&screen);
+        assert_eq!(screen.shared.notices.get(), 1);
+        let shown = screen.window.get_notices();
+        assert!(shown.starts_with("THIRD-PARTY SOFTWARE NOTICES (stand-in)"));
+        // A slice, not the whole text.
+        assert_eq!(shown.lines().count(), NOTICES_SENT_LINES);
+        assert_eq!(screen.window.get_notices_position(), 0.0);
+        assert!(screen.window.get_notices_fraction() < 1.0);
+    }
+
+    #[test]
+    fn up_and_down_scroll_the_notices_within_their_ends() {
+        let screen = screen(None);
+        open_about(&screen);
+        let top = screen.window.get_notices();
+
+        screen.tap(UP);
+        assert_eq!(screen.window.get_notices(), top);
+
+        screen.tap(DOWN);
+        let shown = screen.window.get_notices();
+        assert_eq!(shown.lines().next(), top.lines().nth(NOTICES_STEP));
+        assert!(screen.window.get_notices_position() > 0.0);
+        assert_eq!(screen.window.get_mode(), mode_value(State::About));
+
+        screen.tap(UP);
+        assert_eq!(screen.window.get_notices(), top);
+
+        // Held Down stops with the last line in view.
+        for _ in 0..100 {
+            screen.tap(DOWN);
+        }
+        assert_eq!(screen.window.get_notices_position(), 1.0);
+        let shown = screen.window.get_notices();
+        assert!(shown.ends_with("Stand-in notice line 200."));
+        assert_eq!(shown.lines().count(), NOTICES_SCREEN_LINES);
+    }
+
+    #[test]
+    fn back_closes_about_and_frees_the_notices() {
+        let screen = screen(None);
+        open_about(&screen);
+        screen.tap(DOWN);
+
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert_eq!(screen.window.get_notices(), "");
+
+        // Opening again reads them again, from the top.
+        screen.tap(OK);
+        assert_eq!(screen.shared.notices.get(), 2);
+        assert!(
+            screen
+                .window
+                .get_notices()
+                .starts_with("THIRD-PARTY SOFTWARE NOTICES")
+        );
+    }
+
+    #[test]
+    fn notices_that_fail_to_load_say_so() {
+        struct Broken;
+        impl Platform for Broken {
+            fn list_apps(&self) -> Result<Vec<AppEntry>, PlatformError> {
+                Ok(Vec::new())
+            }
+            fn launch(&mut self, id: &str) -> Result<(), PlatformError> {
+                Err(PlatformError::not_launchable(id))
+            }
+            fn take_apps_changed(&mut self) -> Result<bool, PlatformError> {
+                Ok(false)
+            }
+            fn artwork(&self, id: &str) -> Result<Artwork, PlatformError> {
+                Err(PlatformError::not_launchable(id))
+            }
+            fn notices(&self) -> Result<String, PlatformError> {
+                Err(PlatformError::call("load notices", "asset missing"))
+            }
+        }
+        thread_local!(static BACKEND: () = i_slint_backend_testing::init_no_event_loop());
+        BACKEND.with(|_| {});
+        let (window, _controller) = start(Broken, RunOptions::default(), real_clock()).unwrap();
+        // Only About is left; OK opens it.
+        window
+            .window()
+            .dispatch_event(WindowEvent::KeyPressed { text: OK.into() });
+        window
+            .window()
+            .dispatch_event(WindowEvent::KeyReleased { text: OK.into() });
+        assert_eq!(window.get_mode(), mode_value(State::About));
+        assert!(
+            window
+                .get_notices()
+                .starts_with("Couldn't load the licence notices:")
+        );
+        assert_eq!(window.get_notices_fraction(), 1.0);
     }
 }

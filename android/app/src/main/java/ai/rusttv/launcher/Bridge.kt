@@ -85,6 +85,13 @@ object Bridge {
         }
     }
 
+    /** The third-party licence notices packed into the APK by Gradle (app/build.gradle.kts). */
+    @JvmStatic
+    fun notices(context: Context): String =
+        context.assets.open("licenses/THIRD_PARTY_NOTICES.txt").use {
+            it.readBytes().toString(Charsets.UTF_8)
+        }
+
     private fun pixels(drawable: Drawable, width: Int, height: Int): IntArray {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         drawable.setBounds(0, 0, width, height)

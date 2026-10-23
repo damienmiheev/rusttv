@@ -283,6 +283,11 @@ export component HomeWindow inherits Window {
     in property <bool> hero-a-front: true;
     in property <string> toast;
     in property <string> version;
+    // A slice of the licence notices from the line at the top of the panel
+    // (ui.rs `Notices`), how far they are scrolled (0..1) and the share shown.
+    in property <string> notices;
+    in property <float> notices-position;
+    in property <float> notices-fraction: 1;
     // Key text, pressed (false = released), repeat. Returns whether it was used.
     callback key(string, bool, bool) -> bool;
 
@@ -358,13 +363,15 @@ export component HomeWindow inherits Window {
         }
     }
 
+    // About: who made RustTV on the left, the licence notices on the right.
     if mode == Mode.about: Rectangle {
         background: Theme.bg;
+
         VerticalLayout {
-            padding-left: 90 * u;
-            padding-right: 90 * u;
+            x: 90 * u;
+            width: 560 * u;
             padding-top: 120 * u;
-            padding-bottom: 60 * u;
+            padding-bottom: 90 * u;
             spacing: 24 * u;
             alignment: start;
             Text {
@@ -377,24 +384,93 @@ export component HomeWindow inherits Window {
                 text: "Version " + version + " · MIT OR Apache-2.0";
                 font-size: 29 * u;
                 color: Theme.text-dim;
+                wrap: word-wrap;
             }
             Text {
-                text: "Built with Slint under the Slint Royalty-free License 2.0.";
-                font-size: 29 * u;
-                color: Theme.text-dim;
-            }
-            Text {
-                text: "Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0.\nSource and licence notices: github.com/damienmiheev/rusttv";
+                text: "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0.";
                 font-size: 25 * u;
                 color: Theme.text-dim;
+                wrap: word-wrap;
+            }
+            Text {
+                text: "Source: github.com/damienmiheev/rusttv";
+                font-size: 25 * u;
+                color: Theme.text-dim;
+                wrap: word-wrap;
             }
             AboutSlint {
-                height: 300 * u;
+                height: 240 * u;
             }
             Text {
-                text: "Press Back to return.";
+                text: "Up and Down scroll the notices. Back returns.";
                 font-size: 25 * u;
                 color: Theme.text-dim;
+                wrap: word-wrap;
+            }
+        }
+
+        panel := Rectangle {
+            x: 720 * u;
+            y: 90 * u;
+            width: 1110 * u;
+            height: 900 * u;
+            border-radius: 16 * u;
+            background: Theme.surface;
+            clip: true;
+
+            Text {
+                x: 48 * u;
+                y: 36 * u;
+                text: "Third-party notices";
+                font-size: 29 * u;
+                font-weight: 500;
+                color: Theme.text;
+            }
+            body := Rectangle {
+                x: 48 * u;
+                y: 96 * u;
+                width: parent.width - 120 * u;
+                height: parent.height - self.y - 36 * u;
+                clip: true;
+                Text {
+                    y: 0;
+                    width: parent.width;
+                    height: parent.height;
+                    text: notices;
+                    font-size: 22 * u;
+                    color: Theme.text-dim;
+                    wrap: word-wrap;
+                    vertical-alignment: top;
+                }
+                // Soft edges, so cut-off lines fade instead of ending sharply.
+                Rectangle {
+                    y: 0;
+                    height: 24 * u;
+                    opacity: notices-position > 0 ? 1 : 0;
+                    background: @linear-gradient(180deg, Theme.surface 0%, #1C1F2600 100%);
+                }
+                Rectangle {
+                    y: parent.height - self.height;
+                    height: 72 * u;
+                    background: @linear-gradient(180deg, #1C1F2600 0%, Theme.surface 100%);
+                }
+            }
+            // Scroll bar: where the panel is in all the notices.
+            if notices-fraction < 1: Rectangle {
+                x: parent.width - 36 * u;
+                y: body.y;
+                width: 4 * u;
+                height: body.height;
+                border-radius: self.width / 2;
+                background: #FFFFFF14;
+                Rectangle {
+                    property <length> thumb: max(parent.height * notices-fraction, 48 * u);
+                    y: (parent.height - self.thumb) * notices-position;
+                    height: self.thumb;
+                    border-radius: parent.border-radius;
+                    background: #FFFFFF66;
+                    animate y { duration: 120ms; easing: ease-out; }
+                }
             }
         }
     }
