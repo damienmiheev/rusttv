@@ -18,7 +18,7 @@ RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + 
 ## Principles
 
 - **Rootless.** No root, no bootloader unlocking, no firmware flashing, no system-partition changes.
-- **Safety first.** The stock launcher is never disabled. Every change is planned, shown as a dry run, approved by a human, recorded, and reversible where possible. See [SECURITY.md](SECURITY.md).
+- **Safety first.** The stock launcher is never uninstalled, and only disabled if you opt in to making RustTV your Home screen (with one-command restore). Every change is planned, shown as a dry run, approved by a human, recorded, and reversible where possible. See [SECURITY.md](SECURITY.md).
 - **Measured, not claimed.** No "X% faster" without reproducible data. See [BENCHMARK_PLAN.md](BENCHMARK_PLAN.md).
 - **Local-first, no telemetry.** Nothing leaves your machine unless you export it yourself.
 - **Agent-native, LLM-independent.** Everything is scriptable with stable `--json` output; no AI model is needed for normal use.

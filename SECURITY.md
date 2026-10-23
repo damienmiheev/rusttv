@@ -9,7 +9,7 @@ Until a dedicated address exists, report privately via GitHub Security Advisorie
 RustTV never:
 
 - uses root, flashes firmware, unlocks bootloaders, or modifies system partitions;
-- disables, uninstalls, or replaces the package that provides the stock launcher;
+- uninstalls the stock launcher, or disables it outside the opt-in [Home takeover](#home-takeover-opt-in) flow;
 - removes packages (`pm uninstall --user 0` is not supported in the MVP);
 - executes free-form shell strings — device access only through typed `DeviceCommand`s;
 - lets an AI agent apply a change without a human approving the specific plan;
@@ -25,7 +25,7 @@ Every `DeviceCommand` declares one:
 | R1 Transient | Changes runtime state only; reboot or app restart undoes it | `am start`, `am force-stop`, `input keyevent` | CLI; MCP for allowlisted targets |
 | R2 Setting | Persistent, trivially reversible setting | `settings put global animator_duration_scale 0.5`, set default home | Only via an approved plan |
 | R3 Package state | Enable/disable an app for user 0 | `pm disable-user --user 0` | Only via an approved plan, Phase 4+, known-device profile only |
-| R4 Forbidden | Not implementable | uninstall, anything touching the stock launcher package, system partition writes | Nobody |
+| R4 Forbidden | Not implementable | uninstall, stock-launcher changes outside Home takeover, system partition writes | Nobody |
 
 Milestone 1 contains only R0 commands; a unit test enforces this.
 
@@ -56,12 +56,26 @@ Plans and journals live in a local state directory (`~/.local/state/rusttv/` on 
 
 | Scenario | Design response | Residual risk |
 |---|---|---|
-| RustTV launcher crashes on boot | Never disable the stock launcher, so Android offers it; document "Settings → Apps → RustTV → Clear defaults" and `adb uninstall ai.rusttv.launcher` | Some firmware may loop; user can still uninstall via ADB |
+| RustTV launcher crashes on boot | Without Home takeover the stock launcher still owns Home. With it: `rusttv launcher restore` (re-enables the stock launcher over ADB); manual path documented for Settings → Apps → System apps → enable | Some firmware may loop; user can still uninstall via ADB |
 | ADB connection lost mid-apply | Journal shows the last completed step; `restore` resumes when reconnected | If Wi-Fi ADB is disabled by a reset, USB or manual settings needed |
 | Device reboots mid-apply | Same as above; R2/R3 states persist predictably | — |
 | Firmware update re-enables/changes packages | `optimize analyze` detects fingerprint change and marks plan stale | Behavior of new firmware is unknown until tested |
 | Network ADB unavailable | All TV-side functionality (launcher) works without it | — |
 | Restore fails | Print exact manual commands and Settings paths per step | **Recovery is never guaranteed**; we say so in docs and CLI output |
+
+## Home takeover (opt-in)
+
+*Owner decision 2026-10-23 (ARCHITECTURE D12).* On Google TV the stock launcher declares a higher HOME priority than any third-party app can (RESEARCH §8), so RustTV can only become the Home screen if the stock launcher is disabled. This is the **only** permitted change to the stock launcher, and it is R3 with these extra rules:
+
+1. **Opt-in only.** Never part of an optimization profile, never suggested by default; a separate command (`rusttv launcher takeover`) with typed confirmation. MCP cannot request it.
+2. **Known devices only.** Offered only when the device's compat profile names its stock launcher package and records a successful takeover and restore on that firmware family.
+3. **Preconditions.** RustTV launcher installed, launchable, and verified drawing frames; ADB connected; the stock launcher package is the current HOME resolver.
+4. **Disable, never uninstall.** `pm disable-user --user 0 <stock launcher>` only; original state recorded in the journal first.
+5. **Verify or roll back automatically.** After disabling, HOME must resolve to RustTV and RustTV must come to the foreground on a HOME key event within a timeout; otherwise re-enable the stock launcher immediately.
+6. **Restore is one command.** `rusttv launcher restore` re-enables the stock launcher; `rusttv launcher uninstall` restores *before* removing RustTV, so the TV is never left with only Android's fallback Home.
+7. **Documented manual recovery** in the user docs, for when ADB is unavailable (Settings → Apps → show system apps → enable).
+
+Residual risk: firmware updates may re-enable the stock launcher or change its package; `optimize analyze` must detect and report this. Recovery is never guaranteed.
 
 ## AI agents
 

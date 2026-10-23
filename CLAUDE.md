@@ -5,7 +5,7 @@ These rules apply to every change in this repo. Details live in the linked docs;
 ## Safety (non-negotiable — see SECURITY.md)
 
 - Never root, flash, unlock bootloaders, or touch system partitions.
-- Never disable, uninstall, or replace the stock launcher's package.
+- Never uninstall the stock launcher. Disabling it is allowed only through the opt-in Home takeover flow in SECURITY.md, never in any other code path.
 - Never add a code path that runs an arbitrary/free-form ADB shell string. All device commands go through the typed command layer in `rusttv-core`.
 - Every modifying operation follows plan → dry-run → user approval → record original state → apply step-by-step → verify. No exceptions for "small" changes.
 - Never connect to a physical device, install software, or run reverse-engineering tools unless the human explicitly asked in this session.

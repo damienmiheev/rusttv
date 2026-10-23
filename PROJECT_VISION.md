@@ -49,7 +49,7 @@ Technical decisions are logged in ARCHITECTURE.md.
 
 ## Success looks like
 
-- A user can install the launcher next to the stock one, use it daily, and remove it with one uninstall — nothing else changes on their TV.
+- A user can install the launcher next to the stock one and use it daily. If they opt in to making it their Home screen, one command restores the stock launcher, and removing RustTV restores it automatically.
 - Benchmarks published in the repo show where RustTV is faster, where it is not, and how it was measured.
 - A contributor can add a device profile with a single TOML file and a CI check.
 
