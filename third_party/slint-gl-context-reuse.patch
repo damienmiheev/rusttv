@@ -1,0 +1,131 @@
+--- i-slint-renderer-skia-1.18.1/opengl_surface.rs	2006-07-24 04:21:28
++++ i-slint-renderer-skia-1.18.1/opengl_surface.rs	2026-10-23 19:29:51
+@@ -47,6 +47,20 @@
+             );
+         }
+     }
++}
++
++/// The GL context and Skia context of a dropped [`OpenGLSurface`], kept for the
++/// next window on this thread. Creating a new context for every window leaks
++/// driver memory on some GPUs (Mali: ~1.6 MB per window on Android, where the
++/// window is destroyed and recreated each time the app leaves the screen).
++struct ParkedContext {
++    context: glutin::context::NotCurrentContext,
++    gr_context: skia_safe::gpu::DirectContext,
++    fb_info: skia_safe::gpu::gl::FramebufferInfo,
++}
++
++thread_local! {
++    static PARKED_CONTEXT: RefCell<Option<ParkedContext>> = const { RefCell::new(None) };
+ }
+ 
+ /// This surface type renders into the given window with OpenGL, using glutin and glow libraries.
+@@ -237,6 +251,10 @@
+         let display_handle = display_handle
+             .display_handle()
+             .map_err(|e| format!("error obtaining display handle for skia opengl renderer: {e}"))?;
++
++        if let Some(parked) = PARKED_CONTEXT.with(|slot| slot.borrow_mut().take()) {
++            return Self::from_parked(parked, window_handle, width, height);
++        }
+ 
+         let (current_glutin_context, glutin_surface) = Self::init_glutin(
+             window_handle,
+@@ -305,6 +323,58 @@
+             surface,
+             gr_context: RefCell::new(gr_context),
+             glutin_context: GlutinContext::new(current_glutin_context),
++            glutin_surface,
++        })
++    }
++
++    /// A surface for a new window that reuses a parked GL and Skia context.
++    fn from_parked(
++        parked: ParkedContext,
++        window_handle: raw_window_handle::WindowHandle<'_>,
++        width: NonZeroU32,
++        height: NonZeroU32,
++    ) -> Result<Self, PlatformError> {
++        let ParkedContext { context, mut gr_context, fb_info } = parked;
++        let config = context.config();
++        let attrs = SurfaceAttributesBuilder::<WindowSurface>::new().build(
++            window_handle.as_raw(),
++            width,
++            height,
++        );
++        let glutin_surface = unsafe {
++            config
++                .display()
++                .create_window_surface(&config, &attrs)
++                .map_err(|e| format!("Error creating OpenGL window surface: {e}"))?
++        };
++        let context = context.make_current(&glutin_surface).map_err(
++            |glutin_error: glutin::error::Error| -> PlatformError {
++                format!("Skia Renderer: Failed to make reused OpenGL context current: {glutin_error}")
++                    .into()
++            },
++        )?;
++        glutin_surface
++            .set_swap_interval(
++                &context,
++                glutin::surface::SwapInterval::Wait(NonZeroU32::new(1).unwrap()),
++            )
++            .ok();
++        glutin_surface.resize(&context, width, height);
++        // The GL state Skia tracks belongs to the previous window's surface.
++        gr_context.reset(None);
++        let surface = Self::create_internal_surface(
++            fb_info,
++            &context,
++            &mut gr_context,
++            width.get() as i32,
++            height.get() as i32,
++        )?
++        .into();
++        Ok(Self {
++            fb_info,
++            surface,
++            gr_context: RefCell::new(gr_context),
++            glutin_context: GlutinContext::new(context),
+             glutin_surface,
+         })
+     }
+@@ -526,6 +596,24 @@
+                 "Skia OpenGL Renderer warning: Failed to make context current for destruction - considering context abandoned."
+             );
+             self.gr_context.borrow_mut().abandon();
++            return;
+         }
++        // Free the window's render target while the context is current, then
++        // park the contexts for the next window instead of destroying them.
++        if let Some(placeholder) = skia_safe::surfaces::raster_n32_premul((1, 1)) {
++            *self.surface.borrow_mut() = placeholder;
++        }
++        let mut gr_context = self.gr_context.borrow().clone();
++        gr_context.flush_and_submit();
++        if let Some(context) = self.glutin_context.0.take() {
++            match context.make_not_current() {
++                Ok(context) => PARKED_CONTEXT.with(|slot| {
++                    *slot.borrow_mut() = Some(ParkedContext { context, gr_context, fb_info: self.fb_info });
++                }),
++                Err(e) => i_slint_core::debug_log!(
++                    "Skia OpenGL Renderer: Failed to make context not current: {e}"
++                ),
++            }
++        }
+     }
+ }
+--- i-slint-backend-android-activity-1.18.1/androidwindowadapter.rs	2006-07-24 04:21:28
++++ i-slint-backend-android-activity-1.18.1/androidwindowadapter.rs	2026-10-23 19:29:51
+@@ -237,6 +237,10 @@
+                         .unwrap_or_else(|e| print_jni_error(&self.app, e));
+                 }
+             }
++            // The window is still valid while this event is handled: release the
++            // GL surface and context now, so Skia can free its GPU objects instead
++            // of abandoning them on the next InitWindow.
++            PollEvent::Main(MainEvent::TerminateWindow { .. }) => self.renderer.suspend()?,
+             PollEvent::Main(
+                 MainEvent::WindowResized { .. } | MainEvent::ContentRectChanged { .. },
+             ) => self.resize()?,

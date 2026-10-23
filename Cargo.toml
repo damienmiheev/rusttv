@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# Patched upstream crates, not ours to lint (third_party/README.md).
+exclude = ["third_party"]
 
 [workspace.package]
 version = "0.0.0"
@@ -65,3 +67,10 @@ inherits = "release"
 lto = "fat"
 opt-level = "z"
 panic = "abort"
+
+# Slint 1.18.1 with the GL context reused across Android windows, which stops
+# a ~1.6 MB driver leak each time the launcher leaves the screen and comes back
+# (third_party/README.md). Remove once Slint ships a fix.
+[patch.crates-io]
+i-slint-backend-android-activity = { path = "third_party/i-slint-backend-android-activity-1.18.1" }
+i-slint-renderer-skia = { path = "third_party/i-slint-renderer-skia-1.18.1" }

@@ -29,10 +29,16 @@ Slint 1.18.1's Android backend creates a new OpenGL surface, context and Skia
 `TerminateWindow` (while the window is still valid) reduced the growth only
 slightly (+16 MB instead of +18.5 MB over 10 cycles), so the leak is in the
 per-context GL state that is created again each time, not only in the late
-teardown. Not fixed yet.
+teardown.
 
-Impact as Home: every return to Home from an app is one cycle, so the
-launcher grows ~1.6 MB per app exit until Android's low-memory killer stops
-it (it then restarts fresh, which costs a cold start).
+**Fixed** by reusing one GL context and Skia `DirectContext` across windows
+(patched Slint 1.18.1 crates in `third_party/`, see its README): after the
+fix, 20 more cycles left native heap at 31.1 → 31.3 MB and PSS at
+66.8 → 67.1 MB; the launcher draws normally after each return, and a cold
+start still settles at ~65.8 MB by 15 s.
+
+Impact as Home (before the fix): every return to Home from an app is one
+cycle, so the launcher grew ~1.6 MB per app exit until Android's low-memory
+killer stopped it (it then restarts fresh, which costs a cold start).
 
 No identifying data: measurements of RustTV only.

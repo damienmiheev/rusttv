@@ -10,6 +10,12 @@ export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$SDK/ndk/30.0.16248370}"
 # cargo-ndk sets ANDROID_PLATFORM=26, which makes Slint's build script look
 # for the API 26 SDK platform; point it at the installed android.jar instead.
 export ANDROID_JAR="${ANDROID_JAR:-$SDK/platforms/android-34/android.jar}"
+# Slint's build script dexes its Java helper with build-tools 34, which fails
+# under JDK 21 (slint-ui/slint#4973). On macOS, pick JDK 17 if JAVA_HOME is unset.
+if [ -z "${JAVA_HOME:-}" ] && [ -x /usr/libexec/java_home ]; then
+    JAVA_HOME="$(/usr/libexec/java_home -v 17 2>/dev/null || true)"
+    [ -n "$JAVA_HOME" ] && export JAVA_HOME
+fi
 
 # Slint's Android renderer links a prebuilt Skia that skia-bindings would
 # download unchecked at build time. Fetch one archive per ABI here instead,
