@@ -36,7 +36,7 @@ Small PRs, in order:
 Launcher:
 
 - Builds an APK in CI for `arm64-v8a`, `armeabi-v7a`, `x86_64`.
-- Installs alongside the stock launcher, which stays untouched unless the user opts in to Home takeover (SECURITY.md); takeover and restore verified on the Philips TV before release.
+- Installs alongside the stock launcher, which stays untouched unless the user opts in to Home takeover (SECURITY.md); takeover and restore verified on the Philips TV before release. Still open: `rusttv launcher uninstall` (restores first, SECURITY.md § Home takeover rule 6) and restore without a journal.
 - Shows every app the stock launcher shows (LEANBACK_LAUNCHER), with banners/icons.
 - Every tile reachable by D-pad; DPAD_CENTER launches; Home returns to RustTV when it is the default.
 - Works offline; survives a 24 h soak with zero crashes/ANRs on the Philips TV.

@@ -11,17 +11,22 @@
 //! in a plan. Steps above R1 must have an inverse ([`DeviceCommand::inverse`]).
 
 use std::fmt;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
 use crate::adb::Adb;
 use crate::apps::parse_package_list;
+use crate::bench::Sleep;
 use crate::command::{DeviceCommand, PackageName, RiskClass};
 use crate::error::AdbError;
 use crate::inspect::parse_properties;
 use crate::journal::{Journal, JournalStatus, JournalStep, JournalStore, StepStatus};
-use crate::perf::parse_home_activity;
+use crate::launcher::parse_resumed_activity;
+use crate::perf::{parse_home_activity, parse_process_list};
+
+/// How often a polled step re-checks; see [`Step::polling_for`].
+const POLL_INTERVAL: Duration = Duration::from_millis(500);
 
 /// A read-only fact about the device, checked before and after steps.
 ///
@@ -39,6 +44,9 @@ pub enum Check {
     PackageDisabled(PackageName),
     /// The Home button opens an activity of this package.
     HomeIs(PackageName),
+    /// An activity of this package is the resumed (front) activity and a
+    /// process of that package is running.
+    InFront(PackageName),
 }
 
 impl Check {
@@ -65,6 +73,19 @@ impl Check {
                 Ok(parse_home_activity(&output)
                     .is_some_and(|(home, _)| home.trim() == package.as_str()))
             }
+            Self::InFront(package) => {
+                let activities = adb.run(serial, &DeviceCommand::Activities)?;
+                let in_front = parse_resumed_activity(&activities)
+                    .and_then(|component| component.split_once('/'))
+                    .is_some_and(|(front, _)| front == package.as_str());
+                if !in_front {
+                    return Ok(false);
+                }
+                let processes = adb.run(serial, &DeviceCommand::ProcessList)?;
+                Ok(parse_process_list(&processes)
+                    .iter()
+                    .any(|process| process.name == package.as_str()))
+            }
         }
     }
 }
@@ -75,6 +96,7 @@ impl fmt::Display for Check {
             Self::PackageEnabled(package) => write!(f, "{package} is enabled"),
             Self::PackageDisabled(package) => write!(f, "{package} is disabled"),
             Self::HomeIs(package) => write!(f, "Home opens {package}"),
+            Self::InFront(package) => write!(f, "{package} is in front and running"),
         }
     }
 }
@@ -84,6 +106,7 @@ impl fmt::Display for Check {
 pub struct Step {
     command: DeviceCommand,
     extra_checks: Vec<Check>,
+    poll: Option<Duration>,
 }
 
 impl Step {
@@ -93,7 +116,27 @@ impl Step {
         Self {
             command,
             extra_checks,
+            poll: None,
         }
+    }
+
+    /// Re-checks the verification every 500 ms for up to `timeout` before
+    /// calling the step failed, for effects that take a moment (an app
+    /// coming to the front).
+    pub fn polling_for(mut self, timeout: Duration) -> Self {
+        self.poll = Some(timeout);
+        self
+    }
+
+    /// How long the verification may be retried, if at all.
+    pub fn poll(&self) -> Option<Duration> {
+        self.poll
+    }
+
+    /// Whether undoing needs a command. Transient (R0/R1) steps without an
+    /// inverse need none: they changed nothing persistent.
+    fn needs_undo(command: &DeviceCommand) -> bool {
+        command.risk() > RiskClass::Transient || command.inverse().is_some()
     }
 
     /// The command this step runs.
@@ -228,6 +271,9 @@ impl Plan {
                         .map(ToString::to_string)
                         .collect(),
                     undo: step.undo().map(|undo| adb_command(&self.serial, &undo)),
+                    poll_ms: step
+                        .poll()
+                        .map(|poll| u64::try_from(poll.as_millis()).unwrap_or(u64::MAX)),
                 })
                 .collect(),
             notes: self.notes.clone(),
@@ -302,6 +348,8 @@ pub struct DryRunStep {
     pub verify: Vec<String>,
     /// The command that undoes the step.
     pub undo: Option<String>,
+    /// How long the checks are retried before the step counts as failed.
+    pub poll_ms: Option<u64>,
 }
 
 impl fmt::Display for DryRun {
@@ -315,7 +363,11 @@ impl fmt::Display for DryRun {
                 writeln!(f, "   records first: {records}")?;
             }
             if !step.verify.is_empty() {
-                writeln!(f, "   then checks:   {}", step.verify.join("; "))?;
+                let within = step
+                    .poll_ms
+                    .map(|ms| format!(" (within {} s)", ms.div_ceil(1000)))
+                    .unwrap_or_default();
+                writeln!(f, "   then checks:   {}{within}", step.verify.join("; "))?;
             }
             if let Some(undo) = &step.undo {
                 writeln!(f, "   undo:          {undo}")?;
@@ -333,6 +385,7 @@ impl fmt::Display for DryRun {
 
 /// Applies an approved plan step by step; see the module docs.
 ///
+/// `sleep` waits between re-checks of polled steps; tests pass a no-op.
 /// Returns the final journal (status `applied`). On failure the device is
 /// rolled back, and the error says whether that worked.
 pub fn apply(
@@ -340,6 +393,7 @@ pub fn apply(
     plan: &Plan,
     approval: &Approval,
     store: &mut dyn JournalStore,
+    sleep: Sleep<'_>,
 ) -> Result<Journal, PlanError> {
     approval.check(plan)?;
     let serial = plan.serial.as_str();
@@ -391,7 +445,7 @@ pub fn apply(
             let reason = format!("could not write the journal: {error}");
             return Err(rollback(adb, &mut journal, store, reason));
         }
-        if let Some(reason) = run_and_verify(adb, serial, step) {
+        if let Some(reason) = run_and_verify(adb, serial, step, sleep) {
             let reason = format!("step {}: {reason}", index + 1);
             return Err(rollback(adb, &mut journal, store, reason));
         }
@@ -427,7 +481,7 @@ pub fn restore_plan(journal: &Journal, serial: &str, fingerprint: &str) -> Resul
         .steps
         .iter()
         .rev()
-        .filter(|step| step.status.may_have_run())
+        .filter(|step| step.status.may_have_run() && Step::needs_undo(&step.command))
         .map(|step| {
             step.command
                 .inverse()
@@ -497,21 +551,40 @@ pub fn restore(
     }
 }
 
-/// Runs a step and its checks; returns why it failed, if it did.
-fn run_and_verify(adb: &dyn Adb, serial: &str, step: &Step) -> Option<String> {
+/// Runs a step and its checks, re-checking polled steps; returns why it
+/// failed, if it did.
+fn run_and_verify(adb: &dyn Adb, serial: &str, step: &Step, sleep: Sleep<'_>) -> Option<String> {
     if let Err(error) = adb.run(serial, step.command()) {
         return Some(format!(
             "`{}` failed: {error}",
             adb_command(serial, step.command())
         ));
     }
-    step.verification()
-        .into_iter()
-        .find_map(|check| match check.holds(adb, serial) {
-            Ok(true) => None,
-            Ok(false) => Some(format!("verification failed: expected `{check}`")),
-            Err(error) => Some(format!("could not verify `{check}`: {error}")),
-        })
+    let checks = step.verification();
+    let first_failure = || {
+        checks
+            .iter()
+            .find_map(|check| match check.holds(adb, serial) {
+                Ok(true) => None,
+                Ok(false) => Some(format!("verification failed: expected `{check}`")),
+                Err(error) => Some(format!("could not verify `{check}`: {error}")),
+            })
+    };
+    let retries = step.poll().map_or(0, |timeout| {
+        timeout.as_millis().div_ceil(POLL_INTERVAL.as_millis())
+    });
+    let mut failure = first_failure();
+    for _ in 0..retries {
+        if failure.is_none() {
+            break;
+        }
+        sleep(POLL_INTERVAL);
+        failure = first_failure();
+    }
+    match (failure, step.poll()) {
+        (Some(reason), Some(timeout)) => Some(format!("{reason} within {} s", timeout.as_secs())),
+        (failure, _) => failure,
+    }
 }
 
 /// Rolls back after a failure and returns the error to report.
@@ -550,7 +623,7 @@ fn undo_steps(
     let mut problems = Vec::new();
     for index in (0..journal.steps.len()).rev() {
         let step = &journal.steps[index];
-        if !step.status.may_have_run() {
+        if !step.status.may_have_run() || !Step::needs_undo(&step.command) {
             continue;
         }
         let Some(undo) = step.command.inverse() else {
@@ -558,7 +631,7 @@ fn undo_steps(
             continue;
         };
         let undo_step = Step::new(undo, Vec::new());
-        match run_and_verify(adb, serial, &undo_step) {
+        match run_and_verify(adb, serial, &undo_step, &|_| {}) {
             None => {
                 journal.steps[index].status = StepStatus::Undone;
                 if let Err(error) = store.save(journal) {
@@ -623,6 +696,8 @@ enum PlanErrorKind {
     Journal(String),
     #[error("{0}")]
     NoJournal(String),
+    #[error("{0}")]
+    NotTested(String),
     #[error("{0}; every completed step was undone and verified")]
     RolledBack(String),
     #[error(
@@ -656,6 +731,7 @@ impl PlanError {
             PlanErrorKind::NotApproved(_) => "NOT_APPROVED",
             PlanErrorKind::Journal(_) => "JOURNAL_FAILED",
             PlanErrorKind::NoJournal(_) => "NO_JOURNAL",
+            PlanErrorKind::NotTested(_) => "TAKEOVER_NOT_TESTED",
             PlanErrorKind::RolledBack(_) => "ROLLED_BACK",
             PlanErrorKind::RollbackFailed { .. } => "ROLLBACK_FAILED",
             PlanErrorKind::RestoreFailed(_) => "RESTORE_FAILED",
@@ -684,6 +760,10 @@ impl PlanError {
     pub(crate) fn no_journal(reason: String) -> Self {
         PlanErrorKind::NoJournal(reason).into()
     }
+
+    pub(crate) fn not_tested(reason: String) -> Self {
+        PlanErrorKind::NotTested(reason).into()
+    }
 }
 
 /// One error of every kind; see `crate::error::every_adb_error`.
@@ -695,6 +775,7 @@ pub(crate) fn every_plan_error() -> Vec<PlanError> {
         PlanErrorKind::NotApproved(String::new()).into(),
         PlanErrorKind::Journal(String::new()).into(),
         PlanErrorKind::NoJournal(String::new()).into(),
+        PlanErrorKind::NotTested(String::new()).into(),
         PlanErrorKind::RolledBack(String::new()).into(),
         PlanErrorKind::RollbackFailed {
             reason: String::new(),
@@ -711,6 +792,7 @@ pub(crate) fn every_plan_error() -> Vec<PlanError> {
             | PlanErrorKind::NotApproved(_)
             | PlanErrorKind::Journal(_)
             | PlanErrorKind::NoJournal(_)
+            | PlanErrorKind::NotTested(_)
             | PlanErrorKind::RolledBack(_)
             | PlanErrorKind::RollbackFailed { .. }
             | PlanErrorKind::RestoreFailed(_) => {}
@@ -777,7 +859,14 @@ mod tests {
 
         let approval = first.approve(" yes\n").unwrap();
         let adb = FakeAdb::new();
-        let error = apply(&adb, &second, &approval, &mut MemoryJournal::default()).unwrap_err();
+        let error = apply(
+            &adb,
+            &second,
+            &approval,
+            &mut MemoryJournal::default(),
+            &|_| {},
+        )
+        .unwrap_err();
         assert_eq!(error.code(), "NOT_APPROVED");
         assert!(adb.calls().is_empty(), "nothing may run without approval");
     }
@@ -818,7 +907,7 @@ mod tests {
         let approval = plan.approve("yes").unwrap();
         let mut store = MemoryJournal::default();
 
-        let journal = apply(&adb, &plan, &approval, &mut store).unwrap();
+        let journal = apply(&adb, &plan, &approval, &mut store, &|_| {}).unwrap();
 
         assert_eq!(journal.status, JournalStatus::Applied);
         let statuses: Vec<Vec<StepStatus>> = store
@@ -866,7 +955,7 @@ mod tests {
         let approval = plan.approve("yes").unwrap();
         let mut store = MemoryJournal::default();
 
-        let error = apply(&adb, &plan, &approval, &mut store).unwrap_err();
+        let error = apply(&adb, &plan, &approval, &mut store, &|_| {}).unwrap_err();
 
         assert_eq!(error.code(), "ROLLED_BACK", "{error}");
         assert!(error.to_string().contains("step 2"), "{error}");
@@ -905,7 +994,14 @@ mod tests {
         let plan = plan(vec![disable("a.b")]);
         let approval = plan.approve("yes").unwrap();
 
-        let error = apply(&adb, &plan, &approval, &mut MemoryJournal::default()).unwrap_err();
+        let error = apply(
+            &adb,
+            &plan,
+            &approval,
+            &mut MemoryJournal::default(),
+            &|_| {},
+        )
+        .unwrap_err();
         assert_eq!(error.code(), "ROLLED_BACK");
         assert!(
             error.to_string().contains("expected `a.b is disabled`"),
@@ -932,7 +1028,7 @@ mod tests {
         let approval = plan.approve("yes").unwrap();
         let mut store = MemoryJournal::default();
 
-        let error = apply(&adb, &plan, &approval, &mut store).unwrap_err();
+        let error = apply(&adb, &plan, &approval, &mut store, &|_| {}).unwrap_err();
         assert_eq!(error.code(), "ROLLBACK_FAILED");
         let message = error.to_string();
         assert!(
@@ -953,7 +1049,7 @@ mod tests {
         let approval = plan.approve("yes").unwrap();
         let mut store = MemoryJournal::default();
 
-        let error = apply(&adb, &plan, &approval, &mut store).unwrap_err();
+        let error = apply(&adb, &plan, &approval, &mut store, &|_| {}).unwrap_err();
         assert_eq!(error.code(), "PRECONDITION_FAILED");
         assert!(store.saves.is_empty());
         assert!(
@@ -971,7 +1067,14 @@ mod tests {
         );
         let plan = plan(vec![disable("a.b")]);
         let approval = plan.approve("yes").unwrap();
-        let error = apply(&adb, &plan, &approval, &mut MemoryJournal::default()).unwrap_err();
+        let error = apply(
+            &adb,
+            &plan,
+            &approval,
+            &mut MemoryJournal::default(),
+            &|_| {},
+        )
+        .unwrap_err();
         assert_eq!(error.code(), "PRECONDITION_FAILED");
         assert!(error.to_string().contains("make a new plan"), "{error}");
     }
@@ -987,7 +1090,7 @@ mod tests {
             fail_from: Some(0),
             ..MemoryJournal::default()
         };
-        let error = apply(&adb, &plan, &approval, &mut store).unwrap_err();
+        let error = apply(&adb, &plan, &approval, &mut store, &|_| {}).unwrap_err();
         assert_eq!(error.code(), "JOURNAL_FAILED");
         assert!(
             !adb.calls()

@@ -82,6 +82,10 @@ pub enum DeviceCommand {
     ForceStop(PackageName),
     /// Starts an activity and waits for its first frame (`am start -W -n <component>`). Transient.
     StartActivity(Component),
+    /// Activity manager state, including the resumed activity (`dumpsys activity activities`).
+    Activities,
+    /// Presses the Home button (`input keyevent KEYCODE_HOME`). Transient.
+    PressHome,
     /// Disables a package for user 0 (`pm disable-user --user 0 <package>`).
     /// Package state; only the Home takeover plan uses it (SECURITY.md).
     DisablePackage(PackageName),
@@ -104,8 +108,9 @@ impl DeviceCommand {
             | Self::HomeActivity
             | Self::HomeCandidates
             | Self::PackageMemInfo(_)
-            | Self::ProcessCpuTimes => RiskClass::Read,
-            Self::ForceStop(_) | Self::StartActivity(_) => RiskClass::Transient,
+            | Self::ProcessCpuTimes
+            | Self::Activities => RiskClass::Read,
+            Self::ForceStop(_) | Self::StartActivity(_) | Self::PressHome => RiskClass::Transient,
             Self::DisablePackage(_) | Self::EnablePackage(_) => RiskClass::PackageState,
         }
     }
@@ -161,6 +166,8 @@ impl DeviceCommand {
             Self::StartActivity(component) => {
                 vec!["shell", "am", "start", "-W", "-n", component.as_str()]
             }
+            Self::Activities => vec!["shell", "dumpsys", "activity", "activities"],
+            Self::PressHome => vec!["shell", "input", "keyevent", "KEYCODE_HOME"],
             Self::DisablePackage(package) => {
                 vec![
                     "shell",
@@ -337,6 +344,8 @@ mod tests {
             DeviceCommand::ProcessCpuTimes,
             DeviceCommand::ForceStop(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::StartActivity("com.example.app/.MainActivity".parse().unwrap()),
+            DeviceCommand::Activities,
+            DeviceCommand::PressHome,
             DeviceCommand::DisablePackage(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::EnablePackage(PackageName::new("com.example.app").unwrap()),
         ];
@@ -356,6 +365,8 @@ mod tests {
                 | DeviceCommand::ProcessCpuTimes
                 | DeviceCommand::ForceStop(_)
                 | DeviceCommand::StartActivity(_)
+                | DeviceCommand::Activities
+                | DeviceCommand::PressHome
                 | DeviceCommand::DisablePackage(_)
                 | DeviceCommand::EnablePackage(_) => {}
             }
@@ -371,9 +382,9 @@ mod tests {
         // two R3 commands. Anything else above R1 must be added here on purpose.
         for command in every_command() {
             let expected = match command {
-                DeviceCommand::ForceStop(_) | DeviceCommand::StartActivity(_) => {
-                    RiskClass::Transient
-                }
+                DeviceCommand::ForceStop(_)
+                | DeviceCommand::StartActivity(_)
+                | DeviceCommand::PressHome => RiskClass::Transient,
                 DeviceCommand::DisablePackage(_) | DeviceCommand::EnablePackage(_) => {
                     RiskClass::PackageState
                 }

@@ -6,12 +6,26 @@
 //! contain per-unit identifiers (serial numbers, MAC addresses, accounts);
 //! the build fingerprint is the same on every unit with that firmware.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::inspect::DeviceInfo;
 
 /// Version of the profile format. Bump it when fields change meaning.
-pub const PROFILE_SCHEMA_VERSION: u32 = 1;
+///
+/// 2: optional `[launcher]` section (Home takeover, SECURITY.md).
+pub const PROFILE_SCHEMA_VERSION: u32 = 2;
+
+/// Every profile in `compat/devices/`, compiled into the binary.
+///
+/// Bundled rather than read from disk, so the Home takeover gate can't be
+/// satisfied by dropping a file somewhere. A test fails if a profile in
+/// `compat/devices/` is missing here.
+const BUNDLED_PROFILES: &[(&str, &str)] = &[(
+    "google-emu64a.toml",
+    include_str!("../../../compat/devices/google-emu64a.toml"),
+)];
 
 /// A device compatibility profile.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,6 +41,67 @@ pub struct DeviceProfile {
     pub hardware: ProfileHardware,
     /// Who tested it and how.
     pub tested: ProfileTested,
+    /// The stock launcher and whether Home takeover was tested. Absent means
+    /// "not tested": takeover is refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launcher: Option<ProfileLauncher>,
+}
+
+/// Home takeover facts for one device and firmware family (SECURITY.md
+/// § Home takeover, rule 2).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProfileLauncher {
+    /// Package of the stock launcher, e.g. `com.google.android.apps.tv.launcherx`.
+    pub stock_package: String,
+    /// Set only after `rusttv launcher takeover` and `rusttv launcher restore`
+    /// both succeeded on this device and firmware family.
+    pub takeover_tested: bool,
+}
+
+impl DeviceProfile {
+    /// Whether this profile describes the device with these system properties
+    /// (`getprop`): same manufacturer, model and codename, and the same
+    /// firmware family (see [`firmware_family`]).
+    pub fn matches(&self, properties: &HashMap<String, String>) -> bool {
+        let property = |name: &str| properties.get(name).map(String::as_str);
+        let family = |fingerprint: Option<&str>| fingerprint.and_then(firmware_family);
+        property("ro.product.manufacturer") == Some(self.device.manufacturer.as_str())
+            && property("ro.product.model") == Some(self.device.model.as_str())
+            && property("ro.product.device") == Some(self.device.codename.as_str())
+            && family(property("ro.build.fingerprint")).is_some()
+            && family(property("ro.build.fingerprint"))
+                == family(Some(&self.firmware.build_fingerprint))
+    }
+}
+
+/// The firmware family of a build fingerprint: everything except the build
+/// ID and incremental, so security updates of one Android version stay in
+/// the family and a new Android version doesn't.
+///
+/// `brand/product/device:release/id/incremental:type/tags` →
+/// `brand/product/device:release:type/tags`. `None` if malformed.
+pub fn firmware_family(fingerprint: &str) -> Option<String> {
+    let mut parts = fingerprint.split(':');
+    let (name, version, build_type) = (parts.next()?, parts.next()?, parts.next()?);
+    if parts.next().is_some() || name.is_empty() || build_type.is_empty() {
+        return None;
+    }
+    let release = version
+        .split('/')
+        .next()
+        .filter(|release| !release.is_empty())?;
+    Some(format!("{name}:{release}:{build_type}"))
+}
+
+/// The bundled profiles from `compat/devices/`.
+pub fn bundled_profiles() -> Vec<DeviceProfile> {
+    // Every bundled profile parses: `bundled_profiles_are_the_committed_profiles`
+    // checks that.
+    BUNDLED_PROFILES
+        .iter()
+        .filter_map(|(_, text)| toml::from_str(text).ok())
+        .collect()
 }
 
 /// Identity of the device model.
@@ -148,6 +223,7 @@ pub fn profile_from_info(info: &DeviceInfo) -> Result<DeviceProfile, MissingFiel
             rusttv_version: crate::VERSION.to_owned(),
             notes: String::new(),
         },
+        launcher: None,
     })
 }
 
@@ -242,6 +318,97 @@ mod tests {
         let committed: DeviceProfile = toml::from_str(&fs::read_to_string(path).unwrap()).unwrap();
         generated.tested.clone_from(&committed.tested);
         assert_eq!(generated, committed);
+    }
+
+    #[test]
+    fn bundled_profiles_are_the_committed_profiles() {
+        let mut committed: Vec<String> = fs::read_dir(compat_devices_dir())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .filter(|name| name.ends_with(".toml"))
+            .collect();
+        committed.sort();
+        let mut bundled: Vec<String> = BUNDLED_PROFILES
+            .iter()
+            .map(|(name, _)| (*name).to_owned())
+            .collect();
+        bundled.sort();
+        assert_eq!(bundled, committed, "update BUNDLED_PROFILES");
+        assert_eq!(bundled_profiles().len(), BUNDLED_PROFILES.len());
+    }
+
+    #[test]
+    fn emulator_profiles_are_not_takeover_tested() {
+        // Owner decision: a takeover tested on an emulator says nothing about a TV.
+        for profile in bundled_profiles() {
+            if profile.device.kind == DeviceKind::Emulator
+                || profile.device.model.starts_with("sdk_")
+            {
+                assert!(
+                    !profile
+                        .launcher
+                        .is_some_and(|launcher| launcher.takeover_tested),
+                    "{}",
+                    profile.device.model
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn firmware_family_drops_only_build_id_and_incremental() {
+        let family = |fingerprint| firmware_family(fingerprint).unwrap();
+        let base = family("google/tv/x:14/UTT3.240625.001/12345678:user/release-keys");
+        assert_eq!(base, "google/tv/x:14:user/release-keys");
+        assert_eq!(
+            family("google/tv/x:14/UTT3.250101.002/99999999:user/release-keys"),
+            base,
+            "a security update stays in the family"
+        );
+        assert_ne!(family("google/tv/x:15/A/1:user/release-keys"), base);
+        assert_ne!(family("google/tv/x:14/A/1:userdebug/dev-keys"), base);
+        for bad in [
+            "",
+            "no-colons",
+            "a:b",
+            "a:b:c:d",
+            ":14/A/1:user/k",
+            "a:/A/1:user/k",
+        ] {
+            assert_eq!(firmware_family(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn profiles_match_by_model_and_firmware_family() {
+        let profile = profile_from_info(&emulator_info()).unwrap();
+        let mut properties: HashMap<String, String> = [
+            ("ro.product.manufacturer", "Google"),
+            ("ro.product.model", "sdk_gphone64_arm64"),
+            ("ro.product.device", "emu64a"),
+            (
+                "ro.build.fingerprint",
+                "google/sdk_gphone64_arm64/emu64a:14/UE1A.240101.001/1:userdebug/dev-keys",
+            ),
+        ]
+        .into_iter()
+        .map(|(key, value)| (key.to_owned(), value.to_owned()))
+        .collect();
+        assert!(profile.matches(&properties));
+
+        properties.insert("ro.product.model".to_owned(), "other".to_owned());
+        assert!(!profile.matches(&properties));
+        properties.insert(
+            "ro.product.model".to_owned(),
+            "sdk_gphone64_arm64".to_owned(),
+        );
+        properties.insert(
+            "ro.build.fingerprint".to_owned(),
+            "google/sdk_gphone64_arm64/emu64a:15/A/1:userdebug/dev-keys".to_owned(),
+        );
+        assert!(!profile.matches(&properties));
+        properties.remove("ro.build.fingerprint");
+        assert!(!profile.matches(&properties));
     }
 
     #[test]

@@ -32,7 +32,8 @@ pub use command::{
 };
 pub use compat::{
     DeviceKind, DeviceProfile, MissingField, PROFILE_SCHEMA_VERSION, ProfileDevice,
-    ProfileFirmware, ProfileHardware, ProfileTested, profile_file_name, profile_from_info,
+    ProfileFirmware, ProfileHardware, ProfileLauncher, ProfileTested, bundled_profiles,
+    firmware_family, profile_file_name, profile_from_info,
 };
 pub use device::{
     ConnectOutcome, DEFAULT_ADB_PORT, DeviceAddress, DeviceEntry, DeviceSelectionError,
@@ -48,6 +49,7 @@ pub use journal::{
 };
 pub use launcher::{
     HomeCandidate, LauncherStatus, RUSTTV_LAUNCHER, launcher_status, parse_home_candidates,
+    parse_resumed_activity,
 };
 pub use plan::{
     Approval, Check, DryRun, DryRunStep, Plan, PlanError, Step, apply, device_fingerprint, restore,

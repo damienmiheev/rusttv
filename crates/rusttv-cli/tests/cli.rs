@@ -507,54 +507,26 @@ fn rusttv_with_state(scenario: &str, state: &std::path::Path, args: &[&str]) -> 
 }
 
 #[test]
-fn launcher_takeover_dry_run_json_shows_the_plan() {
-    let state = state_dir("takeover-dry-run");
+fn launcher_takeover_is_refused_on_a_device_without_a_tested_profile() {
+    // No bundled profile records a tested takeover, so even a dry run stops
+    // here. The plan itself is tested in rusttv-core with a test profile.
+    let state = state_dir("takeover-untested");
     let output = rusttv_with_state(
         "tv",
         &state,
         &["launcher", "takeover", "--dry-run", "--json"],
     );
 
-    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
     let json = json_stdout(&output);
-    let plan = &json["data"];
-    assert_eq!(plan["plan"], "home-takeover");
-    assert_eq!(plan["max_risk"], "R3");
-    assert_eq!(plan["confirmation"], "takeover");
-    let step = &plan["steps"][0];
-    assert_eq!(step["risk"], "R3");
-    assert_eq!(
-        step["command"],
-        "adb -s emulator-5554 shell pm disable-user --user 0 com.google.android.apps.tv.launcherx"
-    );
-    assert_eq!(
-        step["records"],
-        "com.google.android.apps.tv.launcherx is enabled"
-    );
-    assert_eq!(
-        step["undo"],
-        "adb -s emulator-5554 shell pm enable --user 0 com.google.android.apps.tv.launcherx"
-    );
-    // A dry run writes no journal.
+    assert_eq!(json["error"]["code"], "TAKEOVER_NOT_TESTED");
+    let message = json["error"]["message"].as_str().unwrap();
+    assert!(message.contains("sdk_google_atv64_arm64"), "{message}");
     assert_eq!(
         std::fs::read_dir(state.join("journals")).unwrap().count(),
         0
     );
     std::fs::remove_dir_all(state).unwrap();
-}
-
-#[test]
-fn launcher_takeover_dry_run_text_names_command_and_undo() {
-    let output = rusttv_with_fake_adb("tv", &["launcher", "takeover", "--dry-run"]);
-
-    assert_eq!(output.status.code(), Some(0));
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(
-        stdout.contains("[R3] adb -s emulator-5554 shell pm disable-user"),
-        "{stdout}"
-    );
-    assert!(stdout.contains("then checks:   com.google.android.apps.tv.launcherx is disabled; Home opens ai.rusttv.launcher"), "{stdout}");
-    assert!(stdout.contains("rusttv launcher restore"), "{stdout}");
 }
 
 #[test]

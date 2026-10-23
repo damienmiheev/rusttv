@@ -70,7 +70,7 @@ pub fn takeover(adb: &dyn Adb, target: &Target, dry_run: bool, json: bool) -> Re
         require_terminal()?;
     }
     let serial = target.resolve(adb)?;
-    let plan = rusttv_core::takeover_plan(adb, &serial)?;
+    let plan = rusttv_core::takeover_plan(adb, &serial, &rusttv_core::bundled_profiles())?;
     show_plan(&plan, dry_run, json);
     if dry_run {
         return Ok(());
@@ -79,7 +79,7 @@ pub fn takeover(adb: &dyn Adb, target: &Target, dry_run: bool, json: bool) -> Re
 
     let path = journals_dir()?.join(journal_file_name(now_unix_ms(), HOME_TAKEOVER));
     let mut store = FileJournal::new(&path);
-    let journal = rusttv_core::apply(adb, &plan, &approval, &mut store)
+    let journal = rusttv_core::apply(adb, &plan, &approval, &mut store, &std::thread::sleep)
         .inspect_err(|_| note_journal(&path))?;
     if json {
         output::print_json(&ChangeReport {

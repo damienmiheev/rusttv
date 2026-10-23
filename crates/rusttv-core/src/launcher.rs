@@ -89,6 +89,28 @@ pub fn parse_home_candidates(output: &str) -> Vec<HomeCandidate> {
     candidates
 }
 
+/// Parses `dumpsys activity activities` for the resumed (front) activity,
+/// `package/activity`, from its `topResumedActivity=ActivityRecord{<id> u0
+/// <component> t<task>}` line (or `ResumedActivity:` / `mResumedActivity:`
+/// on other Android versions). `None` if no activity is resumed.
+pub fn parse_resumed_activity(output: &str) -> Option<&str> {
+    output.lines().find_map(|line| {
+        let line = line.trim_start();
+        let record = [
+            "topResumedActivity=",
+            "ResumedActivity:",
+            "mResumedActivity:",
+        ]
+        .iter()
+        .find_map(|label| line.strip_prefix(label))?;
+        let record = record.trim().strip_prefix("ActivityRecord{")?;
+        record
+            .split_whitespace()
+            .find(|token| token.contains('/'))
+            .map(|component| component.trim_end_matches('}'))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,6 +188,24 @@ mod tests {
         let status = launcher_status(&adb, "x").unwrap();
         assert_eq!(status.home, None);
         assert!(status.candidates.is_empty());
+    }
+
+    #[test]
+    fn resumed_activity_is_read_from_dumpsys() {
+        let rusttv = include_str!("fixtures/synthetic-home-takeover/activities-rusttv-front.txt");
+        assert_eq!(
+            parse_resumed_activity(rusttv),
+            Some("ai.rusttv.launcher/.LauncherActivity")
+        );
+        let stock = include_str!("fixtures/synthetic-home-takeover/activities-stock-front.txt");
+        assert_eq!(
+            parse_resumed_activity(stock),
+            Some("com.google.android.apps.tv.launcherx/.home.HomeActivity")
+        );
+        assert_eq!(
+            parse_resumed_activity("ACTIVITY MANAGER\n  topResumedActivity=null\n"),
+            None
+        );
     }
 
     #[test]

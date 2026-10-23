@@ -24,6 +24,7 @@ pub const ERROR_CODES: &[&str] = &[
     "NOT_APPROVED",
     "JOURNAL_FAILED",
     "NO_JOURNAL",
+    "TAKEOVER_NOT_TESTED",
     "ROLLED_BACK",
     "ROLLBACK_FAILED",
     "RESTORE_FAILED",
