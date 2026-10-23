@@ -14,6 +14,7 @@ use crate::journal::find_restorable_journal;
 use crate::launcher::{RUSTTV_LAUNCHER, launcher_status};
 use crate::plan::{Check, Plan, PlanError, Step, device_fingerprint};
 use crate::takeover::HOME_TAKEOVER;
+use crate::update::Version;
 
 /// Plan name of `launcher install`, also used in journal file names.
 pub const LAUNCHER_INSTALL: &str = "launcher-install";
@@ -53,6 +54,43 @@ pub fn install_plan(
     apk: Option<&Path>,
     journals: &Path,
 ) -> Result<Plan, PlanError> {
+    let source = match apk {
+        Some(path) => ApkSource::Given(path),
+        None => ApkSource::Built,
+    };
+    plan_install(adb, serial, source, journals)
+}
+
+/// Plans installing or upgrading the RustTV launcher from `apk`, the APK of
+/// release `version` that `rusttv update launcher` downloaded for the
+/// device's primary ABI and verified. The same plan as [`install_plan`] with
+/// `Some(apk)`; only its notes say where the APK comes from. Read-only.
+pub fn release_install_plan(
+    adb: &dyn Adb,
+    serial: &str,
+    apk: &Path,
+    version: Version,
+    journals: &Path,
+) -> Result<Plan, PlanError> {
+    plan_install(adb, serial, ApkSource::Release(apk, version), journals)
+}
+
+/// Where the APK of an install plan comes from.
+enum ApkSource<'a> {
+    /// `android/build.sh`'s output for the device's primary ABI.
+    Built,
+    /// `--apk <file>`.
+    Given(&'a Path),
+    /// Downloaded from a release and verified (`rusttv update launcher`).
+    Release(&'a Path, Version),
+}
+
+fn plan_install(
+    adb: &dyn Adb,
+    serial: &str,
+    source: ApkSource<'_>,
+    journals: &Path,
+) -> Result<Plan, PlanError> {
     let properties = parse_properties(&adb.run(serial, &DeviceCommand::GetProperties)?);
     let fingerprint = properties
         .get("ro.build.fingerprint")
@@ -66,15 +104,23 @@ pub fn install_plan(
         .map_or("", String::as_str);
 
     let mut notes = Vec::new();
-    let apk = match apk {
-        Some(path) => {
+    let apk = match source {
+        ApkSource::Given(path) => {
             notes.push(format!(
                 "The APK was chosen with --apk; its ABI isn't checked against the device's \
                  (`{abis}`)."
             ));
             ApkPath::from_local_file(path)?
         }
-        None => {
+        ApkSource::Release(path, version) => {
+            notes.push(format!(
+                "APK of release {version} for the device's primary ABI, downloaded and verified \
+                 (signed SHA256SUMS, SHA-256, size); Android also refuses an upgrade signed with \
+                 another key than the installed launcher's."
+            ));
+            ApkPath::from_local_file(path)?
+        }
+        ApkSource::Built => {
             let primary = abis.split(',').next().unwrap_or_default();
             if primary.is_empty() {
                 return Err(PlanError::invalid_apk(
@@ -420,6 +466,33 @@ mod tests {
             step.undo.as_deref(),
             Some("adb -s emulator-5554 shell pm uninstall ai.rusttv.launcher")
         );
+        assert!(changes(&adb).is_empty(), "planning is read-only");
+    }
+
+    #[test]
+    fn a_release_install_plan_is_the_same_plan_with_its_own_note() {
+        let dir = Dir::new("release-plan");
+        let adb = tv(
+            &dir,
+            vec![synthetic!("packages-f-no-rusttv.txt")],
+            vec![synthetic!("home-candidates-no-rusttv.txt")],
+        );
+        let given = install_plan(&adb, SERIAL, Some(&dir.apk()), &dir.journals()).unwrap();
+        let version = Version::parse("0.2.0").unwrap();
+        let release =
+            release_install_plan(&adb, SERIAL, &dir.apk(), version, &dir.journals()).unwrap();
+        let (given, release) = (given.dry_run(), release.dry_run());
+
+        assert_eq!(release.plan, given.plan);
+        assert_eq!(release.confirmation, given.confirmation);
+        assert_eq!(release.steps, given.steps);
+        assert!(given.notes[0].contains("--apk"), "{:?}", given.notes);
+        assert!(
+            release.notes[0].contains("release 0.2.0"),
+            "{:?}",
+            release.notes
+        );
+        assert!(!release.notes.iter().any(|note| note.contains("--apk")));
         assert!(changes(&adb).is_empty(), "planning is read-only");
     }
 

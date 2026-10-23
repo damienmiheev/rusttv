@@ -6,7 +6,7 @@ use crate::apps::PackageListError;
 
 /// Every stable error code the core can produce, from [`AdbError::code`] and
 /// [`crate::DeviceSelectionError::code`] and [`crate::BenchmarkError::code`] and
-/// [`crate::PlanError::code`]. Documented in CLI.md; a test keeps
+/// [`crate::PlanError::code`] and [`crate::UpdateError::code`]. Documented in CLI.md; a test keeps
 /// this list, the code and the docs in sync. Codes are never renamed.
 pub const ERROR_CODES: &[&str] = &[
     "ADB_NOT_FOUND",
@@ -37,6 +37,8 @@ pub const ERROR_CODES: &[&str] = &[
     "ROLLED_BACK",
     "ROLLBACK_FAILED",
     "RESTORE_FAILED",
+    "UPDATE_CHECK_FAILED",
+    "UPDATE_VERIFY_FAILED",
 ];
 
 /// Running a command through `adb` failed.

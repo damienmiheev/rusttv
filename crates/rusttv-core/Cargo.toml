@@ -10,15 +10,23 @@ publish.workspace = true
 
 [features]
 # Test doubles such as FakeAdb (M-TEST-UTIL). Never enable in release builds.
-test-util = []
+test-util = ["dep:ed25519-compact", "dep:blake2"]
 
 [dependencies]
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 toml.workspace = true
+minisign-verify.workspace = true
+sha2.workspace = true
+# Signs fake releases in tests (`test-util` only).
+ed25519-compact = { workspace = true, optional = true }
+blake2 = { workspace = true, optional = true }
 
 [dev-dependencies]
 proptest.workspace = true
+ed25519-compact.workspace = true
+blake2.workspace = true
 
 [lints]
 workspace = true

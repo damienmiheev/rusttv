@@ -32,7 +32,14 @@ First public release (ROADMAP Phase 6).
   but disabled, through a trigger activity in the launcher; only on models
   with a bundled compat profile and the vendor packages. Not certified by
   Apple for these models (TOOLS.md).
-- Stable `--json` output, schema `rusttv.v6`, and documented error codes (CLI.md).
+- `update check`, `update launcher` and `update cli`: install newer RustTV
+  releases from GitHub (or `RUSTTV_UPDATE_DIR`), the launcher on a TV through
+  the normal install plan and the CLI on this computer with `.previous`
+  copies and automatic put-back. Only files whose `SHA256SUMS` is signed
+  with the owner's minisign key (`SHA256SUMS.minisig`); never a downgrade.
+  Until the key is compiled in, both install paths refuse
+  (`UPDATE_VERIFY_FAILED`) (CLI.md § Updates, SECURITY.md § Updates).
+- Stable `--json` output, schema `rusttv.v7`, and documented error codes (CLI.md).
 
 ### MCP server (`rusttv-mcp`)
 

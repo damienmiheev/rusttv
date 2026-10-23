@@ -99,6 +99,17 @@ Residual risk: firmware updates may re-enable the stock launcher or change its p
 - MCP can read, analyze, and propose plans; approval is a separate human CLI step. *As built:* the MCP plan tools (`launcher_install_plan`, `launcher_uninstall_plan`, `launcher_restore_plan`, `privacy_plan`, `optimize_plan`, `optimize_restore_plan`) return the dry run and the `rusttv` command a person runs at a terminal; they run only R0 commands and write no journal. There is no MCP tool to plan a Home takeover, or to approve or apply anything (MCP.md).
 - Typed confirmation proves only an interactive terminal. Never give an agent or MCP server a pseudo-terminal that runs `rusttv` (see Change lifecycle, step 4).
 
+## Updates
+
+`rusttv update` (CLI.md § Updates, ARCHITECTURE D17) installs RustTV releases: the CLI on this computer and the launcher on a TV.
+
+- **Trust root:** the owner's minisign update signing key, whose public half is compiled into `rusttv` (`RELEASE_SIGNING_KEY`; RELEASE.md § Update signing key). `SHA256SUMS` must carry a valid signature by it, and each file's size and SHA-256 must match, before anything is installed or replaced. GitHub, TLS and the release feed only say which version is newest. Until the key is set, the install and replace paths refuse (`UPDATE_VERIFY_FAILED`).
+- **Launcher:** additionally, Android installs an upgrade only if it is signed with the installed launcher's APK key, and the normal `launcher install` plan runs unchanged (dry run, typed confirmation, verify, journal).
+- **CLI:** the old files are kept as `.previous` and put back if the new `rusttv --version` doesn't report the release's version. Typed confirmation `update`, same terminal rule as device changes.
+- **No downgrade:** only a strictly newer `v<major>.<minor>.<patch>` release; drafts and pre-releases never count. File names carry the version, so a validly signed older `SHA256SUMS` can't pass for a newer release.
+- The production key can't be replaced at run time: only debug builds with the `test-util` feature (the CLI's own tests) read a test key from `RUSTTV_UPDATE_TEST_KEY`; release builds have no such code.
+- Downloads: `curl` with a fixed argument list (no shell), HTTPS only (also redirects), TLS 1.2+, a size cap; URLs only on `github.com` / `objects.githubusercontent.com`. Not exposed through MCP.
+
 ## ADB hygiene (user guidance)
 
 - Legacy Wi-Fi ADB (TCP 5555) relies only on the one-time RSA key approval and is unencrypted; enable it only on trusted networks and disable it after use.
@@ -110,5 +121,5 @@ Residual risk: firmware updates may re-enable the stock launcher or change its p
 - `cargo deny check` in CI: RustSec advisories, license allowlist (permissive + MPL + Slint's royalty-free license, D9), banned/duplicate crates. Ignored advisories need a reason in `deny.toml`; so far only unmaintained crates used by the desktop dev mode, never by the APK.
 - `Cargo.lock` committed; dependencies pinned; Slint pinned with `=`.
 - Skia (linked by Slint's Android renderer) is a prebuilt binary per ABI that `android/build.sh` fetches and checks against a pinned SHA-256. arm64-v8a and x86_64 come from rust-skia's skia-binaries releases. rust-skia has no armeabi-v7a build, so ours is built from source by the manual workflow `.github/workflows/skia-armv7.yml` ([run 39956273511](https://github.com/damienmiheev/rusttv/actions/runs/39956273511)) and hosted as the release `skia-0.153.3-armv7` of this repository. It must be rebuilt, re-released and re-pinned whenever Slint (and so skia-bindings) is upgraded.
-- Release APKs signed with a project key kept offline; checksums published with each release. Reproducible builds investigated in Phase 6.
+- Release APKs signed with a project key kept offline; checksums published with each release and signed with a separate offline minisign key (§ Updates). Reproducible builds investigated in Phase 6.
 - No running of unvetted third-party tools (see RESEARCH.md §4).
