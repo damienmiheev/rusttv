@@ -10,7 +10,7 @@ use jni::objects::{GlobalRef, JClass, JIntArray, JObject, JObjectArray, JString,
 use jni::{JNIEnv, JavaVM};
 
 use crate::model::App;
-use crate::platform::{AppEntry, Artwork, Bitmap, Platform, PlatformError};
+use crate::platform::{AppEntry, Artwork, Bitmap, Platform, PlatformError, UpdateStatus};
 use crate::ui::{Lifecycle, RunOptions, run};
 
 /// Size banners are drawn at: the Leanback banner size (320×180, 16:9).
@@ -127,6 +127,23 @@ impl AndroidPlatform {
         let bridge = unsafe { JClass::from_raw(self.bridge.as_obj().as_raw()) };
         java(operation, &mut env, |env| f(env, &bridge, &activity))
     }
+
+    /// Calls `Bridge.<method>(context): Unit`.
+    fn call_with_context(
+        &self,
+        operation: &'static str,
+        method: &'static str,
+    ) -> Result<(), PlatformError> {
+        self.with_bridge(operation, |env, bridge, activity| {
+            env.call_static_method(
+                bridge,
+                method,
+                "(Landroid/content/Context;)V",
+                &[JValue::Object(activity)],
+            )?;
+            Ok(())
+        })
+    }
 }
 
 impl Platform for AndroidPlatform {
@@ -220,6 +237,29 @@ impl Platform for AndroidPlatform {
             let text = JString::from(text);
             Ok(env.get_string(&text)?.into())
         })
+    }
+
+    fn update_status(&self) -> Result<UpdateStatus, PlatformError> {
+        self.with_bridge("read update status", |env, bridge, activity| {
+            let text = env
+                .call_static_method(
+                    bridge,
+                    "updateStatus",
+                    "(Landroid/content/Context;)Ljava/lang/String;",
+                    &[JValue::Object(activity)],
+                )?
+                .l()?;
+            let text: String = env.get_string(&JString::from(text))?.into();
+            Ok(UpdateStatus::from_bridge(&text))
+        })
+    }
+
+    fn check_for_update(&mut self) -> Result<(), PlatformError> {
+        self.call_with_context("check for update", "checkForUpdate")
+    }
+
+    fn install_update(&mut self) -> Result<(), PlatformError> {
+        self.call_with_context("install update", "installUpdate")
     }
 }
 

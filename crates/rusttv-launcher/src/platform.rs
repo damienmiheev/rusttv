@@ -1,4 +1,4 @@
-//! Access to the TV: listing and launching apps.
+//! Access to the TV: listing and launching apps, and updating the launcher.
 //!
 //! [`Platform`] is implemented by the Android bridge on a TV and by
 //! [`FakePlatform`] for the desktop dev mode and tests.
@@ -42,6 +42,76 @@ pub trait Platform {
     /// frees the pictures the system decoded for it, which otherwise wait for
     /// the next garbage collection (~20 MB of native heap with 30 apps).
     fn artwork_loaded(&self);
+
+    /// What the launcher's updater is doing. Cheap (a field read), so it can
+    /// be polled while the About page is open or an update step runs.
+    fn update_status(&self) -> Result<UpdateStatus, PlatformError>;
+
+    /// Starts a check for a newer launcher in the background; does nothing
+    /// while a check, download or install runs.
+    fn check_for_update(&mut self) -> Result<(), PlatformError>;
+
+    /// Starts downloading, verifying and installing the newer launcher in the
+    /// background; Android asks the user to confirm the install.
+    fn install_update(&mut self) -> Result<(), PlatformError>;
+}
+
+/// What the launcher's updater is doing (SECURITY.md § Launcher updates).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum UpdateStatus {
+    /// Nothing known yet: no check has finished.
+    #[default]
+    Idle,
+    /// Reading the latest release from GitHub.
+    Checking,
+    /// The latest release is not newer than the installed launcher.
+    UpToDate,
+    /// This version (e.g. "0.2.0") is newer and can be installed.
+    Available(String),
+    /// This version is available, but RustTV may not install apps yet: the
+    /// system "Install unknown apps" screen was opened for the user to allow it.
+    NeedsPermission(String),
+    /// Downloading the update; percent done.
+    Downloading(u8),
+    /// Verified and handed to Android, which asks the user to confirm.
+    Installing,
+    /// Android installed the update (it usually restarts the launcher first).
+    Installed,
+    /// The last check or install failed; a short reason.
+    Failed(String),
+}
+
+impl UpdateStatus {
+    /// Parses `Bridge.updateStatus()`: a kind, then a tab and a detail for the
+    /// kinds that carry one ("available\t0.2.0", "downloading\t40").
+    pub fn from_bridge(text: &str) -> Self {
+        let (kind, detail) = text.split_once('\t').unwrap_or((text, ""));
+        match kind {
+            "idle" => Self::Idle,
+            "checking" => Self::Checking,
+            "uptodate" => Self::UpToDate,
+            "available" => Self::Available(detail.to_owned()),
+            "permission" => Self::NeedsPermission(detail.to_owned()),
+            "downloading" => Self::Downloading(detail.parse::<u8>().unwrap_or(0).min(100)),
+            "installing" => Self::Installing,
+            "installed" => Self::Installed,
+            "failed" => Self::Failed(detail.to_owned()),
+            _ => Self::Failed(format!("unknown status {text:?}")),
+        }
+    }
+
+    /// Whether a newer version waits to be installed.
+    pub fn is_available(&self) -> bool {
+        matches!(self, Self::Available(_) | Self::NeedsPermission(_))
+    }
+
+    /// Whether a check, download or install runs, so the status changes on its own.
+    pub fn is_busy(&self) -> bool {
+        matches!(
+            self,
+            Self::Checking | Self::Downloading(_) | Self::Installing
+        )
+    }
 }
 
 /// An app and the picture shown on its tile.
@@ -347,6 +417,9 @@ pub struct FakePlatform {
     lazy: bool,
     artwork_calls: std::cell::Cell<usize>,
     artwork_loaded_calls: std::cell::Cell<usize>,
+    update: UpdateStatus,
+    update_checks: usize,
+    update_installs: usize,
 }
 
 #[cfg(any(test, feature = "test-util"))]
@@ -422,6 +495,21 @@ impl FakePlatform {
     pub fn launched(&self) -> &[String] {
         &self.launched
     }
+
+    /// Makes the updater report `status`, as the Android one would.
+    pub fn set_update_status(&mut self, status: UpdateStatus) {
+        self.update = status;
+    }
+
+    /// How many times [`Platform::check_for_update`] was called.
+    pub fn update_checks(&self) -> usize {
+        self.update_checks
+    }
+
+    /// How many times [`Platform::install_update`] was called.
+    pub fn update_installs(&self) -> usize {
+        self.update_installs
+    }
 }
 
 #[cfg(any(test, feature = "test-util"))]
@@ -478,6 +566,28 @@ impl Platform for FakePlatform {
             text.push_str(&format!("\nStand-in notice line {line}."));
         }
         Ok(text)
+    }
+
+    fn update_status(&self) -> Result<UpdateStatus, PlatformError> {
+        Ok(self.update.clone())
+    }
+
+    /// Finishes at once: the fake launcher is always up to date.
+    fn check_for_update(&mut self) -> Result<(), PlatformError> {
+        self.update_checks += 1;
+        if !self.update.is_busy() {
+            self.update = UpdateStatus::UpToDate;
+        }
+        Ok(())
+    }
+
+    /// Stops at [`UpdateStatus::Installing`], where Android would ask the user.
+    fn install_update(&mut self) -> Result<(), PlatformError> {
+        self.update_installs += 1;
+        if self.update.is_available() {
+            self.update = UpdateStatus::Installing;
+        }
+        Ok(())
     }
 }
 
@@ -730,6 +840,81 @@ mod tests {
         assert!(text.starts_with("THIRD-PARTY SOFTWARE NOTICES (stand-in)"));
         assert!(text.ends_with("Stand-in notice line 200."));
         assert!(text.lines().count() > 200);
+    }
+
+    #[test]
+    fn bridge_update_statuses_parse() {
+        let cases = [
+            ("idle", UpdateStatus::Idle),
+            ("checking", UpdateStatus::Checking),
+            ("uptodate", UpdateStatus::UpToDate),
+            ("available\t0.2.0", UpdateStatus::Available("0.2.0".into())),
+            (
+                "permission\t0.2.0",
+                UpdateStatus::NeedsPermission("0.2.0".into()),
+            ),
+            ("downloading\t40", UpdateStatus::Downloading(40)),
+            ("downloading\t250", UpdateStatus::Downloading(100)),
+            ("downloading\tx", UpdateStatus::Downloading(0)),
+            ("installing", UpdateStatus::Installing),
+            ("installed", UpdateStatus::Installed),
+            (
+                "failed\tno network",
+                UpdateStatus::Failed("no network".into()),
+            ),
+            (
+                "bogus",
+                UpdateStatus::Failed("unknown status \"bogus\"".into()),
+            ),
+        ];
+        for (text, expected) in cases {
+            assert_eq!(UpdateStatus::from_bridge(text), expected, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn only_running_steps_are_busy_and_only_waiting_versions_available() {
+        let available = UpdateStatus::Available("0.2.0".into());
+        let permission = UpdateStatus::NeedsPermission("0.2.0".into());
+        assert!(available.is_available() && permission.is_available());
+        assert!(!available.is_busy() && !permission.is_busy());
+        for busy in [
+            UpdateStatus::Checking,
+            UpdateStatus::Downloading(3),
+            UpdateStatus::Installing,
+        ] {
+            assert!(busy.is_busy() && !busy.is_available(), "{busy:?}");
+        }
+        for still in [
+            UpdateStatus::Idle,
+            UpdateStatus::UpToDate,
+            UpdateStatus::Installed,
+            UpdateStatus::Failed("x".into()),
+        ] {
+            assert!(!still.is_busy() && !still.is_available(), "{still:?}");
+        }
+    }
+
+    #[test]
+    fn the_fake_updater_checks_and_installs() {
+        let mut platform = FakePlatform::new([]);
+        assert_eq!(platform.update_status().unwrap(), UpdateStatus::Idle);
+        platform.check_for_update().unwrap();
+        assert_eq!(platform.update_status().unwrap(), UpdateStatus::UpToDate);
+        // Nothing to install while up to date.
+        platform.install_update().unwrap();
+        assert_eq!(platform.update_status().unwrap(), UpdateStatus::UpToDate);
+
+        platform.set_update_status(UpdateStatus::Available("0.2.0".into()));
+        platform.install_update().unwrap();
+        assert_eq!(platform.update_status().unwrap(), UpdateStatus::Installing);
+        // A check doesn't interrupt the install.
+        platform.check_for_update().unwrap();
+        assert_eq!(platform.update_status().unwrap(), UpdateStatus::Installing);
+        assert_eq!(
+            (platform.update_checks(), platform.update_installs()),
+            (2, 2)
+        );
     }
 
     #[test]

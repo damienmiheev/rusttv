@@ -9,6 +9,14 @@
          protectionLevel normal, so granted at install where it exists; no effect elsewhere. -->
     <uses-permission android:name="com.mediatek.permission.AirPlay.BroadCast" />
 
+    <!-- Launcher updates only (Updater, SECURITY.md § Launcher updates): once a day the
+         latest release's JSON from api.github.com; the APK and SHA256SUMS from GitHub
+         only when the user picks Install in About. Nothing else uses the network. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Hands a verified update of this app to Android's installer. Android still asks
+         the user to allow "Install unknown apps" for RustTV once, and to confirm each install. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- Package visibility (API 30+): see launchable TV apps without QUERY_ALL_PACKAGES. -->
     <queries>
         <!-- The service tools.HiddenFeatureActivity starts. -->
@@ -66,5 +74,11 @@
             android:taskAffinity=""
             android:excludeFromRecents="true"
             android:noHistory="true" />
+
+        <!-- The outcome of an update install (Updater.commit). Not exported: only this
+             app's own PendingIntent, sent by the system installer, reaches it. -->
+        <receiver
+            android:name=".InstallResultReceiver"
+            android:exported="false" />
     </application>
 </manifest>

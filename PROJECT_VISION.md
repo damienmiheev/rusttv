@@ -25,7 +25,7 @@ Everything else in the long-term vision (RustCast, RustBrowse, RustPlay, AI Conc
 
 1. **Measure before claiming.** Every speed claim comes from published, reproducible benchmarks.
 2. **Device safety above everything.** Rootless, reversible where possible, honest when not.
-3. **Local-first, no telemetry.** Works offline; no network calls of its own; no data leaves the machine unless the user exports it.
+3. **Local-first, no telemetry.** Works offline; no network calls of its own, except the launcher's update check (owner decision 2026-10-24, below); no data leaves the machine unless the user exports it.
 4. **Rust-first, not Rust-only.** Rust for logic, UI, CLI, MCP; a thin Kotlin shim where Android APIs require Java.
 5. **Agent-native.** Every capability is a CLI command with stable `--json` output; MCP exposes the same core.
 6. **LLM-independent.** No model is needed for any normal operation.
@@ -44,6 +44,12 @@ Everything else in the long-term vision (RustCast, RustBrowse, RustPlay, AI Conc
 | CLI output | Human-readable by default; `--json` for stable versioned schema |
 | Prior art | Inspired by CleanYourTV (MIT): clean-room Rust implementation; data files may be reused with attribution |
 | Primary test device | Owner's Philips TV running Google TV, plus the Android TV emulator |
+
+## Product decisions (owner, 2026-10-24)
+
+| Decision | Choice |
+|---|---|
+| Launcher updates | The launcher checks GitHub for a newer release once a day, **on by default**, and can install it on the TV itself; Android asks the user to confirm each install. There is no off switch until the launcher has a settings page. What it fetches and why the TV trusts it: SECURITY.md § Launcher updates |
 
 Technical decisions are logged in ARCHITECTURE.md.
 

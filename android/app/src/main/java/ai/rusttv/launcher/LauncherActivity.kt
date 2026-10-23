@@ -49,6 +49,13 @@ class LauncherActivity : NativeActivity() {
         }
     }
 
+    override fun onResume() {
+        // Before super, which hands the resume to Rust: Rust then reads the
+        // status as "checking" and follows the check to its end.
+        Updater.checkIfDue(this)
+        super.onResume()
+    }
+
     override fun onDestroy() {
         unregisterReceiver(packageReceiver)
         super.onDestroy()

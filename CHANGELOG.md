@@ -51,6 +51,11 @@ First public release (ROADMAP Phase 6).
 - Rust + Slint home screen for Android TV 8+: app grid with banners, D-pad
   navigation, move mode, About page with the third-party licence notices.
 - One APK per ABI: arm64-v8a, armeabi-v7a, x86_64.
+- Updates itself from GitHub releases: once a day (on by default) it checks
+  the latest release; About shows the result, and OK installs a newer
+  version after checking its size, SHA-256, package, version and signing
+  key. Android asks the user to confirm every install; never a downgrade
+  (SECURITY.md § Launcher updates).
 - `tools.HiddenFeatureActivity`: no UI, startable only by the adb shell or
   the system (it requires `android.permission.DUMP`), used by `rusttv tools`
   (TOOLS.md).
