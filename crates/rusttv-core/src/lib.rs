@@ -17,6 +17,7 @@ mod inspect;
 mod install;
 mod journal;
 mod launcher;
+mod optimizer;
 mod perf;
 mod plan;
 mod privacy;
@@ -38,13 +39,13 @@ pub use catalog::{
 };
 pub use command::{
     ApkPath, Component, DeviceCommand, InvalidApk, InvalidComponent, InvalidPackageName,
-    PackageName, RiskClass,
+    InvalidSettingValue, PackageName, RiskClass, SettingKey, SettingState, SettingValue,
 };
 pub use compat::{
     DeviceKind, DeviceProfile, InvalidPrivacyCategory, MissingField, PROFILE_SCHEMA_VERSION,
     PrivacyCategory, ProfileDevice, ProfileFirmware, ProfileHardware, ProfileLauncher,
-    ProfilePrivacy, ProfileTested, TestedPackage, bundled_profiles, firmware_family,
-    profile_file_name, profile_from_info,
+    ProfileOptimizer, ProfilePrivacy, ProfileTested, TestedPackage, bundled_profiles,
+    firmware_family, profile_file_name, profile_from_info,
 };
 pub use device::{
     ConnectOutcome, DEFAULT_ADB_PORT, DeviceAddress, DeviceEntry, DeviceSelectionError,
@@ -59,12 +60,20 @@ pub use install::{
 };
 pub use journal::{
     FileJournal, JOURNAL_SCHEMA_VERSION, Journal, JournalSearch, JournalStatus, JournalStep,
-    JournalStore, StepStatus, UnreadableJournal, find_restorable_journal, journal_file_name,
-    journals_dir, load_journal,
+    JournalStore, RestorableJournals, StepStatus, UnreadableJournal, find_restorable_journal,
+    find_restorable_journal_where, journal_file_name, journals_dir, load_journal,
+    restorable_journals,
 };
 pub use launcher::{
     HomeCandidate, LauncherStatus, RUSTTV_LAUNCHER, launcher_status, parse_home_candidates,
     parse_resumed_activity,
+};
+pub use optimizer::{
+    InvalidOptimizeKind, OPTIMIZE_PLAN_PREFIX, OPTIMIZER_SCHEMA_VERSION, OptimizeJournalSearch,
+    OptimizeKind, OptimizerProfile, OptimizerState, OptimizerStatus, ProfileSetting,
+    REDUCED_ANIMATIONS, SettingStatus, bundled_optimizer_profile, bundled_optimizer_profiles,
+    find_optimize_journal, optimize_restore_plan, optimizer_plan, optimizer_restore_plan,
+    profile_of_plan,
 };
 pub use plan::{
     Approval, Check, DryRun, DryRunStep, Plan, PlanError, Step, apply, device_fingerprint, restore,

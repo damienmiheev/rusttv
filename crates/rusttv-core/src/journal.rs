@@ -221,19 +221,33 @@ pub struct UnreadableJournal {
 /// that may still need restoring. Every `.toml` file is read; files that
 /// can't be are listed in [`JournalSearch::unreadable`], not skipped silently.
 pub fn find_restorable_journal(dir: &Path, plan: &str, fingerprint: &str) -> JournalSearch {
+    find_restorable_journal_where(dir, plan, fingerprint, |name| name == plan)
+}
+
+/// Like [`find_restorable_journal`], for every plan name `matches` accepts
+/// (e.g. any `optimize-*` plan); `kind` names them in the `NO_JOURNAL` message.
+pub fn find_restorable_journal_where(
+    dir: &Path,
+    kind: &str,
+    fingerprint: &str,
+    matches: impl Fn(&str) -> bool,
+) -> JournalSearch {
     let not_found = || {
-        let from_profile = if plan == crate::takeover::HOME_TAKEOVER {
+        let from_profile = if kind == crate::takeover::HOME_TAKEOVER {
             ", or `--from-profile` to re-enable what this device's profile says a takeover disables"
         } else {
             ""
         };
         PlanError::no_journal(format!(
-            "no {plan} journal to restore for firmware `{fingerprint}` in {}; pass `--journal <file>`{from_profile}",
+            "no {kind} journal to restore for firmware `{fingerprint}` in {}; pass `--journal <file>`{from_profile}",
             dir.display()
         ))
     };
-    let entries = match fs::read_dir(dir) {
-        Ok(entries) => entries,
+    let RestorableJournals {
+        journals,
+        unreadable,
+    } = match restorable_journals(dir, matches) {
+        Ok(found) => found,
         Err(error) => {
             let found = if error.kind() == io::ErrorKind::NotFound {
                 not_found()
@@ -246,7 +260,23 @@ pub fn find_restorable_journal(dir: &Path, plan: &str, fingerprint: &str) -> Jou
             };
         }
     };
-    let mut paths: Vec<PathBuf> = entries
+    JournalSearch {
+        found: journals
+            .into_iter()
+            .find(|(_, journal)| journal.fingerprint == fingerprint)
+            .ok_or_else(not_found),
+        unreadable,
+    }
+}
+
+/// Every restorable journal in `dir` whose plan name `matches` accepts, on
+/// any firmware, newest first, and the `.toml` files that can't be read.
+/// Fails only if the directory can't be listed (also when it doesn't exist).
+pub fn restorable_journals(
+    dir: &Path,
+    matches: impl Fn(&str) -> bool,
+) -> io::Result<RestorableJournals> {
+    let mut paths: Vec<PathBuf> = fs::read_dir(dir)?
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
         .filter(|path| {
             path.extension()
@@ -256,26 +286,31 @@ pub fn find_restorable_journal(dir: &Path, plan: &str, fingerprint: &str) -> Jou
     // Names start with a zero-padded timestamp: newest first.
     paths.sort();
     paths.reverse();
-    let mut found = None;
+    let mut journals = Vec::new();
     let mut unreadable = Vec::new();
     for path in paths {
         match load_journal(&path) {
             Ok(journal) => {
-                if found.is_none()
-                    && journal.plan == plan
-                    && journal.fingerprint == fingerprint
-                    && journal.status.is_restorable()
-                {
-                    found = Some((path, journal));
+                if matches(&journal.plan) && journal.status.is_restorable() {
+                    journals.push((path, journal));
                 }
             }
             Err(error) => unreadable.push(UnreadableJournal { path, error }),
         }
     }
-    JournalSearch {
-        found: found.ok_or_else(not_found),
+    Ok(RestorableJournals {
+        journals,
         unreadable,
-    }
+    })
+}
+
+/// What [`restorable_journals`] found.
+#[derive(Debug, Default)]
+pub struct RestorableJournals {
+    /// Restorable journals and their paths, newest first.
+    pub journals: Vec<(PathBuf, Journal)>,
+    /// `.toml` files in the directory that could not be read, newest first.
+    pub unreadable: Vec<UnreadableJournal>,
 }
 
 #[cfg(test)]

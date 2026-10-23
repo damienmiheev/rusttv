@@ -362,6 +362,7 @@ mod tests {
             },
             launcher,
             privacy: None,
+            optimizer: Vec::new(),
         }
     }
 

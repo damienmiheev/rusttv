@@ -108,6 +108,21 @@ pub enum DeviceCommand {
     /// TV input state, including which TV input services the system has
     /// bound (`dumpsys tv_input`).
     TvInputs,
+    /// One allowlisted global setting (`settings get global <key>`); prints
+    /// `null` when the key is unset.
+    GetSetting(SettingKey),
+    /// Writes one allowlisted global setting (OPTIMIZER.md § 4): `to` a value
+    /// is `settings put global <key> <value>`, `to` unset is `settings delete
+    /// global <key>`. `from` is the state read when planning, so the command
+    /// carries its own inverse. Setting (R2); only optimizer plans use it.
+    SetSetting {
+        /// The setting.
+        key: SettingKey,
+        /// The state this command leaves.
+        to: SettingState,
+        /// The state before, which the inverse brings back.
+        from: SettingState,
+    },
     /// Disables a package for user 0 (`pm disable-user --user 0 <package>`).
     /// Package state; only Home takeover and privacy plans use it (SECURITY.md).
     DisablePackage(PackageName),
@@ -147,10 +162,12 @@ impl DeviceCommand {
             | Self::PowerState
             | Self::InputMethods
             | Self::EnabledAccessibilityServices
-            | Self::TvInputs => RiskClass::Read,
+            | Self::TvInputs
+            | Self::GetSetting(_) => RiskClass::Read,
             Self::ForceStop(_) | Self::StartActivity(_) | Self::PressHome | Self::WakeUp => {
                 RiskClass::Transient
             }
+            Self::SetSetting { .. } => RiskClass::Setting,
             Self::DisablePackage(_)
             | Self::EnablePackage(_)
             | Self::InstallLauncher(_)
@@ -176,6 +193,11 @@ impl DeviceCommand {
             Self::DisablePackage(package) => Some(Self::EnablePackage(package.clone())),
             Self::EnablePackage(package) => Some(Self::DisablePackage(package.clone())),
             Self::InstallLauncher(_) => Some(Self::UninstallLauncher),
+            Self::SetSetting { key, to, from } => Some(Self::SetSetting {
+                key: *key,
+                to: from.clone(),
+                from: to.clone(),
+            }),
             _ => None,
         }
     }
@@ -247,6 +269,24 @@ impl DeviceCommand {
                 "enabled_accessibility_services",
             ],
             Self::TvInputs => vec!["shell", "dumpsys", "tv_input"],
+            Self::GetSetting(key) => vec!["shell", "settings", "get", "global", key.as_str()],
+            Self::SetSetting {
+                key,
+                to: SettingState::Value(value),
+                ..
+            } => vec![
+                "shell",
+                "settings",
+                "put",
+                "global",
+                key.as_str(),
+                value.as_str(),
+            ],
+            Self::SetSetting {
+                key,
+                to: SettingState::Unset,
+                ..
+            } => vec!["shell", "settings", "delete", "global", key.as_str()],
             Self::DisablePackage(package) => {
                 vec![
                     "shell",
@@ -331,6 +371,131 @@ impl fmt::Display for PackageName {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("`{0}` is not a valid Android package name")]
 pub struct InvalidPackageName(String);
+
+/// A global setting RustTV may read and write (OPTIMIZER.md § 1). The
+/// namespace is fixed (`global`) and there is no free-form key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SettingKey {
+    /// `Settings.Global.WINDOW_ANIMATION_SCALE`: window open/close animations.
+    WindowAnimationScale,
+    /// `Settings.Global.TRANSITION_ANIMATION_SCALE`: activity transitions.
+    TransitionAnimationScale,
+    /// `Settings.Global.ANIMATOR_DURATION_SCALE`: `ValueAnimator`s in every app.
+    AnimatorDurationScale,
+}
+
+impl SettingKey {
+    /// Every key, in the order `optimize analyze` shows them.
+    pub const ALL: [Self; 3] = [
+        Self::WindowAnimationScale,
+        Self::TransitionAnimationScale,
+        Self::AnimatorDurationScale,
+    ];
+
+    /// The key's name in `Settings.Global`, e.g. `window_animation_scale`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::WindowAnimationScale => "window_animation_scale",
+            Self::TransitionAnimationScale => "transition_animation_scale",
+            Self::AnimatorDurationScale => "animator_duration_scale",
+        }
+    }
+}
+
+impl fmt::Display for SettingKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// A value for a [`SettingKey`], safe to pass to `adb shell`: a decimal of
+/// one or two digits and up to three decimals, `[0-9]{1,2}(\.[0-9]{1,3})?`
+/// (every allowlisted key is an animation scale). No shell syntax fits.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct SettingValue(String);
+
+impl SettingValue {
+    /// Validates `value`.
+    pub fn new(value: &str) -> Result<Self, InvalidSettingValue> {
+        let digits = |part: &str, max: usize| {
+            (1..=max).contains(&part.len()) && part.bytes().all(|byte| byte.is_ascii_digit())
+        };
+        let valid = match value.split_once('.') {
+            Some((whole, fraction)) => digits(whole, 2) && digits(fraction, 3),
+            None => digits(value, 2),
+        };
+        if valid {
+            Ok(Self(value.to_owned()))
+        } else {
+            Err(InvalidSettingValue(value.to_owned()))
+        }
+    }
+
+    /// The value as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for SettingValue {
+    type Error = InvalidSettingValue;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(&value)
+    }
+}
+
+impl From<SettingValue> for String {
+    fn from(value: SettingValue) -> Self {
+        value.0
+    }
+}
+
+impl fmt::Display for SettingValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Returned by [`SettingValue::new`] for a value outside the allowed form.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("`{0}` is not a valid setting value; expected a decimal like `0.5` or `1.0`")]
+pub struct InvalidSettingValue(String);
+
+/// Whether a global setting is stored, and with which value.
+///
+/// Serialized as `"unset"` or `{ value = "0.5" }`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SettingState {
+    /// Not stored; Android uses the default (1.0 for the animation scales).
+    Unset,
+    /// Stored with this value.
+    Value(SettingValue),
+}
+
+impl SettingState {
+    /// Reads the output of `settings get global <key>`: `null` is unset
+    /// (also for a stored string `null`, which Android reads as the default
+    /// too; OPTIMIZER.md § 4); anything else must be a valid [`SettingValue`].
+    pub fn from_output(output: &str) -> Result<Self, InvalidSettingValue> {
+        match output.trim() {
+            "null" => Ok(Self::Unset),
+            value => SettingValue::new(value).map(Self::Value),
+        }
+    }
+}
+
+impl fmt::Display for SettingState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unset => f.write_str("unset"),
+            Self::Value(value) => value.fmt(f),
+        }
+    }
+}
 
 /// A local APK file for `adb install`, as an absolute UTF-8 path.
 ///
@@ -532,6 +697,17 @@ mod tests {
             DeviceCommand::InputMethods,
             DeviceCommand::EnabledAccessibilityServices,
             DeviceCommand::TvInputs,
+            DeviceCommand::GetSetting(SettingKey::WindowAnimationScale),
+            DeviceCommand::SetSetting {
+                key: SettingKey::TransitionAnimationScale,
+                to: value("0.5"),
+                from: SettingState::Unset,
+            },
+            DeviceCommand::SetSetting {
+                key: SettingKey::AnimatorDurationScale,
+                to: value("0.5"),
+                from: value("1.0"),
+            },
             DeviceCommand::DisablePackage(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::EnablePackage(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::InstallLauncher(apk()),
@@ -561,6 +737,8 @@ mod tests {
                 | DeviceCommand::InputMethods
                 | DeviceCommand::EnabledAccessibilityServices
                 | DeviceCommand::TvInputs
+                | DeviceCommand::GetSetting(_)
+                | DeviceCommand::SetSetting { .. }
                 | DeviceCommand::DisablePackage(_)
                 | DeviceCommand::EnablePackage(_)
                 | DeviceCommand::InstallLauncher(_)
@@ -575,6 +753,10 @@ mod tests {
         ApkPath::new("/Users/me/Application Support/app-arm64-v8a-release.apk").unwrap()
     }
 
+    fn value(text: &str) -> SettingState {
+        SettingState::Value(SettingValue::new(text).unwrap())
+    }
+
     #[test]
     fn only_package_state_and_launcher_install_commands_are_above_transient() {
         // This used to assert that nothing above R1 existed, because R2/R3
@@ -582,12 +764,15 @@ mod tests {
         // engine now exists (`crate::plan`): Home takeover and privacy
         // profiles need two R3 commands and `launcher install`/`uninstall`
         // three more, limited to RustTV's own package. Anything else above R1 must be added here on purpose.
+        // The optimizer (OPTIMIZER.md § 4) adds the only R2 command,
+        // `SetSetting`, limited to the allowlisted keys.
         for command in every_command() {
             let expected = match command {
                 DeviceCommand::ForceStop(_)
                 | DeviceCommand::StartActivity(_)
                 | DeviceCommand::PressHome
                 | DeviceCommand::WakeUp => RiskClass::Transient,
+                DeviceCommand::SetSetting { .. } => RiskClass::Setting,
                 DeviceCommand::DisablePackage(_)
                 | DeviceCommand::EnablePackage(_)
                 | DeviceCommand::InstallLauncher(_)
@@ -638,6 +823,112 @@ mod tests {
         }
         let evil = "command = { kind = \"disable_package\", arg = \"com.x; reboot\" }";
         assert!(toml::from_str::<Wrapper>(evil).is_err());
+    }
+
+    #[test]
+    fn set_setting_renders_put_or_delete_and_inverts_from_its_own_original() {
+        let set = DeviceCommand::SetSetting {
+            key: SettingKey::WindowAnimationScale,
+            to: value("0.5"),
+            from: SettingState::Unset,
+        };
+        assert_eq!(
+            set.adb_args(),
+            [
+                "shell",
+                "settings",
+                "put",
+                "global",
+                "window_animation_scale",
+                "0.5"
+            ]
+        );
+        let undo = set.inverse().unwrap();
+        assert_eq!(
+            undo.adb_args(),
+            [
+                "shell",
+                "settings",
+                "delete",
+                "global",
+                "window_animation_scale"
+            ]
+        );
+        assert_eq!(
+            DeviceCommand::GetSetting(SettingKey::AnimatorDurationScale).adb_args(),
+            [
+                "shell",
+                "settings",
+                "get",
+                "global",
+                "animator_duration_scale"
+            ]
+        );
+    }
+
+    #[test]
+    fn setting_values_are_short_decimals_only() {
+        for good in ["0", "1", "0.5", "1.0", "10", "99.999", "0.25"] {
+            assert!(SettingValue::new(good).is_ok(), "{good:?}");
+        }
+        for bad in [
+            "",
+            ".5",
+            "5.",
+            "100",
+            "0.5000",
+            "-1",
+            "+1",
+            "1e3",
+            "0,5",
+            " 0.5",
+            "0.5 ",
+            "0.5;reboot",
+            "0.5\nreboot",
+            "$(reboot)",
+            "`id`",
+            "null",
+            "NaN",
+            "inf",
+            "1..0",
+            "0.5.1",
+            "٣",
+        ] {
+            assert!(SettingValue::new(bad).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn settings_get_output_null_is_unset_and_anything_else_must_validate() {
+        assert_eq!(SettingState::from_output("null\n"), Ok(SettingState::Unset));
+        assert_eq!(
+            SettingState::from_output("null\r\n"),
+            Ok(SettingState::Unset)
+        );
+        assert_eq!(SettingState::from_output("1.0\n"), Ok(value("1.0")));
+        assert!(SettingState::from_output("").is_err());
+        assert!(SettingState::from_output("fast\n").is_err());
+        assert!(SettingState::from_output("0.5; reboot").is_err());
+    }
+
+    #[test]
+    fn tampered_setting_commands_do_not_deserialize() {
+        #[derive(Debug, Deserialize)]
+        struct Wrapper {
+            #[expect(dead_code, reason = "only deserialization is tested")]
+            command: DeviceCommand,
+        }
+        let good = r#"command = { kind = "set_setting", arg = { key = "window_animation_scale", to = { value = "0.5" }, from = "unset" } }"#;
+        assert!(toml::from_str::<Wrapper>(good).is_ok());
+        for bad in [
+            good.replace("window_animation_scale", "adb_enabled"),
+            good.replace("\"0.5\"", "\"0.5; reboot\""),
+            good.replace("\"unset\"", "\"null\""),
+            good.replace("set_setting", "put_setting"),
+            good.replace(" }, from", ", namespace = \"secure\" }, from"),
+        ] {
+            assert!(toml::from_str::<Wrapper>(&bad).is_err(), "{bad}");
+        }
     }
 
     #[test]
