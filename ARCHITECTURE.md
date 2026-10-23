@@ -35,8 +35,8 @@ rusttv/
 │   └── rusttv-launcher/    # Phase 1b: cdylib for Android + desktop dev mode
 ├── android/                # Phase 1b: Gradle project, Kotlin shim, manifest
 ├── compat/
-│   ├── schema.json         # validates profiles in CI
-│   ├── protected.toml      # static protected-package deny-list (SECURITY.md)
+│   ├── README.md           # how to contribute a profile
+│   ├── protected.toml      # Phase 4: static protected-package deny-list (SECURITY.md)
 │   └── devices/*.toml      # one file per device model/firmware family
 └── *.md
 ```
@@ -73,9 +73,7 @@ There is intentionally no `shell(&str)`. Values that end up in `adb shell` argum
 ## rusttv-cli
 
 - `clap` derive. Commands map 1:1 to core functions; no logic in the CLI beyond formatting.
-- Default output: human text. `--json`: envelope `{"schema": "rusttv.v1", "ok": bool, "data": …, "error": {"code", "message"}}`.
-- Exit codes: 0 ok, 1 operation error, 2 usage error, 3 device not reachable/unauthorized.
-- Error codes so far: `ADB_NOT_FOUND`, `ADB_SPAWN_FAILED`, `NO_DEVICE`, `MULTIPLE_DEVICES`, `DEVICE_NOT_FOUND`, `DEVICE_UNAUTHORIZED`, `DEVICE_OFFLINE`, `DEVICE_NOT_READY`, `CONNECT_FAILED`, `COMMAND_FAILED`, `INVALID_OUTPUT`.
+- Default output: human text; `--json` gives the versioned `rusttv.v1` envelope. The output contract, exit codes and every error code are in [CLI.md](CLI.md); `rusttv_core::ERROR_CODES` is the canonical list, and tests keep code, list and CLI.md in sync.
 - Device-targeting commands pick the only connected device, or require `--serial` when there are several (exit code 2). With `--json`, errors are also a JSON envelope on stdout.
 - CLI tests run the real binary against `tests/fixtures/fake-adb` (selected with `RUSTTV_ADB`), so they need no device.
 - Logging via `tracing` to stderr (`-v`/`RUST_LOG`); stdout reserved for results.
@@ -138,7 +136,7 @@ Dev/CI tools: `cargo-deny` (covers RustSec advisories + licenses, so `cargo-audi
 | D4 | 2026-10-23 | Wrap system `adb` behind `Adb` trait | Pure-Rust ADB client | Users can't install `adb`, or process spawn latency distorts benchmarks |
 | D5 | 2026-10-23 | Min Android API 26 | 28 / 30 | Slint raises its minimum |
 | D6 | 2026-10-23 | CLI hosts: macOS + Linux first | + Windows | A Windows tester joins |
-| D7 | 2026-10-23 | Compat profiles: TOML in repo, schema-checked | JSON / separate repo | Profile volume needs its own release cadence |
+| D7 | 2026-10-23 | Compat profiles: TOML in repo; the Rust types (`deny_unknown_fields`) are the schema, and a test loads every profile | JSON Schema file / separate repo | Non-Rust tools need to validate profiles, or profile volume needs its own release cadence |
 | D8 | 2026-10-23 | No free-form shell in the API | Allow `shell(&str)` | Never for agent paths |
 | D9 | 2026-10-23 | Slint under Royalty-free 2.0 with attribution | GPL / commercial | Slint's terms change |
 | D10 | 2026-10-23 | Sync core, no tokio in M1 | tokio from day one | MCP or parallel device ops need it |

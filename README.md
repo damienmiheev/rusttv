@@ -28,6 +28,7 @@ RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + 
 | Doc | Contents |
 |---|---|
 | [PROJECT_VISION.md](PROJECT_VISION.md) | Mission, scope, product decisions, non-goals |
+| [CLI.md](CLI.md) | Commands, `--json` output contract, exit and error codes |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Repo layout, crates, Android bridge, decision log |
 | [SECURITY.md](SECURITY.md) | Safety rules, risk classes, recovery, vulnerability reporting |
 | [BENCHMARK_PLAN.md](BENCHMARK_PLAN.md) | How performance is measured and reported |
@@ -38,7 +39,7 @@ RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + 
 
 ## Getting started
 
-Requirements: [Rust via rustup](https://rustup.rs) (the pinned toolchain in `rust-toolchain.toml` installs automatically) and, for device commands later, Android platform-tools (`adb`).
+Requirements: [Rust via rustup](https://rustup.rs) (the pinned toolchain in `rust-toolchain.toml` installs automatically) and Android platform-tools (`adb`) for the device commands.
 
 ```bash
 cargo run -p rusttv-cli -- device list                 # devices known to adb
@@ -46,6 +47,7 @@ cargo run -p rusttv-cli -- device connect 192.168.1.20 # connect over Wi-Fi (por
 cargo run -p rusttv-cli -- device inspect               # model, Android version, CPU, memory, storage (read-only)
 cargo run -p rusttv-cli -- apps list                    # installed packages: system/third-party, enabled/disabled
 cargo run -p rusttv-cli -- performance snapshot         # CPU, memory, launcher memory, biggest processes
+cargo run -p rusttv-cli -- compat profile               # compatibility profile for compat/devices/
 cargo run -p rusttv-cli -- device list --json          # machine-readable output
 ```
 
@@ -62,7 +64,7 @@ cargo deny check   # cargo install --locked cargo-deny
 
 ## Contributing
 
-The project is at an early stage. The most useful contributions right now are feedback on the design docs (open an issue) and, once the CLI exists, device reports from your TV. Please report security issues privately via GitHub Security Advisories, not public issues.
+The project is at an early stage. The most useful contributions right now are feedback on the design docs (open an issue) and a compatibility profile for your TV (see [compat/README.md](compat/README.md)). Please report security issues privately via GitHub Security Advisories, not public issues.
 
 ## Acknowledgements
 

@@ -1,4 +1,5 @@
 mod apps;
+mod compat;
 mod output;
 mod performance;
 
@@ -34,6 +35,18 @@ enum Command {
     /// Measure device load.
     #[command(subcommand)]
     Performance(PerformanceAction),
+    /// Device compatibility profiles.
+    #[command(subcommand)]
+    Compat(CompatAction),
+}
+
+#[derive(Debug, Subcommand)]
+enum CompatAction {
+    /// Print a compatibility profile (TOML) for a device, ready to add to `compat/devices/`. Read-only.
+    Profile {
+        #[command(flatten)]
+        target: Target,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -102,6 +115,8 @@ enum CliError {
     Adb(#[from] AdbError),
     #[error(transparent)]
     Selection(#[from] DeviceSelectionError),
+    #[error(transparent)]
+    IncompleteProfile(#[from] rusttv_core::MissingField),
 }
 
 impl CliError {
@@ -109,6 +124,7 @@ impl CliError {
         match self {
             Self::Adb(error) => error.code(),
             Self::Selection(error) => error.code(),
+            Self::IncompleteProfile(_) => "INCOMPLETE_PROFILE",
         }
     }
 
@@ -118,6 +134,7 @@ impl CliError {
             Self::Adb(_) => EXIT_FAILURE,
             Self::Selection(error) if error.is_ambiguous() => EXIT_USAGE,
             Self::Selection(_) => EXIT_DEVICE_UNREACHABLE,
+            Self::IncompleteProfile(_) => EXIT_FAILURE,
         }
     }
 }
@@ -134,6 +151,9 @@ fn main() -> ExitCode {
         Command::Apps(AppsAction::List { target }) => apps::list(&adb, target, cli.json),
         Command::Performance(PerformanceAction::Snapshot { target, sample_ms }) => {
             performance::snapshot(&adb, target, *sample_ms, cli.json)
+        }
+        Command::Compat(CompatAction::Profile { target }) => {
+            compat::profile(&adb, target, cli.json)
         }
     };
 

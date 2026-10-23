@@ -314,3 +314,48 @@ fn performance_snapshot_rejects_tiny_sample_intervals() {
 
     assert_eq!(output.status.code(), Some(2));
 }
+
+#[test]
+fn every_error_code_is_documented_in_cli_md() {
+    let docs = include_str!("../../../CLI.md");
+    let cli_only = ["INCOMPLETE_PROFILE", "INTERNAL"];
+    for code in rusttv_core::ERROR_CODES.iter().chain(&cli_only) {
+        assert!(
+            docs.contains(&format!("| `{code}` |")),
+            "{code} is missing from the error code table in CLI.md"
+        );
+    }
+}
+
+#[test]
+fn compat_profile_prints_toml_and_suggests_a_path() {
+    let output = rusttv_with_fake_adb("emulator", &["compat", "profile"]);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let committed = include_str!("../../../compat/devices/google-emu64a.toml");
+    // Same profile as the committed one, apart from the hand-written notes.
+    let without_notes = |text: &str| -> String {
+        text.lines()
+            .filter(|line| !line.starts_with("notes ="))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    assert_eq!(without_notes(&stdout), without_notes(committed));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("compat/devices/google-emu64a.toml"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn compat_profile_json_includes_the_suggested_path() {
+    let output = rusttv_with_fake_adb("emulator", &["compat", "profile", "--json"]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let data = &json_stdout(&output)["data"];
+    assert_eq!(data["path"], "compat/devices/google-emu64a.toml");
+    assert_eq!(data["profile"]["device"]["kind"], "emulator");
+    assert_eq!(data["profile"]["firmware"]["api_level"], 34);
+}

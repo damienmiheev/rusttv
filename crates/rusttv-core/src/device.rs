@@ -267,6 +267,32 @@ impl DeviceSelectionError {
     }
 }
 
+/// One error of every kind; see `crate::error::every_adb_error`.
+#[cfg(test)]
+pub(crate) fn every_selection_error() -> Vec<DeviceSelectionError> {
+    let not_ready = |state| SelectionKind::NotReady {
+        serial: "tv".to_owned(),
+        state,
+    };
+    let all: Vec<DeviceSelectionError> = vec![
+        SelectionKind::NoDevices.into(),
+        SelectionKind::NotFound("tv".to_owned()).into(),
+        SelectionKind::Ambiguous(vec!["a".to_owned(), "b".to_owned()]).into(),
+        not_ready(DeviceState::Unauthorized).into(),
+        not_ready(DeviceState::Offline).into(),
+        not_ready(DeviceState::Other("recovery".to_owned())).into(),
+    ];
+    for error in &all {
+        match error.kind {
+            SelectionKind::NoDevices
+            | SelectionKind::NotFound(_)
+            | SelectionKind::Ambiguous(_)
+            | SelectionKind::NotReady { .. } => {}
+        }
+    }
+    all
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

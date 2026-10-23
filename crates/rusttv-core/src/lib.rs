@@ -7,6 +7,7 @@
 mod adb;
 mod apps;
 mod command;
+mod compat;
 mod device;
 mod error;
 mod inspect;
@@ -17,11 +18,15 @@ pub use adb::FakeAdb;
 pub use adb::{Adb, SystemAdb};
 pub use apps::{AppInfo, AppKind, list_apps, parse_package_list};
 pub use command::{DeviceCommand, InvalidPackageName, PackageName, RiskClass};
+pub use compat::{
+    DeviceKind, DeviceProfile, MissingField, PROFILE_SCHEMA_VERSION, ProfileDevice,
+    ProfileFirmware, ProfileHardware, ProfileTested, profile_file_name, profile_from_info,
+};
 pub use device::{
     ConnectOutcome, DEFAULT_ADB_PORT, DeviceAddress, DeviceEntry, DeviceSelectionError,
     DeviceState, InvalidDeviceAddress, parse_connect_output, parse_device_list, select_device,
 };
-pub use error::AdbError;
+pub use error::{AdbError, ERROR_CODES};
 pub use inspect::{
     DeviceInfo, MemoryInfo, StorageInfo, inspect, parse_df, parse_meminfo, parse_properties,
 };
@@ -32,3 +37,31 @@ pub use perf::{
 };
 /// Version of the core crate, shown by `rusttv --version`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeSet;
+
+    use super::*;
+
+    #[test]
+    fn error_codes_list_matches_the_codes_errors_produce() {
+        let produced: BTreeSet<&str> = error::every_adb_error()
+            .iter()
+            .map(AdbError::code)
+            .chain(
+                device::every_selection_error()
+                    .iter()
+                    .map(DeviceSelectionError::code),
+            )
+            .collect();
+        let listed: BTreeSet<&str> = ERROR_CODES.iter().copied().collect();
+
+        assert_eq!(
+            listed.len(),
+            ERROR_CODES.len(),
+            "duplicate entries in ERROR_CODES"
+        );
+        assert_eq!(produced, listed);
+    }
+}

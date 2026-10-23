@@ -55,6 +55,11 @@ pub fn print_error(json: bool, code: &str, error: &dyn Error) {
     }
 }
 
+/// Prints a hint for humans on stderr, so stdout stays pipeable.
+pub fn print_note(message: &str) {
+    print_to_stderr(message);
+}
+
 fn print_envelope<T: Serialize>(envelope: &T) {
     // Our envelopes only contain strings, numbers, options and lists, which
     // always serialize; the fallback exists so output is never empty.
@@ -68,7 +73,7 @@ fn print_envelope<T: Serialize>(envelope: &T) {
 
 #[expect(
     clippy::print_stderr,
-    reason = "human-readable errors belong on stderr; this is the single place that writes them"
+    reason = "human-readable errors and notes belong on stderr; this is the single place that writes them"
 )]
 fn print_to_stderr(message: &str) {
     eprintln!("{message}");

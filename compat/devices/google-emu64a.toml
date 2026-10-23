@@ -1,0 +1,23 @@
+schema_version = 1
+
+[device]
+manufacturer = "Google"
+brand = "google"
+model = "sdk_gphone64_arm64"
+codename = "emu64a"
+kind = "emulator"
+
+[firmware]
+android_version = "14"
+api_level = 34
+security_patch = "2023-09-05"
+build_fingerprint = "google/sdk_gphone64_arm64/emu64a:14/UE1A.230829.036.A2/11596452:userdebug/dev-keys"
+
+[hardware]
+abis = ["arm64-v8a"]
+memory_total_mib = 1978
+data_storage_total_mib = 5939
+
+[tested]
+rusttv_version = "0.0.0"
+notes = "Stock Pixel 3a AVD (phone image, not Android TV), used as the test target until a TV emulator or real TV is profiled. Read-only commands only. Captures: crates/rusttv-core/src/fixtures/emulator-pixel3a-api34."

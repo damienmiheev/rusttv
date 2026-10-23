@@ -2,6 +2,23 @@
 
 use std::io;
 
+/// Every stable error code the core can produce, from [`AdbError::code`] and
+/// [`crate::DeviceSelectionError::code`]. Documented in CLI.md; a test keeps
+/// this list, the code and the docs in sync. Codes are never renamed.
+pub const ERROR_CODES: &[&str] = &[
+    "ADB_NOT_FOUND",
+    "ADB_SPAWN_FAILED",
+    "NO_DEVICE",
+    "MULTIPLE_DEVICES",
+    "DEVICE_NOT_FOUND",
+    "DEVICE_UNAUTHORIZED",
+    "DEVICE_OFFLINE",
+    "DEVICE_NOT_READY",
+    "CONNECT_FAILED",
+    "COMMAND_FAILED",
+    "INVALID_OUTPUT",
+];
+
 /// Running a command through `adb` failed.
 ///
 /// Follows M-ERRORS-CANONICAL-STRUCTS (rust-guidelines skill): the failure
@@ -118,6 +135,35 @@ impl AdbError {
         };
         Self { kind }
     }
+}
+
+/// One error of every kind. The `match` stops compiling when a kind is
+/// added, so new codes can't skip the `ERROR_CODES` check.
+#[cfg(test)]
+pub(crate) fn every_adb_error() -> Vec<AdbError> {
+    let all = vec![
+        AdbError::spawn(io::Error::from(io::ErrorKind::NotFound)),
+        AdbError::spawn(io::Error::from(io::ErrorKind::PermissionDenied)),
+        AdbError::from_failure("tv", &[], String::new(), "adb: device 'tv' not found"),
+        AdbError::from_failure("tv", &[], String::new(), "adb: device unauthorized."),
+        AdbError::from_failure("tv", &[], String::new(), "adb: device offline"),
+        AdbError::host_failure(&["devices"], String::new(), "boom"),
+        AdbError::connect_failed("tv:5555".to_owned(), "refused".to_owned()),
+        AdbError::invalid_output(&["shell"]),
+    ];
+    for error in &all {
+        match error.kind {
+            ErrorKind::AdbNotFound
+            | ErrorKind::Spawn(_)
+            | ErrorKind::DeviceNotFound(_)
+            | ErrorKind::DeviceUnauthorized(_)
+            | ErrorKind::DeviceOffline(_)
+            | ErrorKind::CommandFailed { .. }
+            | ErrorKind::ConnectFailed { .. }
+            | ErrorKind::InvalidOutput(_) => {}
+        }
+    }
+    all
 }
 
 #[cfg(test)]
