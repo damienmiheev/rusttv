@@ -89,6 +89,8 @@ component Tile inherits Rectangle {
     in property <bool> pressed;
     // 0 active, 1 swaying (the focused tile, after a short idle).
     in property <int> idle-phase;
+    // A dot in the corner: set on the About tile while an update is available.
+    in property <bool> badge;
 
     property <bool> browsing: mode == Mode.browse;
     property <bool> sway: focused && browsing && !pressed && idle-phase == 1;
@@ -162,6 +164,16 @@ component Tile inherits Rectangle {
                 x: parent.width * (0.2 + 0.45 * sin(sway-turns * 360deg));
                 background: @linear-gradient(90deg, #ffffff00 0%, #ffffff1f 50%, #ffffff00 100%);
             }
+        }
+
+        // The update dot. Not animated, so it adds no frames to the home screen.
+        if badge: Rectangle {
+            x: parent.width - self.width - 14 * u;
+            y: 14 * u;
+            width: 18 * u;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: Theme.accent;
         }
 
         // Move mode: outline on the picked-up tile.
@@ -286,6 +298,10 @@ export component HomeWindow inherits Window {
     in property <bool> hero-a-front: true;
     in property <string> toast;
     in property <string> version;
+    // The updater's line on the About page (ui.rs `update_line`), and whether
+    // an update waits to be installed (a dot on the About tile).
+    in property <string> update-status;
+    in property <bool> update-available;
     // A slice of the licence notices from the line at the top of the panel
     // (ui.rs `Notices`), how far they are scrolled (0..1) and the share shown.
     in property <string> notices;
@@ -353,6 +369,7 @@ export component HomeWindow inherits Window {
             mode: root.mode;
             pressed: root.pressed;
             idle-phase: root.idle-phase;
+            badge: tile.kind == 3 && root.update-available;
         }
     }
 
@@ -479,6 +496,12 @@ export component HomeWindow inherits Window {
                 text: "Version " + version + " · MIT OR Apache-2.0";
                 font-size: 29 * u;
                 color: Theme.text-dim;
+                wrap: word-wrap;
+            }
+            Text {
+                text: update-status;
+                font-size: 29 * u;
+                color: update-available ? Theme.accent : Theme.text;
                 wrap: word-wrap;
             }
             Text {

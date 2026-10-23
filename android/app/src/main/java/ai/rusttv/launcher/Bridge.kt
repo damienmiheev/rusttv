@@ -103,6 +103,18 @@ object Bridge {
             it.readBytes().toString(Charsets.UTF_8)
         }
 
+    /** The updater's status, "kind" or "kind\tdetail" ([Updater]); a field read. */
+    @JvmStatic
+    fun updateStatus(context: Context): String = Updater.status(context)
+
+    /** Starts a check for a newer launcher in the background. */
+    @JvmStatic
+    fun checkForUpdate(context: Context) = Updater.check(context)
+
+    /** Starts installing the newer launcher in the background; Android asks the user to confirm. */
+    @JvmStatic
+    fun installUpdate(context: Context) = Updater.install(context)
+
     private fun pixels(drawable: Drawable, width: Int, height: Int): IntArray {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         drawable.setBounds(0, 0, width, height)

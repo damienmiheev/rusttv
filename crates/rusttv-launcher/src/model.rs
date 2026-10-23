@@ -106,6 +106,8 @@ pub enum Effect {
     Launch(String),
     /// Show the About page.
     OpenAbout,
+    /// OK on the About page: install the available update, else check for one.
+    Update,
     /// Show the hidden apps page.
     OpenHidden,
     /// Persist [`Home::order`] and [`Home::hidden`].
@@ -523,6 +525,7 @@ impl Home {
                 self.mode = Mode::Browse;
                 None
             }
+            (Mode::About, Input::OkPressed) => Some(Effect::Update),
             (Mode::Moving { .. }, _) => self.handle_moving(input, now),
             (Mode::Menu { .. }, _) => self.handle_menu(input, now),
             (Mode::Hidden { .. }, _) => self.handle_hidden(input),
@@ -1214,6 +1217,19 @@ mod tests {
         press(&mut home, &[Input::Right, Input::Back]);
         assert_eq!(home.state(), State::Browse);
         assert_eq!(home.focus(), 2);
+    }
+
+    #[test]
+    fn ok_on_about_asks_for_an_update_once_per_press() {
+        let mut home = home(2);
+        press(&mut home, &[Input::Right, Input::Right]);
+        press(&mut home, &[Input::OkPressed, Input::OkReleased]);
+        assert_eq!(home.handle(Input::OkPressed, ms(0)), Some(Effect::Update));
+        // A held OK's repeats are ignored; the release does nothing.
+        assert_eq!(home.handle(Input::OkPressed, ms(50)), None);
+        assert_eq!(home.handle(Input::OkReleased, ms(100)), None);
+        assert_eq!(home.state(), State::About);
+        assert_eq!(home.handle(Input::OkPressed, ms(200)), Some(Effect::Update));
     }
 
     // --- move mode --------------------------------------------------------

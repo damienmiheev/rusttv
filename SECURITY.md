@@ -13,7 +13,7 @@ RustTV never:
 - removes packages, except its own launcher (`ai.rusttv.launcher`) through `rusttv launcher uninstall`; the uninstall command takes no package name, so it can remove nothing else;
 - executes free-form shell strings — device access only through typed `DeviceCommand`s;
 - lets an AI agent apply a change without a human approving the specific plan;
-- sends data off the user's machine (no telemetry).
+- sends data off the user's machine (no telemetry). The launcher's update check ([Launcher updates](#launcher-updates)) only downloads from GitHub; it sends nothing but the requests themselves.
 
 ## Risk classes
 
@@ -98,6 +98,17 @@ Residual risk: firmware updates may re-enable the stock launcher or change its p
 - No MCP tool accepts commands, shell strings, or arbitrary package lists for R3.
 - MCP can read, analyze, and propose plans; approval is a separate human CLI step. *As built:* the MCP plan tools (`launcher_install_plan`, `launcher_uninstall_plan`, `launcher_restore_plan`, `privacy_plan`, `optimize_plan`, `optimize_restore_plan`) return the dry run and the `rusttv` command a person runs at a terminal; they run only R0 commands and write no journal. There is no MCP tool to plan a Home takeover, or to approve or apply anything (MCP.md).
 - Typed confirmation proves only an interactive terminal. Never give an agent or MCP server a pseudo-terminal that runs `rusttv` (see Change lifecycle, step 4).
+
+## Launcher updates
+
+*Owner decision 2026-10-24 (PROJECT_VISION.md, ARCHITECTURE.md D18).* The launcher checks for a newer version of itself and can install it on the TV. This is on by default, and there is no off switch until the launcher has a settings page. It runs on the TV at the user's request, without ADB, so it is outside the CLI's safety engine and risk classes; it can only replace `ai.rusttv.launcher` with a newer build signed by the same key, and touches no other package or setting.
+
+- **Network: GitHub only.** The launcher holds `INTERNET` for this alone (`Updater.kt`). It fetches `https://api.github.com/repos/damienmiheev/rusttv/releases/latest` (a few KB of JSON, capped at 1 MB) on resume when the last successful check is over 24 hours old (a failed one is retried on resume after an hour), and when the user presses OK on the About page with no update known. Only when the user presses OK to install does it download that release's `SHA256SUMS` (capped at 64 KB) and the APK for the TV's ABI. Every request and every redirect hop must be https on port 443 to `api.github.com`, `github.com`, `objects.githubusercontent.com` or `release-assets.githubusercontent.com` (where GitHub redirects release downloads); anything else is refused. Requests carry `User-Agent: RustTV-Launcher` and no identifiers, cookies or tokens. GitHub sees the TV's IP address and the time, as with any download; nothing about the TV or its apps is sent.
+- **What counts as an update.** Not a draft or pre-release; tag exactly `v<major>.<minor>.<patch>`; a versionCode (`major * 10000 + minor * 100 + patch`, RELEASE.md) strictly greater than the installed app's. Never a downgrade: the downloaded APK's own versionCode is checked again.
+- **Checks before Android sees the APK.** The asset is `rusttv-launcher-<version>-<abi>.apk` for the first of the device's ABIs that the release has; its size is at most 64 MB and the download must be exactly that size; its SHA-256 must equal its line in `SHA256SUMS`; the archive's package must be `ai.rusttv.launcher`, its versionCode newer than the installed one, and its signing certificates equal to the installed app's (`PackageManager.getPackageArchiveInfo`). The APK is written to the app's cache directory and deleted once it is copied into the install session, or when a step fails.
+- **Trust root: Android's same-key rule.** Android installs an update only if it is signed with the installed app's key, the release key kept offline (RELEASE.md § Signing). The TV does not verify `SHA256SUMS.minisig`: `SHA256SUMS` comes from the same release as the APK, so its hash and the size check catch corruption and mix-ups but add no trust, and a minisign check would add a second key whose loss only matters once the release key is lost too, at the cost of a pinned key and a verifier on the TV. So someone who controls the GitHub release or the connection can at worst withhold updates or offer an APK that the checks or Android refuse. Someone with the release key can offer an update to every TV with the check on; the user still has to confirm it. A launcher built with another key (debug builds, CI artifacts) refuses release updates ("not signed with RustTV's key").
+- **The user confirms every install.** RustTV is not a system or device-owner app: it opens a `PackageInstaller` session and Android shows its own confirmation. The first time, the launcher opens Android's "Install unknown apps" screen for RustTV and says so on the About page. The session's result receiver is not exported, so only the system installer's reply to RustTV's own PendingIntent reaches it.
+- **With Home takeover.** An update restarts the launcher like any app update. If a new version fails to start while the stock launcher is disabled, recover with `rusttv launcher restore` ([Recovery scenarios](#recovery-scenarios)).
 
 ## ADB hygiene (user guidance)
 
