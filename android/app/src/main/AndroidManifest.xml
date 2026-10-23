@@ -20,6 +20,10 @@
         android:allowBackup="false"
         android:extractNativeLibs="false">
 
+        <!-- Lets `adb` profile the app (Perfetto heapprofd, CPU sampling) on a
+             release build. No effect on behaviour or speed. -->
+        <profileable android:shell="true" />
+
         <activity
             android:name=".LauncherActivity"
             android:exported="true"

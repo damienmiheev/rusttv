@@ -1,0 +1,12 @@
+rusttv-1.mp4: start 1745 ms, visually complete 2058 ms -> 313 ms (282 frames, 4974 ms)
+rusttv-2.mp4: start 1711 ms, visually complete 1894 ms -> 182 ms (275 frames, 4956 ms)
+rusttv-3.mp4: start 1849 ms, visually complete 1945 ms -> 96 ms (270 frames, 4975 ms)
+rusttv-4.mp4: start 1977 ms, visually complete 2072 ms -> 95 ms (271 frames, 4968 ms)
+rusttv-5.mp4: start 1804 ms, visually complete 1943 ms -> 139 ms (271 frames, 4956 ms)
+stock-1.mp4: start 1047 ms, visually complete 4358 ms -> 3311 ms (274 frames, 4925 ms)
+stock-2.mp4: start 1633 ms, visually complete 4393 ms -> 2760 ms (278 frames, 4959 ms)
+stock-3.mp4: start 1583 ms, visually complete 4607 ms -> 3024 ms (271 frames, 4940 ms)
+stock-4.mp4: start 1282 ms, visually complete 4074 ms -> 2791 ms (264 frames, 4957 ms)
+stock-5.mp4: start 1559 ms, visually complete 4842 ms -> 3283 ms (271 frames, 4976 ms)
+rusttv: median 139 ms  runs [313, 182, 96, 95, 139]
+stock: median 3024 ms  runs [3311, 2760, 3024, 2791, 3283]
