@@ -40,14 +40,11 @@ pub fn list_apps(adb: &dyn Adb, serial: &str) -> Result<Vec<AppInfo>, AdbError> 
     let third_party = adb.run(serial, &DeviceCommand::ListThirdPartyPackages)?;
     let disabled = adb.run(serial, &DeviceCommand::ListDisabledPackages)?;
 
-    let third_party: HashSet<&str> = parse_package_list(&third_party)
-        .map(|(name, _)| name)
-        .collect();
-    let disabled: HashSet<&str> = parse_package_list(&disabled)
-        .map(|(name, _)| name)
-        .collect();
+    let third_party = package_names(&third_party)?;
+    let disabled = package_names(&disabled)?;
 
-    let mut apps: Vec<AppInfo> = parse_package_list(&all)
+    let mut apps: Vec<AppInfo> = parse_package_list(&all)?
+        .into_iter()
         .map(|(package, apk_path)| AppInfo {
             package: package.to_owned(),
             apk_path: apk_path.map(str::to_owned),
@@ -63,20 +60,87 @@ pub fn list_apps(adb: &dyn Adb, serial: &str) -> Result<Vec<AppInfo>, AdbError> 
     Ok(apps)
 }
 
+/// `pm list packages` printed an error instead of a package list.
+///
+/// Kept apart from an empty list, which `pm` prints as no output at all, so
+/// a failed query never reads as "not installed" or "none disabled".
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("`pm list packages` printed an error instead of a package list: {line}")]
+pub struct PackageListError {
+    line: String,
+}
+
+impl PackageListError {
+    /// The first line of the output that shows the failure.
+    pub fn line(&self) -> &str {
+        &self.line
+    }
+}
+
+/// How `pm` (or `cmd`, which `pm` runs) starts the lines it prints when it
+/// fails, per AOSP `cmd.cpp`, `ShellCommand` and `PackageManagerShellCommand`.
+/// Without adb's shell protocol (`shell_v2`), these arrive on stdout with exit
+/// code 0; with it, the non-zero exit already fails as `COMMAND_FAILED`.
+const PM_ERROR_PREFIXES: &[&str] = &[
+    "Error:",
+    "Exception",
+    "Failure",
+    "cmd: ",
+    "java.",
+    "Security exception",
+];
+
 /// Parses `pm list packages` output into `(package, apk_path)` pairs.
 ///
 /// Lines are `package:<name>`, or `package:<path>=<name>` with `-f`. The
 /// path itself can contain `=` (e.g. `/data/app/~~abc==/...`), so the name
 /// is whatever follows the last `=`.
-pub fn parse_package_list(output: &str) -> impl Iterator<Item = (&str, Option<&str>)> {
-    output.lines().filter_map(|line| {
-        let entry = line.trim().strip_prefix("package:")?;
+///
+/// Empty output is an empty list. It is an error if any line looks like a
+/// `pm` failure ([`PM_ERROR_PREFIXES`]), or if there is output but no
+/// `package:` line at all (e.g. `/system/bin/sh: pm: not found`). Other
+/// stray lines next to packages, such as linker warnings, are ignored.
+pub fn parse_package_list(output: &str) -> Result<Vec<(&str, Option<&str>)>, PackageListError> {
+    let mut packages = Vec::new();
+    let mut unrecognized = None;
+    for line in output.lines().map(str::trim) {
+        if line.is_empty() {
+            continue;
+        }
+        let Some(entry) = line.strip_prefix("package:") else {
+            if PM_ERROR_PREFIXES
+                .iter()
+                .any(|prefix| line.starts_with(prefix))
+            {
+                return Err(PackageListError {
+                    line: line.to_owned(),
+                });
+            }
+            unrecognized.get_or_insert(line);
+            continue;
+        };
         let (path, name) = match entry.rsplit_once('=') {
             Some((path, name)) => (Some(path), name),
             None => (None, entry),
         };
-        (!name.is_empty()).then_some((name, path))
-    })
+        if !name.is_empty() {
+            packages.push((name, path));
+        }
+    }
+    match unrecognized {
+        Some(line) if packages.is_empty() => Err(PackageListError {
+            line: line.to_owned(),
+        }),
+        _ => Ok(packages),
+    }
+}
+
+/// The package names in `pm list packages` output.
+pub(crate) fn package_names(output: &str) -> Result<HashSet<&str>, PackageListError> {
+    Ok(parse_package_list(output)?
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect())
 }
 
 #[cfg(test)]
@@ -148,7 +212,7 @@ mod tests {
     #[test]
     fn apk_path_containing_equals_signs_is_split_at_the_last_one() {
         let line = "package:/data/app/~~R0xxg-XMHSOyj_E0xw53FQ==/com.redphx.deviceid-ipg_7VwytiEx_LTHvbhrjg==/base.apk=com.redphx.deviceid";
-        let parsed: Vec<_> = parse_package_list(line).collect();
+        let parsed = parse_package_list(line).unwrap();
         assert_eq!(
             parsed,
             [(
@@ -162,10 +226,72 @@ mod tests {
 
     #[test]
     fn noise_lines_are_ignored() {
-        let parsed: Vec<_> =
+        let parsed =
             parse_package_list("\nWARNING: linker: something\npackage:com.example\npackage:\n")
-                .collect();
+                .unwrap();
         assert_eq!(parsed, [("com.example", None)]);
+    }
+
+    #[test]
+    fn empty_output_is_an_empty_list() {
+        let output = include_str!("fixtures/synthetic-home-takeover/packages-d-none.txt");
+        assert_eq!(parse_package_list(output), Ok(vec![]));
+    }
+
+    #[test]
+    fn each_pm_failure_shape_is_an_error() {
+        let failures = [
+            (
+                include_str!("fixtures/synthetic-pm-list-errors/cant-find-service.txt"),
+                "cmd: Can't find service: package",
+            ),
+            (
+                include_str!("fixtures/synthetic-pm-list-errors/failure-calling-service.txt"),
+                "Failure calling service package: Broken pipe (32)",
+            ),
+            (
+                include_str!("fixtures/synthetic-pm-list-errors/exception.txt"),
+                "Exception occurred while executing 'list':",
+            ),
+            (
+                include_str!("fixtures/synthetic-pm-list-errors/error-unknown-option.txt"),
+                "Error: Unknown option: -x",
+            ),
+            (
+                include_str!("fixtures/synthetic-pm-list-errors/error-not-running.txt"),
+                "Error: Could not access the Package Manager.  Is the system running?",
+            ),
+            (
+                include_str!("fixtures/synthetic-pm-list-errors/sh-pm-not-found.txt"),
+                "/system/bin/sh: pm: not found",
+            ),
+            (
+                include_str!("fixtures/synthetic-pm-list-errors/packages-then-exception.txt"),
+                "Exception occurred while executing 'list':",
+            ),
+        ];
+        for (output, line) in failures {
+            let error = parse_package_list(output).unwrap_err();
+            assert_eq!(error.line(), line);
+            assert_eq!(AdbError::from(error).code(), "PACKAGE_LIST_FAILED");
+        }
+    }
+
+    #[test]
+    fn a_failing_query_fails_the_listing_instead_of_hiding_packages() {
+        for failing in [
+            DeviceCommand::ListPackages,
+            DeviceCommand::ListThirdPartyPackages,
+            DeviceCommand::ListDisabledPackages,
+        ] {
+            let adb = emulator().respond(
+                failing,
+                include_str!("fixtures/synthetic-pm-list-errors/cant-find-service.txt"),
+            );
+            let error = list_apps(&adb, "emulator-5554").unwrap_err();
+            assert_eq!(error.code(), "PACKAGE_LIST_FAILED");
+            assert!(error.to_string().contains("Can't find service"), "{error}");
+        }
     }
 }
 
@@ -179,8 +305,10 @@ mod odd_input {
     proptest! {
         #[test]
         fn parser_never_panics(output in adb_output()) {
-            for (name, _) in parse_package_list(&output) {
-                prop_assert!(!name.is_empty());
+            if let Ok(packages) = parse_package_list(&output) {
+                for (name, _) in packages {
+                    prop_assert!(!name.is_empty());
+                }
             }
         }
 
@@ -200,7 +328,7 @@ mod odd_input {
                     None => format!("package:{name}{trailing}{ending}"),
                 })
                 .collect();
-            let parsed: Vec<(&str, Option<&str>)> = parse_package_list(&output).collect();
+            let parsed = parse_package_list(&output).unwrap();
             let expected: Vec<(&str, Option<&str>)> = packages
                 .iter()
                 .map(|(name, path)| (name.as_str(), path.as_deref()))
@@ -211,20 +339,20 @@ mod odd_input {
 
     #[test]
     fn empty_output_has_no_packages() {
-        assert_eq!(parse_package_list("").count(), 0);
-        assert_eq!(parse_package_list("\r\n\n").count(), 0);
+        assert_eq!(parse_package_list(""), Ok(vec![]));
+        assert_eq!(parse_package_list("\r\n\n"), Ok(vec![]));
     }
 
     #[test]
     fn crlf_trailing_spaces_and_a_truncated_last_line() {
-        let parsed: Vec<_> =
-            parse_package_list("package:com.a\r\npackage:com.b  \r\r\npackage:com.c").collect();
+        let parsed =
+            parse_package_list("package:com.a\r\npackage:com.b  \r\r\npackage:com.c").unwrap();
         assert_eq!(parsed, [("com.a", None), ("com.b", None), ("com.c", None)]);
     }
 
     #[test]
-    fn error_output_lists_no_packages() {
+    fn error_output_is_an_error_not_an_empty_list() {
         let output = "Error: java.lang.SecurityException: Shell does not have permission\n";
-        assert_eq!(parse_package_list(output).count(), 0);
+        assert!(parse_package_list(output).is_err());
     }
 }

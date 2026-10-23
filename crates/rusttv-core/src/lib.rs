@@ -25,7 +25,7 @@ mod test_support;
 #[cfg(any(test, feature = "test-util"))]
 pub use adb::FakeAdb;
 pub use adb::{Adb, SystemAdb};
-pub use apps::{AppInfo, AppKind, list_apps, parse_package_list};
+pub use apps::{AppInfo, AppKind, PackageListError, list_apps, parse_package_list};
 pub use bench::{
     AmStart, AppResult, BenchmarkDevice, BenchmarkError, BenchmarkOptions, BenchmarkReport,
     LaunchKind, LaunchRun, Stats, app_cpu_seconds, parse_am_start, parse_cpu_time, run_benchmark,

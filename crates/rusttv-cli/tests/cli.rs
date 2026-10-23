@@ -29,7 +29,7 @@ fn rusttv_with_fake_adb(scenario: &str, args: &[&str]) -> Output {
 
 fn json_stdout(output: &Output) -> Value {
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["schema"], "rusttv.v1");
+    assert_eq!(value["schema"], "rusttv.v2");
     value
 }
 
@@ -295,6 +295,22 @@ fn apps_list_text_ends_with_a_summary() {
     assert_eq!(
         stdout.lines().last(),
         Some("224 packages: 221 system, 3 third-party; 2 disabled")
+    );
+}
+
+#[test]
+fn apps_list_fails_when_pm_prints_an_error_instead_of_packages() {
+    let output = rusttv_with_fake_adb("pm-fails", &["apps", "list", "--json"]);
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let error = json_stdout(&output)["error"].clone();
+    assert_eq!(error["code"], "PACKAGE_LIST_FAILED");
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("cmd: Can't find service: package"),
+        "{error}"
     );
 }
 

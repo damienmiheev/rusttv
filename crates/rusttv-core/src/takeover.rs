@@ -4,11 +4,10 @@
 //!
 //! Both directions are [`Plan`]s run by the safety engine in [`crate::plan`].
 
-use std::collections::HashSet;
 use std::time::Duration;
 
 use crate::adb::Adb;
-use crate::apps::parse_package_list;
+use crate::apps::package_names;
 use crate::command::{DeviceCommand, PackageName};
 use crate::compat::DeviceProfile;
 use crate::inspect::parse_properties;
@@ -107,9 +106,7 @@ pub fn takeover_plan(
     }
 
     let third_party = adb.run(serial, &DeviceCommand::ListThirdPartyPackages)?;
-    let third_party: HashSet<&str> = parse_package_list(&third_party)
-        .map(|(name, _)| name)
-        .collect();
+    let third_party = package_names(&third_party)?;
     if third_party.contains(stock) {
         return Err(PlanError::precondition(format!(
             "Home opens `{stock}`, which isn't a system app; takeover only replaces the stock launcher"
@@ -389,6 +386,32 @@ mod tests {
         restore(&adb, &plan, &approval, &mut journal, &mut store).unwrap();
         assert_eq!(store.last().status, JournalStatus::Restored);
         assert_eq!(store.last().steps[0].status, StepStatus::Undone);
+    }
+
+    #[test]
+    fn a_failing_disabled_list_stops_apply_before_any_change() {
+        // Read as an empty list, this would say "the stock launcher is
+        // enabled" and let the takeover go ahead.
+        let failure =
+            include_str!("fixtures/synthetic-pm-list-errors/cant-find-service.txt").to_owned();
+        let adb = tv(vec![real!("home-activity.txt")], vec![failure], vec![]);
+        let plan = takeover_plan(&adb, SERIAL, &tested()).unwrap();
+        let approval = plan.approve("takeover").unwrap();
+        let mut store = MemoryJournal::default();
+
+        let error = apply(&adb, &plan, &approval, &mut store, &|_| {}).unwrap_err();
+        assert_eq!(error.code(), "PACKAGE_LIST_FAILED");
+        assert!(changes(&adb).is_empty());
+    }
+
+    #[test]
+    fn a_failing_third_party_list_stops_planning() {
+        let adb = planning_tv().respond(
+            DeviceCommand::ListThirdPartyPackages,
+            include_str!("fixtures/synthetic-pm-list-errors/exception.txt"),
+        );
+        let error = takeover_plan(&adb, SERIAL, &tested()).unwrap_err();
+        assert_eq!(error.code(), "PACKAGE_LIST_FAILED");
     }
 
     #[test]

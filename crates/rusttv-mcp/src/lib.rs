@@ -1,7 +1,7 @@
 //! Read-only MCP server for RustTV.
 //!
 //! Exposes the core's read-only functions as MCP tools. Every tool result is
-//! the CLI's `rusttv.v1` JSON envelope (CLI.md § Output), so `data` is exactly
+//! the CLI's `rusttv.v2` JSON envelope (CLI.md § Output), so `data` is exactly
 //! what `rusttv <command> --json` prints and errors carry the same stable
 //! codes. There is deliberately no tool that changes a device, and none that
 //! can approve a plan (SECURITY.md § AI agents). See MCP.md.
@@ -21,14 +21,14 @@ use rusttv_core::{Adb, AdbError, DeviceSelectionError};
 use serde::{Deserialize, Serialize};
 
 /// Version of the JSON output contract; the same as the CLI's `--json`.
-pub const SCHEMA: &str = "rusttv.v1";
+pub const SCHEMA: &str = "rusttv.v2";
 
 /// Default and allowed range of `performance_snapshot`'s `sample_ms`, as in the CLI.
 const DEFAULT_SAMPLE_MS: u64 = 1000;
 const SAMPLE_MS_RANGE: std::ops::RangeInclusive<u64> = 100..=60_000;
 
 const INSTRUCTIONS: &str = "Read-only tools for Android TVs connected through adb. \
-Results are the `rusttv.v1` envelope of the `rusttv` CLI: on success `data` is the \
+Results are the `rusttv.v2` envelope of the `rusttv` CLI: on success `data` is the \
 same as `rusttv <command> --json`; on failure `error.code` is a stable code from \
 CLI.md. Device-targeting tools take an optional `serial`; it is required when several \
 devices are connected (`MULTIPLE_DEVICES`). Nothing here changes a device or approves \
@@ -198,7 +198,7 @@ impl<A: Adb + Send + 'static> RustTvServer<A> {
         .await
     }
 
-    /// Runs a blocking core call and wraps its outcome in the `rusttv.v1` envelope.
+    /// Runs a blocking core call and wraps its outcome in the `rusttv.v2` envelope.
     ///
     /// Core failures are tool results with `isError` (the agent sees the code);
     /// only a crashed task or unserializable data is a protocol error.

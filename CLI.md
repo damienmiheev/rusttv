@@ -74,12 +74,15 @@ Without `--json`: human-readable text on stdout, errors and hints on stderr.
 With `--json`, stdout carries exactly one JSON object, success or failure:
 
 ```json
-{"schema":"rusttv.v1","ok":true,"data":{}}
-{"schema":"rusttv.v1","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
+{"schema":"rusttv.v2","ok":true,"data":{}}
+{"schema":"rusttv.v2","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
 ```
 
-- `schema` identifies the contract version. Within `rusttv.v1`, fields are only
+- `schema` identifies the contract version. Within `rusttv.v2`, fields are only
   added, never renamed, removed or changed in meaning; anything else bumps it.
+  - `rusttv.v2`: `pm list packages` printing an error is now the
+    `PACKAGE_LIST_FAILED` error. In `rusttv.v1` it read as an empty list
+    (e.g. `apps list` returned `[]`); success output is unchanged.
 - `error.code` is stable and meant for programs. `error.message` is for people
   and may change.
 - Absent values are `null`, never omitted. Sizes are in KiB (`*_kib`),
@@ -109,6 +112,7 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
 | `CONNECT_FAILED` | 3 | `adb connect` failed (refused, unknown host, ...) |
 | `COMMAND_FAILED` | 1 | An adb command failed for another reason; the message has its stderr |
 | `INVALID_OUTPUT` | 1 | adb printed something that isn't UTF-8 |
+| `PACKAGE_LIST_FAILED` | 1 | `pm list packages` printed an error (e.g. `cmd: Can't find service: package`, `Exception occurred ...`) instead of a package list; the message has the line. An empty list is never this error; nothing changed |
 | `LAUNCH_FAILED` | 1 | `am start` couldn't start a benchmarked activity (wrong component, app not installed) |
 | `INCOMPLETE_PROFILE` | 1 | The device didn't report a value a compatibility profile needs |
 | `INVALID_PLAN` | 1 | A plan or journal has a step that can't be undone, or doesn't match its journal (a bug or an edited journal) |
