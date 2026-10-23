@@ -16,6 +16,7 @@ pm_errors="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-pm-list-e
 philips="$(dirname "$0")/../../../rusttv-core/src/fixtures/philips-65oled818-api34"
 privacy="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-privacy"
 optimizer="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-optimizer"
+airplay="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-airplay"
 
 case "$FAKE_ADB_SCENARIO:$*" in
 tv:devices\ -l)
@@ -89,6 +90,33 @@ philips:shell\ settings\ get\ global\ animator_duration_scale)
         exit 1
     fi
     cat "$optimizer/settings-get-1.0.txt"
+    ;;
+# The Philips with MediaTek's AirPlay stack installed, switched off (7).
+airplay:devices\ -l)
+    cat "$captures/devices-l.txt"
+    ;;
+airplay:shell\ getprop)
+    cat "$philips/getprop.txt"
+    ;;
+airplay:shell\ pm\ list\ packages\ -f)
+    cat "$airplay/packages-f.txt"
+    ;;
+airplay:shell\ settings\ get\ global\ setup_airplay_enable)
+    cat "$airplay/setting-setup-airplay-enable-7.txt"
+    ;;
+airplay:shell\ settings\ get\ global\ show_airplay_setting_ui)
+    cat "$airplay/setting-show-airplay-setting-ui-null.txt"
+    ;;
+airplay:shell\ dumpsys\ activity\ services\ com.mediatek.partner.airplay_sys)
+    cat "$airplay/services-not-running.txt"
+    ;;
+airplay:shell\ logcat\ -d\ -t\ 2000)
+    cat "$airplay/logcat-not-ready.txt"
+    ;;
+airplay:shell\ ss\ -ltnp)
+    # Like a TV without `ss`.
+    echo "/system/bin/sh: ss: inaccessible or not found" >&2
+    exit 127
     ;;
 emulator:devices\ -l)
     cat "$captures/devices-l.txt"

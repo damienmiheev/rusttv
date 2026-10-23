@@ -361,7 +361,7 @@ pub(crate) fn optimizer_statuses(
         .get("ro.build.fingerprint")
         .map_or("", String::as_str);
     let mut readings: HashMap<SettingKey, Result<SettingState, String>> = HashMap::new();
-    for key in SettingKey::ALL {
+    for key in SettingKey::ANIMATION_SCALES {
         let reading = adb
             .run(serial, &DeviceCommand::GetSetting(key))
             .map_err(|error| error.to_string())
@@ -465,6 +465,11 @@ fn effect(key: SettingKey) -> &'static str {
             "activity transitions: launching an app, returning Home"
         }
         SettingKey::AnimatorDurationScale => "animator-based animations in every app",
+        // Not optimizer settings: `bundled_optimizer_profiles_are_valid` keeps
+        // them out of the profiles (TOOLS.md).
+        SettingKey::SetupAirplayEnable | SettingKey::ShowAirplaySettingUi => {
+            "a vendor switch, not an optimizer setting"
+        }
     }
 }
 
@@ -906,6 +911,11 @@ mod tests {
             let mut keys: Vec<SettingKey> = profile.settings.iter().map(|s| s.key).collect();
             keys.dedup();
             assert_eq!(keys.len(), profile.settings.len(), "{file}: duplicate key");
+            assert!(
+                keys.iter()
+                    .all(|key| SettingKey::ANIMATION_SCALES.contains(key)),
+                "{file}: optimizer profiles change animation scales only"
+            );
             let kind: OptimizeKind = profile.name.parse().unwrap();
             assert_eq!(OptimizeKind::of_plan(&profile.plan_name()), Some(kind));
         }
@@ -1438,7 +1448,7 @@ mod tests {
     #[test]
     fn a_key_changed_between_restore_plan_and_restore_is_left_as_is() {
         let tv = SettingsTv::new();
-        for key in SettingKey::ALL {
+        for key in SettingKey::ANIMATION_SCALES {
             tv.put(key, value("0.5"));
         }
         let mut journal = applied_journal();

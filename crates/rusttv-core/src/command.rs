@@ -114,7 +114,9 @@ pub enum DeviceCommand {
     /// Writes one allowlisted global setting (OPTIMIZER.md § 4): `to` a value
     /// is `settings put global <key> <value>`, `to` unset is `settings delete
     /// global <key>`. `from` is the state read when planning, so the command
-    /// carries its own inverse. Setting (R2); only optimizer plans use it.
+    /// carries its own inverse. Setting (R2); only optimizer plans and the
+    /// AirPlay tool use it, and plans refuse a state its key doesn't accept
+    /// ([`SettingKey::accepts`]).
     SetSetting {
         /// The setting.
         key: SettingKey,
@@ -123,6 +125,19 @@ pub enum DeviceCommand {
         /// The state before, which the inverse brings back.
         from: SettingState,
     },
+    /// The services of one package that the activity manager runs
+    /// (`dumpsys activity services <package>`).
+    RunningServices(PackageName),
+    /// The last 2000 lines of the device log (`logcat -d -t 2000`). Callers
+    /// keep only the lines of the tags they need.
+    RecentLog,
+    /// Listening TCP sockets (`ss -ltnp`). Not every device has `ss`.
+    ListeningSockets,
+    /// Starts RustTV's trigger activity for an experimental tool
+    /// (`am start -n ai.rusttv.launcher/.tools.HiddenFeatureActivity --es
+    /// feature <f> --es action <a>`; TOOLS.md). Transient; its inverse stops
+    /// what it started.
+    HiddenFeature(HiddenFeature),
     /// Disables a package for user 0 (`pm disable-user --user 0 <package>`).
     /// Package state; only Home takeover and privacy plans use it (SECURITY.md).
     DisablePackage(PackageName),
@@ -163,10 +178,15 @@ impl DeviceCommand {
             | Self::InputMethods
             | Self::EnabledAccessibilityServices
             | Self::TvInputs
-            | Self::GetSetting(_) => RiskClass::Read,
-            Self::ForceStop(_) | Self::StartActivity(_) | Self::PressHome | Self::WakeUp => {
-                RiskClass::Transient
-            }
+            | Self::GetSetting(_)
+            | Self::RunningServices(_)
+            | Self::RecentLog
+            | Self::ListeningSockets => RiskClass::Read,
+            Self::ForceStop(_)
+            | Self::StartActivity(_)
+            | Self::PressHome
+            | Self::WakeUp
+            | Self::HiddenFeature(_) => RiskClass::Transient,
             Self::SetSetting { .. } => RiskClass::Setting,
             Self::DisablePackage(_)
             | Self::EnablePackage(_)
@@ -198,6 +218,11 @@ impl DeviceCommand {
                 to: from.clone(),
                 from: to.clone(),
             }),
+            // Force-stopping the vendor process ends the service it started;
+            // the process itself is persistent and comes back without it.
+            Self::HiddenFeature(HiddenFeature::AirplayStart) => {
+                Some(Self::ForceStop(HiddenFeature::airplay_package()))
+            }
             _ => None,
         }
     }
@@ -287,6 +312,27 @@ impl DeviceCommand {
                 to: SettingState::Unset,
                 ..
             } => vec!["shell", "settings", "delete", "global", key.as_str()],
+            Self::RunningServices(package) => {
+                vec!["shell", "dumpsys", "activity", "services", package.as_str()]
+            }
+            Self::RecentLog => vec!["shell", "logcat", "-d", "-t", "2000"],
+            Self::ListeningSockets => vec!["shell", "ss", "-ltnp"],
+            Self::HiddenFeature(feature) => {
+                let (name, action) = feature.extras();
+                vec![
+                    "shell",
+                    "am",
+                    "start",
+                    "-n",
+                    HIDDEN_FEATURE_ACTIVITY,
+                    "--es",
+                    "feature",
+                    name,
+                    "--es",
+                    "action",
+                    action,
+                ]
+            }
             Self::DisablePackage(package) => {
                 vec![
                     "shell",
@@ -383,11 +429,16 @@ pub enum SettingKey {
     TransitionAnimationScale,
     /// `Settings.Global.ANIMATOR_DURATION_SCALE`: `ValueAnimator`s in every app.
     AnimatorDurationScale,
+    /// MediaTek's AirPlay switch (TOOLS.md): `0` off, `1` on, `7` hidden
+    /// (written by the TV maker at boot on models it ships disabled).
+    SetupAirplayEnable,
+    /// Set by MediaTek's AirPlay service once it ran. Read-only.
+    ShowAirplaySettingUi,
 }
 
 impl SettingKey {
-    /// Every key, in the order `optimize analyze` shows them.
-    pub const ALL: [Self; 3] = [
+    /// The animation scales, in the order `optimize analyze` shows them.
+    pub const ANIMATION_SCALES: [Self; 3] = [
         Self::WindowAnimationScale,
         Self::TransitionAnimationScale,
         Self::AnimatorDurationScale,
@@ -399,6 +450,25 @@ impl SettingKey {
             Self::WindowAnimationScale => "window_animation_scale",
             Self::TransitionAnimationScale => "transition_animation_scale",
             Self::AnimatorDurationScale => "animator_duration_scale",
+            Self::SetupAirplayEnable => "setup_airplay_enable",
+            Self::ShowAirplaySettingUi => "show_airplay_setting_ui",
+        }
+    }
+
+    /// Whether a [`DeviceCommand::SetSetting`] may leave or restore `state`
+    /// for this key; [`crate::Plan::new`] refuses any other. The animation
+    /// scales take any [`SettingValue`] or unset; `setup_airplay_enable`
+    /// only `0`, `1` or `7`; `show_airplay_setting_ui` nothing.
+    pub fn accepts(self, state: &SettingState) -> bool {
+        match self {
+            Self::WindowAnimationScale
+            | Self::TransitionAnimationScale
+            | Self::AnimatorDurationScale => true,
+            Self::SetupAirplayEnable => matches!(
+                state,
+                SettingState::Value(value) if matches!(value.as_str(), "0" | "1" | "7")
+            ),
+            Self::ShowAirplaySettingUi => false,
         }
     }
 }
@@ -411,7 +481,8 @@ impl fmt::Display for SettingKey {
 
 /// A value for a [`SettingKey`], safe to pass to `adb shell`: a decimal of
 /// one or two digits and up to three decimals, `[0-9]{1,2}(\.[0-9]{1,3})?`
-/// (every allowlisted key is an animation scale). No shell syntax fits.
+/// (every allowlisted key holds a number). No shell syntax fits. Which
+/// values a key takes is narrower: [`SettingKey::accepts`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct SettingValue(String);
@@ -496,6 +567,38 @@ impl fmt::Display for SettingState {
         }
     }
 }
+
+/// RustTV's trigger activity for experimental tools (TOOLS.md); see
+/// `android/app/src/main/java/ai/rusttv/launcher/tools/HiddenFeatureActivity.kt`.
+const HIDDEN_FEATURE_ACTIVITY: &str = "ai.rusttv.launcher/.tools.HiddenFeatureActivity";
+
+/// What [`DeviceCommand::HiddenFeature`] asks the trigger activity to do.
+/// Fixed values only: the activity ignores any other extras.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HiddenFeature {
+    /// Start MediaTek's AirPlay `BootupService`.
+    AirplayStart,
+}
+
+impl HiddenFeature {
+    /// The `feature` and `action` extras.
+    fn extras(self) -> (&'static str, &'static str) {
+        match self {
+            Self::AirplayStart => ("airplay", "start"),
+        }
+    }
+
+    /// `com.mediatek.partner.airplay_sys`, the package whose service
+    /// [`HiddenFeature::AirplayStart`] starts. Valid by construction; a test
+    /// checks it.
+    pub(crate) fn airplay_package() -> PackageName {
+        PackageName(AIRPLAY_SYSTEM_PACKAGE.to_owned())
+    }
+}
+
+/// MediaTek's AirPlay system service package.
+pub(crate) const AIRPLAY_SYSTEM_PACKAGE: &str = "com.mediatek.partner.airplay_sys";
 
 /// A local APK file for `adb install`, as an absolute UTF-8 path.
 ///
@@ -613,6 +716,17 @@ impl Component {
     pub fn as_str(&self) -> &str {
         &self.text
     }
+
+    /// `package/class` with the class fully qualified, as `dumpsys` may
+    /// print it: `a.b/.Main` is `a.b/a.b.Main`.
+    pub fn full_name(&self) -> String {
+        let (package, class) = self.text.split_at(self.package_len);
+        let class = &class[1..];
+        match class.strip_prefix('.') {
+            Some(relative) => format!("{package}/{package}.{relative}"),
+            None => self.text.clone(),
+        }
+    }
 }
 
 impl std::str::FromStr for Component {
@@ -708,6 +822,15 @@ mod tests {
                 to: value("0.5"),
                 from: value("1.0"),
             },
+            DeviceCommand::SetSetting {
+                key: SettingKey::SetupAirplayEnable,
+                to: value("1"),
+                from: value("7"),
+            },
+            DeviceCommand::RunningServices(PackageName::new("com.example.app").unwrap()),
+            DeviceCommand::RecentLog,
+            DeviceCommand::ListeningSockets,
+            DeviceCommand::HiddenFeature(HiddenFeature::AirplayStart),
             DeviceCommand::DisablePackage(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::EnablePackage(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::InstallLauncher(apk()),
@@ -739,6 +862,10 @@ mod tests {
                 | DeviceCommand::TvInputs
                 | DeviceCommand::GetSetting(_)
                 | DeviceCommand::SetSetting { .. }
+                | DeviceCommand::RunningServices(_)
+                | DeviceCommand::RecentLog
+                | DeviceCommand::ListeningSockets
+                | DeviceCommand::HiddenFeature(_)
                 | DeviceCommand::DisablePackage(_)
                 | DeviceCommand::EnablePackage(_)
                 | DeviceCommand::InstallLauncher(_)
@@ -765,13 +892,15 @@ mod tests {
         // profiles need two R3 commands and `launcher install`/`uninstall`
         // three more, limited to RustTV's own package. Anything else above R1 must be added here on purpose.
         // The optimizer (OPTIMIZER.md § 4) adds the only R2 command,
-        // `SetSetting`, limited to the allowlisted keys.
+        // `SetSetting`, limited to the allowlisted keys. The AirPlay tool
+        // (TOOLS.md) adds one R1 command with fixed arguments.
         for command in every_command() {
             let expected = match command {
                 DeviceCommand::ForceStop(_)
                 | DeviceCommand::StartActivity(_)
                 | DeviceCommand::PressHome
-                | DeviceCommand::WakeUp => RiskClass::Transient,
+                | DeviceCommand::WakeUp
+                | DeviceCommand::HiddenFeature(_) => RiskClass::Transient,
                 DeviceCommand::SetSetting { .. } => RiskClass::Setting,
                 DeviceCommand::DisablePackage(_)
                 | DeviceCommand::EnablePackage(_)
@@ -805,6 +934,55 @@ mod tests {
             PackageName::rusttv_launcher(),
             PackageName::new(RUSTTV_LAUNCHER).unwrap()
         );
+        assert_eq!(
+            HiddenFeature::airplay_package(),
+            PackageName::new(AIRPLAY_SYSTEM_PACKAGE).unwrap()
+        );
+        assert!(HIDDEN_FEATURE_ACTIVITY.parse::<Component>().is_ok());
+    }
+
+    #[test]
+    fn hidden_feature_starts_the_trigger_activity_and_force_stop_undoes_it() {
+        let start = DeviceCommand::HiddenFeature(HiddenFeature::AirplayStart);
+        assert_eq!(
+            start.adb_args(),
+            [
+                "shell",
+                "am",
+                "start",
+                "-n",
+                "ai.rusttv.launcher/.tools.HiddenFeatureActivity",
+                "--es",
+                "feature",
+                "airplay",
+                "--es",
+                "action",
+                "start"
+            ]
+        );
+        assert_eq!(
+            start.inverse(),
+            Some(DeviceCommand::ForceStop(
+                PackageName::new("com.mediatek.partner.airplay_sys").unwrap()
+            ))
+        );
+    }
+
+    #[test]
+    fn setup_airplay_enable_accepts_only_its_three_values() {
+        let key = SettingKey::SetupAirplayEnable;
+        for good in ["0", "1", "7"] {
+            assert!(key.accepts(&value(good)), "{good}");
+        }
+        for bad in ["2", "1.0", "07", "0.5", "10"] {
+            assert!(!key.accepts(&value(bad)), "{bad}");
+        }
+        assert!(!key.accepts(&SettingState::Unset));
+        assert!(!SettingKey::ShowAirplaySettingUi.accepts(&value("1")));
+        // The animation scales are unchanged.
+        for scale in SettingKey::ANIMATION_SCALES {
+            assert!(scale.accepts(&value("0.5")) && scale.accepts(&SettingState::Unset));
+        }
     }
 
     #[test]
@@ -935,6 +1113,12 @@ mod tests {
     fn components_accept_relative_and_qualified_activities() {
         let component: Component = "ai.rusttv.spike/.LauncherActivity".parse().unwrap();
         assert_eq!(component.package().as_str(), "ai.rusttv.spike");
+        assert_eq!(
+            component.full_name(),
+            "ai.rusttv.spike/ai.rusttv.spike.LauncherActivity"
+        );
+        let qualified: Component = "a.b/c.d.Main".parse().unwrap();
+        assert_eq!(qualified.full_name(), "a.b/c.d.Main");
         assert!(
             "com.google.android.apps.tv.launcherx/com.google.android.apps.tv.launcherx.home.HomeActivity"
                 .parse::<Component>()

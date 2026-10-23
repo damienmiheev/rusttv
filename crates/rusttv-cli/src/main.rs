@@ -4,6 +4,7 @@ mod launcher;
 mod optimize;
 mod output;
 mod performance;
+mod tools;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -48,6 +49,55 @@ enum Command {
     /// animations, and undo it.
     #[command(subcommand)]
     Optimize(OptimizeAction),
+    /// Experimental: turn on features a TV ships installed but disabled,
+    /// until it restarts (TOOLS.md).
+    #[command(subcommand)]
+    Tools(ToolsAction),
+}
+
+#[derive(Debug, Subcommand)]
+enum ToolsAction {
+    /// MediaTek's AirPlay receiver, on models whose maker ships it disabled.
+    /// Experimental; not certified by Apple for these models.
+    #[command(subcommand)]
+    Airplay(AirplayAction),
+}
+
+#[derive(Debug, Subcommand)]
+enum AirplayAction {
+    /// Whether the tool runs on this device, the AirPlay switch, whether the
+    /// vendor service runs, its recent log lines and listening ports. Read-only.
+    Status {
+        #[command(flatten)]
+        target: Target,
+        /// Also look for AirPlay receivers on the network from this computer
+        /// (`dns-sd` on macOS, `avahi-browse` on Linux; skipped if neither).
+        #[arg(long)]
+        check_bonjour: bool,
+    },
+    /// Turn AirPlay on until the TV restarts: set the vendor switch to 1 and
+    /// start the vendor service through RustTV's launcher. Shows the plan and
+    /// asks you to type a confirmation; rolls back on failure.
+    Enable {
+        #[command(flatten)]
+        target: Target,
+        /// Only show the plan; change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Undo `enable` from its journal: put the switch back and stop the
+    /// service. Shows the plan and asks you to type a confirmation.
+    Disable {
+        #[command(flatten)]
+        target: Target,
+        /// Journal file to restore from; by default the newest `enable`
+        /// journal for this device's firmware.
+        #[arg(long)]
+        journal: Option<PathBuf>,
+        /// Only show the plan; change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -407,6 +457,18 @@ fn main() -> ExitCode {
             *dry_run,
             cli.json,
         ),
+        Command::Tools(ToolsAction::Airplay(AirplayAction::Status {
+            target,
+            check_bonjour,
+        })) => tools::airplay_status(&adb, target, *check_bonjour, cli.json),
+        Command::Tools(ToolsAction::Airplay(AirplayAction::Enable { target, dry_run })) => {
+            tools::airplay_enable(&adb, target, *dry_run, cli.json)
+        }
+        Command::Tools(ToolsAction::Airplay(AirplayAction::Disable {
+            target,
+            journal,
+            dry_run,
+        })) => tools::airplay_disable(&adb, target, journal.as_deref(), *dry_run, cli.json),
         Command::Performance(PerformanceAction::Snapshot { target, sample_ms }) => {
             performance::snapshot(&adb, target, *sample_ms, cli.json)
         }

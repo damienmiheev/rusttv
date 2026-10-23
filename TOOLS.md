@@ -1,7 +1,7 @@
 # Experimental tools
 
-> **Draft.** The launcher side (the trigger activity) is built; the `rusttv tools`
-> commands described here are not implemented yet and nothing has run on a TV.
+> **Not yet run on a TV.** Built and tested against recorded and synthetic
+> device output only; this page will say when a model was tested.
 
 Some TVs ship features that are installed but turned off. `rusttv tools` turns
 selected ones on, **experimentally**, only on models where RustTV knows exactly
@@ -34,12 +34,13 @@ technology; Apple has not certified these models as AirPlay receivers.
 | | |
 |---|---|
 | Commands | `rusttv tools airplay status`, `enable`, `disable` (CLI.md) |
-| Tested on | Philips 65OLED818 (not yet) |
+| Tested on | none yet |
 | Lasts | Until the TV restarts |
 | Needs | The RustTV launcher installed (its trigger activity starts the vendor service) |
 
-**Gate.** `enable` is refused unless the device's bundled compat profile allows
-it, or all three MediaTek AirPlay packages are installed
+**Gate.** `enable` is refused (`FEATURE_NOT_SUPPORTED`) unless a bundled
+compat profile matches the device (unknown devices get read-only commands,
+SECURITY.md) **and** all three MediaTek AirPlay packages are installed
 (`com.mediatek.partner.airplay_sys`, `com.mediatek.airplaydaemon`,
 `com.mediatek.AirplayAPK`). Every run prints the caveat above once.
 
@@ -52,7 +53,8 @@ it, or all three MediaTek AirPlay packages are installed
    permission that the adb shell lacks but any app can declare; the trigger
    activity declares it, and only the adb shell or the system can start the
    activity (it requires `android.permission.DUMP`), never another app.
-3. Verifies for up to about 20 s that the service runs.
+3. Verifies for up to 20 s that the service runs; otherwise it force-stops
+   the vendor service and puts the flag back.
 
 **What `status` shows** (read-only): the flag, whether the service runs, the
 service's own "setup UI" flag, recent log lines of the AirPlay components,
@@ -60,8 +62,11 @@ listening TCP ports, and with `--check-bonjour` whether this computer sees the
 TV advertise `_airplay._tcp` (`dns-sd` on macOS, `avahi-browse` on Linux;
 skipped with a note when neither is installed).
 
-**Restore.** `rusttv tools airplay disable` sets the flag back to the value the
-journal recorded and stops the service. Restarting the TV has the same effect.
+**Restore.** `rusttv tools airplay disable` force-stops the vendor AirPlay
+service (Android restarts it without AirPlay) and sets the flag back to the
+value the journal recorded. Restarting the TV has the same effect; run
+`disable` afterwards anyway, so the journal is marked restored and `enable`
+can run again.
 
 **Possible later step.** Keeping AirPlay on across restarts would need RustTV's
 launcher to re-apply the flag at boot, which needs
