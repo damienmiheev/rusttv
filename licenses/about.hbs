@@ -1,0 +1,17 @@
+THIRD-PARTY SOFTWARE NOTICES
+============================
+
+RustTV (MIT OR Apache-2.0) includes the following third-party software.
+Rust crates are listed first, grouped by licence; Skia and the libraries
+compiled into it follow at the end.
+
+{{#each licenses}}
+------------------------------------------------------------------------------
+{{name}} ({{id}})
+Used by:
+{{#each used_by}}  - {{crate.name}} {{crate.version}}{{#if crate.repository}} ({{crate.repository}}){{/if}}
+{{/each}}
+
+{{text}}
+
+{{/each}}

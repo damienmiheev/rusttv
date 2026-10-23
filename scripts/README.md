@@ -4,6 +4,7 @@ Developer tools. They are not part of `rusttv` and are not installed with it.
 
 | Script | What it does | Changes the device? |
 |---|---|---|
+| `licenses.sh [output]` | Third-party licence notices for everything shipped: Rust crates via `cargo-about` (`about.toml`), the Slint licence, Skia and the libraries compiled into it (`licenses/`). Fails on a licence not accepted in `about.toml`; CI runs it. | No |
 | `tv-capture.sh <serial>` | Read-only capture of a TV: the raw `adb` outputs the fixtures use, `rusttv` JSON reads, compat profile. Writes to `.rusttv/captures/` (git-ignored); unit identifiers are redacted. | No |
 
 ## TV session checklist

@@ -46,6 +46,22 @@ jobs:
         with:
           command: check
 
+  licenses:
+    name: licence notices
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: licenses
+      - name: Install cargo-about
+        run: cargo install cargo-about --version 0.9.2 --locked --features cli
+      # Fails when a shipped crate has a licence not accepted in about.toml.
+      - name: Generate third-party notices
+        run: scripts/licenses.sh "$RUNNER_TEMP/THIRD_PARTY_NOTICES.txt"
+
   android:
     name: Android APK
     runs-on: ubuntu-latest
