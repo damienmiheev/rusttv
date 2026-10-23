@@ -1,0 +1,38 @@
+Activity Resolver Table:
+  Non-Data Actions:
+      android.intent.action.MAIN:
+        7d1c2a0 ai.rusttv.launcher/.MainActivity filter 4b3e9f1
+          Action: "android.intent.action.MAIN"
+          Category: "android.intent.category.HOME"
+          Category: "android.intent.category.DEFAULT"
+          Category: "android.intent.category.LEANBACK_LAUNCHER"
+
+Key Set Manager:
+  [ai.rusttv.launcher]
+      Signing KeySets: 61
+
+Packages:
+  Package [ai.rusttv.launcher] (5e2f0d4):
+    appId=10142
+    pkg=Package{9c8a7b6 ai.rusttv.launcher}
+    codePath=/data/app/~~Zm9vYmFyYmF6cXV4==/ai.rusttv.launcher-cXV1eGJhemJhcmZvbw==
+    resourcePath=/data/app/~~Zm9vYmFyYmF6cXV4==/ai.rusttv.launcher-cXV1eGJhemJhcmZvbw==
+    legacyNativeLibraryDir=/data/app/~~Zm9vYmFyYmF6cXV4==/ai.rusttv.launcher-cXV1eGJhemJhcmZvbw==/lib
+    extractNativeLibs=false
+    primaryCpuAbi=arm64-v8a
+    secondaryCpuAbi=null
+    cpuAbiOverride=null
+    versionCode=100 minSdk=26 targetSdk=34
+    minExtensionVersions=[]
+    versionName=0.1.0
+    usesNonSdkApi=false
+    splits=[base]
+    apkSigningVersion=3
+    flags=[ HAS_CODE ALLOW_CLEAR_USER_DATA ]
+    timeStamp=2026-10-23 18:02:11
+    lastUpdateTime=2026-10-23 18:02:12
+    installerPackageName=null
+    User 0: ceDataInode=81234 installed=true hidden=false suspended=false distractionFlags=0 stopped=false notLaunched=false enabled=0 instant=false virtual=false
+
+Queries:
+  system apps queryable: false

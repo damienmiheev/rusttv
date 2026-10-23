@@ -10,8 +10,11 @@ packages your privacy choices select (all R3), and `optimize apply
 reduced-animations` / `optimize restore`, which change three global
 animation settings and put them back (R2), and the experimental `tools
 airplay enable` / `disable`, which turn on a vendor AirPlay receiver until
-the TV restarts and turn it off again (R2, TOOLS.md),
-only after a person approves the plan at a terminal (see [Changing a device](#changing-a-device)). Run
+the TV restarts and turn it off again (R2, TOOLS.md), and `update launcher`,
+which installs or upgrades the RustTV launcher from a verified release (R3),
+only after a person approves the plan at a terminal (see [Changing a device](#changing-a-device)).
+`update cli` replaces programs on this computer, not the device, and also
+asks for a typed confirmation ([Updates](#updates)). Run
 `rusttv <command> --help` for every option. Agents can use the read-only
 commands, and the `--dry-run` of `launcher install` / `uninstall` / `restore`,
 `optimize apply` and `optimize restore`, as MCP tools too: see [MCP.md](MCP.md).
@@ -38,6 +41,9 @@ commands, and the `--dry-run` of `launcher install` / `uninstall` / `restore`,
 | `tools airplay status [--check-bonjour]` | **Experimental** (TOOLS.md). Whether `enable` runs on this device (a bundled compat profile matches it, and MediaTek's `com.mediatek.partner.airplay_sys`, `com.mediatek.airplaydaemon` and `com.mediatek.AirplayAPK` are installed) and why not; whether the RustTV launcher (its trigger activity) is installed; with all three packages, also `setup_airplay_enable` and `show_airplay_setting_ui` (`settings get global`), whether the vendor `BootupService` runs (`dumpsys activity services com.mediatek.partner.airplay_sys`), the last 20 log lines of the AirPlay components (`logcat -d -t 2000`, filtered on this computer), listening TCP ports (`ss -ltnp`; null where `ss` is missing) and a restorable `enable` journal. `--check-bonjour` also browses `_airplay._tcp` from this computer for 5 s (`dns-sd -B` on macOS, `avahi-browse -t -p` on Linux; skipped with a note if neither is installed). Prints a caveat on stderr. Read-only | [AirplayStatus](#airplaystatus) |
 | `tools airplay enable [--dry-run]` | **Experimental** (TOOLS.md). Two steps: `settings put global setup_airplay_enable 1`, recording the value found (must be `0` or `7`; the TV maker writes `7` at boot), then `am start -n ai.rusttv.launcher/.tools.HiddenFeatureActivity --es feature airplay --es action start`, which starts MediaTek's `BootupService`; it must run within 20 s, otherwise everything is undone. Refused with `FEATURE_NOT_SUPPORTED` (even with `--dry-run`) without a matching compat profile or the three packages; `PRECONDITION_FAILED` without the RustTV launcher, while an `enable` journal for this firmware is restorable (run `disable` first, also after a restart), when the switch is already `1` or holds another value, or when the service already runs. Lasts until the TV restarts. Typed confirmation `airplay`. Journal `<ms>-tools-airplay.toml`. R2 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `tools airplay disable [--journal <file>] [--dry-run]` | Undo `tools airplay enable` from its journal (by default the newest restorable one for the device's firmware; unreadable journal files are named in a warning on stderr and skipped): `am force-stop com.mediatek.partner.airplay_sys` (Android restarts the persistent service without AirPlay), then put the switch back to the value recorded. A switch changed since (neither `1` nor the original) is left as is. Only these two steps: any other journal is refused. Restarting the TV has the same effect. Typed confirmation `restore`. R2 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
+| `update check` | The latest [release](#updates) (version, page) and whether this `rusttv` is older; with a device, the installed RustTV launcher's `versionName` (`dumpsys package ai.rusttv.launcher`) and primary ABI, and whether the release has a newer APK for it. Without `--serial` the only connected device is checked, and no device (or several, or adb missing) only skips the launcher part, with the reason in `launcher_note`; with `--serial` the device must be there (errors as for other device commands). Doesn't download or verify release files. Read-only | [UpdateCheck](#updatecheck) |
+| `update launcher [--dry-run]` | Download the latest release's `rusttv-launcher-<version>-<abi>.apk` for the device's primary ABI into a private directory under `<state dir>/updates/`, [verify](#updates) it, then the `launcher install` plan with that APK, unchanged (fresh install or upgrade, its refusals, typed confirmation `install`, verify, journal `<ms>-launcher-install.toml`). Refused (`PRECONDITION_FAILED`) when the installed launcher is that version or newer, or reports a version that isn't `<major>.<minor>.<patch>`; `UPDATE_CHECK_FAILED` when the release has no APK for the ABI. The download is removed when the command ends, also after `--dry-run` (whose plan names it). R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
+| `update cli [--dry-run]` | Replace the running `rusttv` (and `rusttv-mcp` if it is in the same directory) with the latest release's: download `rusttv-<version>-<target>.tar.gz` for this build's target triple, [verify](#updates) it, unpack it with `tar`, show which files it replaces, ask for the typed confirmation `update`, then for each file keep the current one as `<name>.previous` and rename the new one over it (same directory, so each replacement is atomic). Then runs the new `rusttv --version`; if it doesn't print `rusttv <version>`, every file is put back (`ROLLED_BACK`). Refused (`PRECONDITION_FAILED`) when the release isn't newer than this build, when the directory isn't writable (installed by another user or a package manager: update it that way), or when `rusttv` runs from a cargo `target/debug` or `target/release` directory (update with git and cargo). Same terminal rule as device changes (`NOT_APPROVED` without one). No device needed; no journal (the `.previous` files are the record; undo with `mv rusttv.previous rusttv`) | [CliUpdate](#cliupdate) (`applied` false with `--dry-run`) |
 | `compat profile` | Compatibility profile for `compat/devices/` (TOML on stdout; `--json` wraps it) | `{"path": string, "profile": object}` |
 
 Commands that target a device take `--serial <serial>`. Without it, the only
@@ -53,7 +59,7 @@ lifecycle:
    what is checked after, and how each step is undone. `--dry-run` stops here
    and prints it (`--json`: a [DryRun](#dryrun)).
 2. **Approve**: the plan is applied only after a person types its
-   `confirmation` word (`takeover`, `privacy`, `optimize`, `airplay`, `restore`, `install`, `uninstall`) at an
+   `confirmation` word (`takeover`, `privacy`, `optimize`, `airplay`, `restore`, `install`, `uninstall`; `update` for `update cli`) at an
    interactive terminal.
    There is no `--yes` flag. Without a terminal on stdin (scripts, agents,
    MCP) the command fails with `NOT_APPROVED` before contacting the device.
@@ -93,6 +99,27 @@ otherwise `~/Library/Application Support/rusttv` on macOS and
 `$XDG_STATE_HOME/rusttv` (default `~/.local/state/rusttv`) on Linux.
 Recovery is never guaranteed.
 
+### Updates
+
+`update check`, `update launcher` and `update cli` read the latest release
+of `damienmiheev/rusttv` from
+`https://api.github.com/repos/damienmiheev/rusttv/releases/latest` with
+`curl` (`RUSTTV_CURL`; HTTPS only, also for redirects, TLS 1.2 or newer, a
+size cap per file), or from `RUSTTV_UPDATE_DIR` without any network. Drafts,
+pre-releases and tags that aren't `v<major>.<minor>.<patch>` are refused
+(`UPDATE_CHECK_FAILED`); only a strictly newer version is installed, never
+an older one. Download URLs must be `https://` on `github.com` or
+`objects.githubusercontent.com`.
+
+Before anything is installed or replaced, `SHA256SUMS` must carry a valid
+minisign signature (`SHA256SUMS.minisig`) by the release signing key compiled
+into `rusttv`, and the file's size and SHA-256 must match the release and
+`SHA256SUMS`; otherwise `UPDATE_VERIFY_FAILED` and nothing changes
+(SECURITY.md § Updates). **This build has no release signing key yet**, so
+`update launcher` and `update cli` refuse with `UPDATE_VERIFY_FAILED` ("this
+build has no release signing key"), also with `--dry-run`; `update check`
+works and reports `can_verify: false`. Not available as MCP tools.
+
 ### Privacy choices
 
 `optimize analyze` and `optimize apply privacy` read your choices from
@@ -121,12 +148,17 @@ Without `--json`: human-readable text on stdout, errors and hints on stderr.
 With `--json`, stdout carries exactly one JSON object, success or failure:
 
 ```json
-{"schema":"rusttv.v6","ok":true,"data":{}}
-{"schema":"rusttv.v6","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
+{"schema":"rusttv.v7","ok":true,"data":{}}
+{"schema":"rusttv.v7","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
 ```
 
-- `schema` identifies the contract version. Within `rusttv.v6`, fields are only
+- `schema` identifies the contract version. Within `rusttv.v7`, fields are only
   added, never renamed, removed or changed in meaning; anything else bumps it.
+  - `rusttv.v7`: new commands `update check`, `update launcher` and `update
+    cli` ([UpdateCheck](#updatecheck), [CliUpdate](#cliupdate); `update
+    launcher` reuses the `launcher-install` [DryRun](#dryrun)); new error
+    codes `UPDATE_CHECK_FAILED` and `UPDATE_VERIFY_FAILED`; new confirmation
+    word `update`. Everything else is unchanged.
   - `rusttv.v6`: [OptimizeAnalysis](#optimizeanalysis) has a new `optimizer`
     array (status and current settings of each optimizer profile); new
     command `optimize apply reduced-animations`; `optimize restore` takes an
@@ -204,6 +236,8 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
 | `ROLLED_BACK` | 1 | A step or its check failed; every step that ran was undone and verified |
 | `ROLLBACK_FAILED` | 1 | A step failed **and** undoing failed; the message has the commands to run by hand |
 | `RESTORE_FAILED` | 1 | `restore` couldn't undo a step; the message has the commands to run by hand |
+| `UPDATE_CHECK_FAILED` | 1 | `update`: the release couldn't be fetched or read (curl or `RUSTTV_UPDATE_DIR` failed, a draft or pre-release, a tag that isn't `v<major>.<minor>.<patch>`, a download URL off GitHub or not HTTPS, a file missing from the release, e.g. no APK for the device's ABI or no archive for this computer), or the archive couldn't be unpacked; nothing changed |
+| `UPDATE_VERIFY_FAILED` | 1 | `update launcher` / `update cli`: this build has no release signing key, `SHA256SUMS` isn't signed by it (another key, a bad or legacy signature), a file isn't listed in `SHA256SUMS`, or its size or SHA-256 doesn't match; nothing was installed or replaced |
 | `INTERNAL` | 1 | Output couldn't be serialized (a bug; please report it) |
 
 ## Environment
@@ -213,6 +247,8 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
 | `RUSTTV_ADB` | Path of the `adb` executable to use instead of the one on `PATH` |
 | `RUSTTV_STATE_DIR` | Directory for journals instead of the platform default ([Changing a device](#changing-a-device)) |
 | `RUSTTV_CONFIG_DIR` | Directory of the privacy choices file `privacy.toml` instead of the platform default ([Privacy choices](#privacy-choices)) |
+| `RUSTTV_CURL` | Path of the `curl` executable `update` uses instead of the one on `PATH` |
+| `RUSTTV_UPDATE_DIR` | Read the latest release from this directory instead of GitHub, with no network: `release.json` (the subset of GitHub's release JSON RustTV reads: `tag_name`, `draft`, `prerelease`, `html_url`, `assets` of `{name, browser_download_url, size}`) and each asset as a file named after it. Files are verified exactly like downloads, so they must be signed with the release signing key ([Updates](#updates)); for tests and offline installs |
 | `RUST_LOG` | Reserved for logging (not used yet) |
 
 ## Data types
@@ -338,6 +374,26 @@ without `--check-bonjour`, else `{tool, instances, note}`: `tool`
 (`dns-sd` \| `avahi-browse`, or null when neither is installed),
 `instances` (names of the `_airplay._tcp` services seen, any device on the
 network) and `note` (string or null).
+
+### UpdateCheck
+
+`latest` (version of the latest release), `page` (its GitHub page),
+`can_verify` (boolean: this build has a release signing key; without one
+`update cli` / `update launcher` refuse); `cli`: `current` (this build's
+version), `target` (its Rust target triple), `update_available` (boolean:
+the release is newer), `archive` (the release's archive for `target`, or
+null when it has none); `launcher`: null when no device was checked, else
+`serial`, `installed` (`versionName`, or null when not installed), `abi`
+(primary ABI, or null), `update_available` (boolean: `update launcher` would
+install `apk`), `apk` (file name, or null); `launcher_note` (why no device
+was checked, or why there is no launcher update; or null).
+
+### CliUpdate
+
+`from` (this build's version), `to` (the release's), `archive` (the verified
+archive), `dir` (directory of the running `rusttv`), `files` (`{path,
+previous}` for each file replaced, `previous` being where the current one is
+kept), `confirmation` (`update`), `applied` (false for `--dry-run`).
 
 ### ChangeReport
 

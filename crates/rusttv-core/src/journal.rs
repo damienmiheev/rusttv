@@ -152,10 +152,15 @@ impl JournalStore for FileJournal {
 }
 
 /// `<state dir>/journals`, where the CLI writes journals and plans look for
-/// an active Home takeover. The state dir is `RUSTTV_STATE_DIR` if set, else
-/// `~/Library/Application Support/rusttv` on macOS and
-/// `$XDG_STATE_HOME/rusttv` (default `~/.local/state/rusttv`) elsewhere.
+/// an active Home takeover. See [`state_dir`].
 pub fn journals_dir() -> Result<PathBuf, PlanError> {
+    Ok(state_dir()?.join("journals"))
+}
+
+/// The state dir: `RUSTTV_STATE_DIR` if set, else `~/Library/Application
+/// Support/rusttv` on macOS and `$XDG_STATE_HOME/rusttv` (default
+/// `~/.local/state/rusttv`) elsewhere.
+pub fn state_dir() -> Result<PathBuf, PlanError> {
     let state = if let Some(dir) = env::var_os("RUSTTV_STATE_DIR") {
         PathBuf::from(dir)
     } else {
@@ -173,7 +178,7 @@ pub fn journals_dir() -> Result<PathBuf, PlanError> {
                 .join("rusttv")
         }
     };
-    Ok(state.join("journals"))
+    Ok(state)
 }
 
 /// Reads a journal file.

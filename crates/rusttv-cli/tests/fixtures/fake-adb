@@ -17,6 +17,7 @@ philips="$(dirname "$0")/../../../rusttv-core/src/fixtures/philips-65oled818-api
 privacy="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-privacy"
 optimizer="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-optimizer"
 airplay="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-airplay"
+update="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-update"
 
 case "$FAKE_ADB_SCENARIO:$*" in
 tv:devices\ -l)
@@ -37,6 +38,9 @@ tv:shell\ pm\ list\ packages\ -3)
 tv:shell\ pm\ list\ packages\ -f)
     cat "$install/packages-f-rusttv.txt"
     ;;
+tv:shell\ dumpsys\ package\ ai.rusttv.launcher)
+    cat "$update/dumpsys-package-rusttv.txt"
+    ;;
 # The same TV before the RustTV launcher is installed.
 tv-fresh:devices\ -l)
     cat "$captures/devices-l.txt"
@@ -46,6 +50,9 @@ tv-fresh:shell\ getprop)
     ;;
 tv-fresh:shell\ pm\ list\ packages\ -f)
     cat "$install/packages-f-no-rusttv.txt"
+    ;;
+tv-fresh:shell\ dumpsys\ package\ ai.rusttv.launcher)
+    cat "$update/dumpsys-package-missing.txt"
     ;;
 # The Philips TV (bundled profile listing its tested catalog packages), with
 # other catalog packages installed too and org.droidtv.gel disabled.

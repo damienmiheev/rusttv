@@ -9,7 +9,13 @@ building: tags, GitHub releases and uploads are done by hand, by the owner.
 |---|---|---|
 | `rusttv-<version>-<target>.tar.gz` for `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`: `rusttv`, `rusttv-mcp`, README.md, CLI.md, MCP.md, SECURITY.md, LICENSE-MIT, LICENSE-APACHE, THIRD_PARTY_NOTICES.txt | `.github/workflows/release-build.yml` | No (SHA-256 in `SHA256SUMS`) |
 | `rusttv-launcher-<version>-<abi>.apk` for `arm64-v8a`, `armeabi-v7a`, `x86_64` | `android/build.sh`, locally with the release key | Release key (below) |
-| `SHA256SUMS` covering all of the above | the workflow (CLI), `shasum -a 256` (APKs) | — |
+| `SHA256SUMS` covering all of the above | the workflow (CLI), `shasum -a 256` (APKs) | Update signing key: `SHA256SUMS.minisig` (below) |
+| `SHA256SUMS.minisig` | `minisign -Sm SHA256SUMS`, locally | — |
+
+`rusttv update` (CLI.md § Updates) installs the CLI archive and the APK for
+the device's ABI only if `SHA256SUMS.minisig` is a valid signature of
+`SHA256SUMS` by the update signing key and the file matches `SHA256SUMS`, so
+the file names above are a contract: keep them exactly.
 
 The macOS binaries are not notarized; Gatekeeper blocks them until the user
 runs `xattr -d com.apple.quarantine rusttv rusttv-mcp` (say so in the release
@@ -96,6 +102,64 @@ Check the result:
 The certificate must be `CN=RustTV` with the recorded fingerprint, not
 `CN=Android Debug`.
 
+## Update signing key
+
+A second owner key, separate from the APK key: a
+[minisign](https://jedisct1.github.io/minisign/) key that signs `SHA256SUMS`.
+Its public half is compiled into `rusttv`, which then trusts nothing else for
+`rusttv update` (SECURITY.md § Updates). It covers the CLI archives, which
+have no other signature, and the APK downloads; Android's own APK signature
+check stays on top for the launcher.
+
+### Create the key (once)
+
+`minisign` is in Homebrew (`brew install minisign`) and most Linux
+distributions. On the owner's machine:
+
+```bash
+minisign -G -p ~/.rusttv-release/rusttv-release.pub -s ~/.rusttv-release/rusttv-release.key
+```
+
+It asks for a password that encrypts the secret key; use a new one and keep
+it in the password manager. Back up `rusttv-release.key` like the `.jks`
+(two copies in separate places, never in the repository, CI, an issue or a
+chat): **if it is lost, `rusttv update` can't install a release until users
+install a build with a new public key by hand**; if it leaks, anyone can sign
+a release that `rusttv update` installs, so replace it at once (new key, new
+build, say so in the release notes).
+
+### Put the public key into RustTV (once)
+
+`~/.rusttv-release/rusttv-release.pub` has two lines; the second is the key
+(base64, starting `RW`). In `crates/rusttv-core/src/update.rs`, replace
+
+```rust
+pub const RELEASE_SIGNING_KEY: Option<&str> = None;
+```
+
+with
+
+```rust
+pub const RELEASE_SIGNING_KEY: Option<&str> = Some("RW...");
+```
+
+and commit it. Until then every build refuses `rusttv update cli` and
+`rusttv update launcher` with `UPDATE_VERIFY_FAILED`. Builds made before the
+key was set can't update themselves: users install the first signed release
+by hand. Publish the public key in the release notes and README too.
+
+### Sign a release
+
+After `SHA256SUMS` is complete (CLI archives and APKs):
+
+```bash
+minisign -Sm SHA256SUMS -s ~/.rusttv-release/rusttv-release.key -t "RustTV <version>"
+minisign -Vm SHA256SUMS -p ~/.rusttv-release/rusttv-release.pub
+```
+
+The first writes `SHA256SUMS.minisig` (pre-hashed, minisign's default;
+RustTV refuses legacy signatures made with `-l`); the second checks it.
+
 ## Checklist
 
 Work on a release branch; tick each item in the release pull request.
@@ -117,17 +181,19 @@ Work on a release branch; tick each item in the release pull request.
 - [ ] Run the **Release build** workflow by hand (`workflow_dispatch`) on the release commit; all jobs pass. Download the `cli-*` and `SHA256SUMS` artifacts.
 - [ ] Build the APKs locally with the release key: `android/build.sh`. Check the signature (above).
 - [ ] Rename the APKs to `rusttv-launcher-<version>-<abi>.apk` and add their sums: `shasum -a 256 rusttv-launcher-*.apk >> SHA256SUMS`.
+- [ ] Sign `SHA256SUMS` with the update signing key and check the signature (above); `RELEASE_SIGNING_KEY` in `rusttv-core` is the key's public half.
 - [ ] Smoke test: `rusttv --version` and `rusttv device list` on macOS and Linux; the signed APK installs (`rusttv launcher install`) and starts on the emulator and on at least one TV with a compat profile; About shows the version and the notices.
 
 ### Tag and publish (owner only)
 
 - [ ] Signed tag on the release commit: `git tag -s v<version> -m "RustTV <version>"`, then push it. The tag must equal `v` + the Cargo version; the workflow fails otherwise. The tag push re-runs the Release build, whose artifacts must match the ones tested.
-- [ ] GitHub release from the tag with the CLI archives, the signed APKs and `SHA256SUMS`.
+- [ ] GitHub release from the tag with the CLI archives, the signed APKs, `SHA256SUMS` and `SHA256SUMS.minisig`; published (not a draft or pre-release, which `rusttv update` ignores).
+- [ ] From the previous release's binary: `rusttv update check` sees the new version; `rusttv update cli --dry-run` and `rusttv update launcher --dry-run` verify and plan it.
 - [ ] Release notes: the CHANGELOG section; supported devices (only those with a compat profile); how to install (CLI archive, `rusttv launcher install`); the APK signing certificate's SHA-256 fingerprint; the macOS quarantine note; known issues; the safety model in one paragraph with a link to SECURITY.md.
 
 ## Never in a release
 
-- The keystore, its passwords, `android/keystore.properties`, or any `.env` file.
+- The keystore, its passwords, `android/keystore.properties`, the update signing key (`rusttv-release.key`) or its password, or any `.env` file.
 - Debug-signed APKs (the CI artifacts are debug-signed).
 - Anything from `internal/`, `.rusttv/` (plans, journals, captures), or raw
   device captures that identify a person, a home network or a serial number

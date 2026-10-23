@@ -41,7 +41,7 @@ fn rusttv_with_fake_adb(scenario: &str, args: &[&str]) -> Output {
 
 fn json_stdout(output: &Output) -> Value {
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["schema"], "rusttv.v6");
+    assert_eq!(value["schema"], "rusttv.v7");
     value
 }
 
@@ -1891,4 +1891,471 @@ fn optimize_apply_reduced_animations_is_refused_while_a_journal_file_is_unreadab
     );
     assert!(message.contains("move the file out of"), "{message}");
     std::fs::remove_dir_all(state).unwrap();
+}
+
+// `rusttv update`: fake releases signed with a throwaway test key, read from
+// RUSTTV_UPDATE_DIR. RUSTTV_CURL points nowhere, so nothing can reach the
+// network. The test build honours RUSTTV_UPDATE_TEST_KEY (debug +
+// `test-util`); a release build never does.
+
+use rusttv_core::test_release::{TestSigningKey, write_test_release};
+
+/// A release newer than this build, whatever its version.
+const NEWER: &str = "99.0.0";
+const NEWER_APK: &str = "rusttv-launcher-99.0.0-arm64-v8a.apk";
+
+/// `<dir>/release` holds a signed release `version` with these files.
+fn write_release(
+    dir: &std::path::Path,
+    version: &str,
+    assets: &[(&str, &[u8])],
+    key: &TestSigningKey,
+) {
+    write_test_release(&dir.join("release"), version, assets, key).unwrap();
+}
+
+/// `program <args>` with `<dir>` as state dir and `<dir>/release` as the
+/// release, the fake adb in `scenario`, and `key` as the trusted key.
+fn rusttv_update(
+    program: &std::path::Path,
+    dir: &std::path::Path,
+    scenario: &str,
+    key: Option<&TestSigningKey>,
+    args: &[&str],
+) -> Output {
+    let fake_adb = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/fake-adb");
+    let mut command = Command::new(program);
+    command
+        .args(args)
+        .env(
+            "RUSTTV_CONFIG_DIR",
+            std::env::temp_dir().join("rusttv-cli-tests-no-config"),
+        )
+        .env("RUSTTV_STATE_DIR", dir)
+        .env("RUSTTV_UPDATE_DIR", dir.join("release"))
+        .env("RUSTTV_CURL", "/nonexistent/rusttv-tests/curl")
+        .env("RUSTTV_ADB", fake_adb)
+        .env("FAKE_ADB_SCENARIO", scenario)
+        .env_remove("RUSTTV_UPDATE_TEST_KEY");
+    if let Some(key) = key {
+        command.env("RUSTTV_UPDATE_TEST_KEY", key.public_key());
+    }
+    command.output().unwrap()
+}
+
+fn rusttv_exe() -> &'static std::path::Path {
+    std::path::Path::new(env!("CARGO_BIN_EXE_rusttv"))
+}
+
+/// Nothing is left in `<state dir>/updates/` after a run.
+fn assert_no_downloads_left(dir: &std::path::Path) {
+    let updates = dir.join("updates");
+    let left = std::fs::read_dir(&updates).map_or(0, Iterator::count);
+    assert_eq!(left, 0, "downloads left in {}", updates.display());
+}
+
+#[test]
+fn update_check_compares_the_cli_and_the_launcher_with_the_latest_release() {
+    let dir = state_dir("update-check");
+    let archive = format!("rusttv-{NEWER}-{}.tar.gz", env!("RUSTTV_TARGET"));
+    let key = TestSigningKey::new(1);
+    write_release(
+        &dir,
+        NEWER,
+        &[(NEWER_APK, b"apk"), (archive.as_str(), b"archive")],
+        &key,
+    );
+    let output = rusttv_update(
+        rusttv_exe(),
+        &dir,
+        "tv",
+        None,
+        &["update", "check", "--json"],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    assert_eq!(data["latest"], NEWER);
+    assert_eq!(
+        data["page"],
+        format!("https://github.com/damienmiheev/rusttv/releases/tag/v{NEWER}")
+    );
+    assert_eq!(data["can_verify"], false, "no release signing key yet");
+    assert_eq!(data["cli"]["current"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(data["cli"]["target"], env!("RUSTTV_TARGET"));
+    assert_eq!(data["cli"]["update_available"], true);
+    assert_eq!(data["cli"]["archive"], archive.as_str());
+    assert_eq!(data["launcher"]["serial"], "emulator-5554");
+    assert_eq!(data["launcher"]["installed"], "0.1.0");
+    assert_eq!(data["launcher"]["abi"], "arm64-v8a");
+    assert_eq!(data["launcher"]["update_available"], true);
+    assert_eq!(data["launcher"]["apk"], NEWER_APK);
+    assert_eq!(data["launcher_note"], Value::Null);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn update_check_without_a_device_still_checks_the_cli() {
+    let dir = state_dir("update-check-no-device");
+    write_release(&dir, NEWER, &[(NEWER_APK, b"apk")], &TestSigningKey::new(1));
+    let output = rusttv_update(
+        rusttv_exe(),
+        &dir,
+        "no-devices",
+        None,
+        &["update", "check", "--json"],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    assert_eq!(data["cli"]["update_available"], true);
+    assert_eq!(
+        data["cli"]["archive"],
+        Value::Null,
+        "no archive for this target"
+    );
+    assert_eq!(data["launcher"], Value::Null);
+    let note = data["launcher_note"].as_str().unwrap();
+    assert!(note.starts_with("no device checked"), "{note}");
+
+    // With --serial, the device must be there, as for every device command.
+    let output = rusttv_update(
+        rusttv_exe(),
+        &dir,
+        "no-devices",
+        None,
+        &["update", "check", "--serial", "tv", "--json"],
+    );
+    assert_eq!(output.status.code(), Some(3), "{output:?}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn update_check_text_says_what_to_run() {
+    let dir = state_dir("update-check-text");
+    write_release(
+        &dir,
+        env!("CARGO_PKG_VERSION"),
+        &[],
+        &TestSigningKey::new(1),
+    );
+    let output = rusttv_update(rusttv_exe(), &dir, "tv-fresh", None, &["update", "check"]);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("(up to date)"), "{stdout}");
+    assert!(
+        stdout.contains("not installed on emulator-5554"),
+        "{stdout}"
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("no release signing key"), "{stderr}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn update_check_refuses_pre_releases_and_bad_tags() {
+    let dir = state_dir("update-check-bad-release");
+    write_release(&dir, NEWER, &[], &TestSigningKey::new(1));
+    let path = dir.join("release/release.json");
+    let original: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    for (field, value) in [
+        ("prerelease", Value::from(true)),
+        ("draft", Value::from(true)),
+        ("tag_name", Value::from("v99.0")),
+        ("tag_name", Value::from("99.0.0")),
+    ] {
+        let mut release = original.clone();
+        release[field] = value;
+        std::fs::write(&path, release.to_string()).unwrap();
+        let output = rusttv_update(
+            rusttv_exe(),
+            &dir,
+            "tv",
+            None,
+            &["update", "check", "--json"],
+        );
+        assert_eq!(output.status.code(), Some(1), "{field}: {output:?}");
+        assert_eq!(json_stdout(&output)["error"]["code"], "UPDATE_CHECK_FAILED");
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn update_launcher_dry_run_plans_the_verified_release_apk() {
+    let dir = state_dir("update-launcher");
+    let key = TestSigningKey::new(1);
+    write_release(&dir, NEWER, &[(NEWER_APK, b"signed apk")], &key);
+    let output = rusttv_update(
+        rusttv_exe(),
+        &dir,
+        "tv-fresh",
+        Some(&key),
+        &["update", "launcher", "--dry-run", "--json"],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    assert_eq!(data["plan"], "launcher-install");
+    assert_eq!(data["confirmation"], "install");
+    let command = data["steps"][0]["command"].as_str().unwrap();
+    assert!(
+        command.starts_with("adb -s emulator-5554 install --pkg ai.rusttv.launcher /"),
+        "{command}"
+    );
+    assert!(command.ends_with(&format!("/{NEWER_APK}")), "{command}");
+    let notes = data["notes"].to_string();
+    assert!(notes.contains(&format!("release {NEWER}")), "{notes}");
+    assert_no_downloads_left(&dir);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn update_launcher_over_an_older_launcher_is_an_upgrade() {
+    let dir = state_dir("update-launcher-upgrade");
+    let key = TestSigningKey::new(1);
+    write_release(&dir, NEWER, &[(NEWER_APK, b"signed apk")], &key);
+    let output = rusttv_update(
+        rusttv_exe(),
+        &dir,
+        "tv",
+        Some(&key),
+        &["update", "launcher", "--dry-run"],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("install -r --pkg ai.rusttv.launcher"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("this is an upgrade"), "{stdout}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn update_launcher_never_reinstalls_or_downgrades() {
+    let dir = state_dir("update-launcher-same");
+    let key = TestSigningKey::new(1);
+    // The fake TV has launcher 0.1.0.
+    for version in ["0.1.0", "0.0.9"] {
+        let apk = format!("rusttv-launcher-{version}-arm64-v8a.apk");
+        let _ = std::fs::remove_dir_all(dir.join("release"));
+        write_release(&dir, version, &[(apk.as_str(), b"apk")], &key);
+        let output = rusttv_update(
+            rusttv_exe(),
+            &dir,
+            "tv",
+            Some(&key),
+            &["update", "launcher", "--dry-run", "--json"],
+        );
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        let error = &json_stdout(&output)["error"];
+        assert_eq!(error["code"], "PRECONDITION_FAILED");
+        assert!(
+            error["message"].as_str().unwrap().contains("up to date"),
+            "{error}"
+        );
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn update_launcher_refuses_without_a_signing_key_a_wrong_key_or_a_tampered_apk() {
+    let dir = state_dir("update-launcher-verify");
+    let key = TestSigningKey::new(1);
+    write_release(&dir, NEWER, &[(NEWER_APK, b"signed apk")], &key);
+    let args = ["update", "launcher", "--dry-run", "--json"];
+    let message = |output: &Output| {
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        let error = &json_stdout(output)["error"];
+        assert_eq!(error["code"], "UPDATE_VERIFY_FAILED");
+        error["message"].as_str().unwrap().to_owned()
+    };
+
+    // This build has no release signing key.
+    let output = rusttv_update(rusttv_exe(), &dir, "tv-fresh", None, &args);
+    assert!(message(&output).contains("no release signing key"));
+
+    let other = TestSigningKey::new(2);
+    let output = rusttv_update(rusttv_exe(), &dir, "tv-fresh", Some(&other), &args);
+    assert!(message(&output).contains("another key"));
+
+    // Same size, other bytes.
+    std::fs::write(dir.join("release").join(NEWER_APK), b"evil   apk").unwrap();
+    let output = rusttv_update(rusttv_exe(), &dir, "tv-fresh", Some(&key), &args);
+    assert!(message(&output).contains("SHA-256"));
+    assert_no_downloads_left(&dir);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn update_launcher_and_cli_without_a_terminal_are_refused() {
+    let dir = state_dir("update-no-terminal");
+    let key = TestSigningKey::new(1);
+    write_release(&dir, NEWER, &[(NEWER_APK, b"apk")], &key);
+    for args in [
+        ["update", "launcher", "--json"],
+        ["update", "cli", "--json"],
+    ] {
+        let output = rusttv_update(rusttv_exe(), &dir, "tv", Some(&key), &args);
+        assert_eq!(output.status.code(), Some(1), "{output:?}");
+        let error = &json_stdout(&output)["error"];
+        assert_eq!(error["code"], "NOT_APPROVED", "{args:?}");
+        assert!(
+            error["message"]
+                .as_str()
+                .unwrap()
+                .contains("interactive terminal")
+        );
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+/// `<dir>/bin/rusttv` (a copy of the test binary) and `<dir>/bin/rusttv-mcp`,
+/// plus a signed release `NEWER` whose archive holds scripts printing
+/// `rusttv <reported>`.
+fn installed_cli(
+    dir: &std::path::Path,
+    reported: &str,
+    key: &TestSigningKey,
+) -> std::path::PathBuf {
+    let bin = dir.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::copy(rusttv_exe(), bin.join("rusttv")).unwrap();
+    std::fs::write(bin.join("rusttv-mcp"), b"old mcp").unwrap();
+
+    let name = format!("rusttv-{NEWER}-{}", env!("RUSTTV_TARGET"));
+    let src = dir.join("archive-src");
+    std::fs::create_dir_all(src.join(&name)).unwrap();
+    let script = format!("#!/bin/sh\necho 'rusttv {reported}'\n");
+    std::fs::write(src.join(&name).join("rusttv"), &script).unwrap();
+    std::fs::write(src.join(&name).join("rusttv-mcp"), b"new mcp").unwrap();
+    let archive = dir.join(format!("{name}.tar.gz"));
+    let status = Command::new("tar")
+        .arg("-czf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&src)
+        .arg(&name)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    let bytes = std::fs::read(&archive).unwrap();
+    write_release(
+        dir,
+        NEWER,
+        &[(format!("{name}.tar.gz").as_str(), &bytes)],
+        key,
+    );
+    bin.join("rusttv")
+}
+
+#[test]
+fn update_cli_dry_run_lists_the_files_it_would_replace() {
+    let dir = state_dir("update-cli");
+    let key = TestSigningKey::new(1);
+    let exe = installed_cli(&dir, NEWER, &key);
+    let before = std::fs::read(&exe).unwrap();
+    let output = rusttv_update(
+        &exe,
+        &dir,
+        "tv",
+        Some(&key),
+        &["update", "cli", "--dry-run", "--json"],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    assert_eq!(data["from"], env!("CARGO_PKG_VERSION"));
+    assert_eq!(data["to"], NEWER);
+    assert_eq!(
+        data["archive"],
+        format!("rusttv-{NEWER}-{}.tar.gz", env!("RUSTTV_TARGET"))
+    );
+    assert_eq!(data["confirmation"], "update");
+    assert_eq!(data["applied"], false);
+    let files = data["files"].as_array().unwrap();
+    assert_eq!(files.len(), 2);
+    assert!(files[0]["path"].as_str().unwrap().ends_with("/bin/rusttv"));
+    assert!(
+        files[0]["previous"]
+            .as_str()
+            .unwrap()
+            .ends_with("/bin/rusttv.previous")
+    );
+    assert!(
+        files[1]["path"]
+            .as_str()
+            .unwrap()
+            .ends_with("/bin/rusttv-mcp")
+    );
+    assert_eq!(
+        std::fs::read(&exe).unwrap(),
+        before,
+        "a dry run replaces nothing"
+    );
+    assert!(!dir.join("bin/rusttv.previous").exists());
+    assert_no_downloads_left(&dir);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn update_cli_refuses_a_tampered_archive_and_the_same_version() {
+    let dir = state_dir("update-cli-refused");
+    let key = TestSigningKey::new(1);
+    let exe = installed_cli(&dir, NEWER, &key);
+    let args = ["update", "cli", "--dry-run", "--json"];
+
+    let output = rusttv_update(&exe, &dir, "tv", Some(&TestSigningKey::new(3)), &args);
+    assert_eq!(
+        json_stdout(&output)["error"]["code"],
+        "UPDATE_VERIFY_FAILED"
+    );
+
+    let output = rusttv_update(&exe, &dir, "tv", None, &args);
+    let error = &json_stdout(&output)["error"];
+    assert_eq!(error["code"], "UPDATE_VERIFY_FAILED");
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("no release signing key")
+    );
+
+    let _ = std::fs::remove_dir_all(dir.join("release"));
+    write_release(&dir, env!("CARGO_PKG_VERSION"), &[], &key);
+    let output = rusttv_update(&exe, &dir, "tv", Some(&key), &args);
+    let error = &json_stdout(&output)["error"];
+    assert_eq!(error["code"], "PRECONDITION_FAILED");
+    assert!(
+        error["message"].as_str().unwrap().contains("up to date"),
+        "{error}"
+    );
+    assert_no_downloads_left(&dir);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn update_cli_refuses_a_development_build() {
+    let dir = state_dir("update-cli-dev");
+    let key = TestSigningKey::new(1);
+    write_release(&dir, NEWER, &[], &key);
+    // The test binary itself lives in target/debug.
+    let output = rusttv_update(
+        rusttv_exe(),
+        &dir,
+        "tv",
+        Some(&key),
+        &["update", "cli", "--dry-run", "--json"],
+    );
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let error = &json_stdout(&output)["error"];
+    assert_eq!(error["code"], "PRECONDITION_FAILED");
+    assert!(
+        error["message"].as_str().unwrap().contains("git pull"),
+        "{error}"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
 }

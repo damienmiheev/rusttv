@@ -84,6 +84,9 @@ pub enum DeviceCommand {
     HomeCandidates,
     /// Memory usage of one app process (`dumpsys meminfo <package>`).
     PackageMemInfo(PackageName),
+    /// One package's state, including its `versionName` (`dumpsys package
+    /// <package>`); prints no package section when it isn't installed.
+    PackageInfo(PackageName),
     /// Cumulative CPU time of every process (`ps -A -o PID,TIME+,NAME`).
     ProcessCpuTimes,
     /// Stops an app's processes (`am force-stop <package>`). Transient.
@@ -172,6 +175,7 @@ impl DeviceCommand {
             | Self::HomeActivity
             | Self::HomeCandidates
             | Self::PackageMemInfo(_)
+            | Self::PackageInfo(_)
             | Self::ProcessCpuTimes
             | Self::Activities
             | Self::PowerState
@@ -276,6 +280,7 @@ impl DeviceCommand {
                 "android.intent.category.HOME",
             ],
             Self::PackageMemInfo(package) => vec!["shell", "dumpsys", "meminfo", package.as_str()],
+            Self::PackageInfo(package) => vec!["shell", "dumpsys", "package", package.as_str()],
             Self::ProcessCpuTimes => vec!["shell", "ps", "-A", "-o", "PID,TIME+,NAME"],
             Self::ForceStop(package) => vec!["shell", "am", "force-stop", package.as_str()],
             Self::StartActivity(component) => {
@@ -801,6 +806,7 @@ mod tests {
             DeviceCommand::HomeActivity,
             DeviceCommand::HomeCandidates,
             DeviceCommand::PackageMemInfo(PackageName::new("com.example.app").unwrap()),
+            DeviceCommand::PackageInfo(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::ProcessCpuTimes,
             DeviceCommand::ForceStop(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::StartActivity("com.example.app/.MainActivity".parse().unwrap()),
@@ -850,6 +856,7 @@ mod tests {
                 | DeviceCommand::HomeActivity
                 | DeviceCommand::HomeCandidates
                 | DeviceCommand::PackageMemInfo(_)
+                | DeviceCommand::PackageInfo(_)
                 | DeviceCommand::ProcessCpuTimes
                 | DeviceCommand::ForceStop(_)
                 | DeviceCommand::StartActivity(_)

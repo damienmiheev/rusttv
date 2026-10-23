@@ -20,5 +20,10 @@ serde_json.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 
+[dev-dependencies]
+# Fake signed releases (`test_release`); also makes the test build of the
+# binary honour RUSTTV_UPDATE_TEST_KEY (debug builds only, SECURITY.md § Updates).
+rusttv-core = { workspace = true, features = ["test-util"] }
+
 [lints]
 workspace = true

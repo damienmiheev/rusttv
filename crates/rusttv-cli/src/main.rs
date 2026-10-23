@@ -5,6 +5,7 @@ mod optimize;
 mod output;
 mod performance;
 mod tools;
+mod update;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -12,7 +13,7 @@ use std::process::ExitCode;
 use clap::{Args, Parser, Subcommand};
 use rusttv_core::{
     Adb, AdbError, BenchmarkError, BenchmarkOptions, ConnectOutcome, DeviceAddress, DeviceEntry,
-    DeviceInfo, DeviceSelectionError, DeviceState, PlanError, SystemAdb,
+    DeviceInfo, DeviceSelectionError, DeviceState, PlanError, SystemAdb, UpdateError,
 };
 use serde::Serialize;
 
@@ -53,6 +54,39 @@ enum Command {
     /// until it restarts (TOOLS.md).
     #[command(subcommand)]
     Tools(ToolsAction),
+    /// Check for and install RustTV releases: this CLI and the launcher on a
+    /// TV. Only files signed with the release signing key (SECURITY.md).
+    #[command(subcommand)]
+    Update(UpdateAction),
+}
+
+#[derive(Debug, Subcommand)]
+enum UpdateAction {
+    /// Compare this CLI's version, and the RustTV launcher's on the device
+    /// (if one is connected, or --serial), with the latest release. Read-only.
+    Check {
+        #[command(flatten)]
+        target: Target,
+    },
+    /// Install the latest release's launcher APK for the device's primary
+    /// ABI, after verifying it, with the `launcher install` plan. Only to a
+    /// newer version. Shows the plan and asks you to type a confirmation.
+    Launcher {
+        #[command(flatten)]
+        target: Target,
+        /// Only show the plan; change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Replace this `rusttv` (and `rusttv-mcp` next to it) with the latest
+    /// release's, after verifying it, keeping the old ones as `.previous`.
+    /// Only to a newer version. Shows the plan and asks you to type a
+    /// confirmation; puts the old files back if the new `rusttv` fails.
+    Cli {
+        /// Only show the plan; change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -352,6 +386,8 @@ enum CliError {
     Benchmark(#[from] BenchmarkError),
     #[error(transparent)]
     Plan(#[from] PlanError),
+    #[error(transparent)]
+    Update(#[from] UpdateError),
 }
 
 impl CliError {
@@ -362,6 +398,7 @@ impl CliError {
             Self::IncompleteProfile(_) => "INCOMPLETE_PROFILE",
             Self::Benchmark(error) => error.code(),
             Self::Plan(error) => error.code(),
+            Self::Update(error) => error.code(),
         }
     }
 
@@ -376,6 +413,8 @@ impl CliError {
             Self::Benchmark(_) => EXIT_FAILURE,
             Self::Plan(error) if error.is_device_unreachable() => EXIT_DEVICE_UNREACHABLE,
             Self::Plan(_) => EXIT_FAILURE,
+            Self::Update(error) if error.is_device_unreachable() => EXIT_DEVICE_UNREACHABLE,
+            Self::Update(_) => EXIT_FAILURE,
         }
     }
 }
@@ -497,6 +536,11 @@ fn main() -> ExitCode {
         Command::Compat(CompatAction::Profile { target }) => {
             compat::profile(&adb, target, cli.json)
         }
+        Command::Update(UpdateAction::Check { target }) => update::check(&adb, target, cli.json),
+        Command::Update(UpdateAction::Launcher { target, dry_run }) => {
+            update::launcher(&adb, target, *dry_run, cli.json)
+        }
+        Command::Update(UpdateAction::Cli { dry_run }) => update::cli(*dry_run, cli.json),
     };
 
     match result {

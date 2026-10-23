@@ -13,6 +13,7 @@ mod catalog;
 mod command;
 mod compat;
 mod device;
+mod download;
 mod error;
 mod inspect;
 mod install;
@@ -23,8 +24,11 @@ mod perf;
 mod plan;
 mod privacy;
 mod takeover;
+#[cfg(any(test, feature = "test-util"))]
+pub mod test_release;
 #[cfg(test)]
 mod test_support;
+mod update;
 
 #[cfg(any(test, feature = "test-util"))]
 pub use adb::FakeAdb;
@@ -58,18 +62,20 @@ pub use device::{
     ConnectOutcome, DEFAULT_ADB_PORT, DeviceAddress, DeviceEntry, DeviceSelectionError,
     DeviceState, InvalidDeviceAddress, parse_connect_output, parse_device_list, select_device,
 };
+pub use download::{Curl, LocalRelease, ReleaseSource, download_verified, latest_release};
 pub use error::{AdbError, ERROR_CODES};
 pub use inspect::{
     DeviceInfo, MemoryInfo, StorageInfo, inspect, parse_df, parse_meminfo, parse_properties,
 };
 pub use install::{
-    LAUNCHER_INSTALL, LAUNCHER_UNINSTALL, default_apk, install_plan, uninstall_plan,
+    LAUNCHER_INSTALL, LAUNCHER_UNINSTALL, default_apk, install_plan, release_install_plan,
+    uninstall_plan,
 };
 pub use journal::{
     FileJournal, JOURNAL_SCHEMA_VERSION, Journal, JournalSearch, JournalStatus, JournalStep,
     JournalStore, RestorableJournals, StepStatus, UnreadableJournal, find_restorable_journal,
     find_restorable_journal_where, journal_file_name, journals_dir, load_journal,
-    restorable_journals,
+    restorable_journals, state_dir,
 };
 pub use launcher::{
     HomeCandidate, LauncherStatus, RUSTTV_LAUNCHER, launcher_status, parse_home_candidates,
@@ -92,6 +98,16 @@ pub use privacy::{
 };
 pub use takeover::{
     HOME_TAKEOVER, takeover_journal_from_profile, takeover_plan, takeover_restore_plan,
+};
+
+#[cfg(all(feature = "test-util", debug_assertions))]
+pub use update::TEST_SIGNING_KEY_ENV;
+pub use update::{
+    LauncherOnDevice, MAX_ASSET_BYTES, MAX_METADATA_BYTES, RELEASE_SIGNING_KEY,
+    RELEASES_LATEST_URL, Release, ReleaseAsset, SUMS_FILE, SUMS_SIGNATURE_FILE, Sums, UpdateError,
+    Version, cli_archive_dir, cli_archive_name, launcher_apk_name, launcher_on_device,
+    launcher_update_asset, parse_release, parse_sums, parse_version_name, release_signing_key,
+    sha256, verify_asset, verify_sums,
 };
 
 pub use perf::{
@@ -123,6 +139,7 @@ mod tests {
                     .map(BenchmarkError::code),
             )
             .chain(plan::every_plan_error().iter().map(PlanError::code))
+            .chain(update::every_update_error().iter().map(UpdateError::code))
             .collect();
         let listed: BTreeSet<&str> = ERROR_CODES.iter().copied().collect();
 
