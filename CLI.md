@@ -6,7 +6,8 @@ class R1, transient), `launcher takeover` / `launcher restore`, which
 disable or re-enable the stock launcher, and `launcher install` /
 `launcher uninstall`, which install or remove the RustTV launcher (all R3),
 only after a person approves the plan at a terminal (see [Changing a device](#changing-a-device)). Run
-`rusttv <command> --help` for every option.
+`rusttv <command> --help` for every option. Agents can use the read-only
+commands as MCP tools too: see [MCP.md](MCP.md).
 
 ## Commands
 

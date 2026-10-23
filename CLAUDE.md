@@ -53,6 +53,7 @@ Report actual results. If a check fails or was skipped, say so.
 |---|---|
 | Why / scope / decisions about product | PROJECT_VISION.md |
 | CLI commands, JSON contract, error codes | CLI.md |
+| MCP server tools | MCP.md |
 | Structure, crates, bridge, decision log | ARCHITECTURE.md |
 | Safety engine, risk classes, recovery | SECURITY.md |
 | How to measure | BENCHMARK_PLAN.md |

@@ -38,5 +38,5 @@ Likelihood / Impact: H / M / L. "Validation" is how we will find out; "Remaining
 6. Which rootless ADB operations (`pm disable-user`, `set-home-activity`, `settings put`) the Philips firmware allows.
 7. Repeatability of measurements on a TV (thermal, background updates, ambient-mode jobs) — how many runs are needed.
 8. Whether `am start -W` / logcat timings are reliable for HOME activities on Google TV builds.
-9. `rmcp` API stability across versions by the time Phase 5 starts.
+9. `rmcp` API stability across versions: Phase 5 started on 3.7 (2026-10-23); the SDK had three major versions in its first ~19 months.
 10. How Philips (TP Vision) firmware updates treat a non-stock default home.

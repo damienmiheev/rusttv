@@ -29,6 +29,7 @@ RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + 
 |---|---|
 | [PROJECT_VISION.md](PROJECT_VISION.md) | Mission, scope, product decisions, non-goals |
 | [CLI.md](CLI.md) | Commands, `--json` output contract, exit and error codes |
+| [MCP.md](MCP.md) | MCP server for AI agents: tools, results, setup |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Repo layout, crates, Android bridge, decision log |
 | [SECURITY.md](SECURITY.md) | Safety rules, risk classes, recovery, vulnerability reporting |
 | [BENCHMARK_PLAN.md](BENCHMARK_PLAN.md) | How performance is measured and reported |
