@@ -3,6 +3,7 @@
 //! Time comes from the caller as a monotonic [`Duration`] (for example time
 //! since start-up), so the model is deterministic and testable on the host.
 
+use std::collections::BTreeSet;
 use std::time::Duration;
 
 /// Tiles per grid row.
@@ -50,6 +51,9 @@ pub enum TileId {
     App(String),
     /// The built-in About tile.
     About,
+    /// Opens the hidden apps. Shown last, and only while an installed app is hidden;
+    /// never part of the [`Order`].
+    Hidden,
 }
 
 /// A launchable app as reported by the platform.
@@ -86,6 +90,15 @@ pub enum Input {
     LaunchFailed,
 }
 
+/// An entry in the menu that a long press on a tile opens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuItem {
+    /// Pick the tile up to move it.
+    Move,
+    /// Take the app off Home; it stays installed and is listed under Hidden apps.
+    Hide,
+}
+
 /// Something the caller must do after [`Home::handle`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
@@ -93,7 +106,9 @@ pub enum Effect {
     Launch(String),
     /// Show the About page.
     OpenAbout,
-    /// Persist [`Home::order`].
+    /// Show the hidden apps page.
+    OpenHidden,
+    /// Persist [`Home::order`] and [`Home::hidden`].
     SaveOrder,
     /// Tell the user this app (component name) could not be opened.
     ShowLaunchError(String),
@@ -122,6 +137,10 @@ pub enum State {
     Launching,
     /// The About page is open.
     About,
+    /// The long-press menu of the focused tile is open.
+    Menu,
+    /// The hidden apps page is open.
+    Hidden,
 }
 
 /// User-defined tile order as sparse integer keys.
@@ -173,6 +192,7 @@ impl Order {
         self.keys.retain(|(id, _)| match id {
             TileId::App(component) => apps.iter().any(|app| app.id == *component),
             TileId::About => true,
+            TileId::Hidden => false,
         });
         let mut changed = self.keys.len() != before;
         // About stays last unless the user moved it, so new apps go before it.
@@ -271,13 +291,37 @@ enum Mode {
         since: Duration,
     },
     About,
+    /// `selected` indexes [`menu_items`] of the focused tile.
+    Menu {
+        selected: usize,
+    },
+    /// `focus` indexes `Home::hidden_apps`.
+    Hidden {
+        focus: usize,
+    },
 }
 
-/// The home screen: tile order, focus, scroll position and mode.
+/// What the long-press menu offers for a tile; empty means no menu.
+fn menu_items(tile: Option<&TileId>) -> &'static [MenuItem] {
+    match tile {
+        Some(TileId::App(_)) => &[MenuItem::Move, MenuItem::Hide],
+        Some(TileId::About) => &[MenuItem::Move],
+        Some(TileId::Hidden) | None => &[],
+    }
+}
+
+/// The home screen: tile order, hidden apps, focus, scroll position and mode.
 #[derive(Debug, Clone)]
 pub struct Home {
     order: Order,
-    /// Tiles in display order; during a move this differs from `order`.
+    /// Component names of apps kept off Home, installed or not.
+    hidden: BTreeSet<String>,
+    /// The last app list from the platform.
+    apps: Vec<App>,
+    /// Installed hidden apps, by label.
+    hidden_apps: Vec<String>,
+    /// Tiles in display order: the order, then [`TileId::Hidden`] if any app is
+    /// hidden. During a move this differs from `order`.
     tiles: Vec<TileId>,
     focus: usize,
     first_row: usize,
@@ -290,11 +334,14 @@ pub struct Home {
 }
 
 impl Home {
-    /// Creates a home screen with a stored order; call [`Home::set_apps`] next.
-    pub fn new(order: Order, right_to_left: bool) -> Self {
+    /// Creates a home screen with a stored order and hidden apps; call [`Home::set_apps`] next.
+    pub fn new(order: Order, hidden: BTreeSet<String>, right_to_left: bool) -> Self {
         Self {
             tiles: order.ids(),
             order,
+            hidden,
+            apps: Vec::new(),
+            hidden_apps: Vec::new(),
             focus: 0,
             first_row: 0,
             mode: Mode::Browse,
@@ -306,17 +353,61 @@ impl Home {
 
     /// Replaces the app list, keeping focus on the same tile; returns whether the order changed.
     pub fn set_apps(&mut self, apps: &[App]) -> bool {
-        if matches!(self.mode, Mode::Moving { .. }) {
-            self.cancel_move();
+        match self.mode {
+            Mode::Moving { .. } => self.cancel_move(),
+            Mode::Menu { .. } => self.mode = Mode::Browse,
+            _ => {}
         }
+        self.apps = apps.to_vec();
+        self.refresh()
+    }
+
+    /// Rebuilds the tiles from the app list, hidden apps and order, keeping
+    /// focus on the same tile; returns whether the order changed.
+    fn refresh(&mut self) -> bool {
         let focused = self.focused().cloned();
-        let changed = self.order.reconcile(apps);
+        let (mut hidden, shown): (Vec<&App>, Vec<&App>) = self
+            .apps
+            .iter()
+            .partition(|app| self.hidden.contains(&app.id));
+        let shown: Vec<App> = shown.into_iter().cloned().collect();
+        hidden.sort_by(|a, b| {
+            a.label
+                .to_lowercase()
+                .cmp(&b.label.to_lowercase())
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        hidden.dedup_by(|a, b| a.id == b.id);
+        self.hidden_apps = hidden.into_iter().map(|app| app.id.clone()).collect();
+
+        let changed = self.order.reconcile(&shown);
         self.tiles = self.order.ids();
+        if !self.hidden_apps.is_empty() {
+            self.tiles.push(TileId::Hidden);
+        }
         self.focus = focused
             .and_then(|id| self.tiles.iter().position(|tile| *tile == id))
             .unwrap_or_else(|| self.focus.min(self.tiles.len().saturating_sub(1)));
+        if let Mode::Hidden { focus } = &mut self.mode {
+            match self.hidden_apps.len() {
+                0 => self.mode = Mode::Browse,
+                len => *focus = (*focus).min(len - 1),
+            }
+        }
         self.update_scroll();
         changed
+    }
+
+    /// Moves focus to `id` if it is shown; returns whether it was.
+    ///
+    /// For restoring focus on start-up, so it ignores input state and works in any mode.
+    pub fn focus_on(&mut self, id: &TileId) -> bool {
+        let Some(index) = self.tiles.iter().position(|tile| tile == id) else {
+            return false;
+        };
+        self.focus = index;
+        self.update_scroll();
+        true
     }
 
     /// Tiles in display order.
@@ -339,6 +430,32 @@ impl Home {
         &self.order
     }
 
+    /// Component names of all hidden apps, including ones no longer installed.
+    pub fn hidden(&self) -> &BTreeSet<String> {
+        &self.hidden
+    }
+
+    /// Installed hidden apps as listed on the hidden apps page, by label.
+    pub fn hidden_apps(&self) -> &[String] {
+        &self.hidden_apps
+    }
+
+    /// The focused index in [`Home::hidden_apps`] while that page is open.
+    pub fn hidden_focus(&self) -> Option<usize> {
+        match self.mode {
+            Mode::Hidden { focus } => Some(focus),
+            _ => None,
+        }
+    }
+
+    /// The open long-press menu's items and the selected index.
+    pub fn menu(&self) -> Option<(&'static [MenuItem], usize)> {
+        match self.mode {
+            Mode::Menu { selected } => Some((menu_items(self.focused()), selected)),
+            _ => None,
+        }
+    }
+
     /// Current scroll state.
     pub fn scroll(&self) -> Scroll {
         match self.focus / COLUMNS {
@@ -356,6 +473,8 @@ impl Home {
             Mode::Moving { .. } => State::Moving,
             Mode::Launching { .. } => State::Launching,
             Mode::About => State::About,
+            Mode::Menu { .. } => State::Menu,
+            Mode::Hidden { .. } => State::Hidden,
         }
     }
 
@@ -373,7 +492,14 @@ impl Home {
         }
 
         match (&self.mode, input) {
-            (Mode::Moving { .. } | Mode::About | Mode::Launching { .. }, Input::Paused) => {
+            (
+                Mode::Moving { .. }
+                | Mode::About
+                | Mode::Launching { .. }
+                | Mode::Menu { .. }
+                | Mode::Hidden { .. },
+                Input::Paused,
+            ) => {
                 if matches!(self.mode, Mode::Moving { .. }) {
                     self.cancel_move();
                 }
@@ -398,6 +524,8 @@ impl Home {
                 None
             }
             (Mode::Moving { .. }, _) => self.handle_moving(input, now),
+            (Mode::Menu { .. }, _) => self.handle_menu(input, now),
+            (Mode::Hidden { .. }, _) => self.handle_hidden(input),
             (Mode::Browse, _) => self.handle_browse(input, now),
             _ => None,
         }
@@ -423,14 +551,14 @@ impl Home {
                     self.activate(now)
                 } else {
                     // No Tick arrived in time; treat the release as the end of a long press.
-                    self.start_move(now);
+                    self.open_menu();
                     None
                 }
             }
             Input::Tick => {
                 if now.saturating_sub(self.ok_since?) >= LONG_PRESS {
                     self.ok_since = None;
-                    self.start_move(now);
+                    self.open_menu();
                 }
                 None
             }
@@ -454,7 +582,7 @@ impl Home {
             *last_input = now;
         }
         if let Some(direction) = self.direction(input) {
-            if let Some(target) = neighbour(self.focus, self.tiles.len(), direction) {
+            if let Some(target) = neighbour(self.focus, self.movable(), direction) {
                 let tile = self.tiles.remove(self.focus);
                 self.tiles.insert(target, tile);
                 self.focus = target;
@@ -472,14 +600,83 @@ impl Home {
         }
     }
 
+    /// Up and Down pick an item, OK runs it (the release of the long press
+    /// that opened the menu is ignored), Back closes the menu.
+    fn handle_menu(&mut self, input: Input, now: Duration) -> Option<Effect> {
+        let items = menu_items(self.focused());
+        let Mode::Menu { selected } = &mut self.mode else {
+            return None;
+        };
+        match input {
+            Input::Up => *selected = selected.saturating_sub(1),
+            Input::Down => *selected = (*selected + 1).min(items.len().saturating_sub(1)),
+            Input::OkPressed => match items.get(*selected) {
+                Some(MenuItem::Move) => self.start_move(now),
+                Some(MenuItem::Hide) => return self.hide_focused(),
+                None => self.mode = Mode::Browse,
+            },
+            Input::Back => self.mode = Mode::Browse,
+            _ => {}
+        }
+        None
+    }
+
+    /// The D-pad moves within the page, OK puts the focused app back on Home,
+    /// Back returns to Home.
+    fn handle_hidden(&mut self, input: Input) -> Option<Effect> {
+        let Mode::Hidden { focus } = self.mode else {
+            return None;
+        };
+        if let Some(direction) = self.direction(input) {
+            if let Some(target) = neighbour(focus, self.hidden_apps.len(), direction) {
+                self.mode = Mode::Hidden { focus: target };
+            }
+            return None;
+        }
+        match input {
+            Input::OkPressed => {
+                let id = self.hidden_apps.get(focus)?.clone();
+                self.hidden.remove(&id);
+                self.refresh();
+                if self.hidden_focus().is_none() {
+                    // That was the last one: back on Home, on the app.
+                    self.focus_on(&TileId::App(id));
+                }
+                Some(Effect::SaveOrder)
+            }
+            Input::Back => {
+                self.mode = Mode::Browse;
+                None
+            }
+            _ => None,
+        }
+    }
+
+    /// Hides the focused app; the next tile takes its place and focus.
+    fn hide_focused(&mut self) -> Option<Effect> {
+        self.mode = Mode::Browse;
+        let Some(TileId::App(id)) = self.focused().cloned() else {
+            return None;
+        };
+        self.hidden.insert(id);
+        self.refresh();
+        Some(Effect::SaveOrder)
+    }
+
+    /// How many tiles from the start can move: all but [`TileId::Hidden`].
+    fn movable(&self) -> usize {
+        self.tiles.len() - usize::from(self.tiles.last() == Some(&TileId::Hidden))
+    }
+
     /// Ends move mode, keeping the tile where it is.
     fn drop_tile(&mut self) -> Option<Effect> {
-        let moved = self.tiles != self.order.ids();
+        let movable = &self.tiles[..self.movable()];
+        let moved = movable != self.order.ids();
         self.mode = Mode::Browse;
         if !moved {
             return None;
         }
-        self.order.place(&self.tiles, self.focus);
+        self.order.place(movable, self.focus);
         Some(Effect::SaveOrder)
     }
 
@@ -507,11 +704,21 @@ impl Home {
                 self.mode = Mode::About;
                 Some(Effect::OpenAbout)
             }
+            TileId::Hidden => {
+                self.mode = Mode::Hidden { focus: 0 };
+                Some(Effect::OpenHidden)
+            }
+        }
+    }
+
+    fn open_menu(&mut self) {
+        if !menu_items(self.focused()).is_empty() {
+            self.mode = Mode::Menu { selected: 0 };
         }
     }
 
     fn start_move(&mut self, now: Duration) {
-        if self.focused().is_some() {
+        if self.focus < self.movable() {
             self.mode = Mode::Moving {
                 original: self.tiles.clone(),
                 last_input: now,
@@ -600,7 +807,7 @@ mod tests {
 
     /// A home screen with `count` apps plus About, focus on the first tile.
     fn home(count: usize) -> Home {
-        let mut home = Home::new(Order::default(), false);
+        let mut home = Home::new(Order::default(), BTreeSet::new(), false);
         home.set_apps(&apps(count));
         home
     }
@@ -683,7 +890,7 @@ mod tests {
 
     #[test]
     fn right_to_left_swaps_left_and_right() {
-        let mut home = Home::new(Order::default(), true);
+        let mut home = Home::new(Order::default(), BTreeSet::new(), true);
         home.set_apps(&apps(5));
         press(&mut home, &[Input::Left]);
         assert_eq!(home.focus(), 1);
@@ -693,7 +900,7 @@ mod tests {
 
     #[test]
     fn an_empty_home_ignores_every_input() {
-        let mut home = Home::new(Order::default(), false);
+        let mut home = Home::new(Order::default(), BTreeSet::new(), false);
         for input in [
             Input::Up,
             Input::Down,
@@ -809,6 +1016,23 @@ mod tests {
         assert_eq!(home.focused(), Some(&TileId::About));
         assert_eq!(home.focus(), 3);
         assert_eq!(home.scroll(), Scroll::Shelf);
+    }
+
+    #[test]
+    fn focus_can_be_restored_by_identity_before_and_after_the_app_list() {
+        // Before the app list: the stored order already has the tile.
+        let order = Order::from_keys([(id("a"), 1000), (id("b"), 2000), (TileId::About, 3000)]);
+        let mut home = Home::new(order, BTreeSet::new(), false);
+        assert!(home.focus_on(&id("b")));
+        home.set_apps(&[app("a", "A"), app("b", "B")]);
+        assert_eq!(component(&home), "b");
+
+        let mut home = self::home(29);
+        assert!(home.focus_on(&id("a20")));
+        assert_eq!(home.focus(), 20);
+        assert_eq!(home.scroll(), Scroll::Grid { first_row: 1 });
+        assert!(!home.focus_on(&id("gone")));
+        assert_eq!(home.focus(), 20);
     }
 
     #[test]
@@ -994,15 +1218,23 @@ mod tests {
 
     // --- move mode --------------------------------------------------------
 
-    /// Holds OK on the focused tile until move mode starts.
+    /// Holds OK on the focused tile until the menu opens, then picks Move.
     fn pick_up(home: &mut Home) {
         home.handle(Input::OkPressed, ms(0));
         home.handle(Input::OkPressed, ms(300)); // key repeat
         assert_eq!(home.handle(Input::Tick, LONG_PRESS - ms(1)), None);
         assert_eq!(home.state(), State::Browse);
         assert_eq!(home.handle(Input::Tick, LONG_PRESS), None);
-        assert_eq!(home.state(), State::Moving);
+        assert_eq!(home.state(), State::Menu);
+        // The release of the long press does not pick anything.
         assert_eq!(home.handle(Input::OkReleased, ms(700)), None);
+        assert_eq!(
+            home.menu().map(|(items, selected)| items[selected]),
+            Some(MenuItem::Move)
+        );
+        assert_eq!(home.handle(Input::OkPressed, ms(800)), None);
+        assert_eq!(home.state(), State::Moving);
+        assert_eq!(home.handle(Input::OkReleased, ms(850)), None);
     }
 
     #[test]
@@ -1027,11 +1259,11 @@ mod tests {
     }
 
     #[test]
-    fn a_long_release_without_a_tick_still_picks_up() {
+    fn a_long_release_without_a_tick_still_opens_the_menu() {
         let mut home = home(3);
         home.handle(Input::OkPressed, ms(0));
         assert_eq!(home.handle(Input::OkReleased, LONG_PRESS), None);
-        assert_eq!(home.state(), State::Moving);
+        assert_eq!(home.state(), State::Menu);
     }
 
     #[test]
@@ -1092,8 +1324,8 @@ mod tests {
     fn an_unattended_move_without_changes_ends_without_saving() {
         let mut home = home(4);
         pick_up(&mut home);
-        // pick_up's last key is the OK release at 700 ms.
-        assert_eq!(home.handle(Input::Tick, ms(700) + MOVE_IDLE_TIMEOUT), None);
+        // pick_up's last key is the OK release at 850 ms.
+        assert_eq!(home.handle(Input::Tick, ms(850) + MOVE_IDLE_TIMEOUT), None);
         assert_eq!(home.state(), State::Browse);
     }
 
@@ -1106,5 +1338,203 @@ mod tests {
         press(&mut home, &[Input::Right; 10]);
         assert_eq!(home.focus(), 4);
         assert_eq!(home.tiles().len(), 5);
+    }
+
+    // --- menu and hidden apps ---------------------------------------------
+
+    /// Opens the long-press menu on the focused tile.
+    fn open_menu(home: &mut Home) {
+        home.handle(Input::OkPressed, ms(0));
+        home.handle(Input::Tick, LONG_PRESS);
+        home.handle(Input::OkReleased, LONG_PRESS + ms(50));
+        assert_eq!(home.state(), State::Menu);
+    }
+
+    /// Hides the focused app through its menu.
+    fn hide(home: &mut Home) -> Option<Effect> {
+        open_menu(home);
+        let effect = press(home, &[Input::Down, Input::OkPressed]);
+        press(home, &[Input::OkReleased]);
+        effect
+    }
+
+    fn hidden_page(home: &Home) -> Vec<&str> {
+        home.hidden_apps().iter().map(String::as_str).collect()
+    }
+
+    #[test]
+    fn the_menu_offers_move_and_hide_for_apps_and_only_move_for_about() {
+        let mut home = home(2);
+        open_menu(&mut home);
+        assert_eq!(
+            home.menu(),
+            Some((&[MenuItem::Move, MenuItem::Hide][..], 0))
+        );
+        press(&mut home, &[Input::Down, Input::Down]);
+        assert_eq!(home.menu().map(|(_, selected)| selected), Some(1));
+        press(&mut home, &[Input::Up, Input::Up]);
+        assert_eq!(home.menu().map(|(_, selected)| selected), Some(0));
+        // Back closes it without doing anything.
+        assert_eq!(press(&mut home, &[Input::Back]), None);
+        assert_eq!(home.state(), State::Browse);
+        assert_eq!(home.focus(), 0);
+
+        press(&mut home, &[Input::Right, Input::Right]);
+        assert_eq!(home.focused(), Some(&TileId::About));
+        open_menu(&mut home);
+        assert_eq!(home.menu(), Some((&[MenuItem::Move][..], 0)));
+        press(&mut home, &[Input::Down, Input::OkPressed]);
+        assert_eq!(home.state(), State::Moving);
+    }
+
+    #[test]
+    fn hiding_an_app_takes_it_off_home_and_the_next_tile_gets_focus() {
+        let mut home = home(3);
+        press(&mut home, &[Input::Right]);
+        assert_eq!(hide(&mut home), Some(Effect::SaveOrder));
+        assert_eq!(home.state(), State::Browse);
+        assert_eq!(
+            home.tiles(),
+            [id("a00"), id("a02"), TileId::About, TileId::Hidden]
+        );
+        assert_eq!(component(&home), "a02");
+        assert!(home.hidden().contains("a01"));
+        assert!(!home.order().ids().contains(&id("a01")));
+        assert_eq!(hidden_page(&home), ["a01"]);
+    }
+
+    #[test]
+    fn hidden_apps_cannot_get_focus_on_home() {
+        let mut home = home(3);
+        press(&mut home, &[Input::Right]);
+        hide(&mut home);
+        // Every tile reachable with the D-pad is a shown one.
+        for input in [
+            Input::Left,
+            Input::Right,
+            Input::Right,
+            Input::Right,
+            Input::Down,
+        ] {
+            press(&mut home, &[input]);
+            assert_ne!(home.focused(), Some(&id("a01")));
+        }
+        assert!(!home.focus_on(&id("a01")));
+    }
+
+    #[test]
+    fn hidden_apps_stay_hidden_when_the_app_list_is_read_again() {
+        let hidden = BTreeSet::from(["a01".to_owned()]);
+        let mut home = Home::new(Order::default(), hidden, false);
+        assert!(home.set_apps(&apps(3)));
+        assert_eq!(
+            home.tiles(),
+            [id("a00"), id("a02"), TileId::About, TileId::Hidden]
+        );
+        // An uninstalled hidden app is not listed, and the tile goes with the last one.
+        home.set_apps(&[app("a00", "App 00")]);
+        assert_eq!(home.tiles(), [id("a00"), TileId::About]);
+        assert!(home.hidden().contains("a01"));
+    }
+
+    #[test]
+    fn the_hidden_apps_tile_cannot_be_moved_or_passed_by_a_moving_tile() {
+        let mut home = home(3);
+        hide(&mut home);
+        // a01, a02, About, Hidden apps.
+        press(&mut home, &[Input::Right, Input::Right, Input::Right]);
+        assert_eq!(home.focused(), Some(&TileId::Hidden));
+        home.handle(Input::OkPressed, ms(0));
+        home.handle(Input::Tick, LONG_PRESS);
+        assert_eq!(home.state(), State::Browse);
+        home.handle(Input::OkReleased, LONG_PRESS);
+
+        press(&mut home, &[Input::Left, Input::Left, Input::Left]);
+        pick_up(&mut home);
+        press(&mut home, &[Input::Right; 5]);
+        assert_eq!(home.focus(), 2);
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed]),
+            Some(Effect::SaveOrder)
+        );
+        assert_eq!(
+            home.tiles(),
+            [id("a02"), TileId::About, id("a01"), TileId::Hidden]
+        );
+        assert_eq!(home.order().ids(), [id("a02"), TileId::About, id("a01")]);
+    }
+
+    #[test]
+    fn showing_a_hidden_app_again_puts_it_before_about() {
+        let mut home = home(4);
+        hide(&mut home); // a00
+        press(&mut home, &[Input::Right]);
+        hide(&mut home); // a02
+        assert_eq!(hidden_page(&home), ["a00", "a02"]);
+
+        // Open the page from the last tile.
+        press(&mut home, &[Input::Right, Input::Right]);
+        assert_eq!(home.focused(), Some(&TileId::Hidden));
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed, Input::OkReleased]),
+            Some(Effect::OpenHidden)
+        );
+        assert_eq!(home.state(), State::Hidden);
+        assert_eq!(home.hidden_focus(), Some(0));
+
+        press(&mut home, &[Input::Right]);
+        assert_eq!(home.hidden_focus(), Some(1));
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed]),
+            Some(Effect::SaveOrder)
+        );
+        // The page stays open on the one left.
+        assert_eq!(home.hidden_focus(), Some(0));
+        assert_eq!(hidden_page(&home), ["a00"]);
+        assert_eq!(
+            home.tiles(),
+            [
+                id("a01"),
+                id("a03"),
+                id("a02"),
+                TileId::About,
+                TileId::Hidden
+            ]
+        );
+
+        // The last one closes the page, with focus on it on Home.
+        press(&mut home, &[Input::OkReleased]);
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed]),
+            Some(Effect::SaveOrder)
+        );
+        assert_eq!(home.state(), State::Browse);
+        assert!(home.hidden().is_empty());
+        assert_eq!(
+            home.tiles(),
+            [id("a01"), id("a03"), id("a02"), id("a00"), TileId::About]
+        );
+        assert_eq!(component(&home), "a00");
+    }
+
+    #[test]
+    fn back_and_pause_close_the_menu_and_the_hidden_page() {
+        let mut home = home(3);
+        open_menu(&mut home);
+        press(&mut home, &[Input::Paused]);
+        assert_eq!(home.state(), State::Browse);
+
+        hide(&mut home);
+        press(&mut home, &[Input::Right, Input::Right, Input::Right]);
+        press(&mut home, &[Input::OkPressed, Input::OkReleased]);
+        assert_eq!(home.state(), State::Hidden);
+        press(&mut home, &[Input::Back]);
+        assert_eq!(home.state(), State::Browse);
+        assert_eq!(home.focused(), Some(&TileId::Hidden));
+        press(
+            &mut home,
+            &[Input::OkPressed, Input::OkReleased, Input::Paused],
+        );
+        assert_eq!(home.state(), State::Browse);
     }
 }

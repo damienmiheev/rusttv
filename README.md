@@ -56,7 +56,7 @@ cargo run -p rusttv-cli -- performance benchmark --app <package/.Activity> --app
 cargo run -p rusttv-cli -- device list --json          # machine-readable output
 ```
 
-Launcher, without a TV (desktop dev mode with made-up apps; arrows move, Return is OK, hold it to move a tile, Escape is Back):
+Launcher, without a TV (desktop dev mode with made-up apps; arrows move, Return is OK, hold it for a tile menu to move or hide it, Escape is Back):
 
 ```bash
 cargo run -p rusttv-launcher --features test-util --bin rusttv-launcher-desktop

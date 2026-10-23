@@ -13,8 +13,8 @@ mod platform;
 mod ui;
 
 pub use model::{
-    App, Effect, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT, Order, Scroll, State,
-    TileId,
+    App, Effect, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT, MenuItem, Order,
+    Scroll, State, TileId,
 };
 #[cfg(any(test, feature = "test-util"))]
 pub use platform::FakePlatform;

@@ -85,8 +85,8 @@ There is intentionally no `shell(&str)`. Values that end up in `adb shell` argum
 
 | Module | Role |
 |---|---|
-| `model.rs` | Pure state machine `Home`: tile order, D-pad focus, shelf/grid scroll, move mode, launch in flight. Time is passed in; returns `Effect`s. No Slint, no platform. |
-| `order_file.rs` | Tile order in `order.toml` (app files dir): atomic write, unreadable file kept as `.bak`. |
+| `model.rs` | Pure state machine `Home`: tile order, D-pad focus, shelf/grid scroll, long-press menu, move mode, hidden apps, launch in flight. Time is passed in; returns `Effect`s. No Slint, no platform. |
+| `order_file.rs` | Tile order, hidden apps and last focused tile in `order.toml` (app files dir): atomic write, unreadable file kept as `.bak`. |
 | `platform.rs` | `Platform` trait (`list_apps`, `launch`, `take_apps_changed`), `PlatformError`, `Bitmap` (shrink, blur, hero backdrop glow), `FakePlatform` (feature `test-util`). |
 | `ui.rs` + `ui/home.slint` | Rust owns state and timers and pushes properties; Slint draws, animates and forwards keys. `Lifecycle` reports pause/resume. |
 | `android.rs` | `android_main` + `AndroidPlatform` over JNI. The only module with `unsafe` (crate lint `unsafe_code = "deny"`, module `allow`, a `SAFETY:` comment per block). |

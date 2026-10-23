@@ -18,7 +18,8 @@ export struct Glow {
 export struct TileData {
     label: string,
     image: image,
-    // 0 banner, 1 icon only, 2 no artwork, 3 the built-in About tile, 4 loading.
+    // 0 banner, 1 icon only, 2 no artwork, 3 the built-in About tile, 4 loading,
+    // 5 the Hidden apps tile.
     kind: int,
 }
 
@@ -36,6 +37,8 @@ global Mode {
     out property <int> moving: 1;
     out property <int> launching: 2;
     out property <int> about: 3;
+    out property <int> menu: 4;
+    out property <int> hidden: 5;
 }
 
 // Picture or placeholder for one app, filling its parent.
@@ -64,7 +67,7 @@ component Artwork inherits Rectangle {
         opacity: data.kind == 1 ? 1 : 0;
         animate opacity { duration: 300ms; easing: ease-out; }
     }
-    if data.kind == 1 || data.kind == 2 || data.kind == 3: Text {
+    if data.kind == 1 || data.kind == 2 || data.kind == 3 || data.kind == 5: Text {
         y: data.kind == 1 ? parent.height * 0.15 + 80 * u : 0;
         width: parent.width;
         height: data.kind == 1 ? 32 * u : parent.height;
@@ -288,6 +291,12 @@ export component HomeWindow inherits Window {
     in property <string> notices;
     in property <float> notices-position;
     in property <float> notices-fraction: 1;
+    // The long-press menu of the focused tile (ui.rs `menu_label`); empty when closed.
+    in property <[string]> menu-items;
+    in property <int> menu-selected;
+    // The hidden apps page.
+    in property <[TileData]> hidden-tiles;
+    in property <int> hidden-focus;
     // Key text, pressed (false = released), repeat. Returns whether it was used.
     callback key(string, bool, bool) -> bool;
 
@@ -344,6 +353,92 @@ export component HomeWindow inherits Window {
             mode: root.mode;
             pressed: root.pressed;
             idle-phase: root.idle-phase;
+        }
+    }
+
+    // Long-press menu, beside the focused tile: to its right in the first four
+    // columns, else to its left. Fades in; closes at once.
+    Rectangle {
+        property <int> column: mod(focused-index, 6);
+        property <length> tile-x: (90 + column * 298) * u;
+        property <length> tile-y: shelf ? 800 * u : (90 + (floor(focused-index / 6) - first-row) * 251) * u;
+        width: 380 * u;
+        height: (menu-items.length * 64 + 16) * u;
+        // 19 is how far the focused tile grows past its slot on each side.
+        x: column < 4 ? self.tile-x + (250 + 19 + 24) * u : self.tile-x - (19 + 24) * u - self.width;
+        y: self.tile-y + (141 * u - self.height) / 2;
+        opacity: mode == Mode.menu ? 1 : 0;
+        animate opacity { duration: mode == Mode.menu ? 150ms : 0ms; easing: ease-out; }
+        border-radius: 16 * u;
+        background: Theme.surface;
+        drop-shadow-color: #00000080;
+        drop-shadow-blur: 40 * u;
+        drop-shadow-offset-y: 20 * u;
+
+        for item[i] in menu-items: Rectangle {
+            x: 8 * u;
+            y: (8 + i * 64) * u;
+            width: parent.width - 16 * u;
+            height: 64 * u;
+            border-radius: 10 * u;
+            background: i == menu-selected ? Theme.text : Theme.text.with-alpha(0);
+            animate background { duration: 120ms; }
+            Text {
+                x: 24 * u;
+                width: parent.width - 48 * u;
+                text: item;
+                font-size: 27 * u;
+                font-weight: 500;
+                color: i == menu-selected ? Theme.bg : Theme.text;
+                vertical-alignment: center;
+                overflow: elide;
+                animate color { duration: 120ms; }
+            }
+        }
+    }
+
+    // Hidden apps: the same tiles on their own page; the grid scrolls by
+    // whole rows to keep the focused row among the first three.
+    if mode == Mode.hidden: Rectangle {
+        background: Theme.bg;
+
+        Text {
+            x: 90 * u;
+            y: 90 * u;
+            text: "Hidden apps";
+            font-size: 57 * u;
+            font-weight: 500;
+            color: Theme.text;
+        }
+        Text {
+            x: 90 * u;
+            y: 176 * u;
+            text: "OK puts the app back on Home. Back returns.";
+            font-size: 25 * u;
+            color: Theme.text-dim;
+        }
+        Rectangle {
+            y: 260 * u;
+            height: parent.height - self.y;
+            clip: true;
+
+            Rectangle {
+                y: (80 - max(0, floor(hidden-focus / 6) - 2) * 251) * u;
+                height: 0;
+                animate y { duration: 250ms; easing: ease-out; }
+
+                for tile[i] in hidden-tiles: Tile {
+                    x: (90 + mod(i, 6) * 298) * u;
+                    y: floor(i / 6) * 251 * u;
+                    data: tile;
+                    u: root.u;
+                    index: i;
+                    focused: i == hidden-focus;
+                    mode: Mode.browse;
+                    pressed: false;
+                    idle-phase: root.idle-phase;
+                }
+            }
         }
     }
 

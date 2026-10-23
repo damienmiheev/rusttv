@@ -8,11 +8,13 @@ use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 use std::time::{Duration, Instant};
 
-use slint::{ComponentHandle, Model, ModelRc, SharedPixelBuffer, Timer, TimerMode, VecModel};
+use slint::{
+    ComponentHandle, Model, ModelRc, SharedPixelBuffer, SharedString, Timer, TimerMode, VecModel,
+};
 
 use crate::model::{
-    App, Effect, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT, Order, Scroll, State,
-    TileId,
+    App, Effect, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT, MenuItem, Scroll,
+    State, TileId,
 };
 use crate::order_file;
 use crate::platform::{AppEntry, Artwork, Bitmap, Platform, PlatformError};
@@ -91,7 +93,7 @@ pub struct RunOptions {
     /// For the desktop dev mode, where nothing pauses the launcher. On a TV,
     /// leave it `None`: the activity lifecycle reports the pause.
     pub simulated_pause: Option<Duration>,
-    /// Where the tile order is kept; `None` starts
+    /// Where the tile order, hidden apps and the last focused tile are kept; `None` starts
     /// alphabetical every time and saves nothing.
     pub order_file: Option<PathBuf>,
     /// Lets the platform report that the launcher left or came back to the screen.
@@ -285,6 +287,11 @@ struct Controller {
     /// Tiles currently in the window's model, to rebuild it only when they change.
     shown: Vec<TileId>,
     tiles: Rc<VecModel<TileData>>,
+    /// Apps on the hidden apps page while it is open, and the window's model of them.
+    hidden_shown: Vec<TileId>,
+    hidden_tiles: Rc<VecModel<TileData>>,
+    /// The long-press menu's item names; empty while it is closed.
+    menu_items: Rc<VecModel<SharedString>>,
     hero: Option<TileId>,
     hero_a_front: bool,
     pressed: bool,
@@ -301,6 +308,8 @@ struct Controller {
     artwork_timer: Timer,
     /// The licence notices while the About page is open; read when it opens.
     notices: Option<Notices>,
+    /// The focused tile as last written to the order file.
+    saved_focus: Option<TileId>,
 }
 
 impl Controller {
@@ -312,27 +321,40 @@ impl Controller {
     ) -> Rc<RefCell<Self>> {
         let tiles = Rc::new(VecModel::default());
         window.set_tiles(ModelRc::from(tiles.clone()));
+        let hidden_tiles = Rc::new(VecModel::default());
+        window.set_hidden_tiles(ModelRc::from(hidden_tiles.clone()));
+        let menu_items = Rc::new(VecModel::default());
+        window.set_menu_items(ModelRc::from(menu_items.clone()));
         window.set_version(env!("CARGO_PKG_VERSION").into());
 
-        let order = options
-            .order_file
-            .as_deref()
-            .map_or_else(Order::default, |path| {
-                let loaded = order_file::load(path);
-                if let Some(warning) = loaded.warning {
-                    log::warn!("{warning}");
-                }
-                loaded.order
-            });
+        let (order, hidden, saved_focus) =
+            options
+                .order_file
+                .as_deref()
+                .map_or_else(Default::default, |path| {
+                    let loaded = order_file::load(path);
+                    if let Some(warning) = loaded.warning {
+                        log::warn!("{warning}");
+                    }
+                    (loaded.order, loaded.hidden, loaded.focus)
+                });
+        // Focus is restored before the app list arrives, which keeps it by identity.
+        let mut home = Home::new(order, hidden, options.right_to_left);
+        if let Some(id) = &saved_focus {
+            home.focus_on(id);
+        }
         let controller = Rc::new_cyclic(|me| {
             RefCell::new(Self {
-                home: Home::new(order, options.right_to_left),
+                home,
                 platform,
                 options,
                 apps: HashMap::new(),
                 glows: HashMap::new(),
                 shown: Vec::new(),
                 tiles,
+                hidden_shown: Vec::new(),
+                hidden_tiles,
+                menu_items,
                 hero: None,
                 hero_a_front: true,
                 pressed: false,
@@ -347,6 +369,7 @@ impl Controller {
                 pending_artwork: VecDeque::new(),
                 artwork_timer: Timer::default(),
                 notices: None,
+                saved_focus,
             })
         });
         *controller.borrow().options.lifecycle.0.borrow_mut() = Rc::downgrade(&controller);
@@ -391,24 +414,28 @@ impl Controller {
                 if self.home.set_apps(&apps) {
                     self.save_order();
                 }
-                self.pending_artwork = self
-                    .home
-                    .tiles()
-                    .iter()
-                    .filter_map(|tile| match tile {
-                        TileId::App(id) if self.apps.get(id).is_some_and(AppView::is_pending) => {
-                            Some(id.clone())
-                        }
-                        _ => None,
-                    })
-                    .collect();
-                self.load_artwork_later();
+                // Queued again, in tile order, when the tiles are rebuilt (`render`).
+                self.pending_artwork.clear();
             }
             Err(error) => {
                 self.home.set_apps(&[]);
                 self.show_toast(format!("Couldn't load apps: {error}"));
             }
         }
+    }
+
+    /// Queues the artwork of these tiles that is still to be loaded. Only shown
+    /// tiles are queued, so hidden apps cost nothing until their page opens.
+    fn queue_artwork(&mut self, tiles: &[TileId]) {
+        for tile in tiles {
+            if let TileId::App(id) = tile
+                && self.apps.get(id).is_some_and(AppView::is_pending)
+                && !self.pending_artwork.contains(id)
+            {
+                self.pending_artwork.push_back(id.clone());
+            }
+        }
+        self.load_artwork_later();
     }
 
     /// Starts loading pending artwork on a timer, so the first frame (and each
@@ -444,6 +471,9 @@ impl Controller {
             let tile = TileId::App(id);
             if let Some(index) = self.shown.iter().position(|shown| *shown == tile) {
                 self.tiles.set_row_data(index, self.tile_data(&tile));
+            }
+            if let Some(index) = self.hidden_shown.iter().position(|shown| *shown == tile) {
+                self.hidden_tiles.set_row_data(index, self.tile_data(&tile));
             }
             if self.hero.as_ref() == Some(&tile) {
                 // Redraw the hero with the picture (it fades in like a tile).
@@ -485,7 +515,13 @@ impl Controller {
             }
             Some(Effect::SaveOrder) => self.save_order(),
             Some(Effect::OpenAbout) => self.open_notices(),
-            None => {}
+            // `render` fills the page and queues its artwork.
+            Some(Effect::OpenHidden) | None => {}
+        }
+        // Remember focus while the launcher is off screen, in case Android
+        // stops it there: back on Home, focus is on the app that was opened.
+        if input == Input::Paused && self.home.focused() != self.saved_focus.as_ref() {
+            self.save_order();
         }
         if let Some(notices) = &mut self.notices {
             match input {
@@ -507,16 +543,19 @@ impl Controller {
         self.notices = Some(Notices::new(text));
     }
 
-    /// Writes the order file. A failure only costs the order on the next start,
-    /// so it is logged rather than shown.
-    fn save_order(&self) {
-        if let Some(path) = &self.options.order_file
-            && let Err(error) = order_file::save(path, self.home.order())
-        {
-            log::warn!(
+    /// Writes the order file with the focused tile. A failure only costs the
+    /// order on the next start, so it is logged rather than shown.
+    fn save_order(&mut self) {
+        let Some(path) = &self.options.order_file else {
+            return;
+        };
+        let focus = self.home.focused();
+        match order_file::save(path, self.home.order(), self.home.hidden(), focus) {
+            Ok(()) => self.saved_focus = focus.cloned(),
+            Err(error) => log::warn!(
                 "saving the tile order to {} failed: {error}",
                 path.display()
-            );
+            ),
         }
     }
 
@@ -543,7 +582,7 @@ impl Controller {
             State::Browse if self.pressed => LONG_PRESS,
             State::Launching => LAUNCH_TIMEOUT,
             State::Moving => MOVE_IDLE_TIMEOUT,
-            State::Browse | State::About => {
+            State::Browse | State::About | State::Menu | State::Hidden => {
                 self.tick_timer.stop();
                 return;
             }
@@ -608,7 +647,37 @@ impl Controller {
             self.shown = self.home.tiles().to_vec();
             let rows: Vec<TileData> = self.shown.iter().map(|id| self.tile_data(id)).collect();
             self.tiles.set_vec(rows);
+            self.queue_artwork(&self.shown.clone());
         }
+        let hidden: Vec<TileId> = match self.home.hidden_focus() {
+            Some(_) => self
+                .home
+                .hidden_apps()
+                .iter()
+                .cloned()
+                .map(TileId::App)
+                .collect(),
+            None => Vec::new(),
+        };
+        if hidden != self.hidden_shown {
+            self.hidden_shown = hidden;
+            let rows: Vec<TileData> = self
+                .hidden_shown
+                .iter()
+                .map(|id| self.tile_data(id))
+                .collect();
+            self.hidden_tiles.set_vec(rows);
+            self.queue_artwork(&self.hidden_shown.clone());
+        }
+        if let Some(focus) = self.home.hidden_focus() {
+            window.set_hidden_focus(i32::try_from(focus).unwrap_or(i32::MAX));
+        }
+        let (items, selected) = self.home.menu().unwrap_or_default();
+        let labels: Vec<SharedString> = items.iter().map(|item| menu_label(*item).into()).collect();
+        if !self.menu_items.iter().eq(labels.iter().cloned()) {
+            self.menu_items.set_vec(labels);
+        }
+        window.set_menu_selected(i32::try_from(selected).unwrap_or(i32::MAX));
         window.set_focused_index(i32::try_from(self.home.focus()).unwrap_or(i32::MAX));
         match self.home.scroll() {
             Scroll::Shelf => window.set_shelf(true),
@@ -691,11 +760,21 @@ impl Controller {
     }
 
     fn tile_data(&self, id: &TileId) -> TileData {
-        let TileId::App(component) = id else {
-            return TileData {
-                kind: 3,
-                ..TileData::default()
-            };
+        let component = match id {
+            TileId::App(component) => component,
+            TileId::About => {
+                return TileData {
+                    kind: 3,
+                    ..TileData::default()
+                };
+            }
+            TileId::Hidden => {
+                return TileData {
+                    label: "Hidden apps".into(),
+                    kind: 5,
+                    ..TileData::default()
+                };
+            }
         };
         let Some(app) = self.apps.get(component) else {
             return TileData {
@@ -721,7 +800,8 @@ impl Controller {
 struct AppView {
     label: String,
     image: slint::Image,
-    /// The `kind` of `TileData`: 0 banner, 1 icon only, 2 no artwork, 4 loading.
+    /// The `kind` of `TileData`: 0 banner, 1 icon only, 2 no artwork, 4 loading
+    /// (3 and 5 are the About and Hidden apps tiles).
     kind: i32,
     glow_source: Option<Bitmap>,
 }
@@ -824,6 +904,16 @@ fn mode_value(state: State) -> i32 {
         State::Moving => 1,
         State::Launching => 2,
         State::About => 3,
+        State::Menu => 4,
+        State::Hidden => 5,
+    }
+}
+
+/// What the long-press menu shows for an item.
+fn menu_label(item: MenuItem) -> &'static str {
+    match item {
+        MenuItem::Move => "Move",
+        MenuItem::Hide => "Hide from Home",
     }
 }
 
@@ -934,16 +1024,23 @@ mod tests {
 
     /// The home screen with three apps (A, B, C, then About), focus on A.
     fn screen(order_file: Option<PathBuf>) -> Screen {
+        screen_with(abc(), order_file)
+    }
+
+    /// Apps A, B and C.
+    fn abc() -> FakePlatform {
+        FakePlatform::new(["a", "b", "c"].map(|name| App {
+            id: format!("{name}/.Main"),
+            label: name.to_uppercase(),
+        }))
+    }
+
+    fn screen_with(platform: FakePlatform, order_file: Option<PathBuf>) -> Screen {
         // The testing backend is per thread and may be set only once per thread.
         thread_local!(static BACKEND: () = i_slint_backend_testing::init_no_event_loop());
         BACKEND.with(|_| {});
         let shared = Shared {
-            platform: Rc::new(RefCell::new(FakePlatform::new(["a", "b", "c"].map(
-                |name| App {
-                    id: format!("{name}/.Main"),
-                    label: name.to_uppercase(),
-                },
-            )))),
+            platform: Rc::new(RefCell::new(platform)),
             ..Shared::default()
         };
         let lifecycle = Lifecycle::default();
@@ -987,6 +1084,104 @@ mod tests {
         fn launched(&self) -> Vec<String> {
             self.shared.platform.borrow().launched().to_vec()
         }
+
+        /// The label of the app the hero shows.
+        fn hero(&self) -> String {
+            let hero = if self.window.get_hero_a_front() {
+                self.window.get_hero_a()
+            } else {
+                self.window.get_hero_b()
+            };
+            hero.label.into()
+        }
+
+        /// Launches the focused app and lets it take the screen.
+        fn launch_and_leave(&self) {
+            self.tap(OK);
+            self.lifecycle.paused();
+            self.wait(1);
+        }
+
+        /// Holds OK until the long-press menu opens, then lets go.
+        fn long_press_ok(&self) {
+            self.key(OK, true);
+            self.wait(LONG_PRESS.as_millis() as u64 + 50);
+            assert_eq!(self.window.get_mode(), mode_value(State::Menu));
+            self.key(OK, false);
+        }
+
+        fn kinds(&self) -> Vec<i32> {
+            self.window
+                .get_tiles()
+                .iter()
+                .map(|tile| tile.kind)
+                .collect()
+        }
+
+        fn artwork_calls(&self) -> usize {
+            self.shared.platform.borrow().artwork_calls()
+        }
+
+        /// Comes back to Home and lets the hero settle.
+        fn come_back(&self) {
+            self.lifecycle.resumed();
+            self.wait(1);
+            self.wait(HERO_DELAY.as_millis() as u64 + 1);
+        }
+    }
+
+    /// A fresh, empty directory for an order file; removed by the caller.
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("rusttv-ui-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn coming_back_from_an_app_keeps_focus_and_hero_on_it() {
+        let screen = screen(None);
+        screen.tap(RIGHT);
+        screen.launch_and_leave();
+        assert_eq!(screen.launched(), ["b/.Main"]);
+
+        // Also when the app list changed meanwhile and is read again.
+        screen.shared.platform.borrow_mut().mark_apps_changed();
+        screen.come_back();
+        assert_eq!(screen.window.get_focused_index(), 1);
+        assert_eq!(screen.hero(), "B");
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+    }
+
+    #[test]
+    fn focus_moves_to_the_next_tile_when_the_opened_app_was_removed() {
+        let screen = screen(None);
+        screen.tap(RIGHT);
+        screen.launch_and_leave();
+
+        screen.shared.platform.borrow_mut().remove_app("b/.Main");
+        screen.come_back();
+        assert_eq!(screen.window.get_focused_index(), 1);
+        assert_eq!(screen.hero(), "C");
+    }
+
+    #[test]
+    fn focus_is_restored_when_the_launcher_starts_again() {
+        let dir = temp_dir("focus");
+        let file = dir.join("order.toml");
+        {
+            let screen = screen(Some(file.clone()));
+            screen.tap(RIGHT);
+            screen.tap(RIGHT);
+            screen.launch_and_leave();
+            assert_eq!(screen.launched(), ["c/.Main"]);
+        }
+        // Android stopped the launcher while the app was open.
+        let screen = screen(Some(file.clone()));
+        assert_eq!(screen.window.get_focused_index(), 2);
+        screen.wait(HERO_DELAY.as_millis() as u64 + 1);
+        assert_eq!(screen.hero(), "C");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1021,16 +1216,13 @@ mod tests {
 
     #[test]
     fn holding_ok_moves_a_tile_and_the_order_is_saved() {
-        let dir = std::env::temp_dir().join(format!("rusttv-ui-move-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = temp_dir("move");
         let file = dir.join("order.toml");
         let screen = screen(Some(file.clone()));
 
-        screen.key(OK, true);
-        screen.wait(LONG_PRESS.as_millis() as u64 + 50);
+        screen.long_press_ok();
+        screen.tap(OK); // Move
         assert_eq!(screen.window.get_mode(), mode_value(State::Moving));
-        screen.key(OK, false);
         screen.tap(RIGHT);
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
@@ -1048,7 +1240,7 @@ mod tests {
     }
 
     #[test]
-    fn holding_ok_enters_move_mode_while_still_held_despite_key_repeats() {
+    fn holding_ok_opens_the_menu_while_still_held_despite_key_repeats() {
         let screen = screen(None);
         screen.key(OK, true);
         // A remote repeats a held key about every 50 ms.
@@ -1059,7 +1251,9 @@ mod tests {
                 .window()
                 .dispatch_event(WindowEvent::KeyPressRepeated { text: OK.into() });
         }
-        assert_eq!(screen.window.get_mode(), mode_value(State::Moving));
+        assert_eq!(screen.window.get_mode(), mode_value(State::Menu));
+        let items: Vec<SharedString> = screen.window.get_menu_items().iter().collect();
+        assert_eq!(items, ["Move", "Hide from Home"]);
         assert!(screen.launched().is_empty());
     }
 
@@ -1089,22 +1283,70 @@ mod tests {
         }
         screen.lifecycle.resumed();
         screen.wait(1);
-        let kinds = |screen: &Screen| -> Vec<i32> {
-            screen
-                .window
-                .get_tiles()
-                .iter()
-                .map(|tile| tile.kind)
-                .collect()
-        };
         // A, B, C loading; About.
-        assert_eq!(kinds(&screen), [4, 4, 4, 3]);
-        assert_eq!(screen.shared.platform.borrow().artwork_calls(), 0);
+        assert_eq!(screen.kinds(), [4, 4, 4, 3]);
+        assert_eq!(screen.artwork_calls(), 0);
 
         screen.wait(20);
         screen.wait(20);
-        assert_eq!(kinds(&screen), [0, 0, 0, 3]);
-        assert_eq!(screen.shared.platform.borrow().artwork_calls(), 3);
+        assert_eq!(screen.kinds(), [0, 0, 0, 3]);
+        assert_eq!(screen.artwork_calls(), 3);
+    }
+
+    #[test]
+    fn a_hidden_app_stays_off_home_after_a_restart_and_can_be_shown_again() {
+        let dir = temp_dir("hide");
+        let file = dir.join("order.toml");
+        {
+            let screen = screen(Some(file.clone()));
+            screen.tap(RIGHT);
+            screen.long_press_ok();
+            screen.tap(DOWN);
+            screen.tap(OK); // Hide from Home
+            assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+            // A, C, About, Hidden apps; focus on C, where B was.
+            assert_eq!(screen.kinds(), [0, 0, 3, 5]);
+            assert_eq!(screen.window.get_focused_index(), 1);
+            assert!(screen.launched().is_empty());
+        }
+        assert!(order_file::load(&file).hidden.contains("b/.Main"));
+
+        // Started again, with artwork loaded later as on Android: B's is not read.
+        let screen = screen_with(abc().with_lazy_artwork(), Some(file.clone()));
+        assert_eq!(screen.kinds(), [4, 4, 3, 5]);
+        screen.wait(20);
+        screen.wait(20);
+        assert_eq!(screen.kinds(), [0, 0, 3, 5]);
+        assert_eq!(screen.artwork_calls(), 2);
+
+        // Its page reads it.
+        screen.tap(RIGHT);
+        screen.tap(RIGHT);
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Hidden));
+        let page: Vec<SharedString> = screen
+            .window
+            .get_hidden_tiles()
+            .iter()
+            .map(|tile| tile.label)
+            .collect();
+        assert_eq!(page, ["B"]);
+        screen.wait(20);
+        assert_eq!(screen.artwork_calls(), 3);
+        assert_eq!(
+            screen.window.get_hidden_tiles().row_data(0).unwrap().kind,
+            0
+        );
+
+        // OK puts it back, before About; the page closes with focus on it.
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert_eq!(screen.kinds(), [0, 0, 0, 3]);
+        assert_eq!(screen.window.get_focused_index(), 2);
+        assert_eq!(screen.window.get_tiles().row_data(2).unwrap().label, "B");
+        assert!(order_file::load(&file).hidden.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

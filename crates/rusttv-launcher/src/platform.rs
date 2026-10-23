@@ -401,6 +401,12 @@ impl FakePlatform {
         self.apps_changed = true;
     }
 
+    /// Uninstalls `id` and reports the change, as Android would.
+    pub fn remove_app(&mut self, id: &str) {
+        self.apps.retain(|entry| entry.app.id != id);
+        self.apps_changed = true;
+    }
+
     /// Component names of successful launches, oldest first.
     pub fn launched(&self) -> &[String] {
         &self.launched
@@ -725,7 +731,7 @@ mod tests {
         let mut platform = FakePlatform::sample();
         let entries = platform.list_apps().unwrap();
         let apps: Vec<App> = entries.iter().map(|entry| entry.app.clone()).collect();
-        let mut home = Home::new(Order::default(), false);
+        let mut home = Home::new(Order::default(), Default::default(), false);
         home.set_apps(&apps);
 
         // 14 apps + About: three rows, the last one short.
