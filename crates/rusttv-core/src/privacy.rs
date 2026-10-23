@@ -519,8 +519,9 @@ pub fn optimize_analyze(
 ///   (Home, Home candidates, input methods, enabled accessibility services,
 ///   `compat/protected.toml`); if any is protected the whole plan is refused
 ///   with `PACKAGE_PROTECTED`.
-/// - Packages not installed or already disabled are skipped and named in the
-///   notes. Each other package gets one `pm disable-user` step.
+/// - Packages already disabled are skipped and named in the notes; catalog
+///   packages not installed are only counted (named if in `also` or `extra`).
+///   Each other package gets one `pm disable-user` step.
 /// - After the last step Home must open the same activity as before and the
 ///   Home candidates must be unchanged; otherwise the plan rolls back.
 pub fn privacy_plan(
@@ -590,14 +591,32 @@ pub fn privacy_plan(
     let states = PackageStates::read(adb, serial)?;
     let mut notes = Vec::new();
     let mut skipped = Vec::new();
+    // Catalog packages of the chosen categories that aren't installed: most
+    // of the catalog on any one device, so only counted.
+    let mut absent = 0;
+    let mut already_disabled = Vec::new();
+    let named = |name: &str| {
+        let choices = &data.choices.choices;
+        choices
+            .also
+            .iter()
+            .chain(&choices.extra)
+            .any(|package| package.as_str() == name)
+    };
     let mut untested_left_out = Vec::new();
     let mut packages = Vec::new();
     let mut tested_count = 0;
     for candidate in &selected {
         let name = candidate.package.as_str();
         match states.of(name) {
-            PackageState::Absent => skipped.push(format!("Skipped {name}: not installed.")),
-            PackageState::Disabled => skipped.push(format!("Skipped {name}: already disabled.")),
+            PackageState::Absent if named(name) => {
+                skipped.push(format!("Skipped {name}: not installed."));
+            }
+            PackageState::Absent => absent += 1,
+            PackageState::Disabled => {
+                already_disabled.push(name);
+                skipped.push(format!("Skipped {name}: already disabled."));
+            }
             PackageState::Enabled if candidate.checked.is_none() && !allow_untested => {
                 untested_left_out.push(name.to_owned());
             }
@@ -619,6 +638,13 @@ pub fn privacy_plan(
             property("ro.build.fingerprint"),
         ),
     };
+    if absent > 0 {
+        skipped.push(format!(
+            "Skipped {absent} catalog package{} of the chosen categories: not installed on this \
+             device.",
+            if absent == 1 { "" } else { "s" }
+        ));
+    }
     if packages.is_empty() {
         if !untested_left_out.is_empty() {
             return Err(PlanError::profile_not_tested(format!(
@@ -628,9 +654,26 @@ pub fn privacy_plan(
                 untested_left_out.join(", ")
             )));
         }
+        let mut parts = Vec::new();
+        if !already_disabled.is_empty() {
+            parts.push(format!("already disabled: {}", already_disabled.join(", ")));
+        }
+        if absent > 0 {
+            parts.push(format!("{absent} catalog packages not installed"));
+        }
+        parts.extend(
+            skipped
+                .iter()
+                .filter(|note| note.ends_with(": not installed."))
+                .map(|note| {
+                    note.trim_start_matches("Skipped ")
+                        .trim_end_matches('.')
+                        .to_owned()
+                }),
+        );
         return Err(PlanError::precondition(format!(
-            "nothing to do: every chosen package is absent or already disabled ({})",
-            skipped.join(" ")
+            "nothing to do: every chosen package is already disabled or not installed ({})",
+            parts.join("; ")
         )));
     }
     notes.extend(skipped);
@@ -1302,8 +1345,29 @@ mod tests {
             notes.contains(&format!("Skipped {GEL}: already disabled.")),
             "{notes:?}"
         );
+        // Absent catalog packages are only counted.
         assert!(
-            notes.contains(&format!("Skipped {PRINTSPOOLER}: not installed.")),
+            !notes.iter().any(|note| note.contains(PRINTSPOOLER)),
+            "{notes:?}"
+        );
+        assert!(
+            notes.iter().any(|note| note.starts_with("Skipped ")
+                && note.ends_with(
+                    "catalog packages of the chosen categories: not installed on \
+                                   this device."
+                )),
+            "{notes:?}"
+        );
+
+        // A package the person named is still named.
+        let named = data(PrivacyChoices {
+            extra: packages(&["com.example.missing"]),
+            ..PrivacyChoices::default()
+        });
+        let plan = privacy_plan(&tv(vec![disabled(&[])]), SERIAL, &named, &[], true).unwrap();
+        let notes = plan.dry_run().notes;
+        assert!(
+            notes.contains(&"Skipped com.example.missing: not installed.".to_owned()),
             "{notes:?}"
         );
 

@@ -428,7 +428,8 @@ and enabled on the device. Each is one of:
 A plan with no tested and no allowed-untested package is refused
 (`PROFILE_NOT_TESTED`). The live protected-package check applies to every
 package, including `extra`; a protected package refuses the whole plan.
-Absent or already disabled packages are skipped and named in the notes; the
+Already disabled packages are skipped and named in the notes, absent catalog
+packages only counted (named if in `also` or `extra`); the
 last note says how many planned packages are tested on this model. Typed
 confirmation `privacy`, journal (`<ms>-privacy.toml`), verify and rollback
 as for every R3 plan.
