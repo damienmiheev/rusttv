@@ -364,6 +364,85 @@ and each package's `checked` date. Firmware updates may re-enable packages;
 the closed category list; returns the dry run and the CLI command). No tool
 takes a package name, applies or restores.
 
+### Generic design: catalog, device profiles, your choices
+
+*Owner decision 2026-10-23:* privacy profiles must work for anyone's TV and be
+customisable, not just the owner's Philips. Three layers:
+
+**1. Package catalog** (`compat/packages/*.toml`, compiled in). One entry per
+package, written once and shared by every device that has it, grouped by who
+ships it (e.g. `android.toml` for AOSP/Google packages, `tp-vision.toml` for
+`org.droidtv.*`, `samba-tv.toml`, `streaming-apps.toml`):
+
+```toml
+schema_version = 1
+[[packages]]
+package = "tv.samba.ssm"
+category = "telemetry"
+what = "Samba TV: recognises what is on screen for ad targeting"
+side_effects = "reported to cause problems when disabled on some Sony TVs"
+sources = ["https://help.samba.tv/hc/en-us/articles/360006908772-What-is-Samba-TV"]
+```
+
+Categories: **default** `telemetry`, `ads`, `extras` (nobody needs them; on
+unless a person opts out); **opt-in** `casting`, `smart-home`, `voice`,
+`streaming-apps` (features some people use; never applied unless chosen).
+A test keeps catalog entries off `compat/protected.toml` and unique.
+
+**2. Device profiles** (`compat/devices/*.toml`). Only which catalog entries
+were tested on that model and firmware family, and when:
+
+```toml
+[[privacy.tested]]
+package = "org.droidtv.candeebug"
+checked = "2026-10-23"
+```
+
+A package counts as tested on a device only if it is listed there (and in the
+catalog). Tested means: disabled, the TV rebooted and used normally, and a
+restore worked, on that model.
+
+**3. Your choices** (a local file, never in the repo):
+`<config dir>/privacy.toml`, where the config dir is `RUSTTV_CONFIG_DIR` if
+set, else `~/Library/Application Support/rusttv` on macOS and
+`$XDG_CONFIG_HOME/rusttv` (default `~/.config/rusttv`) elsewhere; or
+`--choices <file>`.
+
+```toml
+categories = ["telemetry", "ads", "extras", "casting"]  # default: the three default ones
+keep = ["com.google.android.apps.mediashell"]          # never disable these
+also = ["org.droidtv.amazonalexa"]                     # catalog entries outside the chosen categories
+extra = ["com.example.preinstalled"]                   # not in the catalog at all
+```
+
+Without a file, the default categories apply. `keep` wins over everything.
+
+**What gets planned.** The packages selected by the choices that are present
+and enabled on the device. Each is one of:
+- *tested*: in the catalog and tested on this device's profile;
+- *untested*: in the catalog but not tested on this model, or in `extra`
+  (not in the catalog). Planned only with `--allow-untested`; the dry run marks
+  each one "UNTESTED on this model" with what is known about it.
+A plan with no tested and no allowed-untested package is refused
+(`PROFILE_NOT_TESTED`). The live protected-package check applies to every
+package, including `extra`; a protected package refuses the whole plan.
+
+**Commands.** `rusttv optimize analyze` lists every catalog entry present on
+the device (state, category, default or opt-in, tested on this model or not)
+and every `extra` from the choices file. `rusttv optimize apply privacy
+[--only <categories>] [--choices <file>] [--allow-untested] [--dry-run]`.
+`rusttv optimize restore` is unchanged (journals record what was disabled).
+`--only` narrows the categories from the choices file.
+
+**Contributing a model.** Run `optimize analyze`, choose, apply with
+`--allow-untested`, use the TV for a while, reboot, restore, then send a pull
+request adding the catalog entries you learned about (with sources) and the
+`[[privacy.tested]]` list for your model (`compat/README.md`).
+
+**MCP.** `optimize_analyze` and `privacy_plan` read the same catalog, profiles
+and choices file; `privacy_plan` takes `only` and `allow_untested`, never
+applies, and returns the CLI command.
+
 ## Decisions (owner, 2026-10-23)
 
 1. **Values**: one profile, `0.5` for all three animation scales.
