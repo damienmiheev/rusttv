@@ -37,11 +37,12 @@ rusttv/
 ├── compat/
 │   ├── README.md           # how to contribute a profile
 │   ├── protected.toml      # Phase 4: static protected-package deny-list (SECURITY.md)
+│   ├── optimizer/*.toml    # Phase 4: optimizer profiles (OPTIMIZER.md)
 │   └── devices/*.toml      # one file per device model/firmware family
 └── *.md
 ```
 
-`compat/protected.toml` does not exist yet; it is created when its phase starts.
+`compat/protected.toml` and `compat/optimizer/` do not exist yet; they are created when their phase starts. The Phase 4 optimizer design (new typed `SetSetting`/`GetSetting` commands and `SettingIs` check on the existing plan engine) is in [OPTIMIZER.md](OPTIMIZER.md).
 
 ## rusttv-core
 
