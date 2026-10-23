@@ -456,6 +456,7 @@ impl Controller {
 
     /// Loads the next few pending artworks and shows them.
     fn load_some_artwork(&mut self) {
+        let was_pending = !self.pending_artwork.is_empty();
         for _ in 0..ARTWORK_PER_TICK {
             let Some(id) = self.pending_artwork.pop_front() else {
                 break;
@@ -483,6 +484,9 @@ impl Controller {
         }
         if self.pending_artwork.is_empty() {
             self.artwork_timer.stop();
+            if was_pending {
+                self.platform.artwork_loaded();
+            }
         }
     }
 
@@ -1003,6 +1007,10 @@ mod tests {
             self.platform.borrow().artwork(id)
         }
 
+        fn artwork_loaded(&self) {
+            self.platform.borrow().artwork_loaded();
+        }
+
         fn notices(&self) -> Result<String, PlatformError> {
             self.notices.set(self.notices.get() + 1);
             self.platform.borrow().notices()
@@ -1287,10 +1295,16 @@ mod tests {
         assert_eq!(screen.kinds(), [4, 4, 4, 3]);
         assert_eq!(screen.artwork_calls(), 0);
 
+        assert_eq!(screen.shared.platform.borrow().artwork_loaded_calls(), 0);
+
         screen.wait(20);
         screen.wait(20);
         assert_eq!(screen.kinds(), [0, 0, 0, 3]);
         assert_eq!(screen.artwork_calls(), 3);
+        // Told once, after the last picture, so it can free what it decoded.
+        assert_eq!(screen.shared.platform.borrow().artwork_loaded_calls(), 1);
+        screen.wait(100);
+        assert_eq!(screen.shared.platform.borrow().artwork_loaded_calls(), 1);
     }
 
     #[test]
@@ -1461,6 +1475,7 @@ mod tests {
             fn artwork(&self, id: &str) -> Result<Artwork, PlatformError> {
                 Err(PlatformError::not_launchable(id))
             }
+            fn artwork_loaded(&self) {}
             fn notices(&self) -> Result<String, PlatformError> {
                 Err(PlatformError::call("load notices", "asset missing"))
             }

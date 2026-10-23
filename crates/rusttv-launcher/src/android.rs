@@ -197,6 +197,16 @@ impl Platform for AndroidPlatform {
         })
     }
 
+    fn artwork_loaded(&self) {
+        let freed = self.with_bridge("free decoded artwork", |env, bridge, _activity| {
+            env.call_static_method(bridge, "artworkLoaded", "()V", &[])?;
+            Ok(())
+        });
+        if let Err(error) = freed {
+            log::warn!("{error}");
+        }
+    }
+
     fn notices(&self) -> Result<String, PlatformError> {
         self.with_bridge("load notices", |env, bridge, activity| {
             let text = env

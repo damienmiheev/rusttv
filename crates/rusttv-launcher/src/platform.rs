@@ -37,6 +37,11 @@ pub trait Platform {
     ///
     /// Large (~560 KB on Android), so read only when the About page opens.
     fn notices(&self) -> Result<String, PlatformError>;
+
+    /// Every [`Artwork::Later`] picture has been loaded. On Android this
+    /// frees the pictures the system decoded for it, which otherwise wait for
+    /// the next garbage collection (~20 MB of native heap with 30 apps).
+    fn artwork_loaded(&self);
 }
 
 /// An app and the picture shown on its tile.
@@ -341,6 +346,7 @@ pub struct FakePlatform {
     /// List artwork as [`Artwork::Later`], like the Android bridge.
     lazy: bool,
     artwork_calls: std::cell::Cell<usize>,
+    artwork_loaded_calls: std::cell::Cell<usize>,
 }
 
 #[cfg(any(test, feature = "test-util"))]
@@ -389,6 +395,11 @@ impl FakePlatform {
     pub fn with_lazy_artwork(mut self) -> Self {
         self.lazy = true;
         self
+    }
+
+    /// How many times [`Platform::artwork_loaded`] was called.
+    pub fn artwork_loaded_calls(&self) -> usize {
+        self.artwork_loaded_calls.get()
     }
 
     /// How many times [`Platform::artwork`] was called.
@@ -450,6 +461,11 @@ impl Platform for FakePlatform {
             .find(|entry| entry.app.id == id)
             .map(|entry| entry.artwork.clone())
             .ok_or_else(|| PlatformError::not_launchable(id))
+    }
+
+    fn artwork_loaded(&self) {
+        self.artwork_loaded_calls
+            .set(self.artwork_loaded_calls.get() + 1);
     }
 
     /// A stand-in: the real notices are generated only for the APK.

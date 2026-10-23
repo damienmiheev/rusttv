@@ -85,6 +85,17 @@ object Bridge {
         }
     }
 
+    /**
+     * Every banner and icon has been copied to the launcher. The pictures the
+     * system decoded for them (often larger than shown) are garbage now, but
+     * their pixels stay in native memory until the next collection, which an
+     * idle launcher may not see for a long time: ask for it once.
+     */
+    @JvmStatic
+    fun artworkLoaded() {
+        Runtime.getRuntime().gc()
+    }
+
     /** The third-party licence notices packed into the APK by Gradle (app/build.gradle.kts). */
     @JvmStatic
     fun notices(context: Context): String =
