@@ -182,6 +182,13 @@ impl Platform for AndroidPlatform {
             Err(PlatformError::not_launchable(id))
         }
     }
+
+    fn take_apps_changed(&mut self) -> Result<bool, PlatformError> {
+        self.with_bridge("check app changes", |env, bridge, _activity| {
+            env.call_static_method(bridge, "takeAppsChanged", "()Z", &[])?
+                .z()
+        })
+    }
 }
 
 /// The app's banner, else its icon, else nothing.

@@ -1,0 +1,49 @@
+# Scripts
+
+Developer tools. They are not part of `rusttv` and are not installed with it.
+
+| Script | What it does | Changes the device? |
+|---|---|---|
+| `tv-capture.sh <serial>` | Read-only capture of a TV: the raw `adb` outputs the fixtures use, `rusttv` JSON reads, compat profile. Writes to `.rusttv/captures/` (git-ignored); unit identifiers are redacted. | No |
+
+## TV session checklist
+
+For the first session on a real TV (e.g. the Philips Google TV). Steps marked
+**ask first** change something on the TV: the owner approves each one in that
+session (CLAUDE.md, SECURITY.md).
+
+1. **Connect** (owner): Developer options → network debugging on; then
+   `rusttv device connect <tv-ip>` and accept the prompt on the TV. Note the
+   serial from `rusttv device list`.
+2. **Capture** (read-only): `scripts/tv-capture.sh <serial>`. Review the folder it prints.
+   - Fixtures: copy the raw `.txt` files you need to
+     `crates/rusttv-core/src/fixtures/<maker>-<model>-api<N>/` with a README
+     listing each command (see the emulator fixture READMEs).
+   - Profile: save `compat-profile.toml` as `compat/devices/<suggested-name>.toml`
+     and fill in `tested.notes`.
+   - Check `abi.txt`: if it lists no `arm64-v8a`, the APK needs the 32-bit build.
+   - Keep `launcher-status.json` (and the raw `home-activities-all.txt`): it shows
+     the stock launcher's Home priority, the evidence for decision D12.
+3. **Install the launcher** (**ask first**):
+   `adb -s <serial> install android/app/build/outputs/apk/release/app-release.apk`,
+   then `adb -s <serial> shell am start -n ai.rusttv.launcher/.LauncherActivity`.
+   Check with the remote: every tile reachable, OK launches, hold OK moves a tile,
+   Back stays on the home screen, coming back from an app works, labels readable
+   from the sofa, backdrop look. Note anything odd.
+4. **Benchmark** (**ask first**: it force-stops and starts the apps it measures, R1):
+
+   ```bash
+   rusttv performance benchmark --serial <serial> \
+       --app ai.rusttv.launcher/.LauncherActivity \
+       --app <stock home from home-activity.txt> --json \
+       > benchmarks/raw/<device>/<date>/launchers.json
+   ```
+
+   Reboot and wait 5 minutes first (BENCHMARK_PLAN.md § Protocol). Numbers from
+   one run are not a claim until they meet the claim rule there.
+5. **Home button**: press Home and note which launcher opens; compare with
+   `rusttv launcher status --serial <serial>`. Do not disable the
+   stock launcher: Home takeover is a separate, opt-in flow (SECURITY.md § Home
+   takeover) that is not implemented yet.
+6. **Clean up** (**ask first**): `adb -s <serial> uninstall ai.rusttv.launcher` if
+   the owner doesn't want it left on the TV.

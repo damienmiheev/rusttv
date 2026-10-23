@@ -7,9 +7,9 @@ Phases are gates, not dates. A phase starts only when the previous one meets its
 | 0 Research | Feasibility, safety design, plan | These docs reviewed and accepted by the owner |
 | 1a CLI core (Milestone 1) | Read-only device inspection over ADB | See Milestone 1 below |
 | 1b Launcher spike | Answer uncertainties 1–4 (RISKS.md) on the Philips TV | Go/no-go note in RESEARCH.md with evidence. **Done on the Google TV emulator (2026-10-23): go for Slint; Home-button takeover blocked on Google TV, needs an owner decision.** TV confirmation pending |
-| 1c Launcher PoC | MVP launcher (ARCHITECTURE.md § Launcher) | Launcher success criteria below. **In progress (2026-10-23):** crate, Android app and CI build (arm64) done; works on the Google TV emulator (list, launch, resume, move mode, saved order). Open: Philips TV run, 32-bit and x86_64 ABIs, package listener, benchmarks |
+| 1c Launcher PoC | MVP launcher (ARCHITECTURE.md § Launcher) | Launcher success criteria below. **In progress (2026-10-23):** crate, Android app and CI build (arm64) done; works on the Google TV emulator (list, launch, resume, move mode, saved order). Package listener done. Open: Philips TV run, 32-bit and x86_64 ABIs, benchmarks |
 | 2 Benchmarks | Baseline + comparison per BENCHMARK_PLAN.md | Published raw data + report for Philips TV; budgets defined |
-| 3 Diagnostics & CLI | `performance`, `apps`, `launcher status/install` commands | All commands have `--json`, schema docs, fixture tests |
+| 3 Diagnostics & CLI | `performance`, `apps`, `launcher status/install` commands | All commands have `--json`, schema docs, fixture tests. `launcher status` done (2026-10-23) |
 | 4 Safe optimizer | `analyze` → `plan` → `apply` → `restore` with R2 first, R3 later | Fault-injection tests pass on emulator; recovery docs; owner approval before any device run |
 | 5 MCP | `rusttv-mcp` over the same core | Read-only tools + plan creation; no approval path from MCP |
 | 6 First public release | Signed APK, CLI binaries, docs, benchmarks, compat data | Trademark/name check done; release checklist passed |

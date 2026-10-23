@@ -12,6 +12,15 @@ captures="$(dirname "$0")/../../../rusttv-core/src/fixtures/emulator-pixel3a-api
 tv_captures="$(dirname "$0")/../../../rusttv-core/src/fixtures/google-tv-emulator-api34"
 
 case "$FAKE_ADB_SCENARIO:$*" in
+tv:devices\ -l)
+    cat "$captures/devices-l.txt"
+    ;;
+tv:shell\ cmd\ package\ resolve-activity\ *)
+    cat "$tv_captures/home-activity.txt"
+    ;;
+tv:shell\ cmd\ package\ query-activities\ *)
+    cat "$tv_captures/home-candidates.txt"
+    ;;
 emulator:devices\ -l)
     cat "$captures/devices-l.txt"
     ;;

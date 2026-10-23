@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.Drawable
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Android APIs the Rust side calls through JNI (crates/rusttv-launcher/src/android.rs).
@@ -15,6 +16,18 @@ import android.graphics.drawable.Drawable
  * Apps are identified by their flattened component name, "package/activity".
  */
 object Bridge {
+    /** Set when an app was installed, updated or removed; cleared by [takeAppsChanged]. */
+    private val appsChanged = AtomicBoolean(false)
+
+    /** Called by [LauncherActivity]'s package receiver. */
+    fun markAppsChanged() {
+        appsChanged.set(true)
+    }
+
+    /** Whether the app list changed since the last call; clears the flag. */
+    @JvmStatic
+    fun takeAppsChanged(): Boolean = appsChanged.getAndSet(false)
+
     /** Launchable TV apps as "component\nlabel", without this launcher. */
     @JvmStatic
     fun listApps(context: Context): Array<String> {

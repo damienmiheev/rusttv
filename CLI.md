@@ -15,6 +15,7 @@ class R1, transient). No command changes settings or packages. Run
 | `apps list` | Installed packages | array of [App](#app) |
 | `performance snapshot [--sample-ms N]` | CPU (N ms sample, default 1000), memory, launcher memory, top processes | [PerformanceSnapshot](#performancesnapshot) |
 | `performance benchmark --app <package/.Activity>...` | Repeated, interleaved cold start, resume, idle memory and CPU per app (BENCHMARK_PLAN.md); progress on stderr. **Stops and starts the apps.** Resume needs two or more apps | [BenchmarkReport](#benchmarkreport) |
+| `launcher status` | Which activity the Home button opens, every Home candidate with its priority, whether the RustTV launcher is installed / is Home. Read-only | [LauncherStatus](#launcherstatus) |
 | `compat profile` | Compatibility profile for `compat/devices/` (TOML on stdout; `--json` wraps it) | `{"path": string, "profile": object}` |
 
 Commands that target a device take `--serial <serial>`. Without it, the only
@@ -118,6 +119,13 @@ largest first).
 `component`, `kind` (`cold` \| `resume`), `round`, `launch_state` (Android's
 `COLD`/`WARM`/`HOT`/...), `total_time_ms`, `wait_time_ms`, `counted`,
 `discarded_because` (string or null).
+
+### LauncherStatus
+
+`home` (`package/activity` or null); `candidates` (`{component, priority}`,
+highest priority first: Android opens the highest without asking, so on
+Google TV the stock launcher's priority 2 beats every other launcher's 0);
+`rusttv_installed`, `rusttv_is_home` (booleans; package `ai.rusttv.launcher`).
 
 ### Stats
 

@@ -98,12 +98,9 @@ impl Lifecycle {
         self.deliver(|controller| controller.input(Input::Paused));
     }
 
-    /// The launcher is on screen again; re-reads the app list, which may have changed.
+    /// The launcher is on screen again; re-reads the app list if it changed.
     pub fn resumed(&self) {
-        self.deliver(|controller| {
-            controller.reload_apps();
-            controller.render();
-        });
+        self.deliver(Controller::resume);
     }
 
     /// Runs `event` on the controller from a fresh timer callback, so it never
@@ -129,7 +126,7 @@ impl std::fmt::Debug for Lifecycle {
 
 /// Shows the home screen and runs the UI event loop until the window closes.
 pub fn run(platform: impl Platform + 'static, options: RunOptions) -> Result<(), PlatformError> {
-    let (window, _controller) = start(platform, options)?;
+    let (window, _controller) = start(platform, options, real_clock())?;
     window.run().map_err(ui_error)
 }
 
@@ -160,7 +157,7 @@ pub fn run_demo(
     steps: &[DemoStep],
     on_snapshot: impl FnMut(&str, Result<Bitmap, PlatformError>) + 'static,
 ) -> Result<(), PlatformError> {
-    let (window, _controller) = start(platform, options)?;
+    let (window, _controller) = start(platform, options, real_clock())?;
     let demo = Rc::new(Demo {
         steps: steps.to_vec(),
         window: window.as_weak(),
@@ -239,9 +236,10 @@ impl Demo {
 fn start(
     platform: impl Platform + 'static,
     options: RunOptions,
+    clock: Clock,
 ) -> Result<(HomeWindow, Rc<RefCell<Controller>>), PlatformError> {
     let window = HomeWindow::new().map_err(ui_error)?;
-    let controller = Controller::new(Box::new(platform), &window, options);
+    let controller = Controller::new(Box::new(platform), &window, options, clock);
 
     let weak = Rc::downgrade(&controller);
     window.on_key(move |text, pressed, _repeat| {
@@ -249,6 +247,14 @@ fn start(
             .is_some_and(|controller| controller.borrow_mut().key(&text, pressed))
     });
     Ok((window, controller))
+}
+
+/// Time since the home screen started; passed in so tests can use Slint's mocked time.
+type Clock = Box<dyn Fn() -> Duration>;
+
+fn real_clock() -> Clock {
+    let started = Instant::now();
+    Box::new(move || started.elapsed())
 }
 
 fn ui_error(error: impl std::fmt::Display) -> PlatformError {
@@ -269,7 +275,7 @@ struct Controller {
     hero: Option<TileId>,
     hero_a_front: bool,
     pressed: bool,
-    started: Instant,
+    clock: Clock,
     window: slint::Weak<HomeWindow>,
     me: Weak<RefCell<Controller>>,
     tick_timer: Timer,
@@ -284,6 +290,7 @@ impl Controller {
         platform: Box<dyn Platform>,
         window: &HomeWindow,
         options: RunOptions,
+        clock: Clock,
     ) -> Rc<RefCell<Self>> {
         let tiles = Rc::new(VecModel::default());
         window.set_tiles(ModelRc::from(tiles.clone()));
@@ -311,7 +318,7 @@ impl Controller {
                 hero: None,
                 hero_a_front: true,
                 pressed: false,
-                started: Instant::now(),
+                clock,
                 window: window.as_weak(),
                 me: me.clone(),
                 tick_timer: Timer::default(),
@@ -331,6 +338,23 @@ impl Controller {
             this.render();
         }
         controller
+    }
+
+    /// Re-reads the app list when the platform reports a change. A failed check
+    /// counts as a change, so the list is never left stale.
+    fn resume(&mut self) {
+        let changed = self.platform.take_apps_changed().unwrap_or_else(|error| {
+            log::warn!("checking for app changes failed: {error}");
+            true
+        });
+        if changed {
+            log::info!("app list changed; reloading");
+            self.reload_apps();
+            // Rebuild tiles and hero too: an updated app may have a new banner.
+            self.shown.clear();
+            self.hero = None;
+            self.render();
+        }
     }
 
     /// Re-reads the app list from the platform.
@@ -364,7 +388,7 @@ impl Controller {
     }
 
     fn input(&mut self, input: Input) {
-        let effect = self.home.handle(input, self.started.elapsed());
+        let effect = self.home.handle(input, (self.clock)());
         if input != Input::Tick {
             self.pressed = input == Input::OkPressed && self.home.state() == State::Browse;
             self.restart_idle();
@@ -647,5 +671,184 @@ mod tests {
         for (text, pressed, expected) in cases {
             assert_eq!(input_for_key(text, pressed), expected, "{text:?} {pressed}");
         }
+    }
+
+    // --- whole screen, headless (Slint's testing backend with mocked time) ---
+
+    use std::cell::Cell;
+    use std::path::PathBuf;
+
+    use slint::platform::WindowEvent;
+
+    use crate::platform::FakePlatform;
+
+    /// A [`FakePlatform`] the test can still inspect, counting list reads.
+    #[derive(Clone, Default)]
+    struct Shared {
+        platform: Rc<RefCell<FakePlatform>>,
+        lists: Rc<Cell<usize>>,
+    }
+
+    impl Platform for Shared {
+        fn list_apps(&self) -> Result<Vec<AppEntry>, PlatformError> {
+            self.lists.set(self.lists.get() + 1);
+            self.platform.borrow().list_apps()
+        }
+
+        fn launch(&mut self, id: &str) -> Result<(), PlatformError> {
+            self.platform.borrow_mut().launch(id)
+        }
+
+        fn take_apps_changed(&mut self) -> Result<bool, PlatformError> {
+            self.platform.borrow_mut().take_apps_changed()
+        }
+    }
+
+    struct Screen {
+        window: HomeWindow,
+        _controller: Rc<RefCell<Controller>>,
+        shared: Shared,
+        lifecycle: Lifecycle,
+    }
+
+    const OK: &str = "\n";
+    const RIGHT: &str = "\u{F703}";
+    const BACK: &str = "\u{F748}";
+
+    /// The home screen with three apps (A, B, C, then About), focus on A.
+    fn screen(order_file: Option<PathBuf>) -> Screen {
+        // The testing backend is per thread and may be set only once per thread.
+        thread_local!(static BACKEND: () = i_slint_backend_testing::init_no_event_loop());
+        BACKEND.with(|_| {});
+        let shared = Shared {
+            platform: Rc::new(RefCell::new(FakePlatform::new(["a", "b", "c"].map(
+                |name| App {
+                    id: format!("{name}/.Main"),
+                    label: name.to_uppercase(),
+                },
+            )))),
+            ..Shared::default()
+        };
+        let lifecycle = Lifecycle::default();
+        let options = RunOptions {
+            order_file,
+            lifecycle: lifecycle.clone(),
+            ..RunOptions::default()
+        };
+        let clock: Clock =
+            Box::new(|| Duration::from_millis(i_slint_backend_testing::get_mocked_time()));
+        let (window, controller) = start(shared.clone(), options, clock).unwrap();
+        window.show().unwrap();
+        Screen {
+            window,
+            _controller: controller,
+            shared,
+            lifecycle,
+        }
+    }
+
+    impl Screen {
+        fn key(&self, text: &str, pressed: bool) {
+            let text = text.into();
+            self.window.window().dispatch_event(if pressed {
+                WindowEvent::KeyPressed { text }
+            } else {
+                WindowEvent::KeyReleased { text }
+            });
+        }
+
+        fn tap(&self, text: &str) {
+            self.key(text, true);
+            self.key(text, false);
+        }
+
+        /// Lets mocked time pass; fires due timers.
+        fn wait(&self, millis: u64) {
+            i_slint_backend_testing::mock_elapsed_time(Duration::from_millis(millis));
+        }
+
+        fn launched(&self) -> Vec<String> {
+            self.shared.platform.borrow().launched().to_vec()
+        }
+    }
+
+    #[test]
+    fn ok_launches_the_focused_app_and_a_pause_frees_input() {
+        let screen = screen(None);
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        assert_eq!(screen.launched(), ["b/.Main"]);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Launching));
+
+        // Input is ignored while the launch is in flight.
+        screen.tap(OK);
+        assert_eq!(screen.launched().len(), 1);
+
+        screen.lifecycle.paused();
+        screen.wait(1);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+    }
+
+    #[test]
+    fn a_failed_launch_shows_a_message() {
+        let screen = screen(None);
+        screen
+            .shared
+            .platform
+            .borrow_mut()
+            .fail_launches_of("a/.Main");
+        screen.tap(OK);
+        assert_eq!(screen.window.get_toast(), "Couldn't open A");
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+    }
+
+    #[test]
+    fn holding_ok_moves_a_tile_and_the_order_is_saved() {
+        let dir = std::env::temp_dir().join(format!("rusttv-ui-move-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("order.toml");
+        let screen = screen(Some(file.clone()));
+
+        screen.key(OK, true);
+        screen.wait(LONG_PRESS.as_millis() as u64 + 50);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Moving));
+        screen.key(OK, false);
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert!(screen.launched().is_empty());
+
+        let saved: Vec<TileId> = order_file::load(&file)
+            .order
+            .keys()
+            .iter()
+            .map(|(id, _)| id.clone())
+            .collect();
+        let app = |name: &str| TileId::App(format!("{name}/.Main"));
+        assert_eq!(saved, [app("b"), app("a"), app("c"), TileId::About]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn resume_rereads_apps_only_after_a_change() {
+        let screen = screen(None);
+        let reads = screen.shared.lists.get();
+
+        screen.lifecycle.resumed();
+        screen.wait(1);
+        assert_eq!(screen.shared.lists.get(), reads);
+
+        screen.shared.platform.borrow_mut().mark_apps_changed();
+        screen.lifecycle.resumed();
+        screen.wait(1);
+        assert_eq!(screen.shared.lists.get(), reads + 1);
+    }
+
+    #[test]
+    fn back_is_consumed_on_the_home_screen() {
+        let screen = screen(None);
+        assert!(screen.window.invoke_key(BACK.into(), true, false));
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
     }
 }

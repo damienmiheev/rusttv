@@ -12,6 +12,7 @@ mod compat;
 mod device;
 mod error;
 mod inspect;
+mod launcher;
 mod perf;
 
 #[cfg(any(test, feature = "test-util"))]
@@ -36,6 +37,9 @@ pub use device::{
 pub use error::{AdbError, ERROR_CODES};
 pub use inspect::{
     DeviceInfo, MemoryInfo, StorageInfo, inspect, parse_df, parse_meminfo, parse_properties,
+};
+pub use launcher::{
+    HomeCandidate, LauncherStatus, RUSTTV_LAUNCHER, launcher_status, parse_home_candidates,
 };
 
 pub use perf::{
