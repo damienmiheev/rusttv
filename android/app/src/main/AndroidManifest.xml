@@ -4,8 +4,15 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
 
+    <!-- Experimental `rusttv tools airplay` (TOOLS.md): lets tools.HiddenFeatureActivity
+         start MediaTek's AirPlay BootupService. Declared by com.mediatek.AirplayAPK with
+         protectionLevel normal, so granted at install where it exists; no effect elsewhere. -->
+    <uses-permission android:name="com.mediatek.permission.AirPlay.BroadCast" />
+
     <!-- Package visibility (API 30+): see launchable TV apps without QUERY_ALL_PACKAGES. -->
     <queries>
+        <!-- The service tools.HiddenFeatureActivity starts. -->
+        <package android:name="com.mediatek.partner.airplay_sys" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
@@ -45,5 +52,19 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <!-- Experimental `rusttv tools` trigger (TOOLS.md). No intent filter, so not
+             launchable; exported only to callers holding DUMP (the adb shell, the
+             system), never to other apps. Inert without its exact extras. An empty
+             taskAffinity keeps it out of the launcher's task, so starting it never
+             brings the RustTV home screen to the front. -->
+        <activity
+            android:name=".tools.HiddenFeatureActivity"
+            android:exported="true"
+            android:permission="android.permission.DUMP"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true" />
     </application>
 </manifest>

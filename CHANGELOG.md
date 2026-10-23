@@ -27,6 +27,11 @@ First public release (ROADMAP Phase 6).
   back, leaving any setting changed since as it is. Refused on models whose
   profile doesn't record it as tested unless `--allow-untested`; no model
   does yet (OPTIMIZER.md § 1–6).
+- Experimental `tools airplay status`, `enable` and `disable`: turn on, until
+  the TV restarts, a MediaTek AirPlay receiver that some TVs ship installed
+  but disabled, through a trigger activity in the launcher; only on models
+  with a bundled compat profile and the vendor packages. Not certified by
+  Apple for these models (TOOLS.md).
 - Stable `--json` output, schema `rusttv.v6`, and documented error codes (CLI.md).
 
 ### MCP server (`rusttv-mcp`)
@@ -39,6 +44,9 @@ First public release (ROADMAP Phase 6).
 - Rust + Slint home screen for Android TV 8+: app grid with banners, D-pad
   navigation, move mode, About page with the third-party licence notices.
 - One APK per ABI: arm64-v8a, armeabi-v7a, x86_64.
+- `tools.HiddenFeatureActivity`: no UI, startable only by the adb shell or
+  the system (it requires `android.permission.DUMP`), used by `rusttv tools`
+  (TOOLS.md).
 
 ### Compatibility and benchmarks
 

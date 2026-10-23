@@ -218,6 +218,12 @@ SetSetting { key: SettingKey, to: SettingState, from: SettingState },
 SettingIs(SettingKey, SettingState),            // via GetSetting; "null" = Unset
 ```
 
+*As built since:* the experimental AirPlay tool (TOOLS.md) added
+`SetupAirplayEnable` (writable, values `0`, `1`, `7` only) and the
+read-only `ShowAirplaySettingUi`; `SettingKey::accepts` holds each key's
+values and `Plan::new` refuses any other, also for journals. Optimizer
+profiles stay limited to the three scales (`SettingKey::ANIMATION_SCALES`).
+
 Carrying the original (`from`) inside the command keeps the engine as it is:
 `inverse()` is still derived from the command alone, `Check::effect_of` gives
 `SettingIs(key, to)` as the step's verification, and `Step::original_state`

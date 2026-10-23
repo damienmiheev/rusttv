@@ -1,0 +1,6 @@
+package:/system/app/x/x.apk=android
+package:/system/app/x/x.apk=com.android.shell
+package:/system_ext/priv-app/x/x.apk=com.mediatek.partner.airplay_sys
+package:/vendor/app/x/x.apk=com.mediatek.airplaydaemon
+package:/system/app/x/x.apk=com.mediatek.AirplayAPK
+package:/data/app/x/base.apk=ai.rusttv.launcher

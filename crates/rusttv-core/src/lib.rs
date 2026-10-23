@@ -6,6 +6,7 @@
 //! still to come (`device`, `packages`, `perf`, ...).
 
 mod adb;
+mod airplay;
 mod apps;
 mod bench;
 mod catalog;
@@ -28,6 +29,11 @@ mod test_support;
 #[cfg(any(test, feature = "test-util"))]
 pub use adb::FakeAdb;
 pub use adb::{Adb, SystemAdb};
+pub use airplay::{
+    AIRPLAY_CAVEAT, AIRPLAY_PACKAGES, AIRPLAY_TOOL, AirplayPackage, AirplayStatus, BonjourCheck,
+    airplay_plan, airplay_restore_plan, airplay_status, find_airplay_journal, parse_avahi_browse,
+    parse_dns_sd_browse,
+};
 pub use apps::{AppInfo, AppKind, PackageListError, list_apps, parse_package_list};
 pub use bench::{
     AmStart, AppResult, BenchmarkDevice, BenchmarkError, BenchmarkOptions, BenchmarkReport,
@@ -38,8 +44,9 @@ pub use catalog::{
     config_dir, load_choices,
 };
 pub use command::{
-    ApkPath, Component, DeviceCommand, InvalidApk, InvalidComponent, InvalidPackageName,
-    InvalidSettingValue, PackageName, RiskClass, SettingKey, SettingState, SettingValue,
+    ApkPath, Component, DeviceCommand, HiddenFeature, InvalidApk, InvalidComponent,
+    InvalidPackageName, InvalidSettingValue, PackageName, RiskClass, SettingKey, SettingState,
+    SettingValue,
 };
 pub use compat::{
     DeviceKind, DeviceProfile, InvalidPrivacyCategory, MissingField, PROFILE_SCHEMA_VERSION,
