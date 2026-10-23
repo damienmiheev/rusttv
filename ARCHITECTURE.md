@@ -113,8 +113,8 @@ Rust: trait Platform { list_apps(), launch() }
 - Apps are identified by component name (`package/activity`). Banner (320×180, Leanback) preferred; icon (96×96) as fallback.
 - Manifest: `MAIN`+`LEANBACK_LAUNCHER` and `MAIN`+`HOME`+`DEFAULT`; `<queries>` for `LEANBACK_LAUNCHER` (no `QUERY_ALL_PACKAGES`); `leanback` and `touchscreen` features `required="false"`; `allowBackup="false"`.
 - Lifecycle: Slint's Android event listener forwards `Pause`/`Resume` to `Lifecycle`; resume re-reads the app list. A package-change listener (refresh only when flagged) is a later step.
-- ABIs: `arm64-v8a` and `x86_64` (emulator). `armeabi-v7a` (32-bit userspace TVs, needed for the MVP criteria in ROADMAP) is open: skia-binaries publishes no prebuilt Skia for `armv7-linux-androideabi`.
-- Build: `android/build.sh` (cargo-ndk, then Gradle). Skia is a prebuilt binary per ABI, fetched by `build.sh` and checked against a pinned SHA-256 (SECURITY.md § Supply chain). Release builds are signed with the debug key until release signing exists (Phase 6).
+- ABIs: `arm64-v8a`, `armeabi-v7a` (32-bit userspace TVs) and `x86_64` (emulator), all in one APK.
+- Build: `android/build.sh` (cargo-ndk, then Gradle). For arm64-v8a and x86_64, Skia is a prebuilt binary per ABI, fetched by `build.sh` and checked against a pinned SHA-256. skia-binaries has no armeabi-v7a prebuilt, so `build.sh` builds Skia from source for it: the source archive is pinned by commit and SHA-256, and Skia's own `git-sync-deps` fetches its dependencies at the git commits in its `DEPS` file (gn and ninja are fetched by version, without a hash check) (SECURITY.md § Supply chain). Release builds are signed with the debug key until release signing exists (Phase 6).
 
 ### Still open
 
