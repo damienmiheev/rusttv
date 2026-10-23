@@ -62,7 +62,9 @@ pub use plan::{
     Approval, Check, DryRun, DryRunStep, Plan, PlanError, Step, apply, device_fingerprint, restore,
     restore_plan,
 };
-pub use takeover::{HOME_TAKEOVER, takeover_plan, takeover_restore_plan};
+pub use takeover::{
+    HOME_TAKEOVER, takeover_journal_from_profile, takeover_plan, takeover_restore_plan,
+};
 
 pub use perf::{
     CpuUsage, HomeApp, PerformanceSnapshot, ProcessMemory, TOP_PROCESS_COUNT, cpu_busy_percent,

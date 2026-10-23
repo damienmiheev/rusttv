@@ -699,7 +699,7 @@ pub fn device_fingerprint(adb: &dyn Adb, serial: &str) -> Result<String, PlanErr
 }
 
 /// The exact command line a human would type, e.g. `adb -s tv shell pm ...`.
-fn adb_command(serial: &str, command: &DeviceCommand) -> String {
+pub(crate) fn adb_command(serial: &str, command: &DeviceCommand) -> String {
     format!("adb -s {serial} {}", command.adb_args().join(" "))
 }
 

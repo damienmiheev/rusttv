@@ -206,7 +206,7 @@ pub fn find_restorable_journal(
 ) -> Result<(PathBuf, Journal), PlanError> {
     let not_found = || {
         PlanError::no_journal(format!(
-            "no {plan} journal to restore for firmware `{fingerprint}` in {}; pass `--journal <file>`",
+            "no {plan} journal to restore for firmware `{fingerprint}` in {}; pass `--journal <file>`, or `--from-profile` to re-enable what this device's profile says a takeover disables",
             dir.display()
         ))
     };

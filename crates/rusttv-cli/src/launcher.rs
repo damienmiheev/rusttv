@@ -160,6 +160,7 @@ pub fn restore(
     adb: &dyn Adb,
     target: &Target,
     journal: Option<&Path>,
+    from_profile: bool,
     dry_run: bool,
     json: bool,
 ) -> Result<(), CliError> {
@@ -169,6 +170,18 @@ pub fn restore(
     let serial = target.resolve(adb)?;
     let (path, mut journal) = match journal {
         Some(path) => (path.to_owned(), rusttv_core::load_journal(path)?),
+        // Saved as a new journal when the restore runs.
+        None if from_profile => (
+            rusttv_core::journals_dir()?.join(journal_file_name(
+                now_unix_ms(),
+                &format!("{HOME_TAKEOVER}-from-profile"),
+            )),
+            rusttv_core::takeover_journal_from_profile(
+                adb,
+                &serial,
+                &rusttv_core::bundled_profiles(),
+            )?,
+        ),
         None => {
             let fingerprint = rusttv_core::device_fingerprint(adb, &serial)?;
             rusttv_core::find_restorable_journal(
@@ -180,7 +193,14 @@ pub fn restore(
     };
     let plan = rusttv_core::takeover_restore_plan(adb, &serial, &journal)?;
     if !json {
-        println!("Journal: {}\n", path.display());
+        if from_profile {
+            println!(
+                "No journal: rebuilt from the device profile; saved as {}\n",
+                path.display()
+            );
+        } else {
+            println!("Journal: {}\n", path.display());
+        }
     }
     show_plan(&plan, dry_run, json);
     if dry_run {

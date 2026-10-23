@@ -96,6 +96,11 @@ enum LauncherAction {
         /// for this device's firmware.
         #[arg(long)]
         journal: Option<PathBuf>,
+        /// Without a journal (lost, or the takeover ran on another computer):
+        /// re-enable the packages this device's profile says a takeover
+        /// disables, where they are disabled now.
+        #[arg(long, conflicts_with = "journal")]
+        from_profile: bool,
         /// Only show the plan; change nothing.
         #[arg(long)]
         dry_run: bool,
@@ -266,8 +271,16 @@ fn main() -> ExitCode {
         Command::Launcher(LauncherAction::Restore {
             target,
             journal,
+            from_profile,
             dry_run,
-        }) => launcher::restore(&adb, target, journal.as_deref(), *dry_run, cli.json),
+        }) => launcher::restore(
+            &adb,
+            target,
+            journal.as_deref(),
+            *from_profile,
+            *dry_run,
+            cli.json,
+        ),
         Command::Performance(PerformanceAction::Snapshot { target, sample_ms }) => {
             performance::snapshot(&adb, target, *sample_ms, cli.json)
         }

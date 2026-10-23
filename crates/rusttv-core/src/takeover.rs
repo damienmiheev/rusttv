@@ -11,9 +11,9 @@ use crate::apps::package_names;
 use crate::command::{DeviceCommand, PackageName};
 use crate::compat::DeviceProfile;
 use crate::inspect::parse_properties;
-use crate::journal::Journal;
+use crate::journal::{JOURNAL_SCHEMA_VERSION, Journal, JournalStatus, JournalStep, StepStatus};
 use crate::launcher::{RUSTTV_LAUNCHER, launcher_status};
-use crate::plan::{Check, Plan, PlanError, Step, device_fingerprint, restore_plan};
+use crate::plan::{Check, Plan, PlanError, Step, adb_command, device_fingerprint, restore_plan};
 
 /// Plan name of a Home takeover, also used in journal file names.
 pub const HOME_TAKEOVER: &str = "home-takeover";
@@ -202,6 +202,73 @@ pub fn takeover_plan(
     )
 }
 
+/// Rebuilds the journal of a Home takeover from the device's profile, for a
+/// restore when the real journal is lost or the takeover ran from another
+/// computer. Read-only.
+///
+/// The profile is compiled into RustTV, so unlike a journal file it is
+/// trusted. The result lists, in takeover order, only the packages the
+/// profile's takeover disables (`disable_home_packages`, then the stock
+/// launcher) that are disabled on the device now, as done steps; restoring it
+/// re-enables them. The takeover-tested flag doesn't matter here: undoing is
+/// the safe direction.
+pub fn takeover_journal_from_profile(
+    adb: &dyn Adb,
+    serial: &str,
+    profiles: &[DeviceProfile],
+) -> Result<Journal, PlanError> {
+    let properties = parse_properties(&adb.run(serial, &DeviceCommand::GetProperties)?);
+    let Some(launcher) = profiles
+        .iter()
+        .find(|profile| profile.matches(&properties))
+        .and_then(|profile| profile.launcher.as_ref())
+    else {
+        return Err(PlanError::no_journal(
+            "no compatibility profile with a `[launcher]` section matches this device, so \
+             RustTV doesn't know what a takeover disabled; enable the stock launcher in \
+             Settings > Apps > See all apps > Show system apps"
+                .to_owned(),
+        ));
+    };
+    let disabled = adb.run(serial, &DeviceCommand::ListDisabledPackages)?;
+    let disabled = package_names(&disabled)?;
+    let steps: Vec<JournalStep> = launcher
+        .disable_home_packages
+        .iter()
+        .chain([&launcher.stock_package])
+        .filter(|package| disabled.contains(package.as_str()))
+        .map(|package| {
+            let package = PackageName::new(package)
+                .map_err(|error| PlanError::precondition(format!("profile: {error}")))?;
+            let command = DeviceCommand::DisablePackage(package.clone());
+            Ok(JournalStep {
+                adb: adb_command(serial, &command),
+                command,
+                original_state: Some(Check::PackageEnabled(package)),
+                status: StepStatus::Done,
+            })
+        })
+        .collect::<Result<_, PlanError>>()?;
+    if steps.is_empty() {
+        return Err(PlanError::precondition(format!(
+            "`{}` and the other packages a takeover disables are all enabled; nothing to restore",
+            launcher.stock_package
+        )));
+    }
+    Ok(Journal {
+        schema_version: JOURNAL_SCHEMA_VERSION,
+        plan: HOME_TAKEOVER.to_owned(),
+        serial: serial.to_owned(),
+        fingerprint: properties
+            .get("ro.build.fingerprint")
+            .cloned()
+            .unwrap_or_default(),
+        started_at_unix_ms: 0,
+        status: JournalStatus::Applied,
+        steps,
+    })
+}
+
 /// Plans undoing a Home takeover recorded in `journal`. Read-only.
 ///
 /// The journal is a file anyone could edit, so the plan is refused unless
@@ -242,7 +309,7 @@ mod tests {
         DeviceKind, ProfileDevice, ProfileFirmware, ProfileHardware, ProfileLauncher, ProfileTested,
     };
     use crate::journal::tests::MemoryJournal;
-    use crate::journal::{JournalStatus, StepStatus};
+
     use crate::plan::{apply, restore};
 
     const SERIAL: &str = "emulator-5554";
@@ -553,6 +620,88 @@ mod tests {
         let approval = plan.approve("restore").unwrap();
         restore(&adb, &plan, &approval, &mut journal, &mut store).unwrap();
         assert_eq!(store.last().status, JournalStatus::Restored);
+    }
+
+    #[test]
+    fn without_a_journal_the_profile_says_what_to_re_enable() {
+        // As after a takeover on the Philips: both packages disabled.
+        let adb = with_setupwraith(tv(
+            vec![real!("home-activity.txt")],
+            vec![
+                disabled(&[STOCK, SETUPWRAITH]),
+                // Original states before each re-enable, and after each.
+                disabled(&[STOCK, SETUPWRAITH]),
+                disabled(&[SETUPWRAITH]),
+                disabled(&[SETUPWRAITH]),
+                disabled(&[]),
+            ],
+            vec![],
+        ));
+        let mut journal =
+            takeover_journal_from_profile(&adb, SERIAL, &tested_with_setupwraith()).unwrap();
+        assert_eq!(journal.plan, HOME_TAKEOVER);
+        assert_eq!(
+            journal
+                .steps
+                .iter()
+                .map(|step| &step.command)
+                .collect::<Vec<_>>(),
+            [
+                &DeviceCommand::DisablePackage(setupwraith()),
+                &DeviceCommand::DisablePackage(stock())
+            ],
+            "in takeover order"
+        );
+
+        let plan = takeover_restore_plan(&adb, SERIAL, &journal).unwrap();
+        assert_eq!(
+            plan.steps().iter().map(Step::command).collect::<Vec<_>>(),
+            [
+                &DeviceCommand::EnablePackage(stock()),
+                &DeviceCommand::EnablePackage(setupwraith())
+            ]
+        );
+        let approval = plan.approve("restore").unwrap();
+        let mut store = MemoryJournal::default();
+        restore(&adb, &plan, &approval, &mut journal, &mut store).unwrap();
+        assert_eq!(store.last().status, JournalStatus::Restored);
+    }
+
+    #[test]
+    fn without_a_journal_only_disabled_packages_are_re_enabled() {
+        // Someone already re-enabled the stock launcher in Settings.
+        let adb = with_setupwraith(tv(
+            vec![real!("home-activity.txt")],
+            vec![disabled(&[SETUPWRAITH])],
+            vec![],
+        ));
+        let journal =
+            takeover_journal_from_profile(&adb, SERIAL, &tested_with_setupwraith()).unwrap();
+        assert_eq!(
+            journal
+                .steps
+                .iter()
+                .map(|step| &step.command)
+                .collect::<Vec<_>>(),
+            [&DeviceCommand::DisablePackage(setupwraith())]
+        );
+
+        let adb = with_setupwraith(tv(
+            vec![real!("home-activity.txt")],
+            vec![disabled(&[])],
+            vec![],
+        ));
+        let error =
+            takeover_journal_from_profile(&adb, SERIAL, &tested_with_setupwraith()).unwrap_err();
+        assert_eq!(error.code(), "PRECONDITION_FAILED");
+        assert!(changes(&adb).is_empty());
+    }
+
+    #[test]
+    fn without_a_journal_or_a_profile_there_is_nothing_to_go_on() {
+        let error = takeover_journal_from_profile(&planning_tv(), SERIAL, &[]).unwrap_err();
+        assert_eq!(error.code(), "NO_JOURNAL");
+        assert!(error.to_string().contains("Settings"), "{error}");
     }
 
     #[test]
