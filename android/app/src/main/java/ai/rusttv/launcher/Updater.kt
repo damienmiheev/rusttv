@@ -77,6 +77,9 @@ object Updater {
 
     private class UpdateException(message: String) : Exception(message)
 
+    /** The feed answered 404: the repository has no release yet. */
+    private class NoRelease : Exception()
+
     /** The status for the About page: "kind" or "kind\tdetail". */
     fun status(context: Context): String = current ?: initialStatus(context.applicationContext).also { current = it }
 
@@ -215,9 +218,18 @@ object Updater {
         }
     )
 
-    /** The latest release, or null if it isn't installable (draft, pre-release, odd tag). */
-    private fun fetchRelease(): UpdateFeed.Release? =
-        UpdateFeed.parseRelease(readText(open(FEED, "application/vnd.github+json"), MAX_FEED_BYTES))
+    /**
+     * The latest release, or null if it isn't installable (draft, pre-release,
+     * odd tag) or there is none yet (GitHub answers 404 before the first release).
+     */
+    private fun fetchRelease(): UpdateFeed.Release? {
+        val connection = try {
+            open(FEED, "application/vnd.github+json")
+        } catch (e: NoRelease) {
+            return null
+        }
+        return UpdateFeed.parseRelease(readText(connection, MAX_FEED_BYTES))
+    }
 
     /**
      * Opens [url] for reading, following redirects by hand so that every hop
@@ -244,6 +256,7 @@ object Updater {
             }
             if (code != HttpsURLConnection.HTTP_OK) {
                 connection.disconnect()
+                if (code == HttpsURLConnection.HTTP_NOT_FOUND && url == FEED) throw NoRelease()
                 throw UpdateException("GitHub answered $code")
             }
             return connection
