@@ -446,3 +446,51 @@ mod tests {
         assert_eq!(DeviceKind::from_characteristics("tvish"), DeviceKind::Other);
     }
 }
+
+#[cfg(test)]
+mod odd_input {
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::test_support::adb_output;
+
+    const PART: &str = "[A-Za-z0-9_.-]{1,12}";
+
+    proptest! {
+        #[test]
+        fn firmware_family_never_panics(fingerprint in adb_output()) {
+            if let Some(family) = firmware_family(&fingerprint) {
+                prop_assert_eq!(family.matches(':').count(), 2);
+            }
+        }
+
+        #[test]
+        fn family_ignores_build_id_and_incremental(
+            (brand, product, device, release) in (PART, PART, PART, PART),
+            (id_a, incremental_a, id_b, incremental_b) in (PART, PART, PART, PART),
+            build_type in "(user|userdebug|eng)/(release-keys|dev-keys|test-keys)",
+        ) {
+            let fingerprint = |id: &str, incremental: &str| {
+                format!("{brand}/{product}/{device}:{release}/{id}/{incremental}:{build_type}")
+            };
+            let family = firmware_family(&fingerprint(&id_a, &incremental_a));
+            prop_assert_eq!(family.clone(), Some(format!("{brand}/{product}/{device}:{release}:{build_type}")));
+            prop_assert_eq!(firmware_family(&fingerprint(&id_b, &incremental_b)), family);
+        }
+    }
+
+    #[test]
+    fn malformed_fingerprints_have_no_family() {
+        for fingerprint in [
+            "",
+            ":",
+            "::",
+            "a:b",
+            "a:/x:",
+            ":14/X/1:user/release-keys",
+            "a:b:c:d",
+        ] {
+            assert_eq!(firmware_family(fingerprint), None, "{fingerprint}");
+        }
+    }
+}

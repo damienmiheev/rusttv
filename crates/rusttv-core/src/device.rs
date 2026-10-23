@@ -125,6 +125,11 @@ pub fn parse_device_list(output: &str) -> Vec<DeviceEntry> {
 fn parse_device_line(line: &str) -> Option<DeviceEntry> {
     let mut tokens = line.split_whitespace();
     let serial = tokens.next()?.to_owned();
+    // Messages such as `adb: warning: ...` or `error: ...` are not devices:
+    // no serial ends with `:`, and every adb state is a lowercase word.
+    if serial.ends_with(':') {
+        return None;
+    }
     let rest: Vec<&str> = tokens.collect();
     let state = match rest.as_slice() {
         ["device", ..] => DeviceState::Device,
@@ -132,8 +137,10 @@ fn parse_device_line(line: &str) -> Option<DeviceEntry> {
         ["offline", ..] => DeviceState::Offline,
         // e.g. "no permissions (user in plugdev group; ...); see [http://...]"
         ["no", "permissions", ..] => DeviceState::Other("no permissions".to_owned()),
-        [state, ..] => DeviceState::Other((*state).to_owned()),
-        [] => return None,
+        [state, ..] if state.bytes().all(|byte| byte.is_ascii_lowercase()) => {
+            DeviceState::Other((*state).to_owned())
+        }
+        _ => return None,
     };
     // Remaining `key:value` tokens; keys are lowercase words like `model`.
     let property = |key: &str| {
@@ -167,12 +174,15 @@ pub enum ConnectOutcome {
 ///
 /// `adb connect` exits with status 0 even when it fails (adb 1.0.41) and
 /// reports the result as text on stdout, so the text is all we can go by.
-/// Returns the failure message when the connection failed.
+/// The result is the last line: older adb versions print `* daemon ...`
+/// start-up lines before it. Returns the failure message when the connection
+/// failed.
 pub fn parse_connect_output(output: &str) -> Result<ConnectOutcome, String> {
     let output = output.trim();
-    if output.starts_with("already connected to") {
+    let result = output.lines().next_back().unwrap_or_default().trim();
+    if result.starts_with("already connected to") {
         Ok(ConnectOutcome::AlreadyConnected)
-    } else if output.starts_with("connected to") {
+    } else if result.starts_with("connected to") {
         Ok(ConnectOutcome::Connected)
     } else {
         Err(output.to_owned())
@@ -454,6 +464,125 @@ emulator-5554          device product:sdk_google_atv_x86 model:Android_TV_on_x86
             "failed to resolve host: 'no-such-host.invalid': nodename nor servname provided, or not known\n",
         ] {
             assert_eq!(parse_connect_output(output), Err(output.trim().to_owned()));
+        }
+    }
+}
+
+#[cfg(test)]
+mod odd_input {
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::test_support::{adb_output, line_ending};
+
+    proptest! {
+        #[test]
+        fn parsers_never_panic(output in adb_output()) {
+            for entry in parse_device_list(&output) {
+                prop_assert!(!entry.serial.is_empty());
+            }
+            let _ = parse_connect_output(&output);
+            let _ = output.parse::<DeviceAddress>();
+        }
+
+        #[test]
+        fn device_lines_parse_back_to_their_parts(
+            rows in prop::collection::vec(
+                (
+                    "(emulator-[0-9]{4}|[0-9]{1,3}(\\.[0-9]{1,3}){3}:[0-9]{1,5}|[A-Z0-9]{8,16})",
+                    "(device|unauthorized|offline|recovery|sideload|bootloader)",
+                    prop::option::of("[A-Za-z0-9_]{1,20}"),
+                ),
+                0..8,
+            ),
+            separator in "(\t| {1,12})",
+            ending in line_ending(),
+        ) {
+            let mut output = format!("List of devices attached{ending}");
+            for (serial, state, model) in &rows {
+                output.push_str(&format!("{serial}{separator}{state}"));
+                if let Some(model) = model {
+                    output.push_str(&format!(" product:p model:{model} device:d transport_id:1"));
+                }
+                output.push_str(ending);
+            }
+            output.push_str(ending);
+
+            let parsed = parse_device_list(&output);
+            prop_assert_eq!(parsed.len(), rows.len());
+            for (entry, (serial, state, model)) in parsed.iter().zip(&rows) {
+                prop_assert_eq!(&entry.serial, serial);
+                prop_assert_eq!(&entry.state.to_string(), state);
+                prop_assert_eq!(&entry.model, model);
+            }
+        }
+
+        #[test]
+        fn device_address_display_parses_back(
+            host in "[a-z0-9][a-z0-9.-]{0,30}",
+            port in 1..=u16::MAX,
+        ) {
+            let address: DeviceAddress = format!("{host}:{port}").parse().unwrap();
+            prop_assert_eq!(address.to_string().parse::<DeviceAddress>(), Ok(address));
+        }
+    }
+
+    #[test]
+    fn empty_output_lists_no_devices() {
+        assert!(parse_device_list("").is_empty());
+        assert!(parse_device_list("List of devices attached\r\n\r\n").is_empty());
+        assert_eq!(parse_connect_output(""), Err(String::new()));
+    }
+
+    #[test]
+    fn warning_lines_are_not_devices() {
+        // adb and the dynamic linker print these on some hosts; each used to
+        // become a phantom device such as `adb:` in state `warning:`.
+        let output = "adb: warning: something odd\r\nWARNING: linker: libc++ has text relocations\nerror: no devices/emulators found\nList of devices attached\nemulator-5554\tdevice\n";
+        let entries = parse_device_list(output);
+        let serials: Vec<&str> = entries.iter().map(|entry| entry.serial.as_str()).collect();
+        assert_eq!(serials, ["emulator-5554"]);
+    }
+
+    #[test]
+    fn device_list_with_crlf_trailing_spaces_and_truncated_line() {
+        let entries = parse_device_list(
+            "List of devices attached\r\nemulator-5554  device product:p model:M device:d  \r\n192.168.1.20:5555",
+        );
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].model.as_deref(), Some("M"));
+        assert_eq!(entries[0].device.as_deref(), Some("d"));
+    }
+
+    #[test]
+    fn no_permissions_state_is_kept() {
+        let entries = parse_device_list(
+            "List of devices attached\n0123456789ABCDEF\tno permissions (user in plugdev group; are your udev rules wrong?); see [http://developer.android.com/tools/device.html]\n",
+        );
+        assert_eq!(
+            entries[0].state,
+            DeviceState::Other("no permissions".to_owned())
+        );
+    }
+
+    #[test]
+    fn connect_result_after_daemon_start_messages() {
+        // Older adb versions print the daemon start-up lines on stdout.
+        let output = "* daemon not running; starting now at tcp:5037\n* daemon started successfully\nconnected to 192.168.1.20:5555\r\n";
+        assert_eq!(parse_connect_output(output), Ok(ConnectOutcome::Connected));
+        let output = "* daemon started successfully\nalready connected to 192.168.1.20:5555\n";
+        assert_eq!(
+            parse_connect_output(output),
+            Ok(ConnectOutcome::AlreadyConnected)
+        );
+        let output = "* daemon started successfully\nfailed to connect to '192.168.1.20:5555': Connection refused\n";
+        assert!(parse_connect_output(output).is_err());
+    }
+
+    #[test]
+    fn device_address_rejects_overflowing_or_empty_ports() {
+        for input in ["tv:65536", "tv:", ":5555", "tv:0", "", "-tv:5555", "::1"] {
+            assert!(input.parse::<DeviceAddress>().is_err(), "{input}");
         }
     }
 }

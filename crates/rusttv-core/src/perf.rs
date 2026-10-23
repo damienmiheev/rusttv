@@ -136,14 +136,16 @@ pub fn snapshot(
 ///
 /// Uses the aggregate `cpu` line: user nice system idle iowait irq softirq
 /// steal (guest time is already included in user). Idle time is idle +
-/// iowait. Returns `None` when no time passed or the input is malformed.
+/// iowait. Returns `None` when no time passed, the input is malformed, or
+/// idle time went backwards (iowait isn't monotonic on tickless kernels), which
+/// would put the result above 100.
 pub fn cpu_busy_percent(before: &str, after: &str) -> Option<f64> {
     let (busy_before, total_before) = cpu_times(before)?;
     let (busy_after, total_after) = cpu_times(after)?;
     let total = total_after.checked_sub(total_before)?;
     let busy = busy_after.checked_sub(busy_before)?;
     // Display-only ratio; jiffy counts are far below f64's exact range.
-    (total > 0).then(|| busy as f64 * 100.0 / total as f64)
+    (total > 0 && busy <= total).then(|| busy as f64 * 100.0 / total as f64)
 }
 
 /// Returns (busy, total) jiffies from the aggregate `cpu` line.
@@ -159,8 +161,12 @@ fn cpu_times(stat: &str) -> Option<(u64, u64)> {
     let [user, nice, system, idle, iowait, irq, softirq, steal] = values.as_slice() else {
         return None;
     };
-    let idle = idle + iowait;
-    let total = user + nice + system + idle + irq + softirq + steal;
+    // Checked: a sum that overflows u64 is malformed input, not a panic.
+    let idle = idle.checked_add(*iowait)?;
+    let total = [user, nice, system, irq, softirq, steal]
+        .into_iter()
+        .try_fold(idle, |sum, value| sum.checked_add(*value))?;
+    // Can't underflow: `total` includes `idle`.
     Some((total - idle, total))
 }
 
@@ -181,9 +187,18 @@ pub fn parse_process_list(output: &str) -> Vec<ProcessMemory> {
 
 /// Parses `cmd package resolve-activity --brief`: the last line is
 /// `<package>/<activity>`. Returns `None` if nothing handles Home.
+///
+/// A last line with whitespace or an empty part (an error message that
+/// happens to contain `/`) is not a component.
 pub fn parse_home_activity(output: &str) -> Option<(&str, &str)> {
     let component = output.lines().rev().find(|line| !line.trim().is_empty())?;
-    component.trim().split_once('/')
+    let component = component.trim();
+    if component.contains(char::is_whitespace) {
+        return None;
+    }
+    component
+        .split_once('/')
+        .filter(|(package, activity)| !package.is_empty() && !activity.is_empty())
 }
 
 /// Parses `dumpsys meminfo <package>` into (PSS, RSS) in KiB, from the line
@@ -328,5 +343,173 @@ mod tests {
             .unwrap();
         assert_eq!(home.package, "evil;reboot");
         assert_eq!(home.pss_kib, None);
+    }
+}
+
+#[cfg(test)]
+mod odd_input {
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::test_support::{adb_output, line_ending};
+
+    fn stat_line(values: &[u64; 8]) -> String {
+        let values: Vec<String> = values.iter().map(u64::to_string).collect();
+        format!(
+            "cpu  {} 0 0\ncpu0 1 2 3 4 5 6 7 8\nintr 1 2\n",
+            values.join(" ")
+        )
+    }
+
+    proptest! {
+        #[test]
+        fn parsers_never_panic(before in adb_output(), after in adb_output()) {
+            if let Some(busy) = cpu_busy_percent(&before, &after) {
+                prop_assert!((0.0..=100.0).contains(&busy));
+            }
+            parse_process_list(&before);
+            parse_home_activity(&before);
+            parse_app_memory(&before);
+        }
+
+        #[test]
+        fn cpu_counters_near_u64_max_never_panic(
+            before in prop::array::uniform8(any::<u64>()),
+            after in prop::array::uniform8(any::<u64>()),
+        ) {
+            if let Some(busy) = cpu_busy_percent(&stat_line(&before), &stat_line(&after)) {
+                prop_assert!((0.0..=100.0).contains(&busy));
+            }
+        }
+
+        #[test]
+        fn cpu_usage_is_a_percentage_of_the_elapsed_time(
+            before in prop::array::uniform8(0..u64::from(u32::MAX)),
+            busy_step in prop::array::uniform6(0..1_000_u64),
+            idle_step in prop::array::uniform2(0..1_000_u64),
+        ) {
+            // Indices 3 and 4 are idle and iowait.
+            let mut after = before;
+            for (index, step) in [0, 1, 2, 5, 6, 7].into_iter().zip(busy_step) {
+                after[index] += step;
+            }
+            after[3] += idle_step[0];
+            after[4] += idle_step[1];
+            let busy: u64 = busy_step.iter().sum();
+            let total = busy + idle_step.iter().sum::<u64>();
+
+            let expected = (total > 0).then(|| busy as f64 * 100.0 / total as f64);
+            prop_assert_eq!(cpu_busy_percent(&stat_line(&before), &stat_line(&after)), expected);
+        }
+
+        #[test]
+        fn ps_rows_parse_back_to_their_parts(
+            rows in prop::collection::vec((any::<u32>(), 1..=u64::MAX, "[a-z][a-z0-9_.:@/-]{0,30}"), 0..20),
+            ending in line_ending(),
+        ) {
+            let output: String = std::iter::once(format!("  PID    RSS NAME   {ending}"))
+                .chain(rows.iter().map(|(pid, rss, name)| format!("{pid:>5} {rss:>6} {name}{ending}")))
+                .collect();
+            let expected: Vec<ProcessMemory> = rows
+                .iter()
+                .map(|(pid, rss, name)| ProcessMemory { pid: *pid, name: name.clone(), rss_kib: *rss })
+                .collect();
+            prop_assert_eq!(parse_process_list(&output), expected);
+        }
+
+        #[test]
+        fn home_activity_parses_back_to_its_parts(
+            package in "[a-z][a-z0-9_]{0,10}(\\.[a-z][a-z0-9_]{0,10}){0,4}",
+            activity in "\\.?[A-Za-z][A-Za-z0-9_.$]{0,30}",
+            ending in line_ending(),
+        ) {
+            let output = format!(
+                "priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true{ending}{package}/{activity}{ending}"
+            );
+            prop_assert_eq!(parse_home_activity(&output), Some((package.as_str(), activity.as_str())));
+        }
+
+        #[test]
+        fn app_memory_parses_back_to_its_values(pss in any::<u64>(), rss in any::<u64>(), ending in line_ending()) {
+            let output = format!(
+                "** MEMINFO in pid 1 [x] **{ending}           TOTAL PSS:    {pss}            TOTAL RSS:    {rss}       TOTAL SWAP PSS:    1{ending}"
+            );
+            prop_assert_eq!(parse_app_memory(&output), Some((pss, Some(rss))));
+        }
+    }
+
+    #[test]
+    fn empty_output_parses_to_nothing() {
+        assert_eq!(cpu_busy_percent("", ""), None);
+        assert!(parse_process_list("").is_empty());
+        assert_eq!(parse_home_activity(""), None);
+        assert_eq!(parse_app_memory(""), None);
+    }
+
+    #[test]
+    fn cpu_counters_that_overflow_when_summed_are_malformed_not_a_panic() {
+        // Each value fits u64, their sum does not. Used to panic (debug) or
+        // wrap (release).
+        let max = u64::MAX;
+        let stat = format!("cpu  {max} {max} 0 0 0 0 0 0\n");
+        assert_eq!(cpu_busy_percent(&stat, &stat), None);
+    }
+
+    #[test]
+    fn idle_time_going_backwards_is_not_reported_as_over_100_percent() {
+        // iowait is not monotonic on tickless kernels; idle + iowait can drop.
+        let before = "cpu  100 0 0 800 100 0 0 0\n";
+        let after = "cpu  200 0 0 810 20 0 0 0\n";
+        assert_eq!(cpu_busy_percent(before, after), None);
+    }
+
+    #[test]
+    fn cpu_stat_with_crlf_extra_columns_and_a_short_line() {
+        let before = "cpu  100 0 100 800 0 0 0 0 0 0\r\n";
+        let after = "cpu  110 5 110 870 5 0 0 0 0 0 0 0\r\n";
+        assert_eq!(cpu_busy_percent(before, after), Some(25.0));
+        // Old kernels without `steal`: not enough columns.
+        assert_eq!(cpu_busy_percent("cpu  1 2 3 4 5 6 7\n", after), None);
+    }
+
+    #[test]
+    fn ps_with_crlf_warning_overflow_and_truncated_row() {
+        let output = "WARNING: linker: x\r\n  PID    RSS NAME\r\n    1   2848 init\r\n    9 18446744073709551616 huge\r\n   12   100";
+        assert_eq!(
+            parse_process_list(output),
+            [ProcessMemory {
+                pid: 1,
+                name: "init".to_owned(),
+                rss_kib: 2848
+            }]
+        );
+    }
+
+    #[test]
+    fn home_activity_with_crlf_and_trailing_spaces() {
+        assert_eq!(
+            parse_home_activity("com.a/.Home  \r\n\r\n"),
+            Some(("com.a", ".Home"))
+        );
+    }
+
+    #[test]
+    fn home_activity_error_text_is_not_read_as_a_component() {
+        // A message that happens to contain `/` is not `package/activity`.
+        assert_eq!(
+            parse_home_activity("Error: could not access /data/system: Permission denied\n"),
+            None
+        );
+        assert_eq!(parse_home_activity("/\n"), None);
+        assert_eq!(parse_home_activity("com.a/\n"), None);
+    }
+
+    #[test]
+    fn app_memory_with_overflow_or_missing_rss() {
+        assert_eq!(
+            parse_app_memory("TOTAL PSS: 18446744073709551616 TOTAL RSS: 1\n"),
+            None
+        );
+        assert_eq!(parse_app_memory("  TOTAL PSS:  10\r\n"), Some((10, None)));
     }
 }
