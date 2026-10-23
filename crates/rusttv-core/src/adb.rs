@@ -5,7 +5,10 @@
 //! `FakeAdb` from the `test-util` feature.
 
 use std::ffi::OsString;
-use std::process::{Command, Output};
+use std::io;
+use std::process::{Command, Output, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use crate::command::DeviceCommand;
 use crate::device::{self, ConnectOutcome, DeviceAddress, DeviceEntry};
@@ -50,7 +53,21 @@ impl SystemAdb {
     /// Runs `command` on the device with the given `adb` serial and returns its stdout.
     pub fn run(&self, serial: &str, command: &DeviceCommand) -> Result<String, AdbError> {
         let args = command.adb_args();
-        let output = self.exec(["-s", serial].iter().chain(&args))?;
+        let mut adb = Command::new(&self.program);
+        adb.args(["-s", serial].iter().chain(&args));
+        let output = match command.timeout() {
+            None => adb.output().map_err(AdbError::spawn)?,
+            Some(timeout) => output_within(adb, timeout)
+                .map_err(AdbError::spawn)?
+                .ok_or_else(|| {
+                    AdbError::from_failure(
+                        serial,
+                        &args,
+                        format!("timed out after {} s", timeout.as_secs()),
+                        "",
+                    )
+                })?,
+        };
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -79,7 +96,7 @@ impl SystemAdb {
             .map_err(|message| AdbError::connect_failed(address_arg, message))
     }
 
-    fn exec<'a>(&self, args: impl IntoIterator<Item = &'a &'a str>) -> Result<Output, AdbError> {
+    fn exec(&self, args: &[&str]) -> Result<Output, AdbError> {
         Command::new(&self.program)
             .args(args)
             .output()
@@ -99,6 +116,30 @@ impl SystemAdb {
         }
         String::from_utf8(output.stdout).map_err(|_| AdbError::invalid_output(args))
     }
+}
+
+/// Runs `command` like [`Command::output`], but kills it and returns `None`
+/// if it is still running after `timeout`.
+///
+/// Its output is read only after it exits, so it must fit in the pipe buffer
+/// (64 KiB on macOS and Linux) or the command blocks until the timeout. Only
+/// `am start -W`, which prints a few lines, uses this.
+fn output_within(mut command: Command, timeout: Duration) -> io::Result<Option<Output>> {
+    let mut child = command
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let deadline = Instant::now() + timeout;
+    while child.try_wait()?.is_none() {
+        if Instant::now() >= deadline {
+            // It may exit between the check and the kill; either way it's gone.
+            let _ = child.kill();
+            child.wait()?;
+            return Ok(None);
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    child.wait_with_output().map(Some)
 }
 
 impl Default for SystemAdb {
@@ -243,6 +284,23 @@ mod fake {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_command_past_its_timeout_is_killed() {
+        let started = Instant::now();
+        let mut sleeper = Command::new("sleep");
+        sleeper.arg("10");
+        let output = output_within(sleeper, Duration::from_millis(200)).unwrap();
+        assert!(output.is_none());
+        assert!(started.elapsed() < Duration::from_secs(5));
+
+        let mut echo = Command::new("echo");
+        echo.arg("Status: ok");
+        let output = output_within(echo, Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "Status: ok\n");
+    }
 
     #[test]
     fn missing_adb_program_reports_adb_not_found() {

@@ -6,6 +6,7 @@
 
 use std::fmt;
 use std::path::Path;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -50,6 +51,10 @@ impl fmt::Display for RiskClass {
     }
 }
 
+/// See [`DeviceCommand::timeout`]. A cold launcher start takes well under
+/// 2 s even on a slow TV; 30 s only catches a start that will never finish.
+const START_ACTIVITY_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// A command RustTV may run on a device.
 ///
 /// Serialized (in plans and journals) as `{kind = "...", arg = "..."}`.
@@ -89,6 +94,12 @@ pub enum DeviceCommand {
     Activities,
     /// Presses the Home button (`input keyevent KEYCODE_HOME`). Transient.
     PressHome,
+    /// Power manager state, including whether the screen is awake or showing
+    /// the screensaver (`dumpsys power`).
+    PowerState,
+    /// Wakes the screen and ends the screensaver, as any key press would
+    /// (`input keyevent KEYCODE_WAKEUP`). Transient.
+    WakeUp,
     /// Disables a package for user 0 (`pm disable-user --user 0 <package>`).
     /// Package state; only the Home takeover plan uses it (SECURITY.md).
     DisablePackage(PackageName),
@@ -124,8 +135,11 @@ impl DeviceCommand {
             | Self::HomeCandidates
             | Self::PackageMemInfo(_)
             | Self::ProcessCpuTimes
-            | Self::Activities => RiskClass::Read,
-            Self::ForceStop(_) | Self::StartActivity(_) | Self::PressHome => RiskClass::Transient,
+            | Self::Activities
+            | Self::PowerState => RiskClass::Read,
+            Self::ForceStop(_) | Self::StartActivity(_) | Self::PressHome | Self::WakeUp => {
+                RiskClass::Transient
+            }
             Self::DisablePackage(_)
             | Self::EnablePackage(_)
             | Self::InstallLauncher(_)
@@ -151,6 +165,18 @@ impl DeviceCommand {
             Self::DisablePackage(package) => Some(Self::EnablePackage(package.clone())),
             Self::EnablePackage(package) => Some(Self::DisablePackage(package.clone())),
             Self::InstallLauncher(_) => Some(Self::UninstallLauncher),
+            _ => None,
+        }
+    }
+
+    /// How long [`crate::SystemAdb`] lets this command run before stopping
+    /// it, for commands that wait on the device's screen.
+    ///
+    /// `am start -W` waits for the activity's first frame, which never comes
+    /// while the screensaver covers it.
+    pub fn timeout(&self) -> Option<Duration> {
+        match self {
+            Self::StartActivity(_) => Some(START_ACTIVITY_TIMEOUT),
             _ => None,
         }
     }
@@ -199,6 +225,8 @@ impl DeviceCommand {
             }
             Self::Activities => vec!["shell", "dumpsys", "activity", "activities"],
             Self::PressHome => vec!["shell", "input", "keyevent", "KEYCODE_HOME"],
+            Self::PowerState => vec!["shell", "dumpsys", "power"],
+            Self::WakeUp => vec!["shell", "input", "keyevent", "KEYCODE_WAKEUP"],
             Self::DisablePackage(package) => {
                 vec![
                     "shell",
@@ -479,6 +507,8 @@ mod tests {
             DeviceCommand::StartActivity("com.example.app/.MainActivity".parse().unwrap()),
             DeviceCommand::Activities,
             DeviceCommand::PressHome,
+            DeviceCommand::PowerState,
+            DeviceCommand::WakeUp,
             DeviceCommand::DisablePackage(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::EnablePackage(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::InstallLauncher(apk()),
@@ -503,6 +533,8 @@ mod tests {
                 | DeviceCommand::StartActivity(_)
                 | DeviceCommand::Activities
                 | DeviceCommand::PressHome
+                | DeviceCommand::PowerState
+                | DeviceCommand::WakeUp
                 | DeviceCommand::DisablePackage(_)
                 | DeviceCommand::EnablePackage(_)
                 | DeviceCommand::InstallLauncher(_)
@@ -528,7 +560,8 @@ mod tests {
             let expected = match command {
                 DeviceCommand::ForceStop(_)
                 | DeviceCommand::StartActivity(_)
-                | DeviceCommand::PressHome => RiskClass::Transient,
+                | DeviceCommand::PressHome
+                | DeviceCommand::WakeUp => RiskClass::Transient,
                 DeviceCommand::DisablePackage(_)
                 | DeviceCommand::EnablePackage(_)
                 | DeviceCommand::InstallLauncher(_)

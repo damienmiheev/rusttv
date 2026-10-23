@@ -14,6 +14,7 @@ launcher was not installed yet.
 | `proc-stat-1.txt`, `proc-stat-2.txt` | `adb shell cat /proc/stat`, about 1 s apart |
 | `home-activity.txt` | `adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME` |
 | `home-candidates.txt` | `adb shell cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME` |
+| `dumpsys-power-head.txt` | first 12 lines of `adb shell dumpsys power`, screen awake (the rest lists wake locks per app) |
 
 Privacy: only firmware-level data is kept, identical on every unit with this
 firmware. The full `getprop` (unit state, settings, pairing flags), package,

@@ -49,6 +49,7 @@ Optional later: end-to-end latency with a high-speed camera (remote press → pi
 - **Resume**: bringing an app that's still in memory back to the front (`HOT`), which is what pressing Home feels like. Apps take turns being in front, so this needs two or more apps.
 - **Idle**: after `--settle-ms` in front, PSS from `dumpsys meminfo <package>` and CPU from `ps` time deltas over `--cpu-window-ms`, summed over the app's processes.
 - Defaults: 30 runs + 3 warm-up, 2 s pause, 10 s settle, 5 s CPU window, 3 idle samples.
+- **Screensaver**: nobody touches the remote, so the TV's screensaver can start mid-run. Before every start the tool reads `mWakefulness` from `dumpsys power` and, if it isn't `Awake`, wakes the TV with `input keyevent KEYCODE_WAKEUP` (what any key press does). An idle sample is dropped if the screensaver is on at the end of its CPU window. Each `am start -W` is stopped after 30 s and fails the run with `COMMAND_FAILED` instead of waiting forever.
 
 The quick check `rusttv performance snapshot` measures CPU (two `/proc/stat` samples), memory, launcher PSS/RSS and top processes by RSS (`ps`), stamped with host time and build fingerprint. It avoids a full `dumpsys meminfo`, which timed out (10 s) on a busy emulator.
 

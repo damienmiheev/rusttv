@@ -66,6 +66,9 @@ emulator:shell\ pm\ list\ packages\ -d)
     ;;
 emulator:shell\ am\ force-stop\ *)
     ;;
+emulator:shell\ dumpsys\ power)
+    echo "  mWakefulness=Awake"
+    ;;
 emulator:shell\ am\ start\ -W\ -n\ ai.rusttv.spike/.LauncherActivity)
     cat "$tv_captures/am-start-cold.txt"
     ;;

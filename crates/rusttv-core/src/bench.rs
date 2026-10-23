@@ -11,6 +11,10 @@
 //!
 //! Apps are interleaved (A, B, A, B, ...) so drift and heat affect each
 //! equally. Stops and starts apps (R1, transient); changes no settings.
+//!
+//! Nobody touches the remote during a run, so the TV's screensaver can start.
+//! Before every start the TV is checked and, if needed, woken like a key
+//! press would; an idle sample taken while the screensaver was on is dropped.
 
 use std::time::Duration;
 
@@ -316,6 +320,7 @@ pub fn run_benchmark(
 
     for round in 0..rounds {
         for app in apps {
+            wake_if_needed(adb, serial, sleep, pause, progress)?;
             adb.run(serial, &DeviceCommand::ForceStop(app.package()))?;
             sleep(pause);
             let stopped = !is_running(adb, serial, app)?;
@@ -335,6 +340,7 @@ pub fn run_benchmark(
     if apps.len() >= 2 {
         for round in 0..rounds {
             for app in apps {
+                wake_if_needed(adb, serial, sleep, pause, progress)?;
                 let run = launch(adb, serial, app, LaunchKind::Resume, round, options)?;
                 progress(&describe(&run, rounds));
                 runs.push(run);
@@ -346,27 +352,31 @@ pub fn run_benchmark(
     let mut idle: Vec<(Vec<f64>, Vec<f64>)> = vec![(Vec::new(), Vec::new()); apps.len()];
     for sample in 0..options.idle_samples {
         for (app, (pss, cpu)) in apps.iter().zip(&mut idle) {
+            wake_if_needed(adb, serial, sleep, pause, progress)?;
             let started = adb.run(serial, &DeviceCommand::StartActivity(app.clone()))?;
             parse_am_start(&started).map_err(|message| launch_failed(app, message))?;
             sleep(Duration::from_millis(options.settle_ms));
             let memory = adb.run(serial, &DeviceCommand::PackageMemInfo(app.package()))?;
-            if let Some((pss_kib, _)) = parse_app_memory(&memory) {
-                pss.push(pss_kib as f64);
-            }
             let before = adb.run(serial, &DeviceCommand::ProcessCpuTimes)?;
             sleep(Duration::from_millis(options.cpu_window_ms));
             let after = adb.run(serial, &DeviceCommand::ProcessCpuTimes)?;
             let package = app.package();
             let used = app_cpu_seconds(&after, package.as_str())
                 - app_cpu_seconds(&before, package.as_str());
+            let label = format!("idle {}/{} {app}", sample + 1, options.idle_samples);
+            // Checked once, after the window: the screensaver doesn't stop by
+            // itself, so if it is off now it was off for the whole sample.
+            if !is_awake(adb, serial)? {
+                progress(&format!("{label} (discarded: screensaver came on)"));
+                continue;
+            }
+            if let Some((pss_kib, _)) = parse_app_memory(&memory) {
+                pss.push(pss_kib as f64);
+            }
             if options.cpu_window_ms > 0 && used >= 0.0 {
                 cpu.push(used * 100_000.0 / options.cpu_window_ms as f64);
             }
-            progress(&format!(
-                "idle {}/{} {app}",
-                sample + 1,
-                options.idle_samples
-            ));
+            progress(&label);
         }
     }
 
@@ -444,6 +454,39 @@ fn launch(
         wait_time_ms: parsed.wait_time_ms,
         discarded_because,
     })
+}
+
+/// `mWakefulness` from `dumpsys power`: `Awake`, `Dreaming` (screensaver),
+/// `Dozing` or `Asleep`.
+pub fn parse_wakefulness(output: &str) -> Option<&str> {
+    output
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("mWakefulness="))
+        .map(str::trim)
+}
+
+/// Whether the screen is on with no screensaver. Output without the field
+/// (a different Android) counts as awake: the start timeout still applies.
+fn is_awake(adb: &dyn Adb, serial: &str) -> Result<bool, AdbError> {
+    let output = adb.run(serial, &DeviceCommand::PowerState)?;
+    Ok(parse_wakefulness(&output).is_none_or(|state| state == "Awake"))
+}
+
+/// Ends the screensaver (or wakes the screen) before an app start: `am start
+/// -W` waits for a first frame that never comes while it covers the app.
+fn wake_if_needed(
+    adb: &dyn Adb,
+    serial: &str,
+    sleep: Sleep<'_>,
+    pause: Duration,
+    progress: Progress<'_>,
+) -> Result<(), AdbError> {
+    if !is_awake(adb, serial)? {
+        progress("screensaver or sleep: waking the TV");
+        adb.run(serial, &DeviceCommand::WakeUp)?;
+        sleep(pause);
+    }
+    Ok(())
 }
 
 fn launch_failed(app: &Component, message: String) -> BenchmarkError {
@@ -527,6 +570,12 @@ mod tests {
 
     fn no_sleep(_: Duration) {}
 
+    const AWAKE: &str = include_str!("fixtures/philips-65oled818-api34/dumpsys-power-head.txt");
+
+    fn dreaming() -> String {
+        AWAKE.replace("mWakefulness=Awake", "mWakefulness=Dreaming")
+    }
+
     /// A device where `apps` cold-start (4 rounds), then resume HOT.
     fn device(apps: &[&str], processes_after_stop: &str) -> FakeAdb {
         let rounds = 4;
@@ -538,6 +587,7 @@ mod tests {
             .respond(DeviceCommand::MemInfo, "")
             .respond(DeviceCommand::DataStorage, "")
             .respond(DeviceCommand::ProcessList, processes_after_stop)
+            .respond(DeviceCommand::PowerState, AWAKE)
             // Each idle sample reads CPU times before and after its window:
             // 0.05 s used every time.
             .respond_sequence(
@@ -593,6 +643,72 @@ mod tests {
     fn am_start_error_is_an_error_even_though_am_exits_0() {
         let error = parse_am_start(capture!("am-start-error.txt")).unwrap_err();
         assert!(error.contains("does not exist"), "{error}");
+    }
+
+    #[test]
+    fn wakefulness_from_dumpsys_power() {
+        assert_eq!(parse_wakefulness(AWAKE), Some("Awake"));
+        assert_eq!(parse_wakefulness(&dreaming()), Some("Dreaming"));
+        assert_eq!(parse_wakefulness("POWER MANAGER (dumpsys power)\n"), None);
+    }
+
+    #[test]
+    fn the_screensaver_is_ended_before_a_start() {
+        // Screensaver on at the first check, then awake for the rest.
+        let adb = device(&[SPIKE, STOCK], "  PID    RSS NAME\n")
+            .respond_sequence(DeviceCommand::PowerState, [dreaming(), AWAKE.to_owned()])
+            .respond(DeviceCommand::WakeUp, "");
+        let mut lines = Vec::new();
+        let apps: Vec<Component> = [SPIKE, STOCK]
+            .iter()
+            .map(|app| app.parse().unwrap())
+            .collect();
+        let report = run_benchmark(&adb, "tv", &apps, options(), &no_sleep, &mut |line| {
+            lines.push(line.to_owned());
+        })
+        .unwrap();
+
+        let calls = adb.calls();
+        let woke = calls.iter().position(|call| *call == DeviceCommand::WakeUp);
+        let first_stop = calls
+            .iter()
+            .position(|call| matches!(call, DeviceCommand::ForceStop(_)));
+        assert!(
+            woke.unwrap() < first_stop.unwrap(),
+            "woken before the first start"
+        );
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|call| **call == DeviceCommand::WakeUp)
+                .count(),
+            1
+        );
+        assert_eq!(lines[0], "screensaver or sleep: waking the TV");
+        assert_eq!(report.apps[0].cold_start_ms.unwrap().n, 3);
+    }
+
+    #[test]
+    fn an_idle_sample_taken_under_the_screensaver_is_dropped() {
+        // 2 apps x 4 rounds x (cold + resume) checks are awake, then each idle
+        // sample checks before its start and after its window: the
+        // screensaver comes on during the very first idle window only.
+        let before_idle = 2 * 4 * 2;
+        let states = std::iter::repeat_n(AWAKE.to_owned(), before_idle + 1)
+            .chain([dreaming()])
+            .chain([AWAKE.to_owned()]);
+        let adb = device(&[SPIKE, STOCK], "  PID    RSS NAME\n")
+            .respond_sequence(DeviceCommand::PowerState, states)
+            .respond(DeviceCommand::WakeUp, "");
+        let report = run(&adb, &[SPIKE, STOCK]);
+
+        assert_eq!(
+            report.apps[0].idle_pss_kib.unwrap().n,
+            1,
+            "one of two dropped"
+        );
+        assert_eq!(report.apps[0].idle_cpu_percent.unwrap().n, 1);
+        assert_eq!(report.apps[1].idle_pss_kib.unwrap().n, 2);
     }
 
     #[test]
