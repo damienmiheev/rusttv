@@ -62,6 +62,31 @@ enum LauncherAction {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Install the RustTV launcher, or upgrade it, from the APK for the
+    /// device's primary ABI (or --apk). Shows the plan and asks you to type a
+    /// confirmation; a fresh install is uninstalled again if its checks fail.
+    Install {
+        #[command(flatten)]
+        target: Target,
+        /// APK to install instead of
+        /// `android/app/build/outputs/apk/release/app-<abi>-release.apk`
+        /// (relative to the current directory) from `android/build.sh`.
+        #[arg(long)]
+        apk: Option<PathBuf>,
+        /// Only show the plan; change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Uninstall the RustTV launcher and its data. Refused while a Home
+    /// takeover is active: run `launcher restore` first. Shows the plan and
+    /// asks you to type a confirmation.
+    Uninstall {
+        #[command(flatten)]
+        target: Target,
+        /// Only show the plan; change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Undo `launcher takeover`: re-enable the stock launcher, using the
     /// takeover's journal. Shows the plan and asks you to type a confirmation.
     Restore {
@@ -229,6 +254,14 @@ fn main() -> ExitCode {
         }
         Command::Launcher(LauncherAction::Takeover { target, dry_run }) => {
             launcher::takeover(&adb, target, *dry_run, cli.json)
+        }
+        Command::Launcher(LauncherAction::Install {
+            target,
+            apk,
+            dry_run,
+        }) => launcher::install(&adb, target, apk.as_deref(), *dry_run, cli.json),
+        Command::Launcher(LauncherAction::Uninstall { target, dry_run }) => {
+            launcher::uninstall(&adb, target, *dry_run, cli.json)
         }
         Command::Launcher(LauncherAction::Restore {
             target,

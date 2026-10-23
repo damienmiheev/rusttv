@@ -5,8 +5,11 @@
 //! (SECURITY.md § Risk classes).
 
 use std::fmt;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+
+use crate::launcher::RUSTTV_LAUNCHER;
 
 /// How much a command can change on the device.
 ///
@@ -91,6 +94,18 @@ pub enum DeviceCommand {
     DisablePackage(PackageName),
     /// Re-enables a package for user 0 (`pm enable --user 0 <package>`). Package state.
     EnablePackage(PackageName),
+    /// Installs the RustTV launcher from a local APK, which must contain
+    /// package `ai.rusttv.launcher` (`adb install --pkg ai.rusttv.launcher
+    /// <apk>`). A host-side adb command, not `adb shell`. Package state.
+    InstallLauncher(ApkPath),
+    /// Replaces an installed RustTV launcher, keeping its data
+    /// (`adb install -r --pkg ai.rusttv.launcher <apk>`). Package state;
+    /// can't be undone (see [`DeviceCommand::is_irreversible`]).
+    UpgradeLauncher(ApkPath),
+    /// Uninstalls the RustTV launcher and its data (`pm uninstall
+    /// ai.rusttv.launcher`). Takes no package: it can remove nothing else.
+    /// Package state; can't be undone (see [`DeviceCommand::is_irreversible`]).
+    UninstallLauncher,
 }
 
 impl DeviceCommand {
@@ -111,8 +126,20 @@ impl DeviceCommand {
             | Self::ProcessCpuTimes
             | Self::Activities => RiskClass::Read,
             Self::ForceStop(_) | Self::StartActivity(_) | Self::PressHome => RiskClass::Transient,
-            Self::DisablePackage(_) | Self::EnablePackage(_) => RiskClass::PackageState,
+            Self::DisablePackage(_)
+            | Self::EnablePackage(_)
+            | Self::InstallLauncher(_)
+            | Self::UpgradeLauncher(_)
+            | Self::UninstallLauncher => RiskClass::PackageState,
         }
+    }
+
+    /// Commands above R1 that have no inverse on purpose: they replace or
+    /// remove RustTV's own launcher, and putting the previous version back
+    /// needs an APK RustTV doesn't have. Plans allow them only as their last
+    /// step and say so in the dry run (`crate::plan::Plan::new`).
+    pub fn is_irreversible(&self) -> bool {
+        matches!(self, Self::UpgradeLauncher(_) | Self::UninstallLauncher)
     }
 
     /// The command that undoes this one, if there is one.
@@ -123,11 +150,15 @@ impl DeviceCommand {
         match self {
             Self::DisablePackage(package) => Some(Self::EnablePackage(package.clone())),
             Self::EnablePackage(package) => Some(Self::DisablePackage(package.clone())),
+            Self::InstallLauncher(_) => Some(Self::UninstallLauncher),
             _ => None,
         }
     }
 
     /// Arguments passed to `adb` after the `-s <serial>` device selector.
+    ///
+    /// All start with `shell` except the launcher installs, which run
+    /// `adb install` on this computer with a validated [`ApkPath`].
     pub fn adb_args(&self) -> Vec<&str> {
         match self {
             Self::GetProperties => vec!["shell", "getprop"],
@@ -181,6 +212,12 @@ impl DeviceCommand {
             Self::EnablePackage(package) => {
                 vec!["shell", "pm", "enable", "--user", "0", package.as_str()]
             }
+            // `--pkg` makes Android refuse an APK whose package is not RustTV's.
+            Self::InstallLauncher(apk) => vec!["install", "--pkg", RUSTTV_LAUNCHER, apk.as_str()],
+            Self::UpgradeLauncher(apk) => {
+                vec!["install", "-r", "--pkg", RUSTTV_LAUNCHER, apk.as_str()]
+            }
+            Self::UninstallLauncher => vec!["shell", "pm", "uninstall", RUSTTV_LAUNCHER],
         }
     }
 }
@@ -215,6 +252,11 @@ impl PackageName {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// `ai.rusttv.launcher`. Valid by construction; a test checks it.
+    pub(crate) fn rusttv_launcher() -> Self {
+        Self(RUSTTV_LAUNCHER.to_owned())
+    }
 }
 
 impl TryFrom<String> for PackageName {
@@ -241,6 +283,97 @@ impl fmt::Display for PackageName {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("`{0}` is not a valid Android package name")]
 pub struct InvalidPackageName(String);
+
+/// A local APK file for `adb install`, as an absolute UTF-8 path.
+///
+/// `adb install` runs on this computer and gets the path as one process
+/// argument (no host shell), so directories may contain spaces. Only the
+/// file name can reach the device: older adb versions copy the APK to
+/// `/data/local/tmp/<file name>` and pass that to `pm`. So the file name is
+/// limited to ASCII letters, digits, `.`, `_` and `-`, ending in `.apk`, and
+/// no part of the path may contain control characters.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct ApkPath(String);
+
+impl ApkPath {
+    /// Validates the shape of `path` without touching the file system (used
+    /// when reading journals, where the APK may be gone).
+    pub fn new(path: &str) -> Result<Self, InvalidApk> {
+        let invalid = |reason: &str| InvalidApk(format!("`{path}` {reason}"));
+        if !Path::new(path).is_absolute() {
+            return Err(invalid("is not an absolute path"));
+        }
+        if path.chars().any(char::is_control) {
+            return Err(invalid("contains control characters"));
+        }
+        let name = path.rsplit('/').next().unwrap_or_default();
+        let stem = name.strip_suffix(".apk").unwrap_or_default();
+        let valid_name = !stem.is_empty()
+            && !name.starts_with(['-', '.'])
+            && name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+        if !valid_name {
+            return Err(invalid(
+                "needs a file name of ASCII letters, digits, `.`, `_` and `-` ending in `.apk`",
+            ));
+        }
+        Ok(Self(path.to_owned()))
+    }
+
+    /// An existing regular file at `path` (relative to the current directory
+    /// or absolute), resolved to its absolute path with symlinks followed.
+    pub fn from_local_file(path: &Path) -> Result<Self, InvalidApk> {
+        let shown = path.display();
+        let resolved = path
+            .canonicalize()
+            .map_err(|error| InvalidApk(format!("`{shown}`: {error}")))?;
+        if !resolved.is_file() {
+            return Err(InvalidApk(format!("`{shown}` is not a file")));
+        }
+        let text = resolved
+            .to_str()
+            .ok_or_else(|| InvalidApk(format!("`{shown}` is not valid UTF-8")))?;
+        Self::new(text)
+    }
+
+    /// The absolute path as a string slice.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for ApkPath {
+    type Error = InvalidApk;
+
+    fn try_from(path: String) -> Result<Self, Self::Error> {
+        Self::new(&path)
+    }
+}
+
+impl From<ApkPath> for String {
+    fn from(apk: ApkPath) -> Self {
+        apk.0
+    }
+}
+
+impl fmt::Display for ApkPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Returned for an APK path that is missing, not a file, or unsafe to pass on.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("invalid APK: {0}")]
+pub struct InvalidApk(String);
+
+impl InvalidApk {
+    pub(crate) fn new(reason: String) -> Self {
+        Self(reason)
+    }
+}
 
 /// A validated activity component, `<package>/<activity>`, e.g.
 /// `ai.rusttv.spike/.LauncherActivity`. Safe to pass to `adb shell`.
@@ -348,6 +481,9 @@ mod tests {
             DeviceCommand::PressHome,
             DeviceCommand::DisablePackage(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::EnablePackage(PackageName::new("com.example.app").unwrap()),
+            DeviceCommand::InstallLauncher(apk()),
+            DeviceCommand::UpgradeLauncher(apk()),
+            DeviceCommand::UninstallLauncher,
         ];
         for command in &all {
             match command {
@@ -368,26 +504,36 @@ mod tests {
                 | DeviceCommand::Activities
                 | DeviceCommand::PressHome
                 | DeviceCommand::DisablePackage(_)
-                | DeviceCommand::EnablePackage(_) => {}
+                | DeviceCommand::EnablePackage(_)
+                | DeviceCommand::InstallLauncher(_)
+                | DeviceCommand::UpgradeLauncher(_)
+                | DeviceCommand::UninstallLauncher => {}
             }
         }
         all
     }
 
+    fn apk() -> ApkPath {
+        ApkPath::new("/Users/me/Application Support/app-arm64-v8a-release.apk").unwrap()
+    }
+
     #[test]
-    fn only_package_enable_and_disable_are_above_transient() {
+    fn only_package_state_and_launcher_install_commands_are_above_transient() {
         // This used to assert that nothing above R1 existed, because R2/R3
         // commands needed the plan/approve/journal engine (SECURITY.md). The
-        // engine now exists (`crate::plan`), and Home takeover needs exactly
-        // two R3 commands. Anything else above R1 must be added here on purpose.
+        // engine now exists (`crate::plan`): Home takeover needs two R3
+        // commands and `launcher install`/`uninstall` three more, all limited
+        // to RustTV's own package. Anything else above R1 must be added here on purpose.
         for command in every_command() {
             let expected = match command {
                 DeviceCommand::ForceStop(_)
                 | DeviceCommand::StartActivity(_)
                 | DeviceCommand::PressHome => RiskClass::Transient,
-                DeviceCommand::DisablePackage(_) | DeviceCommand::EnablePackage(_) => {
-                    RiskClass::PackageState
-                }
+                DeviceCommand::DisablePackage(_)
+                | DeviceCommand::EnablePackage(_)
+                | DeviceCommand::InstallLauncher(_)
+                | DeviceCommand::UpgradeLauncher(_)
+                | DeviceCommand::UninstallLauncher => RiskClass::PackageState,
                 _ => RiskClass::Read,
             };
             assert_eq!(command.risk(), expected, "{command:?}");
@@ -395,13 +541,26 @@ mod tests {
     }
 
     #[test]
-    fn every_command_above_transient_can_be_undone() {
+    fn every_command_above_transient_can_be_undone_unless_declared_irreversible() {
         for command in every_command() {
-            if command.risk() > RiskClass::Transient {
-                let inverse = command.inverse().expect("R2/R3 commands need an inverse");
-                assert_eq!(inverse.inverse(), Some(command.clone()), "{command:?}");
+            if command.risk() <= RiskClass::Transient {
+                continue;
+            }
+            match command.inverse() {
+                None => assert!(command.is_irreversible(), "{command:?} needs an inverse"),
+                Some(inverse) if inverse.is_irreversible() => {
+                    // Installing is undone by uninstalling, which can't be undone.
+                    assert_eq!(command, DeviceCommand::InstallLauncher(apk()));
+                }
+                Some(inverse) => {
+                    assert_eq!(inverse.inverse(), Some(command.clone()), "{command:?}")
+                }
             }
         }
+        assert_eq!(
+            PackageName::rusttv_launcher(),
+            PackageName::new(RUSTTV_LAUNCHER).unwrap()
+        );
     }
 
     #[test]
@@ -457,12 +616,63 @@ mod tests {
             ';', '|', '&', '$', '`', '<', '>', '(', ')', '\'', '"', '\\', '*', '?', '\n', ' ',
         ];
         for command in every_command() {
-            let args = command.adb_args();
-            assert_eq!(args.first(), Some(&"shell"), "{command:?}");
+            let mut args = command.adb_args();
+            if args.first() == Some(&"install") {
+                // Host-side: the APK path is one argument; only its file name
+                // may reach the device, and it is checked like the rest.
+                let path = args.pop().unwrap();
+                assert!(path.ends_with("/app-arm64-v8a-release.apk"), "{path}");
+                args.push(path.rsplit('/').next().unwrap());
+            } else {
+                assert_eq!(args.first(), Some(&"shell"), "{command:?}");
+            }
             for arg in args {
                 assert!(!arg.contains(SHELL_SYNTAX), "{command:?}: {arg:?}");
             }
         }
+    }
+
+    #[test]
+    fn apk_paths_must_be_absolute_with_a_plain_apk_file_name() {
+        for path in [
+            "/a/app.apk",
+            "/Users/me/My Builds/app-x86_64-release.apk",
+            "/a/app_1.2-x.apk",
+        ] {
+            assert!(ApkPath::new(path).is_ok(), "{path:?}");
+        }
+        for path in [
+            "",
+            "app.apk",
+            "android/app.apk",
+            "/a/app.zip",
+            "/a/.apk",
+            "/a/-r.apk",
+            "/a/my app.apk",
+            "/a/app;reboot.apk",
+            "/a/$(reboot).apk",
+            "/a/app\n.apk",
+            "/a\n/app.apk",
+            "/a/äpp.apk",
+            "/a/",
+        ] {
+            assert!(ApkPath::new(path).is_err(), "{path:?}");
+        }
+    }
+
+    #[test]
+    fn apk_files_are_resolved_and_must_exist() {
+        let dir = std::env::temp_dir().join(format!("rusttv-apk-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("app-x86_64-release.apk");
+        std::fs::write(&file, b"not really an APK").unwrap();
+
+        let apk = ApkPath::from_local_file(&file).unwrap();
+        assert!(Path::new(apk.as_str()).is_absolute());
+        assert!(apk.as_str().ends_with("/app-x86_64-release.apk"));
+        assert!(ApkPath::from_local_file(&dir.join("missing.apk")).is_err());
+        assert!(ApkPath::from_local_file(&dir).is_err(), "a directory");
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

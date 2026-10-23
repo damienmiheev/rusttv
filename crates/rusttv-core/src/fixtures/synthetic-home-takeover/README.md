@@ -12,7 +12,7 @@ They continue the real Google TV emulator captures in
 
 | File | Command | Stands for | Based on |
 |---|---|---|---|
-| `getprop.txt` | `getprop` | Five properties only; the fingerprint is made up, and no compat profile matches it | Format of `../emulator-pixel3a-api34/getprop.txt` |
+| `getprop.txt` | `getprop` | Six properties only (`ro.product.cpu.abilist` is `arm64-v8a`, as on the arm64 emulator); the fingerprint is made up, and no compat profile matches it | Format of `../emulator-pixel3a-api34/getprop.txt` |
 | `packages-3.txt` | `pm list packages -3` | RustTV launcher and spike installed | Format of `../emulator-pixel3a-api34/packages-3.txt` |
 | `packages-d-none.txt` | `pm list packages -d` | No package disabled (empty output) | Assumption |
 | `packages-d-launcher-disabled.txt` | `pm list packages -d` | Stock launcher disabled for user 0 | `pm` prints `package:<name>` lines |

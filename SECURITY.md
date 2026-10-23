@@ -10,7 +10,7 @@ RustTV never:
 
 - uses root, flashes firmware, unlocks bootloaders, or modifies system partitions;
 - uninstalls the stock launcher, or disables it outside the opt-in [Home takeover](#home-takeover-opt-in) flow;
-- removes packages (`pm uninstall --user 0` is not supported in the MVP);
+- removes packages, except its own launcher (`ai.rusttv.launcher`) through `rusttv launcher uninstall`; the uninstall command takes no package name, so it can remove nothing else;
 - executes free-form shell strings — device access only through typed `DeviceCommand`s;
 - lets an AI agent apply a change without a human approving the specific plan;
 - sends data off the user's machine (no telemetry).
@@ -24,10 +24,10 @@ Every `DeviceCommand` declares one:
 | R0 Read | No state change | `getprop`, `pm list packages`, `dumpsys meminfo` | CLI, MCP freely |
 | R1 Transient | Changes runtime state only; reboot or app restart undoes it | `am start`, `am force-stop`, `input keyevent` | CLI; MCP for allowlisted targets |
 | R2 Setting | Persistent, trivially reversible setting | `settings put global animator_duration_scale 0.5`, set default home | Only via an approved plan |
-| R3 Package state | Enable/disable an app for user 0 | `pm disable-user --user 0` | Only via an approved plan, Phase 4+, known-device profile only |
-| R4 Forbidden | Not implementable | uninstall, stock-launcher changes outside Home takeover, system partition writes | Nobody |
+| R3 Package state | Enable/disable an app for user 0; install, upgrade or uninstall the RustTV launcher (its own package only) | `pm disable-user --user 0`, `adb install --pkg ai.rusttv.launcher <apk>` | Only via an approved plan; disabling: Phase 4+, known-device profile only |
+| R4 Forbidden | Not implementable | uninstalling anything but RustTV's launcher, stock-launcher changes outside Home takeover, system partition writes | Nobody |
 
-So far: R0 commands, two R1 commands for benchmarking (`am force-stop`, `am start`), and two R3 commands used only by Home takeover (`pm disable-user --user 0`, `pm enable --user 0`), run only through the safety engine (`rusttv-core` `plan` module). A unit test fails if anything else above R0 appears, and every R2/R3 command must have an inverse.
+So far: R0 commands, two R1 commands for benchmarking (`am force-stop`, `am start`), two R3 commands used only by Home takeover (`pm disable-user --user 0`, `pm enable --user 0`), and three R3 commands used only by `launcher install`/`uninstall`, fixed to package `ai.rusttv.launcher` (`adb install --pkg ai.rusttv.launcher <apk>`, `adb install -r --pkg ...`, `pm uninstall ai.rusttv.launcher`), all run only through the safety engine (`rusttv-core` `plan` module). A unit test fails if anything else above R0 appears. Every R2/R3 command must have an inverse, except upgrading and uninstalling RustTV's own launcher, which can't be undone without the previous APK: plans accept those only as their last step, show "no undo", and a failure after them is reported as a failed rollback with the manual fix. `adb install` runs on the host, not through `adb shell`; its only free argument is a validated absolute APK path whose file name is limited to `[A-Za-z0-9._-]+.apk`, because older adb versions pass the file name to `pm` on the device.
 
 ## Protected package policy
 
@@ -72,10 +72,10 @@ Plans and journals live in a local state directory (`~/.local/state/rusttv/` on 
 3. **Preconditions.** RustTV launcher installed, launchable, and verified drawing frames; ADB connected; the stock launcher package is the current HOME resolver. *As built:* before the change, RustTV must be a HOME candidate and the HOME resolver must be a system app that outranks RustTV's priority. "Launchable and drawing frames" is checked after the change, as part of rule 5 (resumed activity with a live process); frame drawing itself isn't measured.
 4. **Disable, never uninstall.** `pm disable-user --user 0 <stock launcher>` only; original state recorded in the journal first.
 5. **Verify or roll back automatically.** After disabling, HOME must resolve to RustTV and RustTV must come to the foreground on a HOME key event within a timeout; otherwise re-enable the stock launcher immediately. *As built:* `input keyevent KEYCODE_HOME` (R1), then for up to 10 s the resumed activity (`dumpsys activity activities`) must be `ai.rusttv.launcher` and its process must be in `ps`.
-6. **Restore is one command.** `rusttv launcher restore` re-enables the stock launcher; `rusttv launcher uninstall` restores *before* removing RustTV, so the TV is never left with only Android's fallback Home.
+6. **Restore is one command.** `rusttv launcher restore` re-enables the stock launcher; RustTV is never removed while the stock launcher is disabled, so the TV is never left with only Android's fallback Home. *As built:* `rusttv launcher uninstall` (and an upgrade by `launcher install`) refuses, with `PRECONDITION_FAILED` telling the person to run `rusttv launcher restore` first, when a takeover journal for this firmware isn't restored, or when no system launcher other than RustTV can handle Home (catches a takeover from another computer or by hand). It doesn't restore inside the same plan: the restore then runs through its own verified plan and marks the takeover journal restored, and the uninstall journal never contains a step whose undo would disable the stock launcher again after RustTV is gone. After uninstalling, Home must open the stock launcher.
 7. **Documented manual recovery** in the user docs, for when ADB is unavailable (Settings → Apps → show system apps → enable).
 
-**Open** (not built yet; ROADMAP.md): `rusttv launcher uninstall` (rule 6), and restore without a journal (journal lost, or the takeover ran from another computer). Until then the takeover plan shows the undo command (`adb shell pm enable --user 0 <package>`) and the Settings path, and a failed undo prints its command again.
+**Open** (not built yet; ROADMAP.md): restore without a journal (journal lost, or the takeover ran from another computer). Until then the takeover plan shows the undo command (`adb shell pm enable --user 0 <package>`) and the Settings path, and a failed undo prints its command again.
 
 Residual risk: firmware updates may re-enable the stock launcher or change its package; `optimize analyze` must detect and report this. Recovery is never guaranteed.
 

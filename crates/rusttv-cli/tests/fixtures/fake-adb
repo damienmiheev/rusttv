@@ -11,6 +11,7 @@ fi
 captures="$(dirname "$0")/../../../rusttv-core/src/fixtures/emulator-pixel3a-api34"
 tv_captures="$(dirname "$0")/../../../rusttv-core/src/fixtures/google-tv-emulator-api34"
 synthetic="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-home-takeover"
+install="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-launcher-install"
 
 case "$FAKE_ADB_SCENARIO:$*" in
 tv:devices\ -l)
@@ -27,6 +28,19 @@ tv:shell\ getprop)
     ;;
 tv:shell\ pm\ list\ packages\ -3)
     cat "$synthetic/packages-3.txt"
+    ;;
+tv:shell\ pm\ list\ packages\ -f)
+    cat "$install/packages-f-rusttv.txt"
+    ;;
+# The same TV before the RustTV launcher is installed.
+tv-fresh:devices\ -l)
+    cat "$captures/devices-l.txt"
+    ;;
+tv-fresh:shell\ getprop)
+    cat "$synthetic/getprop.txt"
+    ;;
+tv-fresh:shell\ pm\ list\ packages\ -f)
+    cat "$install/packages-f-no-rusttv.txt"
     ;;
 emulator:devices\ -l)
     cat "$captures/devices-l.txt"

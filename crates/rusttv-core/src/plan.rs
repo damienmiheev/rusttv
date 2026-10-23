@@ -18,11 +18,11 @@ use serde::{Deserialize, Serialize};
 use crate::adb::Adb;
 use crate::apps::parse_package_list;
 use crate::bench::Sleep;
-use crate::command::{DeviceCommand, PackageName, RiskClass};
+use crate::command::{DeviceCommand, InvalidApk, PackageName, RiskClass};
 use crate::error::AdbError;
 use crate::inspect::parse_properties;
 use crate::journal::{Journal, JournalStatus, JournalStep, JournalStore, StepStatus};
-use crate::launcher::parse_resumed_activity;
+use crate::launcher::{parse_home_candidates, parse_resumed_activity};
 use crate::perf::{parse_home_activity, parse_process_list};
 
 /// How often a polled step re-checks; see [`Step::polling_for`].
@@ -47,6 +47,12 @@ pub enum Check {
     /// An activity of this package is the resumed (front) activity and a
     /// process of that package is running.
     InFront(PackageName),
+    /// The package is installed (listed by `pm list packages`, enabled or not).
+    PackageInstalled(PackageName),
+    /// The package is not installed.
+    PackageNotInstalled(PackageName),
+    /// An activity of this package can handle Home (`query-activities`).
+    HomeCandidate(PackageName),
 }
 
 impl Check {
@@ -55,6 +61,12 @@ impl Check {
         match command {
             DeviceCommand::DisablePackage(package) => Some(Self::PackageDisabled(package.clone())),
             DeviceCommand::EnablePackage(package) => Some(Self::PackageEnabled(package.clone())),
+            DeviceCommand::InstallLauncher(_) | DeviceCommand::UpgradeLauncher(_) => {
+                Some(Self::PackageInstalled(PackageName::rusttv_launcher()))
+            }
+            DeviceCommand::UninstallLauncher => {
+                Some(Self::PackageNotInstalled(PackageName::rusttv_launcher()))
+            }
             _ => None,
         }
     }
@@ -86,6 +98,18 @@ impl Check {
                     .iter()
                     .any(|process| process.name == package.as_str()))
             }
+            Self::PackageInstalled(package) | Self::PackageNotInstalled(package) => {
+                let output = adb.run(serial, &DeviceCommand::ListPackages)?;
+                let installed =
+                    parse_package_list(&output).any(|(name, _)| name == package.as_str());
+                Ok(installed == matches!(self, Self::PackageInstalled(_)))
+            }
+            Self::HomeCandidate(package) => {
+                let output = adb.run(serial, &DeviceCommand::HomeCandidates)?;
+                Ok(parse_home_candidates(&output)
+                    .iter()
+                    .any(|candidate| candidate.package() == package.as_str()))
+            }
         }
     }
 }
@@ -97,6 +121,9 @@ impl fmt::Display for Check {
             Self::PackageDisabled(package) => write!(f, "{package} is disabled"),
             Self::HomeIs(package) => write!(f, "Home opens {package}"),
             Self::InFront(package) => write!(f, "{package} is in front and running"),
+            Self::PackageInstalled(package) => write!(f, "{package} is installed"),
+            Self::PackageNotInstalled(package) => write!(f, "{package} is not installed"),
+            Self::HomeCandidate(package) => write!(f, "{package} can handle Home"),
         }
     }
 }
@@ -183,7 +210,9 @@ pub struct Plan {
 impl Plan {
     /// Builds a plan for the device with `serial` and build `fingerprint`
     /// (`ro.build.fingerprint`). `confirmation` is what a human must type to
-    /// approve it. Fails if there are no steps, or a step above R1 has no inverse.
+    /// approve it. Fails if there are no steps, or a step above R1 has no
+    /// inverse, unless it is [irreversible by design](DeviceCommand::is_irreversible)
+    /// and the last step: then nothing after it can fail and need it undone.
     pub fn new(
         name: &str,
         serial: &str,
@@ -200,10 +229,12 @@ impl Plan {
         if confirmation.trim().is_empty() {
             return Err(PlanErrorKind::InvalidPlan("empty confirmation phrase".to_owned()).into());
         }
-        if let Some(step) = steps
-            .iter()
-            .find(|step| step.risk() > RiskClass::Transient && step.undo().is_none())
-        {
+        let last = steps.len() - 1;
+        if let Some((_, step)) = steps.iter().enumerate().find(|(index, step)| {
+            step.risk() > RiskClass::Transient
+                && step.undo().is_none()
+                && !(*index == last && step.command().is_irreversible())
+        }) {
             return Err(PlanErrorKind::InvalidPlan(format!(
                 "`{}` is {} but can't be undone",
                 adb_command(serial, step.command()),
@@ -698,6 +729,8 @@ enum PlanErrorKind {
     NoJournal(String),
     #[error("{0}")]
     NotTested(String),
+    #[error(transparent)]
+    InvalidApk(#[from] InvalidApk),
     #[error("{0}; every completed step was undone and verified")]
     RolledBack(String),
     #[error(
@@ -732,6 +765,7 @@ impl PlanError {
             PlanErrorKind::Journal(_) => "JOURNAL_FAILED",
             PlanErrorKind::NoJournal(_) => "NO_JOURNAL",
             PlanErrorKind::NotTested(_) => "TAKEOVER_NOT_TESTED",
+            PlanErrorKind::InvalidApk(_) => "INVALID_APK",
             PlanErrorKind::RolledBack(_) => "ROLLED_BACK",
             PlanErrorKind::RollbackFailed { .. } => "ROLLBACK_FAILED",
             PlanErrorKind::RestoreFailed(_) => "RESTORE_FAILED",
@@ -764,6 +798,10 @@ impl PlanError {
     pub(crate) fn not_tested(reason: String) -> Self {
         PlanErrorKind::NotTested(reason).into()
     }
+
+    pub(crate) fn invalid_apk(reason: String) -> Self {
+        PlanErrorKind::InvalidApk(InvalidApk::new(reason)).into()
+    }
 }
 
 /// One error of every kind; see `crate::error::every_adb_error`.
@@ -776,6 +814,7 @@ pub(crate) fn every_plan_error() -> Vec<PlanError> {
         PlanErrorKind::Journal(String::new()).into(),
         PlanErrorKind::NoJournal(String::new()).into(),
         PlanErrorKind::NotTested(String::new()).into(),
+        PlanErrorKind::InvalidApk(InvalidApk::new(String::new())).into(),
         PlanErrorKind::RolledBack(String::new()).into(),
         PlanErrorKind::RollbackFailed {
             reason: String::new(),
@@ -793,6 +832,7 @@ pub(crate) fn every_plan_error() -> Vec<PlanError> {
             | PlanErrorKind::Journal(_)
             | PlanErrorKind::NoJournal(_)
             | PlanErrorKind::NotTested(_)
+            | PlanErrorKind::InvalidApk(_)
             | PlanErrorKind::RolledBack(_)
             | PlanErrorKind::RollbackFailed { .. }
             | PlanErrorKind::RestoreFailed(_) => {}
@@ -848,6 +888,23 @@ mod tests {
                 .code(),
             "INVALID_PLAN"
         );
+    }
+
+    #[test]
+    fn an_irreversible_step_is_allowed_only_last() {
+        let uninstall = || Step::new(DeviceCommand::UninstallLauncher, Vec::new());
+        assert!(Plan::new("t", SERIAL, "f", "yes", vec![uninstall()], Vec::new()).is_ok());
+        let error = Plan::new(
+            "t",
+            SERIAL,
+            "f",
+            "yes",
+            vec![uninstall(), disable("a.b")],
+            Vec::new(),
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), "INVALID_PLAN");
+        assert!(error.to_string().contains("can't be undone"), "{error}");
     }
 
     #[test]

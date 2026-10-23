@@ -13,6 +13,7 @@ mod compat;
 mod device;
 mod error;
 mod inspect;
+mod install;
 mod journal;
 mod launcher;
 mod perf;
@@ -30,7 +31,8 @@ pub use bench::{
     LaunchKind, LaunchRun, Stats, app_cpu_seconds, parse_am_start, parse_cpu_time, run_benchmark,
 };
 pub use command::{
-    Component, DeviceCommand, InvalidComponent, InvalidPackageName, PackageName, RiskClass,
+    ApkPath, Component, DeviceCommand, InvalidApk, InvalidComponent, InvalidPackageName,
+    PackageName, RiskClass,
 };
 pub use compat::{
     DeviceKind, DeviceProfile, MissingField, PROFILE_SCHEMA_VERSION, ProfileDevice,
@@ -44,6 +46,9 @@ pub use device::{
 pub use error::{AdbError, ERROR_CODES};
 pub use inspect::{
     DeviceInfo, MemoryInfo, StorageInfo, inspect, parse_df, parse_meminfo, parse_properties,
+};
+pub use install::{
+    LAUNCHER_INSTALL, LAUNCHER_UNINSTALL, default_apk, install_plan, uninstall_plan,
 };
 pub use journal::{
     FileJournal, JOURNAL_SCHEMA_VERSION, Journal, JournalStatus, JournalStep, JournalStore,

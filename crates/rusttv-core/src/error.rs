@@ -25,6 +25,7 @@ pub const ERROR_CODES: &[&str] = &[
     "JOURNAL_FAILED",
     "NO_JOURNAL",
     "TAKEOVER_NOT_TESTED",
+    "INVALID_APK",
     "ROLLED_BACK",
     "ROLLBACK_FAILED",
     "RESTORE_FAILED",

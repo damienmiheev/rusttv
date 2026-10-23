@@ -1,0 +1,4 @@
+package:/product/priv-app/LauncherX/LauncherX.apk=com.google.android.apps.tv.launcherx
+package:/system_ext/priv-app/TvSettings/TvSettings.apk=com.android.tv.settings
+package:/data/app/~~Q2xhdWRlIGZpeHR1cmU==/ai.rusttv.launcher-c3ludGhldGljIGZpeA==/base.apk=ai.rusttv.launcher
+package:/data/app/~~c3Bpa2UgZml4dHVyZQ==/ai.rusttv.spike-c3Bpa2Ugc3ludGhldGlj/base.apk=ai.rusttv.spike
