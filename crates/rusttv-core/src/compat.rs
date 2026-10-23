@@ -22,10 +22,16 @@ pub const PROFILE_SCHEMA_VERSION: u32 = 2;
 /// Bundled rather than read from disk, so the Home takeover gate can't be
 /// satisfied by dropping a file somewhere. A test fails if a profile in
 /// `compat/devices/` is missing here.
-const BUNDLED_PROFILES: &[(&str, &str)] = &[(
-    "google-emu64a.toml",
-    include_str!("../../../compat/devices/google-emu64a.toml"),
-)];
+const BUNDLED_PROFILES: &[(&str, &str)] = &[
+    (
+        "google-emu64a.toml",
+        include_str!("../../../compat/devices/google-emu64a.toml"),
+    ),
+    (
+        "tpv-ph1m-ww-9972.toml",
+        include_str!("../../../compat/devices/tpv-ph1m-ww-9972.toml"),
+    ),
+];
 
 /// A device compatibility profile.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -318,6 +324,55 @@ mod tests {
         let committed: DeviceProfile = toml::from_str(&fs::read_to_string(path).unwrap()).unwrap();
         generated.tested.clone_from(&committed.tested);
         assert_eq!(generated, committed);
+    }
+
+    fn philips_info() -> DeviceInfo {
+        let adb = FakeAdb::new()
+            .respond(
+                DeviceCommand::GetProperties,
+                include_str!("fixtures/philips-65oled818-api34/getprop.txt"),
+            )
+            .respond(
+                DeviceCommand::MemInfo,
+                include_str!("fixtures/philips-65oled818-api34/meminfo.txt"),
+            )
+            .respond(
+                DeviceCommand::DataStorage,
+                include_str!("fixtures/philips-65oled818-api34/df-data.txt"),
+            );
+        inspect(&adb, "tv").unwrap()
+    }
+
+    #[test]
+    fn committed_philips_profile_matches_the_generator() {
+        let mut generated = profile_from_info(&philips_info()).unwrap();
+        let path = compat_devices_dir().join(profile_file_name(&generated));
+        let committed: DeviceProfile = toml::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+        generated.tested.clone_from(&committed.tested);
+        assert_eq!(generated, committed);
+    }
+
+    #[test]
+    fn the_philips_profile_matches_its_capture_but_records_no_takeover() {
+        let properties = crate::inspect::parse_properties(include_str!(
+            "fixtures/philips-65oled818-api34/getprop.txt"
+        ));
+        let matching: Vec<String> = bundled_profiles()
+            .iter()
+            .filter(|profile| profile.matches(&properties))
+            .map(profile_file_name)
+            .collect();
+        assert_eq!(matching, ["tpv-ph1m-ww-9972.toml"]);
+        let profile = bundled_profiles()
+            .into_iter()
+            .find(|profile| profile.matches(&properties))
+            .unwrap();
+        assert!(
+            profile
+                .launcher
+                .is_none_or(|launcher| !launcher.takeover_tested),
+            "takeover was not tested on the Philips (setupwraith Home candidate)"
+        );
     }
 
     #[test]

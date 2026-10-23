@@ -1,0 +1,31 @@
+schema_version = 2
+
+[device]
+manufacturer = "TPV"
+brand = "Philips"
+model = "Philips Google TV TA1"
+codename = "PH1M_WW_9972"
+kind = "tv"
+
+[firmware]
+android_version = "14"
+api_level = 34
+security_patch = "2026-01-05"
+build_fingerprint = "Philips/PH1M_WW_9972/PH1M_WW_9972:14/UKN2.241117.001/3000518:user/release-keys"
+
+[hardware]
+abis = ["armeabi-v7a", "armeabi"]
+memory_total_mib = 2786
+data_storage_total_mib = 5063
+
+[tested]
+rusttv_version = "0.0.0"
+notes = """
+Philips 65OLED818/12, tested 2026-10-23 over wireless debugging (pairing code).
+32-bit userspace only: use the armeabi-v7a APK.
+RustTV launcher 0.0.0 installed (adb install --pkg) and runs: real app banners,
+first cold start ~1.1 s (one run, not a benchmark).
+Home takeover NOT tested and not ready for this device: besides the stock
+launcher (priority 2), com.google.android.tungsten.setupwraith/.RecoveryActivity
+handles Home at priority 1, so disabling only the stock launcher would not make
+RustTV (priority 0) Home."""

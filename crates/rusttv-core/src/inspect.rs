@@ -205,6 +205,43 @@ mod tests {
     }
 
     #[test]
+    fn inspects_the_philips_capture_as_32_bit() {
+        let adb = FakeAdb::new()
+            .respond(
+                DeviceCommand::GetProperties,
+                include_str!("fixtures/philips-65oled818-api34/getprop.txt"),
+            )
+            .respond(
+                DeviceCommand::MemInfo,
+                include_str!("fixtures/philips-65oled818-api34/meminfo.txt"),
+            )
+            .respond(
+                DeviceCommand::DataStorage,
+                include_str!("fixtures/philips-65oled818-api34/df-data.txt"),
+            );
+        let info = inspect(&adb, "tv").unwrap();
+        assert_eq!(info.manufacturer.as_deref(), Some("TPV"));
+        assert_eq!(info.model.as_deref(), Some("Philips Google TV TA1"));
+        assert_eq!(info.device.as_deref(), Some("PH1M_WW_9972"));
+        assert_eq!(info.api_level, Some(34));
+        assert_eq!(info.abis, ["armeabi-v7a", "armeabi"]);
+        assert_eq!(
+            info.memory,
+            Some(MemoryInfo {
+                total_kib: 2_852_964,
+                available_kib: Some(1_017_240),
+            })
+        );
+        assert_eq!(
+            info.data_storage,
+            Some(StorageInfo {
+                total_kib: 5_184_564,
+                available_kib: 1_990_952,
+            })
+        );
+    }
+
+    #[test]
     fn missing_properties_become_none_instead_of_failing() {
         let adb = FakeAdb::new()
             .respond(

@@ -154,6 +154,28 @@ mod tests {
     }
 
     #[test]
+    fn philips_has_a_setup_recovery_home_between_stock_and_others() {
+        let candidates = parse_home_candidates(include_str!(
+            "fixtures/philips-65oled818-api34/home-candidates.txt"
+        ));
+        let candidates: Vec<(&str, i32)> = candidates
+            .iter()
+            .map(|candidate| (candidate.component.as_str(), candidate.priority))
+            .collect();
+        assert_eq!(
+            candidates,
+            [
+                ("com.google.android.apps.tv.launcherx/.home.HomeActivity", 2),
+                (
+                    "com.google.android.tungsten.setupwraith/.RecoveryActivity",
+                    1
+                ),
+                ("com.android.tv.settings/.system.FallbackHome", -1000),
+            ]
+        );
+    }
+
+    #[test]
     fn rusttv_as_home_is_recognised_by_package() {
         let adb = FakeAdb::new()
             .respond(
