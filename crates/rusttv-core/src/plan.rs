@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::adb::Adb;
 use crate::apps::{PackageListError, package_names};
 use crate::bench::Sleep;
-use crate::command::{Component, DeviceCommand, InvalidApk, PackageName, RiskClass};
+use crate::command::{DeviceCommand, InvalidApk, PackageName, RiskClass};
 use crate::error::AdbError;
 use crate::inspect::parse_properties;
 use crate::journal::{Journal, JournalStatus, JournalStep, JournalStore, StepStatus};
@@ -53,10 +53,6 @@ pub enum Check {
     PackageNotInstalled(PackageName),
     /// An activity of this package can handle Home (`query-activities`).
     HomeCandidate(PackageName),
-    /// This activity can handle Home: it is enabled (`query-activities`).
-    HomeComponentEnabled(Component),
-    /// This activity can no longer handle Home: it is disabled.
-    HomeComponentDisabled(Component),
 }
 
 impl Check {
@@ -65,12 +61,6 @@ impl Check {
         match command {
             DeviceCommand::DisablePackage(package) => Some(Self::PackageDisabled(package.clone())),
             DeviceCommand::EnablePackage(package) => Some(Self::PackageEnabled(package.clone())),
-            DeviceCommand::DisableHomeComponent(component) => {
-                Some(Self::HomeComponentDisabled(component.clone()))
-            }
-            DeviceCommand::EnableHomeComponent(component) => {
-                Some(Self::HomeComponentEnabled(component.clone()))
-            }
             DeviceCommand::InstallLauncher(_) | DeviceCommand::UpgradeLauncher(_) => {
                 Some(Self::PackageInstalled(PackageName::rusttv_launcher()))
             }
@@ -118,13 +108,6 @@ impl Check {
                     .iter()
                     .any(|candidate| candidate.package() == package.as_str()))
             }
-            Self::HomeComponentEnabled(component) | Self::HomeComponentDisabled(component) => {
-                let output = adb.run(serial, &DeviceCommand::HomeCandidates)?;
-                let listed = parse_home_candidates(&output)
-                    .iter()
-                    .any(|candidate| component.is(&candidate.component));
-                Ok(listed == matches!(self, Self::HomeComponentEnabled(_)))
-            }
         }
     }
 }
@@ -139,12 +122,6 @@ impl fmt::Display for Check {
             Self::PackageInstalled(package) => write!(f, "{package} is installed"),
             Self::PackageNotInstalled(package) => write!(f, "{package} is not installed"),
             Self::HomeCandidate(package) => write!(f, "{package} can handle Home"),
-            Self::HomeComponentEnabled(component) => {
-                write!(f, "{} can handle Home", component.as_str())
-            }
-            Self::HomeComponentDisabled(component) => {
-                write!(f, "{} can't handle Home", component.as_str())
-            }
         }
     }
 }
@@ -664,8 +641,9 @@ fn rollback(
 }
 
 /// Undoes every step that may have run, last first, verifying each undo.
-/// Keeps going after a failure; returns what went wrong, with the command
-/// to run by hand.
+/// An undo that fails while the device already is in the original state
+/// (e.g. Android refused both the step and its undo) still counts as undone. Keeps going after a failure;
+/// returns what went wrong, with the command to run by hand.
 fn undo_steps(
     adb: &dyn Adb,
     serial: &str,
@@ -683,7 +661,13 @@ fn undo_steps(
             continue;
         };
         let undo_step = Step::new(undo, Vec::new());
-        match run_and_verify(adb, serial, &undo_step, &|_| {}) {
+        let failure = run_and_verify(adb, serial, &undo_step, &|_| {}).filter(|_| {
+            // The undo's goal may already hold: a step Android refused never
+            // changed anything, and Android may refuse its undo the same way.
+            !Check::effect_of(undo_step.command())
+                .is_some_and(|original| original.holds(adb, serial).unwrap_or(false))
+        });
+        match failure {
             None => {
                 journal.steps[index].status = StepStatus::Undone;
                 if let Err(error) = store.save(journal) {
@@ -1255,6 +1239,32 @@ mod tests {
         let error = restore(&adb, &plan, &approval, &mut journal, &mut store).unwrap_err();
         assert_eq!(error.code(), "RESTORE_FAILED");
         assert_eq!(journal.status, JournalStatus::RestoreFailed);
-        assert_eq!(adb.calls(), [DeviceCommand::EnablePackage(package("a.b"))]);
+        // After the refusal, whether the package is enabled anyway (it can't
+        // be read here either).
+        assert_eq!(
+            adb.calls(),
+            [
+                DeviceCommand::EnablePackage(package("a.b")),
+                DeviceCommand::ListDisabledPackages
+            ]
+        );
+    }
+
+    #[test]
+    fn a_refused_undo_of_a_step_that_changed_nothing_counts_as_undone() {
+        // As on the Philips TV: Android refused the step's command, so the
+        // rollback's undo is refused too, but nothing needs undoing.
+        let adb = FakeAdb::new()
+            .respond(DeviceCommand::GetProperties, GETPROP)
+            .respond(DeviceCommand::ListDisabledPackages, disabled(&[]));
+        let plan = plan(vec![disable("a.b"), disable("c.d")]);
+        let approval = plan.approve("yes").unwrap();
+        let mut store = MemoryJournal::default();
+
+        // `pm disable-user a.b` has no canned response: the device refuses it.
+        let error = apply(&adb, &plan, &approval, &mut store, &|_| {}).unwrap_err();
+        assert_eq!(error.code(), "ROLLED_BACK", "{error}");
+        assert_eq!(store.last().status, JournalStatus::RolledBack);
+        assert_eq!(store.last().steps[0].status, StepStatus::Undone);
     }
 }

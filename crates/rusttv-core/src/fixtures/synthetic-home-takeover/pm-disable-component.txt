@@ -1,1 +1,0 @@
-Component {com.google.android.tungsten.setupwraith/com.google.android.tungsten.setupwraith.RecoveryActivity} new state: disabled

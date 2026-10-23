@@ -27,12 +27,13 @@ RustTV launcher 0.0.0 installed (adb install --pkg) and runs: real app banners,
 first cold start ~1.1 s (one run, not a benchmark).
 Home takeover NOT tested yet: besides the stock launcher (priority 2),
 com.google.android.tungsten.setupwraith/.RecoveryActivity handles Home at
-priority 1, so the takeover also disables that one activity (not its package).
-Making RustTV the Home role holder alone does not work: Android picks the
-highest-priority Home activity without consulting the preferred one (tested
-by hand 2026-10-23, then undone)."""
+priority 1, so the takeover also disables the setupwraith package.
+Tested by hand 2026-10-23 and undone: making RustTV the Home role holder does
+not work (Android picks the highest-priority Home activity without consulting
+the preferred one), and the adb shell may not disable a single activity of a
+system app ("Shell cannot change component state")."""
 
 [launcher]
 stock_package = "com.google.android.apps.tv.launcherx"
-disable_home_components = ["com.google.android.tungsten.setupwraith/.RecoveryActivity"]
+disable_home_packages = ["com.google.android.tungsten.setupwraith"]
 takeover_tested = false

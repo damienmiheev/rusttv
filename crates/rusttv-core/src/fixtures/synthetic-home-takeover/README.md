@@ -20,9 +20,6 @@ They continue the real Google TV emulator captures in
 | `pm-enable.txt` | `pm enable --user 0 com.google.android.apps.tv.launcherx` | Success | Same |
 | `home-activity-rusttv.txt` | `cmd package resolve-activity --brief ... HOME` | Home resolves to RustTV after the stock launcher is disabled | Format of `../google-tv-emulator-api34/home-activity.txt` |
 | `home-activity-chooser.txt` | same | Two launchers with equal priority, so Android shows its chooser (`ResolverActivity`) instead of RustTV | Expected Android behaviour; not captured |
-| `home-candidates-recovery-disabled.txt` | `cmd package query-activities --brief ... HOME` | Philips 65OLED818 after `setupwraith/.RecoveryActivity` is disabled: stock launcher, RustTV, FallbackHome | `../philips-65oled818-api34/home-candidates-rusttv-installed.txt` with that activity removed |
-| `pm-disable-component.txt` | `pm disable --user 0 com.google.android.tungsten.setupwraith/.RecoveryActivity` | Success | Message format from AOSP `PackageManagerShellCommand`; not captured |
-| `pm-enable-component.txt` | `pm enable --user 0 com.google.android.tungsten.setupwraith/.RecoveryActivity` | Success | Same |
 
 | `input-keyevent-home.txt` | `input keyevent KEYCODE_HOME` | Success (empty output) | Assumption |
 | `activities-rusttv-front.txt` | `dumpsys activity activities` | RustTV resumed after HOME; only the lines the parser reads, the real dump is far longer | Line formats as of Android 14 (`topResumedActivity=`, `ResumedActivity:`, `mResumedActivity:`); not captured |

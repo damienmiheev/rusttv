@@ -30,14 +30,15 @@ stock_package = "com.google.android.apps.tv.launcherx"
 takeover_tested = true
 ```
 
-If another system activity also handles Home with a higher priority than
-RustTV (e.g. `com.google.android.tungsten.setupwraith/.RecoveryActivity` on
-some Google TV models), Android would open it instead once the stock launcher
-is disabled, and the takeover is refused. List it, after checking what it is,
-to have the takeover disable that one activity (never its package) first:
+If another system app also handles Home with a higher priority than RustTV
+(e.g. `com.google.android.tungsten.setupwraith`, the setup wizard, on some
+Google TV models), Android would open it instead once the stock launcher is
+disabled, and the takeover is refused. After checking what else that app does,
+list its package to have the takeover disable it first (the adb shell may not
+disable a single activity of a system app):
 
 ```toml
-disable_home_components = ["com.google.android.tungsten.setupwraith/.RecoveryActivity"]
+disable_home_packages = ["com.google.android.tungsten.setupwraith"]
 ```
 
 Set `takeover_tested = true` only after `rusttv launcher takeover` **and**

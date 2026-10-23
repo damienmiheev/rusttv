@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use crate::adb::Adb;
 use crate::apps::package_names;
-use crate::command::{Component, DeviceCommand, PackageName};
+use crate::command::{DeviceCommand, PackageName};
 use crate::compat::DeviceProfile;
 use crate::inspect::parse_properties;
 use crate::journal::Journal;
@@ -28,11 +28,10 @@ const FRONT_TIMEOUT: Duration = Duration::from_secs(10);
 ///   device's model and firmware family, names the stock launcher, and
 ///   records a tested takeover. Otherwise `TAKEOVER_NOT_TESTED`.
 /// - 3: the RustTV launcher is installed and not yet Home; Home opens a
-///   system app that outranks RustTV by intent priority (D12). That app is
-///   the only package the plan disables. Any other system activity that
-///   outranks RustTV for Home must be listed in the profile's
-///   `disable_home_components`; the plan disables those activities only,
-///   first, while the stock launcher still wins Home.
+///   system app that outranks RustTV by intent priority (D12), disabled as
+///   the stock launcher. Any other system package with a Home activity that
+///   outranks RustTV must be listed in the profile's `disable_home_packages`;
+///   the plan disables those first, while the stock launcher still wins Home.
 /// - 5: after disabling, Home must resolve to RustTV; then HOME is pressed
 ///   and RustTV must be the resumed activity with a live process within
 ///   10 s. Otherwise the plan rolls back.
@@ -117,32 +116,39 @@ pub fn takeover_plan(
 
     // With the stock launcher disabled, Android opens the highest-priority
     // Home activity left without asking, so every other one above RustTV
-    // must go too; the profile says which were tested.
-    let mut components = Vec::new();
+    // must go too; the profile says which packages were tested.
+    let mut others: Vec<PackageName> = Vec::new();
     for candidate in &status.candidates {
         let package = candidate.package();
-        if package == stock || package == RUSTTV_LAUNCHER || candidate.priority <= rusttv_priority {
+        if package == stock
+            || package == RUSTTV_LAUNCHER
+            || candidate.priority <= rusttv_priority
+            || others.iter().any(|other| other.as_str() == package)
+        {
             continue;
         }
-        let Some(component) = launcher
-            .disable_home_components
+        if !launcher
+            .disable_home_packages
             .iter()
-            .find(|component| component.is(&candidate.component))
-        else {
+            .any(|listed| listed == package)
+        {
             return Err(PlanError::not_tested(format!(
                 "`{}` also handles Home, with priority {} over RustTV's {rusttv_priority}, and the \
-                 profile {profile_name} doesn't list it in `disable_home_components`; with the \
-                 stock launcher disabled, Home would open it instead of RustTV",
+                 profile {profile_name} doesn't list `{package}` in `disable_home_packages`; with \
+                 the stock launcher disabled, Home would open it instead of RustTV",
                 candidate.component, candidate.priority
             )));
-        };
+        }
         if third_party.contains(package) {
             return Err(PlanError::precondition(format!(
-                "`{}` handles Home but isn't a system app; takeover only disables system activities",
+                "`{}` handles Home but isn't a system app; takeover only disables system apps",
                 candidate.component
             )));
         }
-        components.push(component.clone());
+        others.push(
+            PackageName::new(package)
+                .map_err(|error| PlanError::precondition(format!("Home candidate: {error}")))?,
+        );
     }
 
     let stock = PackageName::new(stock)
@@ -160,12 +166,13 @@ pub fn takeover_plan(
             "Without ADB: Settings > Apps > See all apps > Show system apps > {stock} > Enable."
         ),
     ];
-    if !components.is_empty() {
-        let names: Vec<&str> = components.iter().map(Component::as_str).collect();
+    if !others.is_empty() {
+        let names: Vec<&str> = others.iter().map(PackageName::as_str).collect();
         notes.push(format!(
-            "Also disables only these Home activities, not their apps: {}. Re-enabling the stock \
-             launcher in Settings brings the stock Home back without them; `rusttv launcher \
-             restore` re-enables them too.",
+            "Also disables these system apps, which would otherwise take Home: {}. While they are \
+             disabled, everything else they do is off too (setupwraith: the setup wizard's \
+             deferred-setup and reset screens). Re-enabling the stock launcher in Settings brings \
+             the stock Home back; `rusttv launcher restore` re-enables them too.",
             names.join(", ")
         ));
     }
@@ -173,9 +180,9 @@ pub fn takeover_plan(
         "Recovery is never guaranteed (SECURITY.md).".to_owned(),
         format!("Takeover was tested on this model and firmware family ({profile_name})."),
     ]);
-    let mut steps: Vec<Step> = components
+    let mut steps: Vec<Step> = others
         .into_iter()
-        .map(|component| Step::new(DeviceCommand::DisableHomeComponent(component), Vec::new()))
+        .map(|package| Step::new(DeviceCommand::DisablePackage(package), Vec::new()))
         .collect();
     steps.extend([
         Step::new(
@@ -198,7 +205,7 @@ pub fn takeover_plan(
 /// Plans undoing a Home takeover recorded in `journal`. Read-only.
 ///
 /// The journal is a file anyone could edit, so the plan is refused unless
-/// every step only re-enables a package or a Home activity.
+/// every step only re-enables a package.
 pub fn takeover_restore_plan(
     adb: &dyn Adb,
     serial: &str,
@@ -212,15 +219,13 @@ pub fn takeover_restore_plan(
     }
     let fingerprint = device_fingerprint(adb, serial)?;
     let plan = restore_plan(journal, serial, &fingerprint)?;
-    if !plan.steps().iter().all(|step| {
-        matches!(
-            step.command(),
-            DeviceCommand::EnablePackage(_) | DeviceCommand::EnableHomeComponent(_)
-        )
-    }) {
+    if !plan
+        .steps()
+        .iter()
+        .all(|step| matches!(step.command(), DeviceCommand::EnablePackage(_)))
+    {
         return Err(PlanError::precondition(
-            "the journal asks for more than re-enabling packages and Home activities; refusing \
-             to restore from it"
+            "the journal asks for more than re-enabling packages; refusing to restore from it"
                 .to_owned(),
         ));
     }
@@ -295,45 +300,49 @@ mod tests {
     fn tested() -> Vec<DeviceProfile> {
         vec![profile(Some(ProfileLauncher {
             stock_package: STOCK.to_owned(),
-            disable_home_components: Vec::new(),
+            disable_home_packages: Vec::new(),
             takeover_tested: true,
         }))]
     }
 
-    const RECOVERY: &str = "com.google.android.tungsten.setupwraith/.RecoveryActivity";
+    const SETUPWRAITH: &str = "com.google.android.tungsten.setupwraith";
 
-    fn recovery() -> Component {
-        RECOVERY.parse().unwrap()
+    fn setupwraith() -> PackageName {
+        PackageName::new(SETUPWRAITH).unwrap()
     }
 
-    /// Like [`tested`], with setupwraith's Home activity listed as on the
-    /// Philips 65OLED818.
-    fn tested_with_recovery() -> Vec<DeviceProfile> {
+    /// Like [`tested`], with setupwraith listed as on the Philips 65OLED818.
+    fn tested_with_setupwraith() -> Vec<DeviceProfile> {
         vec![profile(Some(ProfileLauncher {
             stock_package: STOCK.to_owned(),
-            disable_home_components: vec![recovery()],
+            disable_home_packages: vec![SETUPWRAITH.to_owned()],
             takeover_tested: true,
         }))]
     }
 
-    /// Home candidates as on the Philips 65OLED818, on each call: stock
-    /// launcher (2), setupwraith's RecoveryActivity (1), RustTV (0),
-    /// FallbackHome (-1000), or without RecoveryActivity once disabled.
-    fn with_recovery(adb: FakeAdb, candidates: Vec<String>) -> FakeAdb {
-        adb.respond_sequence(DeviceCommand::HomeCandidates, candidates)
-            .respond(
-                DeviceCommand::DisableHomeComponent(recovery()),
-                synthetic!("pm-disable-component.txt"),
-            )
-            .respond(
-                DeviceCommand::EnableHomeComponent(recovery()),
-                synthetic!("pm-enable-component.txt"),
-            )
+    /// Home candidates as on the Philips 65OLED818: stock launcher (2),
+    /// setupwraith's RecoveryActivity (1), RustTV (0), FallbackHome (-1000).
+    fn with_setupwraith(adb: FakeAdb) -> FakeAdb {
+        adb.respond(
+            DeviceCommand::HomeCandidates,
+            include_str!("fixtures/philips-65oled818-api34/home-candidates-rusttv-installed.txt"),
+        )
+        .respond(
+            DeviceCommand::DisablePackage(setupwraith()),
+            synthetic!("pm-disable-user.txt"),
+        )
+        .respond(
+            DeviceCommand::EnablePackage(setupwraith()),
+            synthetic!("pm-enable.txt"),
+        )
     }
 
-    fn recovery_enabled() -> String {
-        include_str!("fixtures/philips-65oled818-api34/home-candidates-rusttv-installed.txt")
-            .to_owned()
+    /// `pm list packages -d` output listing `names`.
+    fn disabled(names: &[&str]) -> String {
+        names
+            .iter()
+            .map(|name| format!("package:{name}\n"))
+            .collect()
     }
 
     /// The Google TV emulator before a takeover. `home` is what Home resolves
@@ -476,56 +485,46 @@ mod tests {
     }
 
     #[test]
-    fn a_higher_home_activity_the_profile_doesnt_list_is_not_tested() {
+    fn a_higher_home_app_the_profile_doesnt_list_is_not_tested() {
         // The Philips case: with only the stock launcher disabled, Home would
         // open setupwraith's RecoveryActivity, not RustTV.
-        let adb = with_recovery(planning_tv(), vec![recovery_enabled()]);
+        let adb = with_setupwraith(planning_tv());
         let error = takeover_plan(&adb, SERIAL, &tested()).unwrap_err();
         assert_eq!(error.code(), "TAKEOVER_NOT_TESTED");
-        assert!(error.to_string().contains(RECOVERY), "{error}");
+        assert!(error.to_string().contains(SETUPWRAITH), "{error}");
         assert!(changes(&adb).is_empty());
     }
 
     #[test]
-    fn a_listed_home_activity_is_disabled_first_and_re_enabled_last() {
-        let adb = with_recovery(
-            tv(
-                vec![
-                    real!("home-activity.txt"),
-                    synthetic!("home-activity-rusttv.txt"),
-                ],
-                vec![
-                    synthetic!("packages-d-none.txt"),
-                    synthetic!("packages-d-launcher-disabled.txt"),
-                    synthetic!("packages-d-none.txt"),
-                ],
-                vec![synthetic!("activities-rusttv-front.txt")],
-            ),
+    fn a_listed_home_app_is_disabled_first_and_re_enabled_last() {
+        let adb = with_setupwraith(tv(
             vec![
-                // Planning, then the original state before the first step.
-                recovery_enabled(),
-                recovery_enabled(),
-                // After disabling it, and until restore re-enables it.
-                synthetic!("home-candidates-recovery-disabled.txt"),
-                recovery_enabled(),
+                real!("home-activity.txt"),
+                synthetic!("home-activity-rusttv.txt"),
             ],
-        );
-        let plan = takeover_plan(&adb, SERIAL, &tested_with_recovery()).unwrap();
+            vec![
+                // Before and after each disable, then after each re-enable.
+                disabled(&[]),
+                disabled(&[SETUPWRAITH]),
+                disabled(&[SETUPWRAITH]),
+                disabled(&[SETUPWRAITH, STOCK]),
+                disabled(&[SETUPWRAITH]),
+                disabled(&[]),
+            ],
+            vec![synthetic!("activities-rusttv-front.txt")],
+        ));
+        let plan = takeover_plan(&adb, SERIAL, &tested_with_setupwraith()).unwrap();
         let dry_run = plan.dry_run();
         assert_eq!(
             dry_run.steps[0].command,
-            format!("adb -s {SERIAL} shell pm disable --user 0 {RECOVERY}")
-        );
-        assert_eq!(
-            dry_run.steps[0].records.as_deref(),
-            Some(format!("{RECOVERY} can handle Home").as_str())
+            format!("adb -s {SERIAL} shell pm disable-user --user 0 {SETUPWRAITH}")
         );
         assert_eq!(
             dry_run.steps[0].verify,
-            [format!("{RECOVERY} can't handle Home")]
+            [format!("{SETUPWRAITH} is disabled")]
         );
         assert!(
-            dry_run.notes.iter().any(|note| note.contains(RECOVERY)),
+            dry_run.notes.iter().any(|note| note.contains(SETUPWRAITH)),
             "{:?}",
             dry_run.notes
         );
@@ -536,7 +535,7 @@ mod tests {
         assert_eq!(
             changes(&adb),
             [
-                DeviceCommand::DisableHomeComponent(recovery()),
+                DeviceCommand::DisablePackage(setupwraith()),
                 DeviceCommand::DisablePackage(stock()),
                 DeviceCommand::PressHome
             ]
@@ -548,7 +547,7 @@ mod tests {
             plan.steps().iter().map(Step::command).collect::<Vec<_>>(),
             [
                 &DeviceCommand::EnablePackage(stock()),
-                &DeviceCommand::EnableHomeComponent(recovery())
+                &DeviceCommand::EnablePackage(setupwraith())
             ]
         );
         let approval = plan.approve("restore").unwrap();
@@ -727,7 +726,7 @@ mod tests {
             None,
             Some(ProfileLauncher {
                 stock_package: STOCK.to_owned(),
-                disable_home_components: Vec::new(),
+                disable_home_packages: Vec::new(),
                 takeover_tested: false,
             }),
         ] {
@@ -744,7 +743,7 @@ mod tests {
     fn no_takeover_when_home_is_not_the_profiled_stock_launcher() {
         let profiles = vec![profile(Some(ProfileLauncher {
             stock_package: "com.google.android.tvlauncher".to_owned(),
-            disable_home_components: Vec::new(),
+            disable_home_packages: Vec::new(),
             takeover_tested: true,
         }))];
         let error = takeover_plan(&planning_tv(), SERIAL, &profiles).unwrap_err();
@@ -787,7 +786,7 @@ mod tests {
         // A profile naming the spike as stock launcher, to get past rule 2.
         let profiles = vec![profile(Some(ProfileLauncher {
             stock_package: "ai.rusttv.spike".to_owned(),
-            disable_home_components: Vec::new(),
+            disable_home_packages: Vec::new(),
             takeover_tested: true,
         }))];
         let adb = tv(

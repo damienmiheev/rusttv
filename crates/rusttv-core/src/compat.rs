@@ -10,7 +10,6 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::command::Component;
 use crate::inspect::DeviceInfo;
 
 /// Version of the profile format. Bump it when fields change meaning.
@@ -61,13 +60,13 @@ pub struct DeviceProfile {
 pub struct ProfileLauncher {
     /// Package of the stock launcher, e.g. `com.google.android.apps.tv.launcherx`.
     pub stock_package: String,
-    /// Other system activities that handle Home with a higher priority than
-    /// RustTV, which the takeover disables one by one (never their package),
-    /// e.g. `com.google.android.tungsten.setupwraith/.RecoveryActivity`.
-    /// With the stock launcher gone, Android would open the highest of them
-    /// instead of RustTV.
+    /// Other system packages with a Home activity of higher priority than
+    /// RustTV, which the takeover disables too, e.g.
+    /// `com.google.android.tungsten.setupwraith`: with the stock launcher
+    /// gone, Android would open the highest of them instead of RustTV. (The
+    /// adb shell may not disable a single activity of a system app.)
     #[serde(default)]
-    pub disable_home_components: Vec<Component>,
+    pub disable_home_packages: Vec<String>,
     /// Set only after `rusttv launcher takeover` and `rusttv launcher restore`
     /// both succeeded on this device and firmware family.
     pub takeover_tested: bool,
