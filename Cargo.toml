@@ -22,6 +22,8 @@ toml = "1.1.8"
 # Launcher UI (ARCHITECTURE D9). Pinned: Slint's generated code and runtime must match.
 slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2"] }
 slint-build = "=1.18.1"
+# Headless Slint backend with mocked time, for the launcher's UI tests only.
+i-slint-backend-testing = "=1.18.1"
 # Launcher hero backdrop colour: port of Google's material-color-utilities
 # (quantizer, Score, DislikeAnalyzer, HCT). MIT OR Apache-2.0.
 material-colors = { version = "0.5.0", default-features = false, features = ["std", "quantize"] }

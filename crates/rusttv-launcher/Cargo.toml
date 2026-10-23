@@ -36,6 +36,9 @@ android-activity.workspace = true
 android_logger.workspace = true
 jni.workspace = true
 
+[dev-dependencies]
+i-slint-backend-testing.workspace = true
+
 [build-dependencies]
 slint-build.workspace = true
 

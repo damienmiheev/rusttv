@@ -3711,6 +3711,7 @@ version = "0.0.0"
 dependencies = [
  "android-activity 0.6.1",
  "android_logger",
+ "i-slint-backend-testing",
  "jni 0.21.1",
  "log",
  "material-colors",
