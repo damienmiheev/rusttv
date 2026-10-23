@@ -282,23 +282,22 @@ Exit criteria (ROADMAP Phase 4): steps 1–3 pass; recovery docs (manual
 path: Developer options → animation scales, or `adb shell settings delete
 global <key>`); owner approval before step 4.
 
-## Open questions (owner decisions)
+## Decisions (owner, 2026-10-23)
 
-1. **Values**: one profile at `0.5` for all three scales (recommended), or
-   `0` for window/transition too?
-2. **How to measure the benefit**: BENCHMARK_PLAN has no metric for
-   animation length; `am start -W` `TotalTime` may not include the transition
-   **[unverified]**. Proposal: add "input to last transition frame" from a
-   Perfetto trace, run as A–B–A blocks (baseline, applied, restored) of ≥ 30
-   runs each; that means two typed approvals per measurement.
-3. **Drift on restore**: skip keys the person changed since apply
-   (recommended), or always put back the original?
-4. **Untested devices**: refuse `apply` (recommended, matches takeover), or
-   allow R2 with an extra flag?
-5. **Command names**: `optimize analyze|apply|restore` plus general
-   `rusttv restore --journal` — OK?
-6. **`disable_window_blurs`**: worth a second profile if `analyze` shows the
-   Philips supports blur?
+1. **Values**: one profile, `0.5` for all three animation scales.
+2. **Measuring the benefit**: a Perfetto metric "key press → last frame of
+   the transition", run as A–B–A blocks (baseline, applied, restored) of ≥ 30
+   runs each; two typed approvals per measurement.
+3. **Drift on restore**: skip keys changed since apply, and say so.
+4. **Untested devices**: refuse `apply` (same rule as Home takeover).
+5. **Command names**: `rusttv optimize analyze|apply|restore`, plus a
+   general `rusttv restore --journal <file>`.
+6. **`disable_window_blurs`**: a separate profile only if `analyze` finds the
+   device supports and uses blur.
+
+The owner's main interest beyond animations: turning off ads and telemetry
+on the TV. That is mostly R3 (package state, protected-package policy), not
+R2, and needs its own research and design.
 
 ## Risks
 
