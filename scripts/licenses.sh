@@ -1,8 +1,9 @@
 #!/bin/sh
 # Writes the third-party licence notices for everything RustTV ships:
-# Rust crates (cargo-about, about.toml), the Slint licence text, then Skia and the libraries
-# compiled into it (licenses/skia/). Fails if a crate has a licence not
-# accepted in about.toml.
+# Rust crates (cargo-about, about.toml), the Slint licence text, Skia and the libraries
+# compiled into it (licenses/skia/), then the NDK's LLVM runtimes
+# (licenses/llvm/). Fails if a crate has a licence not accepted in about.toml.
+# android/build.sh runs it and Gradle packs the result into every APK.
 #
 # Usage: scripts/licenses.sh [output]   (default: THIRD_PARTY_NOTICES.txt)
 # Needs: cargo install cargo-about --version 0.9.2 --locked --features cli
@@ -28,6 +29,9 @@ cargo about generate --fail --locked licenses/about.hbs > "$TMP"
         cat "$file"
     done
     printf '\nPortions of this software are copyright (c) The FreeType Project (www.freetype.org). All rights reserved.\n'
+    printf '\n------------------------------------------------------------------------------\n'
+    printf 'libc++, libc++abi and libunwind from the Android NDK (see licenses/llvm/README.md)\n\n'
+    cat licenses/llvm/LICENSE.TXT
 } >> "$TMP"
 mv "$TMP" "$OUT"
 echo "Wrote $OUT ($(wc -l < "$OUT" | tr -d ' ') lines)"
