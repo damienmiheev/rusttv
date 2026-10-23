@@ -1,0 +1,139 @@
+Benchmarking 2 app(s) on tv: this stops and starts them repeatedly and changes no settings. Leave the TV alone until it finishes.
+cold 1/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 0 ms (warm-up)
+cold 1/33 ai.rusttv.launcher/.LauncherActivity: 1162 ms (warm-up)
+cold 2/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 436 ms (warm-up)
+cold 2/33 ai.rusttv.launcher/.LauncherActivity: 584 ms (warm-up)
+cold 3/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 395 ms (warm-up)
+cold 3/33 ai.rusttv.launcher/.LauncherActivity: 560 ms (warm-up)
+cold 4/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 488 ms
+cold 4/33 ai.rusttv.launcher/.LauncherActivity: 808 ms
+cold 5/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 395 ms
+cold 5/33 ai.rusttv.launcher/.LauncherActivity: 567 ms
+cold 6/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 421 ms
+cold 6/33 ai.rusttv.launcher/.LauncherActivity: 552 ms
+cold 7/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 391 ms
+cold 7/33 ai.rusttv.launcher/.LauncherActivity: 560 ms
+cold 8/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 428 ms
+cold 8/33 ai.rusttv.launcher/.LauncherActivity: 585 ms
+cold 9/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 282 ms (discarded: process was still running after force-stop)
+cold 9/33 ai.rusttv.launcher/.LauncherActivity: 550 ms
+cold 10/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 395 ms
+cold 10/33 ai.rusttv.launcher/.LauncherActivity: 568 ms
+cold 11/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 432 ms
+cold 11/33 ai.rusttv.launcher/.LauncherActivity: 556 ms
+cold 12/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 398 ms
+cold 12/33 ai.rusttv.launcher/.LauncherActivity: 557 ms
+cold 13/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 406 ms
+cold 13/33 ai.rusttv.launcher/.LauncherActivity: 553 ms
+cold 14/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 423 ms
+cold 14/33 ai.rusttv.launcher/.LauncherActivity: 553 ms
+cold 15/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 408 ms
+cold 15/33 ai.rusttv.launcher/.LauncherActivity: 552 ms
+cold 16/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 410 ms
+cold 16/33 ai.rusttv.launcher/.LauncherActivity: 566 ms
+cold 17/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 403 ms
+cold 17/33 ai.rusttv.launcher/.LauncherActivity: 577 ms
+cold 18/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 393 ms
+cold 18/33 ai.rusttv.launcher/.LauncherActivity: 540 ms
+cold 19/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 282 ms (discarded: process was still running after force-stop)
+cold 19/33 ai.rusttv.launcher/.LauncherActivity: 568 ms
+cold 20/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 414 ms
+cold 20/33 ai.rusttv.launcher/.LauncherActivity: 591 ms
+cold 21/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 414 ms
+cold 21/33 ai.rusttv.launcher/.LauncherActivity: 1207 ms
+cold 22/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 442 ms
+cold 22/33 ai.rusttv.launcher/.LauncherActivity: 691 ms
+cold 23/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 416 ms
+cold 23/33 ai.rusttv.launcher/.LauncherActivity: 562 ms
+cold 24/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 400 ms
+cold 24/33 ai.rusttv.launcher/.LauncherActivity: 558 ms
+cold 25/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 411 ms
+cold 25/33 ai.rusttv.launcher/.LauncherActivity: 582 ms
+cold 26/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 410 ms
+cold 26/33 ai.rusttv.launcher/.LauncherActivity: 552 ms
+cold 27/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 428 ms
+cold 27/33 ai.rusttv.launcher/.LauncherActivity: 564 ms
+cold 28/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 403 ms
+cold 28/33 ai.rusttv.launcher/.LauncherActivity: 627 ms
+cold 29/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 253 ms (discarded: process was still running after force-stop)
+cold 29/33 ai.rusttv.launcher/.LauncherActivity: 567 ms
+cold 30/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 394 ms
+cold 30/33 ai.rusttv.launcher/.LauncherActivity: 663 ms
+cold 31/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 387 ms
+cold 31/33 ai.rusttv.launcher/.LauncherActivity: 548 ms
+cold 32/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 438 ms
+cold 32/33 ai.rusttv.launcher/.LauncherActivity: 568 ms
+cold 33/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 412 ms
+cold 33/33 ai.rusttv.launcher/.LauncherActivity: 558 ms
+resume 1/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 0 ms (warm-up)
+resume 1/33 ai.rusttv.launcher/.LauncherActivity: 42 ms (warm-up)
+resume 2/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 105 ms (warm-up)
+resume 2/33 ai.rusttv.launcher/.LauncherActivity: 35 ms (warm-up)
+resume 3/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 86 ms (warm-up)
+resume 3/33 ai.rusttv.launcher/.LauncherActivity: 32 ms (warm-up)
+resume 4/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 104 ms
+resume 4/33 ai.rusttv.launcher/.LauncherActivity: 38 ms
+resume 5/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 88 ms
+resume 5/33 ai.rusttv.launcher/.LauncherActivity: 32 ms
+resume 6/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 104 ms
+resume 6/33 ai.rusttv.launcher/.LauncherActivity: 41 ms
+resume 7/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 90 ms
+resume 7/33 ai.rusttv.launcher/.LauncherActivity: 40 ms
+resume 8/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 90 ms
+resume 8/33 ai.rusttv.launcher/.LauncherActivity: 445 ms
+resume 9/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 101 ms
+resume 9/33 ai.rusttv.launcher/.LauncherActivity: 48 ms
+resume 10/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 93 ms
+resume 10/33 ai.rusttv.launcher/.LauncherActivity: 36 ms
+resume 11/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 130 ms
+resume 11/33 ai.rusttv.launcher/.LauncherActivity: 36 ms
+resume 12/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 102 ms
+resume 12/33 ai.rusttv.launcher/.LauncherActivity: 34 ms
+resume 13/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 93 ms
+resume 13/33 ai.rusttv.launcher/.LauncherActivity: 38 ms
+resume 14/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 89 ms
+resume 14/33 ai.rusttv.launcher/.LauncherActivity: 35 ms
+resume 15/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 97 ms
+resume 15/33 ai.rusttv.launcher/.LauncherActivity: 37 ms
+resume 16/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 84 ms
+resume 16/33 ai.rusttv.launcher/.LauncherActivity: 42 ms
+resume 17/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 98 ms
+resume 17/33 ai.rusttv.launcher/.LauncherActivity: 44 ms
+resume 18/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 97 ms
+resume 18/33 ai.rusttv.launcher/.LauncherActivity: 36 ms
+resume 19/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 106 ms
+resume 19/33 ai.rusttv.launcher/.LauncherActivity: 39 ms
+resume 20/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 96 ms
+resume 20/33 ai.rusttv.launcher/.LauncherActivity: 36 ms
+resume 21/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 98 ms
+resume 21/33 ai.rusttv.launcher/.LauncherActivity: 68 ms
+resume 22/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 98 ms
+resume 22/33 ai.rusttv.launcher/.LauncherActivity: 574 ms
+resume 23/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 98 ms
+resume 23/33 ai.rusttv.launcher/.LauncherActivity: 36 ms
+resume 24/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 94 ms
+resume 24/33 ai.rusttv.launcher/.LauncherActivity: 37 ms
+resume 25/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 86 ms
+resume 25/33 ai.rusttv.launcher/.LauncherActivity: 38 ms
+resume 26/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 93 ms
+resume 26/33 ai.rusttv.launcher/.LauncherActivity: 36 ms
+resume 27/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 95 ms
+resume 27/33 ai.rusttv.launcher/.LauncherActivity: 39 ms
+resume 28/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 136 ms
+resume 28/33 ai.rusttv.launcher/.LauncherActivity: 31 ms
+resume 29/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 82 ms
+resume 29/33 ai.rusttv.launcher/.LauncherActivity: 37 ms
+resume 30/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 82 ms
+resume 30/33 ai.rusttv.launcher/.LauncherActivity: 37 ms
+resume 31/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 87 ms
+resume 31/33 ai.rusttv.launcher/.LauncherActivity: 37 ms
+resume 32/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 86 ms
+resume 32/33 ai.rusttv.launcher/.LauncherActivity: 46 ms
+resume 33/33 com.google.android.apps.tv.launcherx/.home.HomeActivity: 86 ms
+resume 33/33 ai.rusttv.launcher/.LauncherActivity: 37 ms
+idle 1/3 com.google.android.apps.tv.launcherx/.home.HomeActivity
+idle 1/3 ai.rusttv.launcher/.LauncherActivity
+idle 2/3 com.google.android.apps.tv.launcherx/.home.HomeActivity
+idle 2/3 ai.rusttv.launcher/.LauncherActivity
+idle 3/3 com.google.android.apps.tv.launcherx/.home.HomeActivity
+idle 3/3 ai.rusttv.launcher/.LauncherActivity

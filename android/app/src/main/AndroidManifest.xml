@@ -14,6 +14,8 @@
 
     <application
         android:label="RustTV"
+        android:icon="@mipmap/ic_launcher"
+        android:banner="@drawable/banner"
         android:hasCode="true"
         android:allowBackup="false"
         android:extractNativeLibs="false">

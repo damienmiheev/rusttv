@@ -50,3 +50,6 @@ THIRD_PARTY_NOTICES.txt
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Copied in by scripts/brand/render.sh while rendering
+scripts/brand/Inter-VariableFont.ttf
