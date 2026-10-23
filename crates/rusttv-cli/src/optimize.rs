@@ -1,10 +1,10 @@
-//! `rusttv optimize ...` commands: privacy profiles (OPTIMIZER.md).
+//! `rusttv optimize ...` commands: privacy and optimizer profiles (OPTIMIZER.md).
 
 use std::path::Path;
 
 use rusttv_core::{
-    Adb, FileJournal, JournalStatus, JournalStore, OptimizeAnalysis, PRIVACY, PackageState,
-    PrivacyCategory, PrivacyData,
+    Adb, FileJournal, JournalStatus, JournalStore, OptimizeAnalysis, OptimizeKind, OptimizerState,
+    OptimizerStatus, PRIVACY, PackageState, PrivacyCategory, PrivacyData, REDUCED_ANIMATIONS,
 };
 
 use crate::launcher::{
@@ -21,13 +21,48 @@ pub fn analyze(
 ) -> Result<(), CliError> {
     let data = PrivacyData::bundled(rusttv_core::load_choices(choices)?);
     let serial = target.resolve(adb)?;
-    let analysis = rusttv_core::optimize_analyze(adb, &serial, &data)?;
+    let journals = rusttv_core::journals_dir()?;
+    let analysis = rusttv_core::optimize_analyze(adb, &serial, &data, &journals)?;
     if json {
         output::print_json(&analysis);
     } else {
         print_analysis(&analysis);
+        print_optimizer(&analysis.optimizer);
     }
     Ok(())
+}
+
+fn print_optimizer(statuses: &[OptimizerStatus]) {
+    println!("\nOptimizer profiles (settings, R2):");
+    for status in statuses {
+        let state = match status.status {
+            OptimizerState::Suggested => "suggested",
+            OptimizerState::Available => "tested here, no measured benefit (not suggested)",
+            OptimizerState::Applied => "applied",
+            OptimizerState::Drifted => "applied, but changed since (drifted)",
+            OptimizerState::Stale => "applied on older firmware (stale): restore, then apply",
+            OptimizerState::NotTested => "not tested on this model (apply refuses it)",
+            OptimizerState::AlreadySet => "already set",
+        };
+        println!(
+            "  {} v{}: {state}. {}",
+            status.profile, status.version, status.description
+        );
+        if let Some(evidence) = &status.evidence {
+            println!("    evidence: {evidence}");
+        }
+        if let Some(journal) = &status.journal {
+            println!("    journal: {journal}");
+        }
+        for setting in &status.settings {
+            println!(
+                "    {:28} now {:6} profile {}",
+                setting.key.as_str(),
+                setting.current.as_deref().unwrap_or("unset"),
+                setting.value
+            );
+        }
+    }
 }
 
 fn print_analysis(analysis: &OptimizeAnalysis) {
@@ -121,15 +156,50 @@ pub fn apply_privacy(
     if !json {
         println!("\nDone: the packages are disabled.");
         println!("Journal: {}", path.display());
-        println!("Undo with `rusttv optimize restore`.");
+        println!("Undo with `rusttv optimize restore privacy`.");
     }
     Ok(())
 }
 
-/// `rusttv optimize restore`.
+/// `rusttv optimize apply reduced-animations`.
+pub fn apply_reduced_animations(
+    adb: &dyn Adb,
+    target: &Target,
+    allow_untested: bool,
+    dry_run: bool,
+    json: bool,
+) -> Result<(), CliError> {
+    if !dry_run {
+        require_terminal()?;
+    }
+    let serial = target.resolve(adb)?;
+    let profile = rusttv_core::bundled_optimizer_profile(REDUCED_ANIMATIONS)?;
+    let plan = rusttv_core::optimizer_plan(
+        adb,
+        &serial,
+        &profile,
+        &rusttv_core::bundled_profiles(),
+        &rusttv_core::journals_dir()?,
+        allow_untested,
+    )?;
+    show_plan(&plan, dry_run, json);
+    if dry_run {
+        return Ok(());
+    }
+    let path = approve_and_apply(adb, &plan, plan.name(), json)?;
+    if !json {
+        println!("\nDone: the settings are changed.");
+        println!("Journal: {}", path.display());
+        println!("Undo with `rusttv optimize restore {REDUCED_ANIMATIONS}`.");
+    }
+    Ok(())
+}
+
+/// `rusttv optimize restore [privacy|reduced-animations]`.
 pub fn restore(
     adb: &dyn Adb,
     target: &Target,
+    kind: Option<OptimizeKind>,
     journal: Option<&Path>,
     dry_run: bool,
     json: bool,
@@ -138,19 +208,27 @@ pub fn restore(
         require_terminal()?;
     }
     let serial = target.resolve(adb)?;
-    let (path, mut journal) = match journal {
-        Some(path) => (path.to_owned(), rusttv_core::load_journal(path)?),
+    let (kind, path, mut journal) = match journal {
+        Some(path) => {
+            let journal = rusttv_core::load_journal(path)?;
+            // Without a name the journal's plan says which kind it is; any
+            // other journal goes to the privacy validator, which refuses it.
+            let kind = kind
+                .or_else(|| OptimizeKind::of_plan(&journal.plan))
+                .unwrap_or(OptimizeKind::Privacy);
+            (kind, path.to_owned(), journal)
+        }
         None => {
             let fingerprint = rusttv_core::device_fingerprint(adb, &serial)?;
-            let search = rusttv_core::find_restorable_journal(
+            let search = rusttv_core::find_optimize_journal(
                 &rusttv_core::journals_dir()?,
-                PRIVACY,
                 &fingerprint,
+                kind,
             );
             for file in &search.unreadable {
                 output::print_note(&format!(
-                    "warning: skipped {}, which can't be read. If it is a privacy plan that \
-                     still needs restoring, fix it and pass `--journal {0}`. Reason: {}",
+                    "warning: skipped {}, which can't be read. If it is a privacy or optimizer \
+                     plan that still needs restoring, fix it and pass `--journal {0}`. Reason: {}",
                     file.path.display(),
                     file.error
                 ));
@@ -158,12 +236,13 @@ pub fn restore(
             search.found?
         }
     };
-    let plan = match rusttv_core::privacy_restore_plan(adb, &serial, &mut journal) {
+    let plan = match rusttv_core::optimize_restore_plan(adb, &serial, kind, &mut journal) {
         Ok(plan) => plan,
         Err(error) => {
-            // Every package is enabled already: record that, so the next
-            // restore finds the journal before this one. Only a file on this
-            // computer changes, never the device.
+            // Nothing is left to undo (every package enabled, every setting
+            // back or changed since): record that, so the next restore finds
+            // the journal before this one. Only a file on this computer
+            // changes, never the device.
             if journal.status == JournalStatus::Restored && !dry_run {
                 FileJournal::new(&path)
                     .save(&journal)
@@ -186,15 +265,21 @@ pub fn restore(
     let approval = confirm(&plan)?;
 
     let mut store = FileJournal::new(&path);
-    rusttv_core::restore(adb, &plan, &approval, &mut journal, &mut store)
+    let left_as_is = rusttv_core::restore(adb, &plan, &approval, &mut journal, &mut store)
         .inspect_err(|_| note_journal(&path))?;
+    for note in &left_as_is {
+        output::print_note(note);
+    }
     if json {
         output::print_json(&ChangeReport {
             journal: path.display().to_string(),
             status: journal.status,
         });
     } else {
-        println!("\nDone: the packages are enabled again.");
+        match kind {
+            OptimizeKind::Privacy => println!("\nDone: the packages are enabled again."),
+            OptimizeKind::ReducedAnimations => println!("\nDone: the settings are put back."),
+        }
     }
     Ok(())
 }

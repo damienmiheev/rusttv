@@ -44,7 +44,8 @@ enum Command {
     /// The home screen (launcher) on a device.
     #[command(subcommand)]
     Launcher(LauncherAction),
-    /// Turn off telemetry, ads and other packages you choose, and undo it.
+    /// Turn off telemetry, ads and other packages you choose, shorten
+    /// animations, and undo it.
     #[command(subcommand)]
     Optimize(OptimizeAction),
 }
@@ -52,7 +53,9 @@ enum Command {
 #[derive(Debug, Subcommand)]
 enum OptimizeAction {
     /// List the catalog packages on this device and what your choices would
-    /// do with them: state, category, tested on this model or not. Read-only.
+    /// do with them: state, category, tested on this model or not. Also where
+    /// each optimizer profile stands, with the current values of its
+    /// settings. Read-only.
     Analyze {
         #[command(flatten)]
         target: Target,
@@ -64,13 +67,18 @@ enum OptimizeAction {
     /// rolls back on failure. Undo with `optimize restore`.
     #[command(subcommand)]
     Apply(ApplyProfile),
-    /// Undo `optimize apply privacy`: re-enable the packages its journal
-    /// disabled. Shows the plan and asks you to type a confirmation.
+    /// Undo `optimize apply`: re-enable the packages a privacy journal
+    /// disabled, or put back the settings an optimizer journal changed
+    /// (leaving any changed since as they are). Shows the plan and asks you
+    /// to type a confirmation.
     Restore {
+        /// Which change to undo: `privacy` or `reduced-animations`. Needed
+        /// only when both can be restored on this device.
+        profile: Option<rusttv_core::OptimizeKind>,
         #[command(flatten)]
         target: Target,
-        /// Journal file to restore from; by default the newest privacy journal
-        /// for this device's firmware.
+        /// Journal file to restore from; by default the newest restorable
+        /// journal of that kind for this device's firmware.
         #[arg(long)]
         journal: Option<PathBuf>,
         /// Only show the plan; change nothing.
@@ -96,6 +104,20 @@ enum ApplyProfile {
         choices: Option<PathBuf>,
         /// Also plan packages not tested on this model; the plan marks each
         /// one UNTESTED.
+        #[arg(long)]
+        allow_untested: bool,
+        /// Only show the plan; change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Halve window, transition and animator animation durations (global
+    /// settings at 0.5). Only on a model where the profile was tested,
+    /// unless --allow-untested.
+    ReducedAnimations {
+        #[command(flatten)]
+        target: Target,
+        /// Plan it although this model's profile doesn't record it as tested
+        /// (for the first test on a device); the plan says it is UNTESTED.
         #[arg(long)]
         allow_untested: bool,
         /// Only show the plan; change nothing.
@@ -365,11 +387,26 @@ fn main() -> ExitCode {
             *dry_run,
             cli.json,
         ),
+        Command::Optimize(OptimizeAction::Apply(ApplyProfile::ReducedAnimations {
+            target,
+            allow_untested,
+            dry_run,
+        })) => {
+            optimize::apply_reduced_animations(&adb, target, *allow_untested, *dry_run, cli.json)
+        }
         Command::Optimize(OptimizeAction::Restore {
+            profile,
             target,
             journal,
             dry_run,
-        }) => optimize::restore(&adb, target, journal.as_deref(), *dry_run, cli.json),
+        }) => optimize::restore(
+            &adb,
+            target,
+            *profile,
+            journal.as_deref(),
+            *dry_run,
+            cli.json,
+        ),
         Command::Performance(PerformanceAction::Snapshot { target, sample_ms }) => {
             performance::snapshot(&adb, target, *sample_ms, cli.json)
         }

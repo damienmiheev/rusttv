@@ -43,6 +43,8 @@ connect <address>`); the MCP server does not connect devices.
 | `launcher_restore_plan` | `serial?`, `from_profile?` (default false) | `rusttv launcher restore --dry-run --json` | [PlanProposal](#planproposal) |
 | `optimize_analyze` | `serial?` | `rusttv optimize analyze --json` | [OptimizeAnalysis](CLI.md#optimizeanalysis) |
 | `privacy_plan` | `serial?`, `only?` (array of `telemetry` \| `ads` \| `extras` \| `casting` \| `smart-home` \| `voice` \| `streaming-apps`; narrows the choices' categories, default none), `allow_untested?` (default false) | `rusttv optimize apply privacy [--only ...] [--allow-untested] --dry-run --json` | [PlanProposal](#planproposal) |
+| `optimize_plan` | `serial?`, `profile` (`reduced-animations`), `allow_untested?` (default false) | `rusttv optimize apply <profile> [--allow-untested] --dry-run --json` | [PlanProposal](#planproposal) |
+| `optimize_restore_plan` | `serial?`, `profile?` (`privacy` \| `reduced-animations`; needed only when both kinds are restorable) | `rusttv optimize restore [<profile>] --dry-run --json` | [PlanProposal](#planproposal) |
 
 `serial` picks the device like the CLI's `--serial`: without it, the only
 connected device is used; with several connected, it is required
@@ -51,13 +53,13 @@ connected device is used; with several connected, it is required
 Not exposed: `device connect` (changes adb state on the computer),
 `performance benchmark` (stops and starts apps, R1), `launcher takeover`
 (not even as a plan: SECURITY.md § Home takeover rule 1, MCP cannot request
-it), `optimize restore` (not even as a plan, for now), applying or approving
-any plan, and `compat profile`. An apply or approve tool never will be.
+it), applying or approving any plan, restoring (only planning a restore),
+and `compat profile`. An apply or approve tool never will be.
 
 ## Plan tools
 
-`launcher_install_plan`, `launcher_uninstall_plan`, `launcher_restore_plan`
-and `privacy_plan` build the same plan as the CLI command with `--dry-run` and change nothing:
+`launcher_install_plan`, `launcher_uninstall_plan`, `launcher_restore_plan`,
+`privacy_plan`, `optimize_plan` and `optimize_restore_plan` build the same plan as the CLI command with `--dry-run` and change nothing:
 they run only R0 commands, write no journal, and create no approval. The
 plan's preconditions are checked as in the CLI, so a plan the CLI would
 refuse fails here with the same code (`PRECONDITION_FAILED` for uninstalling
@@ -99,6 +101,22 @@ during a Home takeover, `NO_JOURNAL`, `INVALID_APK`, ...).
   chosen the person edits their choices file. `apply_command` is `rusttv
   optimize apply privacy --serial <s>`, plus `--only <categories>` and
   `--allow-untested` if given.
+- `optimize_analyze` also reports every optimizer profile (`optimizer`: its
+  status and the current value of each of its settings) and so reads the
+  journals in the CLI's state directory.
+- `optimize_plan` plans a bundled optimizer profile, named from a closed list
+  (`reduced-animations`); no tool takes a setting key or value.
+  `OPTIMIZE_NOT_TESTED` unless the device's compiled-in compat profile records
+  that profile and version as tested, or `allow_untested` is set (the dry run
+  then says "UNTESTED on this model"). `apply_command` is `rusttv optimize
+  apply <profile> --serial <s>`, plus `--allow-untested` if given.
+- `optimize_restore_plan` finds the journal as `rusttv optimize restore`
+  does (newest restorable one of `profile` for the device's firmware;
+  without `profile`, the only kind restorable, else `PRECONDITION_FAILED`
+  naming both). Settings changed since apply are skipped and named in the
+  notes. It takes no journal path, never writes the journal, and reports
+  unreadable journal files like `launcher_restore_plan`. `apply_command` is
+  `rusttv optimize restore <profile> --serial <s> --journal <file>`.
 
 ### PlanProposal
 
@@ -122,14 +140,14 @@ user, not run it: never give an agent a terminal running `rusttv`
 
 ## Results
 
-A tool result's `structuredContent` is the CLI's `rusttv.v5` envelope
+A tool result's `structuredContent` is the CLI's `rusttv.v6` envelope
 (CLI.md § Output), and its first text content item is the same JSON as a
-string (`launcher_restore_plan` may add warnings as further text items, see
+string (`launcher_restore_plan` and `optimize_restore_plan` may add warnings as further text items, see
 § Plan tools):
 
 ```json
-{"schema":"rusttv.v5","ok":true,"data":{}}
-{"schema":"rusttv.v5","ok":false,"error":{"code":"NO_DEVICE","message":"no devices found; connect one with `rusttv device connect <address>`"}}
+{"schema":"rusttv.v6","ok":true,"data":{}}
+{"schema":"rusttv.v6","ok":false,"error":{"code":"NO_DEVICE","message":"no devices found; connect one with `rusttv device connect <address>`"}}
 ```
 
 - Success: `isError` is `false` and `data` is exactly what the CLI prints.

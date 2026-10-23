@@ -12,13 +12,18 @@ use std::process::{Command, Output};
 
 use serde_json::Value;
 
-/// The binary, with a config directory that has no choices file, so the
-/// tests never read the real `privacy.toml`.
+/// The binary, with a config directory that has no choices file and a state
+/// directory without journals, so the tests never read the real
+/// `privacy.toml` or journals (tests that need journals set their own).
 fn rusttv() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_rusttv"));
     command.env(
         "RUSTTV_CONFIG_DIR",
         std::env::temp_dir().join("rusttv-cli-tests-no-config"),
+    );
+    command.env(
+        "RUSTTV_STATE_DIR",
+        std::env::temp_dir().join("rusttv-cli-tests-no-state"),
     );
     command
 }
@@ -36,7 +41,7 @@ fn rusttv_with_fake_adb(scenario: &str, args: &[&str]) -> Output {
 
 fn json_stdout(output: &Output) -> Value {
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["schema"], "rusttv.v5");
+    assert_eq!(value["schema"], "rusttv.v6");
     value
 }
 
@@ -1198,7 +1203,16 @@ fn optimize_apply_rejects_an_unknown_category() {
 fn optimize_apply_and_restore_without_a_terminal_are_refused_before_touching_a_device() {
     for command in [
         &["optimize", "apply", "privacy", "--json"][..],
+        &["optimize", "apply", "reduced-animations", "--json"][..],
+        &[
+            "optimize",
+            "apply",
+            "reduced-animations",
+            "--allow-untested",
+            "--json",
+        ][..],
         &["optimize", "restore", "--json"][..],
+        &["optimize", "restore", "reduced-animations", "--json"][..],
     ] {
         let output = rusttv_with_fake_adb("no-devices", command);
         assert_eq!(output.status.code(), Some(1), "{command:?}");
@@ -1304,5 +1318,382 @@ fn optimize_restore_without_a_journal_says_so() {
     let message = json["error"]["message"].as_str().unwrap();
     assert!(message.contains("no privacy journal"), "{message}");
     assert!(!message.contains("--from-profile"), "{message}");
+    std::fs::remove_dir_all(state).unwrap();
+}
+
+#[test]
+fn optimize_analyze_reports_the_optimizer_profile_and_current_settings() {
+    let output = rusttv_with_fake_adb("philips", &["optimize", "analyze", "--json"]);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    let optimizer = data["optimizer"].as_array().unwrap();
+    assert_eq!(optimizer.len(), 1);
+    let profile = &optimizer[0];
+    assert_eq!(profile["profile"], "reduced-animations");
+    assert_eq!(profile["version"], 1);
+    // The Philips profile records no optimizer test (owner decision).
+    assert_eq!(profile["status"], "not_tested");
+    assert_eq!(profile["tested"], false);
+    assert_eq!(profile["evidence"], Value::Null);
+    assert_eq!(profile["journal"], Value::Null);
+    assert_eq!(
+        profile["settings"],
+        serde_json::json!([
+            {"key": "window_animation_scale", "value": "0.5", "current": "1.0"},
+            {"key": "transition_animation_scale", "value": "0.5", "current": null},
+            {"key": "animator_duration_scale", "value": "0.5", "current": "1.0"},
+        ])
+    );
+
+    let output = rusttv_with_fake_adb("philips", &["optimize", "analyze"]);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("reduced-animations v1: not tested on this model"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("transition_animation_scale   now unset  profile 0.5"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn optimize_apply_reduced_animations_is_refused_on_an_untested_model() {
+    let state = state_dir("animations-untested");
+    let output = rusttv_with_state(
+        "philips",
+        &state,
+        &[
+            "optimize",
+            "apply",
+            "reduced-animations",
+            "--dry-run",
+            "--json",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let json = json_stdout(&output);
+    assert_eq!(json["error"]["code"], "OPTIMIZE_NOT_TESTED");
+    let message = json["error"]["message"].as_str().unwrap();
+    assert!(message.contains("tpv-ph1m-ww-9972.toml"), "{message}");
+    assert!(message.contains("--allow-untested"), "{message}");
+    std::fs::remove_dir_all(state).unwrap();
+}
+
+#[test]
+fn optimize_apply_reduced_animations_allow_untested_dry_run_plans_three_settings() {
+    let state = state_dir("animations-dry-run");
+    let output = rusttv_with_state(
+        "philips",
+        &state,
+        &[
+            "optimize",
+            "apply",
+            "reduced-animations",
+            "--allow-untested",
+            "--dry-run",
+            "--json",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    assert_eq!(data["plan"], "optimize-reduced-animations-v1");
+    assert_eq!(data["max_risk"], "R2");
+    assert_eq!(data["confirmation"], "optimize");
+    let steps = data["steps"].as_array().unwrap();
+    let commands: Vec<&str> = steps
+        .iter()
+        .map(|step| step["command"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        commands,
+        [
+            "adb -s emulator-5554 shell settings put global window_animation_scale 0.5",
+            "adb -s emulator-5554 shell settings put global transition_animation_scale 0.5",
+            "adb -s emulator-5554 shell settings put global animator_duration_scale 0.5",
+        ]
+    );
+    assert_eq!(steps[1]["records"], "transition_animation_scale is unset");
+    assert_eq!(
+        steps[1]["undo"],
+        "adb -s emulator-5554 shell settings delete global transition_animation_scale"
+    );
+    assert!(
+        steps[2]["verify"][1]
+            .as_str()
+            .unwrap()
+            .starts_with("Home opens "),
+        "{data}"
+    );
+    assert!(
+        notes(data)
+            .iter()
+            .any(|note| note.starts_with("UNTESTED on this model")),
+        "{data}"
+    );
+    assert_eq!(
+        std::fs::read_dir(state.join("journals")).unwrap().count(),
+        0,
+        "a dry run writes no journal"
+    );
+
+    // The text dry run, as the person sees it.
+    let output = rusttv_with_state(
+        "philips",
+        &state,
+        &[
+            "optimize",
+            "apply",
+            "reduced-animations",
+            "--allow-untested",
+            "--dry-run",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains(
+            "1. [R2] adb -s emulator-5554 shell settings put global window_animation_scale 0.5\n   \
+             records first: window_animation_scale is 1.0\n   \
+             then checks:   window_animation_scale is 0.5\n   \
+             undo:          adb -s emulator-5554 shell settings put global window_animation_scale 1.0"
+        ),
+        "{stdout}"
+    );
+    std::fs::remove_dir_all(state).unwrap();
+}
+
+/// A `reduced-animations` journal for the Philips getprop fixture's
+/// fingerprint: window set from 1.0, transition and animator from unset.
+const ANIMATIONS_JOURNAL: &str = r#"schema_version = 1
+plan = "optimize-reduced-animations-v1"
+serial = "emulator-5554"
+fingerprint = "Philips/PH1M_WW_9972/PH1M_WW_9972:14/UKN2.241117.001/3000518:user/release-keys"
+started_at_unix_ms = 1761220000002
+status = "applied"
+
+[[steps]]
+adb = "adb -s emulator-5554 shell settings put global window_animation_scale 0.5"
+command = { kind = "set_setting", arg = { key = "window_animation_scale", to = { value = "0.5" }, from = { value = "1.0" } } }
+original_state = { kind = "setting_is", arg = { key = "window_animation_scale", state = { value = "1.0" } } }
+status = "done"
+
+[[steps]]
+adb = "adb -s emulator-5554 shell settings put global transition_animation_scale 0.5"
+command = { kind = "set_setting", arg = { key = "transition_animation_scale", to = { value = "0.5" }, from = "unset" } }
+original_state = { kind = "setting_is", arg = { key = "transition_animation_scale", state = "unset" } }
+status = "done"
+
+[[steps]]
+adb = "adb -s emulator-5554 shell settings put global animator_duration_scale 0.5"
+command = { kind = "set_setting", arg = { key = "animator_duration_scale", to = { value = "0.5" }, from = "unset" } }
+original_state = { kind = "setting_is", arg = { key = "animator_duration_scale", state = "unset" } }
+status = "done"
+"#;
+
+#[test]
+fn optimize_restore_picks_the_one_kind_restorable_or_asks_which() {
+    let state = state_dir("animations-restore");
+    let optimizer = state.join("journals/1761220000002-optimize-reduced-animations-v1.toml");
+    std::fs::write(&optimizer, ANIMATIONS_JOURNAL).unwrap();
+
+    // Only an optimizer journal: `optimize restore` takes it. On the fake TV
+    // window is back at 1.0 and transition unset again (both skipped), and
+    // animator reads 1.0, neither the 0.5 set nor the unset found (left as
+    // is). So nothing is left to do.
+    let output = rusttv_with_state(
+        "philips",
+        &state,
+        &["optimize", "restore", "--dry-run", "--json"],
+    );
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let json = json_stdout(&output);
+    assert_eq!(json["error"]["code"], "PRECONDITION_FAILED");
+    let message = json["error"]["message"].as_str().unwrap();
+    assert!(message.contains("nothing to restore"), "{message}");
+    assert!(
+        message.contains("Skipped animator_duration_scale: it is 1.0 now, not the 0.5 RustTV set"),
+        "{message}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&optimizer).unwrap(),
+        ANIMATIONS_JOURNAL,
+        "a dry run doesn't mark the journal"
+    );
+
+    // With a privacy journal too, a name is needed.
+    let privacy = state.join("journals/1761220000000-privacy.toml");
+    std::fs::write(&privacy, PRIVACY_JOURNAL).unwrap();
+    let output = rusttv_with_state(
+        "philips",
+        &state,
+        &["optimize", "restore", "--dry-run", "--json"],
+    );
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let json = json_stdout(&output);
+    assert_eq!(json["error"]["code"], "PRECONDITION_FAILED");
+    let message = json["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains("`rusttv optimize restore privacy`"),
+        "{message}"
+    );
+    assert!(
+        message.contains("`rusttv optimize restore reduced-animations`"),
+        "{message}"
+    );
+
+    // Named, each finds its own journal.
+    let output = rusttv_with_state(
+        "philips",
+        &state,
+        &["optimize", "restore", "privacy", "--dry-run", "--json"],
+    );
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(json_stdout(&output)["data"]["plan"], "privacy-restore");
+    let output = rusttv_with_state(
+        "philips",
+        &state,
+        &[
+            "optimize",
+            "restore",
+            "reduced-animations",
+            "--dry-run",
+            "--json",
+        ],
+    );
+    let json = json_stdout(&output);
+    assert_eq!(json["error"]["code"], "PRECONDITION_FAILED", "{json}");
+    assert!(
+        json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("nothing to restore"),
+        "{json}"
+    );
+
+    // Each validator refuses the other kind's journal.
+    for (kind, journal, expected) in [
+        (
+            "reduced-animations",
+            &privacy,
+            "not an optimize-reduced-animations",
+        ),
+        ("privacy", &optimizer, "not a privacy journal"),
+    ] {
+        let output = rusttv_with_state(
+            "philips",
+            &state,
+            &[
+                "optimize",
+                "restore",
+                kind,
+                "--journal",
+                journal.to_str().unwrap(),
+                "--dry-run",
+                "--json",
+            ],
+        );
+        let json = json_stdout(&output);
+        assert_eq!(json["error"]["code"], "PRECONDITION_FAILED", "{kind}");
+        let message = json["error"]["message"].as_str().unwrap();
+        assert!(message.contains(expected), "{kind}: {message}");
+    }
+    // `--journal` without a name goes by the journal's plan.
+    let output = rusttv_with_state(
+        "philips",
+        &state,
+        &[
+            "optimize",
+            "restore",
+            "--journal",
+            privacy.to_str().unwrap(),
+            "--dry-run",
+            "--json",
+        ],
+    );
+    assert_eq!(json_stdout(&output)["data"]["plan"], "privacy-restore");
+
+    // The restorable optimizer journal blocks a second optimizer plan.
+    let output = rusttv_with_state(
+        "philips",
+        &state,
+        &[
+            "optimize",
+            "apply",
+            "reduced-animations",
+            "--allow-untested",
+            "--dry-run",
+            "--json",
+        ],
+    );
+    let json = json_stdout(&output);
+    assert_eq!(json["error"]["code"], "PRECONDITION_FAILED");
+    assert!(
+        json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("one at a time"),
+        "{json}"
+    );
+    std::fs::remove_dir_all(state).unwrap();
+}
+
+#[test]
+fn optimize_restore_of_an_optimizer_journal_puts_back_only_what_rusttv_left() {
+    // Window set from 0.5 to 1.0: the fake TV reads 1.0, what RustTV set,
+    // so it is put back to 0.5. Transition reads unset, its original
+    // (skipped); animator reads 1.0, changed since (left as is).
+    let state = state_dir("animations-restore-steps");
+    let journal = ANIMATIONS_JOURNAL
+        .replacen(
+            "to = { value = \"0.5\" }, from = { value = \"1.0\" }",
+            "to = { value = \"1.0\" }, from = { value = \"0.5\" }",
+            1,
+        )
+        .replacen(
+            "state = { value = \"1.0\" }",
+            "state = { value = \"0.5\" }",
+            1,
+        );
+    std::fs::write(
+        state.join("journals/1761220000002-optimize-reduced-animations-v1.toml"),
+        &journal,
+    )
+    .unwrap();
+    let output = rusttv_with_state(
+        "philips",
+        &state,
+        &[
+            "optimize",
+            "restore",
+            "reduced-animations",
+            "--dry-run",
+            "--json",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    assert_eq!(data["plan"], "optimize-reduced-animations-v1-restore");
+    assert_eq!(data["confirmation"], "restore");
+    let steps = data["steps"].as_array().unwrap();
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["command"],
+        "adb -s emulator-5554 shell settings put global window_animation_scale 0.5"
+    );
+    let notes = notes(data);
+    assert!(
+        notes.iter().any(|note| note
+            .starts_with("Skipped transition_animation_scale: it is unset again already")),
+        "{notes:?}"
+    );
+    assert!(
+        notes.iter().any(|note| note
+            .starts_with("Skipped animator_duration_scale: it is 1.0 now, not the 0.5 RustTV set")),
+        "{notes:?}"
+    );
     std::fs::remove_dir_all(state).unwrap();
 }
