@@ -78,20 +78,28 @@ component Tile inherits Rectangle {
     in property <bool> focused;
     in property <int> mode;
     in property <bool> pressed;
-    // 0 active, 1 swaying, 2 settled.
+    // 0 active, 1 swaying (the focused tile, after a short idle).
     in property <int> idle-phase;
 
     property <bool> browsing: mode == Mode.browse;
-    property <bool> sway: focused && browsing && idle-phase == 1;
+    property <bool> sway: focused && browsing && !pressed && idle-phase == 1;
     property <bool> jiggle: mode == Mode.moving;
     property <bool> launching: focused && mode == Mode.launching;
     property <float> scale: launching ? 1.6
         : !focused ? 1.0
         : pressed && browsing ? 1.075
-        : browsing && idle-phase == 2 ? 1.11
         : 1.15;
+    // How much the tile sways, 0..1. Animated, so the sway grows from rest and
+    // fades out again instead of jumping to wherever the phase happens to be.
+    // It fades out only when the focused tile goes still after the idle time;
+    // losing focus, pressing OK or launching stops it at once.
+    property <float> sway-amount: sway ? 1 : 0;
+    animate sway-amount {
+        duration: sway || (focused && browsing && !pressed) ? 1200ms : 0ms;
+        easing: ease-in-out;
+    }
     // Phase in turns; evaluated only while it is used, so a still screen does not redraw.
-    property <float> sway-turns: sway ? animation-tick() / 4s : 0;
+    property <float> sway-turns: sway-amount > 0 ? animation-tick() / 4s : 0;
     property <float> jiggle-turns: jiggle ? animation-tick() / 325ms + index * 0.37 : 0;
 
     width: 250 * u;
@@ -104,18 +112,18 @@ component Tile inherits Rectangle {
     card := Rectangle {
         width: parent.width * scale;
         height: parent.height * scale;
-        x: (parent.width - self.width) / 2 + (sway ? 3 * u * sin(sway-turns * 360deg + 90deg)
-            : jiggle ? 1 * u * sin(jiggle-turns * 360deg + 90deg) : 0);
-        y: (parent.height - self.height) / 2 + (sway ? 3 * u * sin(sway-turns * 360deg)
-            : jiggle ? 1.5 * u * sin(jiggle-turns * 720deg) : 0);
+        x: (parent.width - self.width) / 2 + (jiggle ? 1 * u * sin(jiggle-turns * 360deg + 90deg)
+            : sway-amount * 3 * u * sin(sway-turns * 360deg + 90deg));
+        y: (parent.height - self.height) / 2 + (jiggle ? 1.5 * u * sin(jiggle-turns * 720deg)
+            : sway-amount * 3 * u * sin(sway-turns * 360deg));
         transform-origin: { x: self.width / 2, y: self.height / 2 };
-        transform-rotation: sway ? 1.5deg * sin(sway-turns * 360deg)
-            : jiggle ? 1.6deg * sin(jiggle-turns * 360deg) : 0deg;
+        transform-rotation: jiggle ? 1.6deg * sin(jiggle-turns * 360deg)
+            : sway-amount * 1.5deg * sin(sway-turns * 360deg);
         opacity: launching ? 0 : 1;
         border-radius: 12 * u;
         drop-shadow-color: focused ? #00000080 : #00000040;
         drop-shadow-blur: focused ? 40 * u : 8 * u;
-        drop-shadow-offset-y: (sway ? -3 * u * sin(sway-turns * 360deg) : 0) + (focused ? 20 * u : 4 * u);
+        drop-shadow-offset-y: -sway-amount * 3 * u * sin(sway-turns * 360deg) + (focused ? 20 * u : 4 * u);
 
         animate width, height {
             duration: launching ? 500ms : focused ? 150ms : 250ms;
@@ -138,9 +146,10 @@ component Tile inherits Rectangle {
             }
 
             // Sheen: a faint light band sliding across while the tile sways.
-            if sway: Rectangle {
+            if sway-amount > 0: Rectangle {
                 width: parent.width * 0.6;
                 height: parent.height;
+                opacity: sway-amount;
                 x: parent.width * (0.2 + 0.45 * sin(sway-turns * 360deg));
                 background: @linear-gradient(90deg, #ffffff00 0%, #ffffff1f 50%, #ffffff00 100%);
             }

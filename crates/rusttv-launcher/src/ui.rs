@@ -35,13 +35,15 @@ mod generated {
 }
 use generated::{HomeWindow, TileData};
 
-/// Idle time before the focused tile starts to sway.
-const SWAY_AFTER: Duration = Duration::from_secs(1);
+/// Idle time before the focused tile starts to sway (it fades in, so this can
+/// be short); quick D-pad scrolling passes tiles without starting a sway.
+const SWAY_AFTER: Duration = Duration::from_millis(300);
 
-/// Idle time before the sway stops and the tile settles.
+/// Idle time after which the sway eases back to rest (owner's choice).
 ///
-/// Limits how long the sway keeps redrawing after the last key press.
-const SETTLE_AFTER: Duration = Duration::from_secs(20);
+/// While a tile sways, Skia redraws the whole screen every frame: about 44% of
+/// one core on the Philips 65OLED818. Stopping keeps an idle home screen at ~0%.
+const SWAY_UNTIL: Duration = Duration::from_secs(20);
 
 /// How long focus must rest before the hero follows it.
 const HERO_DELAY: Duration = Duration::from_millis(150);
@@ -233,9 +235,9 @@ fn start(
     let controller = Controller::new(Box::new(platform), &window, options, clock);
 
     let weak = Rc::downgrade(&controller);
-    window.on_key(move |text, pressed, _repeat| {
+    window.on_key(move |text, pressed, repeat| {
         weak.upgrade()
-            .is_some_and(|controller| controller.borrow_mut().key(&text, pressed))
+            .is_some_and(|controller| controller.borrow_mut().key(&text, pressed, repeat))
     });
     Ok((window, controller))
 }
@@ -370,11 +372,17 @@ impl Controller {
     }
 
     /// Handles a key from the window; returns whether it was used.
-    fn key(&mut self, text: &str, pressed: bool) -> bool {
+    ///
+    /// A held OK repeats its key-down about every 50 ms. Those repeats are
+    /// swallowed here: passed on, each restarted the long-press timer, so move
+    /// mode only began on release. Held arrows keep repeating, to scroll.
+    fn key(&mut self, text: &str, pressed: bool, repeat: bool) -> bool {
         let Some(input) = input_for_key(text, pressed) else {
             return false;
         };
-        self.input(input);
+        if !(repeat && input == Input::OkPressed) {
+            self.input(input);
+        }
         true
     }
 
@@ -447,7 +455,9 @@ impl Controller {
             });
     }
 
-    /// Back to the active focus look, then sway after [`SWAY_AFTER`] and settle after [`SETTLE_AFTER`].
+    /// Back to the still focus look, sway from [`SWAY_AFTER`], back to still at
+    /// [`SWAY_UNTIL`]. The sway fades in and out (`home.slint`), so neither
+    /// change jumps.
     fn restart_idle(&mut self) {
         self.set_idle_phase(0);
         let me = self.me.clone();
@@ -458,16 +468,13 @@ impl Controller {
                 };
                 let this = controller.borrow();
                 this.set_idle_phase(1);
-                let me = this.me.clone();
-                this.idle_timer.start(
-                    TimerMode::SingleShot,
-                    SETTLE_AFTER - SWAY_AFTER,
-                    move || {
-                        if let Some(controller) = me.upgrade() {
-                            controller.borrow().set_idle_phase(2);
+                let window = this.window.clone();
+                this.idle_timer
+                    .start(TimerMode::SingleShot, SWAY_UNTIL - SWAY_AFTER, move || {
+                        if let Some(window) = window.upgrade() {
+                            window.set_idle_phase(0);
                         }
-                    },
-                );
+                    });
             });
     }
 
@@ -841,6 +848,37 @@ mod tests {
         let app = |name: &str| TileId::App(format!("{name}/.Main"));
         assert_eq!(saved, [app("b"), app("a"), app("c"), TileId::About]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn holding_ok_enters_move_mode_while_still_held_despite_key_repeats() {
+        let screen = screen(None);
+        screen.key(OK, true);
+        // A remote repeats a held key about every 50 ms.
+        for _ in 0..16 {
+            screen.wait(50);
+            screen
+                .window
+                .window()
+                .dispatch_event(WindowEvent::KeyPressRepeated { text: OK.into() });
+        }
+        assert_eq!(screen.window.get_mode(), mode_value(State::Moving));
+        assert!(screen.launched().is_empty());
+    }
+
+    #[test]
+    fn the_focused_tile_sways_soon_after_focus_and_stops_after_twenty_seconds() {
+        let screen = screen(None);
+        screen.tap(RIGHT);
+        assert_eq!(screen.window.get_idle_phase(), 0);
+        screen.wait(400);
+        assert_eq!(screen.window.get_idle_phase(), 1);
+        screen.wait(19_700);
+        assert_eq!(screen.window.get_idle_phase(), 0);
+        // Any key starts the cycle again.
+        screen.tap(RIGHT);
+        screen.wait(400);
+        assert_eq!(screen.window.get_idle_phase(), 1);
     }
 
     #[test]
