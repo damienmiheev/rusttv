@@ -1,0 +1,43 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+# Cargo.lock is committed (the workspace ships binaries).
+
+# Android / Gradle
+.gradle/
+build/
+local.properties
+.cxx/
+.externalNativeBuild/
+captures/
+*.apk
+*.aab
+*.ap_
+output-metadata.json
+
+# Signing keys — never commit
+*.jks
+*.keystore
+keystore.properties
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment and secrets
+.env
+.env.*
+
+# Local RustTV state (plans, journals, device captures not meant for the repo)
+/.rusttv/
+
+# Claude Code local settings
+.claude/settings.local.json
