@@ -283,3 +283,29 @@ Decided "not for now"; raise again when the core launcher is done.
     pushed anywhere unless the owner chooses to.
   - Depends on the Settings page above; pairs with the change timeline
     ("undo anything") idea.
+
+- **Split screen and picture-in-picture (experimental)** — parked 2026-10-24.
+  Owner's idea: open an app on half the screen (a match plus stats, a game
+  on HDMI plus a guide, a cooking video plus the recipe). Ranked below the
+  phone remote and Tweaks + History: feasibility unknown, smaller everyday
+  value. A fit for `rusttv tools` (TOOLS.md). Discussion so far:
+  - **Picture-in-picture** is built into Android TV, but each app decides
+    whether it supports it; the launcher can't force it. RustTV could list
+    the installed apps that declare PiP and offer "continue in a corner" for
+    them.
+  - **Two apps side by side:** Android has split screen and free-form
+    windows, but TV makers usually switch them off. The developer switches
+    `enable_freeform_support` and `force_resizable_activities` (global
+    settings) might turn them on, set through the safety engine like the
+    animation scales (plan, approval, restore); then the launcher opens two
+    apps with launch bounds for each half. Unknowns: whether the Philips
+    honours the switches; whether its chip can decode two video streams;
+    apps designed for full screen may look broken at half size; the remote
+    controls one half at a time (needs a focus-switch button and a visible
+    border); some apps pause when not focused.
+  - **HDMI next to an app** depends on the TV's own hardware (some Philips
+    models had a "multi view"); an app can't build it.
+  - **First step when picked up:** a read-only check on the Philips of what
+    it reports about multi-window and PiP support and which installed apps
+    declare PiP; if promising, a reversible test of the two switches with
+    the owner's approval, judged by eye.
