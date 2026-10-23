@@ -233,3 +233,53 @@ Decided "not for now"; raise again when the core launcher is done.
   - **First step when picked up:** a read-only check on the Philips whether
     the Android TV Remote Service is installed and listening, and whether it
     reports the current app.
+
+- **Tweaks + History: TV-side changes with a git-backed history** — parked
+  2026-10-24. Owner's idea: what the CLI can change, the launcher's Settings
+  page can change too, and every change from either side is a snapshot in a
+  history the Mac can review and restore. Discussion so far:
+  - **History lives on the TV** (source of truth), with a copy on the Mac.
+    Each entry: time, who (Mac CLI / TV page / drift), message, previous
+    hash, full snapshot. A lost Mac no longer means lost journals. Changes
+    made outside RustTV (vendor Settings, firmware updates) appear as
+    "drift" entries, which also gives the firmware-update guard.
+  - **One state file with sections** (`schema_version`, `[launcher]`,
+    `[settings.global]`, `[packages]`): one atomic rename keeps every
+    snapshot consistent; diffs stay readable per section. Large or separate
+    user content (phone remote layouts, themes, add-on settings) gets its own
+    files.
+  - **Git as the store:** commits = snapshots, `main` = what is really on
+    the TV and verified. Editing on the TV is a `draft` branch; Save turns
+    the diff `main → draft` into a normal plan (approval, apply, verify) and
+    merges only after verification; Cancel deletes the branch; a failed apply
+    rolls back and keeps the draft. Drift during editing moves `main` first
+    and the draft is rebased and re-planned. Git only stores and compares;
+    the safety engine still makes every change.
+  - **Real git vs git-like:** real git (gitoxide, pure Rust) gives branches,
+    merges, rebase and bundles (`git bundle` → the CLI copies it through an
+    adb-shell-only read door → `git fetch` on the Mac) and every git tool;
+    a hand-written hash-chained log is smaller but rebuilds all that. First
+    step when picked up: a spike measuring a minimal gitoxide build in the
+    armv7 APK (size, memory); real git if small, else a git-like log on the
+    TV exported to a real git repo on the Mac.
+  - **What the TV may change:** global/secure settings (e.g. animation
+    scales) after a one-time `WRITE_SECURE_SETTINGS` grant made from the Mac
+    through a plan with approval (survives reboots). Disabling packages needs
+    shell rights: stays on the Mac; the TV page shows state and queues such
+    changes on a `pending-mac` branch, applied with typed approval the next
+    time the CLI connects.
+  - **Approval on the TV:** no terminal there, so a deliberate gesture
+    (e.g. a confirm screen listing exactly what changes, hold OK for 2 s)
+    that a stray press or an agent can't trigger. Changes the safety rules:
+    needs a dated owner decision in SECURITY.md.
+  - **What the history enables:** time machine (browse and restore any
+    snapshot, always as a plan); copy-paste a snapshot to another TV (covers
+    "move to a new TV" and several TVs from one Mac); diff two TVs; tags
+    ("known good"); bisect to find the change that broke something; profiles
+    (kids, guest) and scheduled switches (bedtime) as branches; shareable
+    presets without personal data, feeding a community compat database.
+  - **Privacy:** the history contains the TV's app list, so it lives in the
+    owner's private RustTV data folder, never in this repository and never
+    pushed anywhere unless the owner chooses to.
+  - Depends on the Settings page above; pairs with the change timeline
+    ("undo anything") idea.
