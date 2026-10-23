@@ -1,6 +1,8 @@
 # Safe optimizer (Phase 4) — design
 
-Status: **design, not built** (2026-10-23). Nothing here has run on a device.
+Status (2026-10-23): § 1–6 (R2 animation settings) are **design, not built**.
+§ Privacy profiles (R3) is **built** and tested against fakes; it has not run
+on a device, and the Philips profile is not marked tested yet.
 It builds on the safety engine that Home takeover already uses
 (`crates/rusttv-core/src/plan.rs`, `journal.rs`; SECURITY.md § Change
 lifecycle) and changes only what the optimizer needs.
@@ -122,7 +124,7 @@ value = "0.5"
 ```
 
 **Device gating**, in the existing device profile (`compat/devices/*.toml`,
-`PROFILE_SCHEMA_VERSION` 2 → 3), like `[launcher] takeover_tested`:
+`PROFILE_SCHEMA_VERSION` 3 → 4; 3 added `[privacy]`), like `[launcher] takeover_tested`:
 
 ```toml
 [[optimizer]]
@@ -284,62 +286,83 @@ global <key>`); owner approval before step 4.
 
 ## Privacy profiles (R3): telemetry and ads
 
-*Owner decision 2026-10-23: build this on the engine.* A privacy profile
-disables, never uninstalls, packages that collect telemetry, show ads or run
-for nothing on a given TV model. It is the route SECURITY.md § Protected
-package policy already plans for (rule 4: "tested-safe for that model and
-firmware family"); no new exception is needed.
+*Owner decision 2026-10-23: build this on the engine.* **As built
+2026-10-23** (`crates/rusttv-core/src/privacy.rs`); not yet run on a device.
+A privacy profile disables, never uninstalls, packages that collect telemetry,
+show ads or run for nothing on a given TV model. It is the route SECURITY.md
+§ Protected package policy already plans for (rule 4: "tested-safe for that
+model and firmware family"); no new exception is needed.
 
-**Profile.** In the device's compat profile, one entry per package:
+**Profile.** In the device's compat profile (`PROFILE_SCHEMA_VERSION` 3), one
+entry per package, in the order they are disabled (telemetry, ads, extras):
 
 ```toml
+[privacy]
+tested = false                  # true only after apply, reboot, normal use, restore on this model
+
 [[privacy.packages]]
-package = "org.droidtv.candeebug"
-category = "telemetry"          # telemetry | ads | extras
-what = "TP Vision analytics collection service; starts at boot"
-side_effects = "none seen"      # what stops working, in plain words
-checked = "2026-10-23"          # date it was disabled and lived with on this model
+package = "org.droidtv.candeebug"   # validated like every PackageName
+category = "telemetry"              # telemetry | ads | extras
+what = "TP Vision service that collects analytics; ..."
+side_effects = "none expected"      # what stops working, in plain words
+checked = ""                        # date it was disabled and lived with on this model
 ```
 
 Entries are written from our own checks on the device; lists from other
 projects (e.g. cleanyourtv's `examples/`) are leads only, credited in
-RESEARCH.md, not copied.
+RESEARCH.md, not copied. The Philips 65OLED818 profile lists twelve packages
+(five telemetry, three ads, four extras), seen present and enabled on
+2026-10-23, with `tested = false` and empty `checked` until the owner tests
+them on the TV.
 
-**Commands.** `rusttv optimize analyze` lists the profile's packages that are
-present and enabled (R0). `rusttv optimize apply privacy [--only telemetry,ads]`
-plans one `DisablePackage` step per package, in the profile's order; the dry
-run shows each package with `what` and `side_effects`. Typed confirmation,
-journal, verify, rollback as for every R3 plan. `rusttv optimize restore`
-re-enables exactly what the journal disabled (skipping, and reporting, any
-package re-enabled since).
+**Commands.**
 
-**Checks before every step** (live, never cached): rules 1–3 of the protected
-package policy: not a Home resolver, not an input method, accessibility
-service, TV input, setup wizard, system UI, settings, installer, network
-stack, Bluetooth/remote pairing or Google Play services package, not on
-`compat/protected.toml`. A package that fails any rule is refused even if a
-profile lists it. **After the last step:** Home still resolves to the same
-activity, and the TV input service is still running (HDMI works).
+- `rusttv optimize analyze` (R0): the matching profile, whether its privacy
+  profile is tested, and each package with its category, `what`,
+  `side_effects`, state (`absent` / `enabled` / `disabled`, so a firmware
+  update re-enabling one shows) and whether it is protected.
+- `rusttv optimize apply privacy [--only telemetry,ads,extras] [--dry-run]`:
+  refused with `PROFILE_NOT_TESTED` unless the matching profile has
+  `[privacy] tested = true`. One `DisablePackage` step per package, in
+  profile order; packages not installed or already disabled are skipped and
+  named in the notes; each planned package's `what` and `side_effects` are in
+  the dry run's notes. Typed confirmation `privacy`, journal (`<ms>-privacy.toml`),
+  verify, rollback as for every R3 plan.
+- `rusttv optimize restore [--journal <file>] [--dry-run]`: the newest
+  restorable privacy journal for the firmware. Like `takeover_restore_plan`,
+  the journal is untrusted: refused unless it is a `privacy` journal whose
+  every undo is `EnablePackage`. Packages enabled again since are skipped
+  (their steps marked undone) and named in the notes; if all are,
+  `PRECONDITION_FAILED`.
 
-**Separate from Home takeover.** Privacy plans never list the stock launcher
-or the packages takeover disables; their journals are separate, so either can
-be restored without the other.
+**Checks before planning** (live, never cached; SECURITY.md § Protected
+package policy *As built*): a listed package is refused if Home opens it or
+it can handle Home, if it provides an input method (`ime list -a -s`) or an
+enabled accessibility service (`settings get secure
+enabled_accessibility_services`), or if it is on `compat/protected.toml`
+(compiled in; covers TV inputs, setup wizard, system UI, settings,
+installers, network stack, Bluetooth, Play services and the launchers by
+name). One protected package refuses the whole plan (`PACKAGE_PROTECTED`).
+**After the last step:** Home still opens the same activity as before, and
+the set of Home candidates is unchanged; otherwise every step is undone.
+Not built: a check that the TV input service is still running after the last
+step (no typed command reads it yet), and re-running the protected-package
+checks inside `apply` (the CLI plans right before the confirmation).
 
-**Marking a package tested.** Only after it was disabled on that model,
-the TV was rebooted and used normally (Home, HDMI, apps, remote buttons,
-Settings) and a restore brought it back. Firmware updates may re-enable
-packages; `analyze` reports that.
+**Separate from Home takeover.** The deny-list covers the stock launchers and
+setupwraith, so privacy plans never list them; their journals are separate
+(`launcher restore` and `optimize restore` each refuse the other's), so either
+can be restored without the other.
 
-**First candidates on the Philips 65OLED818** (present and enabled on
-2026-10-23; each still needs the research above before it is listed):
-`org.droidtv.candeebug` (TP Vision analytics, running, ~12 MB PSS),
-`org.droidtv.gel` (TP Vision metrics), `com.google.android.partnersetup`
-(partner referrer), `com.android.adservices.api`,
-`com.android.ondevicepersonalization.services`,
-`com.android.federatedcompute.services` (ad personalisation),
-`com.android.tv.feedbackconsent`, `com.google.android.feedback`,
-`com.google.android.play.games`, `com.google.android.syncadapters.calendar`,
-`com.android.printspooler`, `com.google.android.onetimeinitializer`.
+**Marking a profile tested.** Only after its packages were disabled on that
+model, the TV was rebooted and used normally (Home, HDMI, apps, remote
+buttons, Settings) and a restore brought them back. Then set `tested = true`
+and each package's `checked` date. Firmware updates may re-enable packages;
+`analyze` shows that.
+
+**MCP:** `optimize_analyze` (R0) and `privacy_plan` (`serial?`, `only?` from
+the closed category list; returns the dry run and the CLI command). No tool
+takes a package name, applies or restores.
 
 ## Decisions (owner, 2026-10-23)
 

@@ -15,7 +15,11 @@ First public release (ROADMAP Phase 6).
 - `launcher status`, `launcher install` / `uninstall`, and the opt-in Home
   takeover / restore (SECURITY.md), all planned, shown as a dry run, approved,
   journaled and verified by the safety engine.
-- Stable `--json` output, schema `rusttv.v3`, and documented error codes (CLI.md).
+- `optimize analyze`, `optimize apply privacy` and `optimize restore`: privacy
+  profiles that disable (never uninstall) telemetry, ads and extras packages
+  on models where the profile is tested, with live protected-package checks
+  (OPTIMIZER.md, SECURITY.md).
+- Stable `--json` output, schema `rusttv.v4`, and documented error codes (CLI.md).
 
 ### MCP server (`rusttv-mcp`)
 

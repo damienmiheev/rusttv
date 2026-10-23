@@ -18,6 +18,7 @@ mod journal;
 mod launcher;
 mod perf;
 mod plan;
+mod privacy;
 mod takeover;
 #[cfg(test)]
 mod test_support;
@@ -35,9 +36,10 @@ pub use command::{
     PackageName, RiskClass,
 };
 pub use compat::{
-    DeviceKind, DeviceProfile, MissingField, PROFILE_SCHEMA_VERSION, ProfileDevice,
-    ProfileFirmware, ProfileHardware, ProfileLauncher, ProfileTested, bundled_profiles,
-    firmware_family, profile_file_name, profile_from_info,
+    DeviceKind, DeviceProfile, InvalidPrivacyCategory, MissingField, PROFILE_SCHEMA_VERSION,
+    PrivacyCategory, PrivacyPackage, ProfileDevice, ProfileFirmware, ProfileHardware,
+    ProfileLauncher, ProfilePrivacy, ProfileTested, bundled_profiles, firmware_family,
+    profile_file_name, profile_from_info,
 };
 pub use device::{
     ConnectOutcome, DEFAULT_ADB_PORT, DeviceAddress, DeviceEntry, DeviceSelectionError,
@@ -62,6 +64,10 @@ pub use launcher::{
 pub use plan::{
     Approval, Check, DryRun, DryRunStep, Plan, PlanError, Step, apply, device_fingerprint, restore,
     restore_plan,
+};
+pub use privacy::{
+    OptimizeAnalysis, PRIVACY, PackageState, PrivacyAnalysis, PrivacyPackageStatus,
+    optimize_analyze, privacy_plan, privacy_restore_plan, statically_protected,
 };
 pub use takeover::{
     HOME_TAKEOVER, takeover_journal_from_profile, takeover_plan, takeover_restore_plan,

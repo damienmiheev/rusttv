@@ -100,8 +100,13 @@ pub enum DeviceCommand {
     /// Wakes the screen and ends the screensaver, as any key press would
     /// (`input keyevent KEYCODE_WAKEUP`). Transient.
     WakeUp,
+    /// Every input method, enabled or not, one id per line (`ime list -a -s`).
+    InputMethods,
+    /// Enabled accessibility services, `:`-separated components or `null`
+    /// (`settings get secure enabled_accessibility_services`).
+    EnabledAccessibilityServices,
     /// Disables a package for user 0 (`pm disable-user --user 0 <package>`).
-    /// Package state; only the Home takeover plan uses it (SECURITY.md).
+    /// Package state; only Home takeover and privacy plans use it (SECURITY.md).
     DisablePackage(PackageName),
     /// Re-enables a package for user 0 (`pm enable --user 0 <package>`). Package state.
     EnablePackage(PackageName),
@@ -136,7 +141,9 @@ impl DeviceCommand {
             | Self::PackageMemInfo(_)
             | Self::ProcessCpuTimes
             | Self::Activities
-            | Self::PowerState => RiskClass::Read,
+            | Self::PowerState
+            | Self::InputMethods
+            | Self::EnabledAccessibilityServices => RiskClass::Read,
             Self::ForceStop(_) | Self::StartActivity(_) | Self::PressHome | Self::WakeUp => {
                 RiskClass::Transient
             }
@@ -227,6 +234,14 @@ impl DeviceCommand {
             Self::PressHome => vec!["shell", "input", "keyevent", "KEYCODE_HOME"],
             Self::PowerState => vec!["shell", "dumpsys", "power"],
             Self::WakeUp => vec!["shell", "input", "keyevent", "KEYCODE_WAKEUP"],
+            Self::InputMethods => vec!["shell", "ime", "list", "-a", "-s"],
+            Self::EnabledAccessibilityServices => vec![
+                "shell",
+                "settings",
+                "get",
+                "secure",
+                "enabled_accessibility_services",
+            ],
             Self::DisablePackage(package) => {
                 vec![
                     "shell",
@@ -509,6 +524,8 @@ mod tests {
             DeviceCommand::PressHome,
             DeviceCommand::PowerState,
             DeviceCommand::WakeUp,
+            DeviceCommand::InputMethods,
+            DeviceCommand::EnabledAccessibilityServices,
             DeviceCommand::DisablePackage(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::EnablePackage(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::InstallLauncher(apk()),
@@ -535,6 +552,8 @@ mod tests {
                 | DeviceCommand::PressHome
                 | DeviceCommand::PowerState
                 | DeviceCommand::WakeUp
+                | DeviceCommand::InputMethods
+                | DeviceCommand::EnabledAccessibilityServices
                 | DeviceCommand::DisablePackage(_)
                 | DeviceCommand::EnablePackage(_)
                 | DeviceCommand::InstallLauncher(_)
@@ -553,9 +572,9 @@ mod tests {
     fn only_package_state_and_launcher_install_commands_are_above_transient() {
         // This used to assert that nothing above R1 existed, because R2/R3
         // commands needed the plan/approve/journal engine (SECURITY.md). The
-        // engine now exists (`crate::plan`): Home takeover needs two R3
-        // commands and `launcher install`/`uninstall` three more, all limited
-        // to RustTV's own package. Anything else above R1 must be added here on purpose.
+        // engine now exists (`crate::plan`): Home takeover and privacy
+        // profiles need two R3 commands and `launcher install`/`uninstall`
+        // three more, limited to RustTV's own package. Anything else above R1 must be added here on purpose.
         for command in every_command() {
             let expected = match command {
                 DeviceCommand::ForceStop(_)

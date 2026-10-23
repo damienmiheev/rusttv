@@ -2,7 +2,7 @@
 
 `rusttv-mcp` is a [Model Context Protocol](https://modelcontextprotocol.io)
 server that gives AI agents RustTV's **read-only** commands as tools, plus
-tools that **plan** a launcher change and return its dry run. It talks over
+tools that **plan** a launcher or privacy change and return its dry run. It talks over
 stdin/stdout (the stdio transport) and calls the same `rusttv-core` functions
 as the CLI. It is a local process on your computer; it opens no network port.
 
@@ -41,6 +41,8 @@ connect <address>`); the MCP server does not connect devices.
 | `launcher_install_plan` | `serial?`, `apk?` | `rusttv launcher install --dry-run --json` | [PlanProposal](#planproposal) |
 | `launcher_uninstall_plan` | `serial?` | `rusttv launcher uninstall --dry-run --json` | [PlanProposal](#planproposal) |
 | `launcher_restore_plan` | `serial?`, `from_profile?` (default false) | `rusttv launcher restore --dry-run --json` | [PlanProposal](#planproposal) |
+| `optimize_analyze` | `serial?` | `rusttv optimize analyze --json` | [OptimizeAnalysis](CLI.md#optimizeanalysis) |
+| `privacy_plan` | `serial?`, `only?` (array of `telemetry` \| `ads` \| `extras`; default all) | `rusttv optimize apply privacy [--only ...] --dry-run --json` | [PlanProposal](#planproposal) |
 
 `serial` picks the device like the CLI's `--serial`: without it, the only
 connected device is used; with several connected, it is required
@@ -49,13 +51,13 @@ connected device is used; with several connected, it is required
 Not exposed: `device connect` (changes adb state on the computer),
 `performance benchmark` (stops and starts apps, R1), `launcher takeover`
 (not even as a plan: SECURITY.md § Home takeover rule 1, MCP cannot request
-it), applying or approving any plan, and `compat profile`. An apply or approve
-tool never will be.
+it), `optimize restore` (not even as a plan, for now), applying or approving
+any plan, and `compat profile`. An apply or approve tool never will be.
 
 ## Plan tools
 
-`launcher_install_plan`, `launcher_uninstall_plan` and `launcher_restore_plan`
-build the same plan as the CLI command with `--dry-run` and change nothing:
+`launcher_install_plan`, `launcher_uninstall_plan`, `launcher_restore_plan`
+and `privacy_plan` build the same plan as the CLI command with `--dry-run` and change nothing:
 they run only R0 commands, write no journal, and create no approval. The
 plan's preconditions are checked as in the CLI, so a plan the CLI would
 refuse fails here with the same code (`PRECONDITION_FAILED` for uninstalling
@@ -83,6 +85,13 @@ during a Home takeover, `NO_JOURNAL`, `INVALID_APK`, ...).
   --from-profile`. It still writes no journal; the CLI saves one when the
   person applies it.
 
+- `privacy_plan` plans the device's privacy profile from its bundled compat
+  profile (`PROFILE_NOT_TESTED` unless it is marked tested on this model;
+  `PACKAGE_PROTECTED` if it lists a package RustTV never disables). It takes
+  no package names: `only` is a closed list of categories, and anything else
+  is rejected before the device is contacted. `apply_command` is `rusttv
+  optimize apply privacy --serial <s>`, plus `--only <categories>` if given.
+
 ### PlanProposal
 
 `dry_run`: a [DryRun](CLI.md#dryrun), exactly what the CLI prints with
@@ -105,14 +114,14 @@ user, not run it: never give an agent a terminal running `rusttv`
 
 ## Results
 
-A tool result's `structuredContent` is the CLI's `rusttv.v3` envelope
+A tool result's `structuredContent` is the CLI's `rusttv.v4` envelope
 (CLI.md § Output), and its first text content item is the same JSON as a
 string (`launcher_restore_plan` may add warnings as further text items, see
 § Plan tools):
 
 ```json
-{"schema":"rusttv.v3","ok":true,"data":{}}
-{"schema":"rusttv.v3","ok":false,"error":{"code":"NO_DEVICE","message":"no devices found; connect one with `rusttv device connect <address>`"}}
+{"schema":"rusttv.v4","ok":true,"data":{}}
+{"schema":"rusttv.v4","ok":false,"error":{"code":"NO_DEVICE","message":"no devices found; connect one with `rusttv device connect <address>`"}}
 ```
 
 - Success: `isError` is `false` and `data` is exactly what the CLI prints.

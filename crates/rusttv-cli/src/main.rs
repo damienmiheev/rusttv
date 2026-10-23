@@ -1,6 +1,7 @@
 mod apps;
 mod compat;
 mod launcher;
+mod optimize;
 mod output;
 mod performance;
 
@@ -43,6 +44,52 @@ enum Command {
     /// The home screen (launcher) on a device.
     #[command(subcommand)]
     Launcher(LauncherAction),
+    /// Turn off telemetry and ads with a tested privacy profile, and undo it.
+    #[command(subcommand)]
+    Optimize(OptimizeAction),
+}
+
+#[derive(Debug, Subcommand)]
+enum OptimizeAction {
+    /// Show this device's privacy profile and each package's state. Read-only.
+    Analyze {
+        #[command(flatten)]
+        target: Target,
+    },
+    /// Apply a profile. Shows the plan and asks you to type a confirmation;
+    /// rolls back on failure. Undo with `optimize restore`.
+    #[command(subcommand)]
+    Apply(ApplyProfile),
+    /// Undo `optimize apply privacy`: re-enable the packages its journal
+    /// disabled. Shows the plan and asks you to type a confirmation.
+    Restore {
+        #[command(flatten)]
+        target: Target,
+        /// Journal file to restore from; by default the newest privacy journal
+        /// for this device's firmware.
+        #[arg(long)]
+        journal: Option<PathBuf>,
+        /// Only show the plan; change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum ApplyProfile {
+    /// Disable (never uninstall) the telemetry, ads and extras packages the
+    /// device's compat profile lists. Only on models where it was tested.
+    Privacy {
+        #[command(flatten)]
+        target: Target,
+        /// Only these categories, comma-separated: telemetry, ads, extras.
+        /// Default: all.
+        #[arg(long, value_delimiter = ',')]
+        only: Vec<rusttv_core::PrivacyCategory>,
+        /// Only show the plan; change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -286,6 +333,19 @@ fn main() -> ExitCode {
             *dry_run,
             cli.json,
         ),
+        Command::Optimize(OptimizeAction::Analyze { target }) => {
+            optimize::analyze(&adb, target, cli.json)
+        }
+        Command::Optimize(OptimizeAction::Apply(ApplyProfile::Privacy {
+            target,
+            only,
+            dry_run,
+        })) => optimize::apply_privacy(&adb, target, only, *dry_run, cli.json),
+        Command::Optimize(OptimizeAction::Restore {
+            target,
+            journal,
+            dry_run,
+        }) => optimize::restore(&adb, target, journal.as_deref(), *dry_run, cli.json),
         Command::Performance(PerformanceAction::Snapshot { target, sample_ms }) => {
             performance::snapshot(&adb, target, *sample_ms, cli.json)
         }

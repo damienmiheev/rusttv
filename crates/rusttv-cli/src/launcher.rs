@@ -55,12 +55,13 @@ fn print_status(status: &LauncherStatus) {
     }
 }
 
-/// Result of `launcher takeover` / `install` / `uninstall` / `restore` in `--json` output.
+/// Result of `launcher takeover` / `install` / `uninstall` / `restore` and
+/// `optimize apply` / `restore` in `--json` output.
 #[derive(Debug, Serialize)]
-struct ChangeReport {
+pub(crate) struct ChangeReport {
     /// The journal file recording the change.
-    journal: String,
-    status: JournalStatus,
+    pub(crate) journal: String,
+    pub(crate) status: JournalStatus,
 }
 
 /// `rusttv launcher takeover`.
@@ -135,7 +136,7 @@ pub fn uninstall(
 
 /// Asks for the typed confirmation, then applies `plan` with a new journal
 /// named after `name`. With `--json`, prints the [`ChangeReport`].
-fn approve_and_apply(
+pub(crate) fn approve_and_apply(
     adb: &dyn Adb,
     plan: &Plan,
     name: &str,
@@ -241,7 +242,7 @@ pub fn restore(
 
 /// Shows the plan: as the result with `--dry-run`, otherwise before the prompt.
 /// With `--json`, only a dry run goes to stdout, which carries one JSON object.
-fn show_plan(plan: &Plan, dry_run: bool, json: bool) {
+pub(crate) fn show_plan(plan: &Plan, dry_run: bool, json: bool) {
     let dry = plan.dry_run();
     match (json, dry_run) {
         (true, true) => output::print_json(&dry),
@@ -252,7 +253,7 @@ fn show_plan(plan: &Plan, dry_run: bool, json: bool) {
 
 /// Approval comes only from a person typing at a terminal (SECURITY.md):
 /// there is deliberately no `--yes` flag.
-fn require_terminal() -> Result<(), CliError> {
+pub(crate) fn require_terminal() -> Result<(), CliError> {
     if io::stdin().is_terminal() {
         Ok(())
     } else {
@@ -264,7 +265,7 @@ fn require_terminal() -> Result<(), CliError> {
     }
 }
 
-fn confirm(plan: &Plan) -> Result<Approval, CliError> {
+pub(crate) fn confirm(plan: &Plan) -> Result<Approval, CliError> {
     output::print_note(&format!(
         "\nType `{}` and press Enter to apply this plan; anything else cancels:",
         plan.confirmation()
@@ -276,13 +277,13 @@ fn confirm(plan: &Plan) -> Result<Approval, CliError> {
     Ok(plan.approve(&typed)?)
 }
 
-fn note_journal(path: &Path) {
+pub(crate) fn note_journal(path: &Path) {
     if path.exists() {
         output::print_note(&format!("Journal: {}", path.display()));
     }
 }
 
-fn now_unix_ms() -> u64 {
+pub(crate) fn now_unix_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |elapsed| {
