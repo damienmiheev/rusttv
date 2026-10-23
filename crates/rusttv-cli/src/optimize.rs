@@ -3,7 +3,8 @@
 use std::path::Path;
 
 use rusttv_core::{
-    Adb, FileJournal, OptimizeAnalysis, PRIVACY, PackageState, PrivacyCategory, PrivacyData,
+    Adb, FileJournal, JournalStatus, JournalStore, OptimizeAnalysis, PRIVACY, PackageState,
+    PrivacyCategory, PrivacyData,
 };
 
 use crate::launcher::{
@@ -157,7 +158,24 @@ pub fn restore(
             search.found?
         }
     };
-    let plan = rusttv_core::privacy_restore_plan(adb, &serial, &mut journal)?;
+    let plan = match rusttv_core::privacy_restore_plan(adb, &serial, &mut journal) {
+        Ok(plan) => plan,
+        Err(error) => {
+            // Every package is enabled already: record that, so the next
+            // restore finds the journal before this one. Only a file on this
+            // computer changes, never the device.
+            if journal.status == JournalStatus::Restored && !dry_run {
+                FileJournal::new(&path)
+                    .save(&journal)
+                    .map_err(rusttv_core::PlanError::journal)?;
+                output::print_note(&format!(
+                    "Marked {} restored: nothing in it is left to undo.",
+                    path.display()
+                ));
+            }
+            return Err(error.into());
+        }
+    };
     if !json {
         println!("Journal: {}\n", path.display());
     }

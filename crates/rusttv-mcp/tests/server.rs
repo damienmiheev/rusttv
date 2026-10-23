@@ -969,6 +969,10 @@ fn philips_privacy() -> FakeAdb {
             capture!("synthetic-privacy", "packages-f.txt"),
         )
         .respond(
+            DeviceCommand::TvInputs,
+            capture!("synthetic-privacy", "tv-input.txt"),
+        )
+        .respond(
             DeviceCommand::ListDisabledPackages,
             "package:org.droidtv.gel\n",
         );

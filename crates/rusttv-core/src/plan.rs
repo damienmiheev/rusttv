@@ -24,6 +24,7 @@ use crate::inspect::parse_properties;
 use crate::journal::{Journal, JournalStatus, JournalStep, JournalStore, StepStatus};
 use crate::launcher::{parse_home_candidates, parse_resumed_activity};
 use crate::perf::{parse_home_activity, parse_process_list};
+use crate::privacy::parse_bound_tv_input_services;
 
 /// How often a polled step re-checks; see [`Step::polling_for`].
 const POLL_INTERVAL: Duration = Duration::from_millis(500);
@@ -57,6 +58,15 @@ pub enum Check {
     HomeActivityIs(Component),
     /// The activities that can handle Home are exactly these (any order).
     HomeCandidatesAre(Vec<Component>),
+    /// The package passes the protected-package check now (SECURITY.md §
+    /// Protected package policy, rules 1–3): Home doesn't open it, it can't
+    /// handle Home, it provides no input method or enabled accessibility
+    /// service, and it isn't on `compat/protected.toml`. Output that can't be
+    /// read counts as protected.
+    NotProtected(PackageName),
+    /// Each of these TV input services is still bound by the system
+    /// (`dumpsys tv_input`); others may be bound too.
+    TvInputServicesBound(Vec<Component>),
 }
 
 impl Check {
@@ -133,6 +143,14 @@ impl Check {
                 expected.dedup();
                 Ok(now == expected)
             }
+            Self::NotProtected(package) => {
+                Ok(crate::privacy::protection_now(adb, serial, package.as_str())?.is_none())
+            }
+            Self::TvInputServicesBound(expected) => {
+                let output = adb.run(serial, &DeviceCommand::TvInputs)?;
+                let bound = parse_bound_tv_input_services(&output);
+                Ok(expected.iter().all(|service| bound.contains(service)))
+            }
         }
     }
 }
@@ -152,6 +170,17 @@ impl fmt::Display for Check {
                 let names: Vec<&str> = components.iter().map(Component::as_str).collect();
                 write!(f, "the Home candidates are still {}", names.join(", "))
             }
+            Self::NotProtected(package) => {
+                write!(f, "{package} passes the protected-package check")
+            }
+            Self::TvInputServicesBound(services) => {
+                let names: Vec<&str> = services.iter().map(Component::as_str).collect();
+                write!(
+                    f,
+                    "the TV input services are still bound: {}",
+                    names.join(", ")
+                )
+            }
         }
     }
 }
@@ -162,6 +191,7 @@ pub struct Step {
     command: DeviceCommand,
     extra_checks: Vec<Check>,
     poll: Option<Duration>,
+    requirements: Vec<Check>,
 }
 
 impl Step {
@@ -172,7 +202,21 @@ impl Step {
             command,
             extra_checks,
             poll: None,
+            requirements: Vec::new(),
         }
+    }
+
+    /// Facts that must still hold right before the command runs; if one
+    /// doesn't, the step isn't run and the plan rolls back. For checks that
+    /// can change between planning and applying (the protected-package check).
+    pub fn requiring(mut self, requirements: Vec<Check>) -> Self {
+        self.requirements = requirements;
+        self
+    }
+
+    /// Facts checked right before the command runs.
+    pub fn requirements(&self) -> &[Check] {
+        &self.requirements
     }
 
     /// Re-checks the verification every 500 ms for up to `timeout` before
@@ -505,6 +549,10 @@ pub fn apply(
     store.save(&journal).map_err(PlanError::journal)?;
 
     for (index, step) in plan.steps.iter().enumerate() {
+        if let Some(reason) = first_failure(adb, serial, step.requirements(), "no longer true") {
+            let reason = format!("before step {}: {reason}", index + 1);
+            return Err(rollback(adb, &mut journal, store, reason));
+        }
         journal.steps[index].status = StepStatus::Started;
         if let Err(error) = store.save(&journal) {
             let reason = format!("could not write the journal: {error}");
@@ -626,30 +674,32 @@ fn run_and_verify(adb: &dyn Adb, serial: &str, step: &Step, sleep: Sleep<'_>) ->
         ));
     }
     let checks = step.verification();
-    let first_failure = || {
-        checks
-            .iter()
-            .find_map(|check| match check.holds(adb, serial) {
-                Ok(true) => None,
-                Ok(false) => Some(format!("verification failed: expected `{check}`")),
-                Err(error) => Some(format!("could not verify `{check}`: {error}")),
-            })
-    };
     let retries = step.poll().map_or(0, |timeout| {
         timeout.as_millis().div_ceil(POLL_INTERVAL.as_millis())
     });
-    let mut failure = first_failure();
+    let mut failure = first_failure(adb, serial, &checks, "verification failed: expected");
     for _ in 0..retries {
         if failure.is_none() {
             break;
         }
         sleep(POLL_INTERVAL);
-        failure = first_failure();
+        failure = first_failure(adb, serial, &checks, "verification failed: expected");
     }
     match (failure, step.poll()) {
         (Some(reason), Some(timeout)) => Some(format!("{reason} within {} s", timeout.as_secs())),
         (failure, _) => failure,
     }
+}
+
+/// The first of `checks` that doesn't hold, as `<failed> `check``.
+fn first_failure(adb: &dyn Adb, serial: &str, checks: &[Check], failed: &str) -> Option<String> {
+    checks
+        .iter()
+        .find_map(|check| match check.holds(adb, serial) {
+            Ok(true) => None,
+            Ok(false) => Some(format!("{failed} `{check}`")),
+            Err(error) => Some(format!("could not verify `{check}`: {error}")),
+        })
 }
 
 /// Rolls back after a failure and returns the error to report.
@@ -862,6 +912,14 @@ impl PlanError {
 
     pub(crate) fn protected(reason: String) -> Self {
         PlanErrorKind::Protected(reason).into()
+    }
+
+    /// The adb error inside, if this is one; otherwise this error back.
+    pub(crate) fn into_adb(self) -> Result<AdbError, Self> {
+        match self.kind {
+            PlanErrorKind::Adb(error) => Ok(error),
+            kind => Err(kind.into()),
+        }
     }
 
     /// The privacy choices file can't be read or doesn't fit the catalog.

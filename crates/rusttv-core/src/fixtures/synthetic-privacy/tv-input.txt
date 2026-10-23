@@ -1,0 +1,40 @@
+User Ids (Current user: 0):
+  0
+UserState (0):
+  inputMap: inputId -> TvInputState
+    com.mediatek.tis/.HdmiInputService/HW2: info: TvInputInfo{id=com.mediatek.tis/.HdmiInputService/HW2, pkg=com.mediatek.tis, service=com.mediatek.tis.HdmiInputService}; state: 1
+    com.mediatek.AirplayAPK/.AirPlayTvInputService: info: TvInputInfo{id=com.mediatek.AirplayAPK/.AirPlayTvInputService, pkg=com.mediatek.AirplayAPK, service=com.mediatek.AirplayAPK.AirPlayTvInputService}; state: 0
+  packageSet:
+    com.mediatek.tis
+    com.mediatek.AirplayAPK
+  clientStateMap: ITvInputClient -> ClientState
+  serviceStateMap: ComponentName -> ServiceState
+    ComponentInfo{com.mediatek.tis/com.mediatek.tis.HdmiInputService}: com.android.server.tv.TvInputManagerService$ServiceState@4693a88
+      sessionTokens:
+      service: android.media.tv.ITvInputService$Stub$Proxy@dd38c21
+      callback: com.android.server.tv.TvInputManagerService$ServiceCallback@a4ae846
+      bound: true
+      reconnecting: false
+    ComponentInfo{com.mediatek.dtv.tvinput.dvbtuner/com.mediatek.dtv.tvinput.dvbtuner.DvbTvInputService}: com.android.server.tv.TvInputManagerService$ServiceState@3f09e59
+      sessionTokens:
+      service: android.media.tv.ITvInputService$Stub$Proxy@f88ba1e
+      callback: com.android.server.tv.TvInputManagerService$ServiceCallback@72092ff
+      bound: true
+      reconnecting: false
+    ComponentInfo{com.mediatek.AirplayAPK/com.mediatek.AirplayAPK.AirPlayTvInputService}: com.android.server.tv.TvInputManagerService$ServiceState@5e278cc
+      sessionTokens:
+      service: android.media.tv.ITvInputService$Stub$Proxy@c03c715
+      callback: com.android.server.tv.TvInputManagerService$ServiceCallback@3825a2a
+      bound: true
+      reconnecting: false
+    ComponentInfo{com.example.tv/com.example.tv.Unbound}: com.android.server.tv.TvInputManagerService$ServiceState@1
+      sessionTokens:
+      service: null
+      bound: false
+      reconnecting: false
+  sessionStateMap: ITvInputSession -> SessionState
+  mCallbacks:
+    android.media.tv.TvInputManager$2@477987b
+  mainSessionToken: null
+TvInputHardwareManager Info:
+  mConnections: deviceId -> Connection

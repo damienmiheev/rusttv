@@ -105,6 +105,9 @@ pub enum DeviceCommand {
     /// Enabled accessibility services, `:`-separated components or `null`
     /// (`settings get secure enabled_accessibility_services`).
     EnabledAccessibilityServices,
+    /// TV input state, including which TV input services the system has
+    /// bound (`dumpsys tv_input`).
+    TvInputs,
     /// Disables a package for user 0 (`pm disable-user --user 0 <package>`).
     /// Package state; only Home takeover and privacy plans use it (SECURITY.md).
     DisablePackage(PackageName),
@@ -143,7 +146,8 @@ impl DeviceCommand {
             | Self::Activities
             | Self::PowerState
             | Self::InputMethods
-            | Self::EnabledAccessibilityServices => RiskClass::Read,
+            | Self::EnabledAccessibilityServices
+            | Self::TvInputs => RiskClass::Read,
             Self::ForceStop(_) | Self::StartActivity(_) | Self::PressHome | Self::WakeUp => {
                 RiskClass::Transient
             }
@@ -242,6 +246,7 @@ impl DeviceCommand {
                 "secure",
                 "enabled_accessibility_services",
             ],
+            Self::TvInputs => vec!["shell", "dumpsys", "tv_input"],
             Self::DisablePackage(package) => {
                 vec![
                     "shell",
@@ -526,6 +531,7 @@ mod tests {
             DeviceCommand::WakeUp,
             DeviceCommand::InputMethods,
             DeviceCommand::EnabledAccessibilityServices,
+            DeviceCommand::TvInputs,
             DeviceCommand::DisablePackage(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::EnablePackage(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::InstallLauncher(apk()),
@@ -554,6 +560,7 @@ mod tests {
                 | DeviceCommand::WakeUp
                 | DeviceCommand::InputMethods
                 | DeviceCommand::EnabledAccessibilityServices
+                | DeviceCommand::TvInputs
                 | DeviceCommand::DisablePackage(_)
                 | DeviceCommand::EnablePackage(_)
                 | DeviceCommand::InstallLauncher(_)

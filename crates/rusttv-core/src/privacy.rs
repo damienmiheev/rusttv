@@ -16,8 +16,9 @@ use crate::apps::package_names;
 use crate::catalog::{CatalogEntry, LoadedChoices};
 use crate::command::{Component, DeviceCommand, PackageName};
 use crate::compat::{DeviceProfile, PrivacyCategory, TestedPackage, profile_file_name};
+use crate::error::AdbError;
 use crate::inspect::parse_properties;
-use crate::journal::{Journal, StepStatus};
+use crate::journal::{Journal, JournalStatus, StepStatus};
 use crate::launcher::{HomeCandidate, launcher_status};
 use crate::plan::{Check, Plan, PlanError, Step, device_fingerprint, restore_plan};
 
@@ -151,6 +152,59 @@ impl LiveState {
             statically_protected(package)
         }
     }
+}
+
+/// Why `package` must not be disabled right now, if it must not (rules 1–3),
+/// read fresh from the device. Output that can't be read counts as a reason:
+/// the check must never pass on a misread. Used by [`Check::NotProtected`]
+/// right before each step of a privacy plan.
+pub(crate) fn protection_now(
+    adb: &dyn Adb,
+    serial: &str,
+    package: &str,
+) -> Result<Option<String>, AdbError> {
+    match LiveState::read(adb, serial) {
+        Ok(live) => Ok(live.protection(package)),
+        Err(error) => match error.into_adb() {
+            Ok(adb_error) => Err(adb_error),
+            Err(error) => Ok(Some(error.to_string())),
+        },
+    }
+}
+
+/// TV input services the system has bound, from `dumpsys tv_input`: the
+/// `ComponentInfo{package/class}` entries of its `serviceStateMap` whose block
+/// says `bound: true`. Empty on a device without TV inputs; entries whose
+/// class isn't a plain Java name (e.g. `Outer$Inner`) are left out.
+pub fn parse_bound_tv_input_services(output: &str) -> Vec<Component> {
+    let mut bound = Vec::new();
+    let mut in_map = false;
+    let mut current: Option<Component> = None;
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("serviceStateMap:") {
+            in_map = true;
+            continue;
+        }
+        if !in_map || trimmed.is_empty() {
+            continue;
+        }
+        // Entries are indented by 4 spaces, their fields by 6; anything less
+        // starts the next section.
+        if !line.starts_with("    ") {
+            break;
+        }
+        if let Some(rest) = trimmed.strip_prefix("ComponentInfo{") {
+            current = rest
+                .split_once('}')
+                .and_then(|(component, _)| component.parse().ok());
+        } else if trimmed == "bound: true"
+            && let Some(component) = current.take()
+        {
+            bound.push(component);
+        }
+    }
+    bound
 }
 
 /// Packages in `ime list -a -s` output: one `package/class` id per line.
@@ -586,13 +640,29 @@ pub fn privacy_plan(
             untested_left_out.join(", ")
         ));
     }
+    // TV input services bound now, except those of packages this plan
+    // disables (e.g. an AirPlay receiver that is also a TV input).
+    let tv_inputs: Vec<Component> =
+        parse_bound_tv_input_services(&adb.run(serial, &DeviceCommand::TvInputs)?)
+            .into_iter()
+            .filter(|service| !packages.contains(&service.package()))
+            .collect();
     notes.extend([
         "Checked just now: none of these packages handles Home, provides an input method or \
-         an enabled accessibility service, or is on compat/protected.toml."
+         an enabled accessibility service, or is on compat/protected.toml. The same check runs \
+         again right before each step; if it fails, the steps done so far are undone."
             .to_owned(),
         format!(
-            "After the last step Home must still open {home} and the Home candidates must be \
-             unchanged; otherwise every step is undone."
+            "After the last step Home must still open {home}, the Home candidates must be \
+             unchanged{}; otherwise every step is undone.",
+            if tv_inputs.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    " and the {} TV input services bound now must still be bound",
+                    tv_inputs.len()
+                )
+            }
         ),
         "Disables, never uninstalls. Undo with `rusttv optimize restore`.".to_owned(),
         "Without ADB: Settings > Apps > See all apps > Show system apps > <app> > Enable."
@@ -610,15 +680,16 @@ pub fn privacy_plan(
         .into_iter()
         .enumerate()
         .map(|(index, package)| {
-            let checks = if index == last {
-                vec![
-                    Check::HomeActivityIs(home.clone()),
-                    Check::HomeCandidatesAre(home_candidates.clone()),
-                ]
-            } else {
-                Vec::new()
-            };
-            Step::new(DeviceCommand::DisablePackage(package), checks)
+            let mut checks = Vec::new();
+            if index == last {
+                checks.push(Check::HomeActivityIs(home.clone()));
+                checks.push(Check::HomeCandidatesAre(home_candidates.clone()));
+                if !tv_inputs.is_empty() {
+                    checks.push(Check::TvInputServicesBound(tv_inputs.clone()));
+                }
+            }
+            Step::new(DeviceCommand::DisablePackage(package.clone()), checks)
+                .requiring(vec![Check::NotProtected(package)])
         })
         .collect();
     let fingerprint = property("ro.build.fingerprint");
@@ -651,7 +722,8 @@ fn plan_note(candidate: &Candidate<'_>) -> String {
 /// is a privacy journal whose every step only re-enables a package. Packages
 /// that are enabled already (re-enabled since) are skipped: their steps are
 /// marked undone in `journal` (in memory; [`crate::restore`] saves it), and
-/// the plan's notes name them.
+/// the plan's notes name them. If every package is enabled already, the
+/// journal is marked restored (in memory) and `PRECONDITION_FAILED` returned.
 pub fn privacy_restore_plan(
     adb: &dyn Adb,
     serial: &str,
@@ -692,6 +764,9 @@ pub fn privacy_restore_plan(
         return Ok(plan);
     }
     if !journal.steps.iter().any(|step| step.status.may_have_run()) {
+        // Nothing is left to undo, so the journal is done: callers that save
+        // it keep the next `optimize restore` from finding it again.
+        journal.status = JournalStatus::Restored;
         return Err(PlanError::precondition(format!(
             "nothing to restore: every package this journal disabled is enabled now ({})",
             skipped.join(", ")
@@ -710,7 +785,7 @@ mod tests {
     use crate::adb::FakeAdb;
     use crate::catalog::PrivacyChoices;
     use crate::journal::tests::MemoryJournal;
-    use crate::journal::{JOURNAL_SCHEMA_VERSION, JournalStatus, JournalStep};
+    use crate::journal::{JOURNAL_SCHEMA_VERSION, JournalStep};
     use crate::plan::{apply, restore};
 
     const SERIAL: &str = "tv";
@@ -801,6 +876,7 @@ mod tests {
                 synthetic!("accessibility-none.txt"),
             )
             .respond(DeviceCommand::ListPackages, synthetic!("packages-f.txt"))
+            .respond(DeviceCommand::TvInputs, synthetic!("tv-input.txt"))
             .respond_sequence(DeviceCommand::ListDisabledPackages, disabled)
     }
 
@@ -1476,6 +1552,9 @@ mod tests {
             privacy_restore_plan(&tv(vec![disabled(&[])]), SERIAL, &mut journal).unwrap_err();
         assert_eq!(error.code(), "PRECONDITION_FAILED");
         assert!(error.to_string().contains("nothing to restore"), "{error}");
+        // Marked restored, so a saved journal isn't found again.
+        assert_eq!(journal.status, JournalStatus::Restored);
+        assert!(!journal.status.is_restorable());
     }
 
     #[test]
@@ -1545,5 +1624,151 @@ mod tests {
         assert_eq!(analysis.profile, None);
         assert!(analysis.packages.iter().all(|entry| !entry.tested));
         assert_eq!(analysis.packages.len(), 15);
+    }
+
+    #[test]
+    fn bound_tv_input_services_are_read_from_the_service_map() {
+        let bound: Vec<String> = parse_bound_tv_input_services(&synthetic!("tv-input.txt"))
+            .into_iter()
+            .map(String::from)
+            .collect();
+        assert_eq!(
+            bound,
+            [
+                "com.mediatek.tis/com.mediatek.tis.HdmiInputService",
+                "com.mediatek.dtv.tvinput.dvbtuner/com.mediatek.dtv.tvinput.dvbtuner.DvbTvInputService",
+                "com.mediatek.AirplayAPK/com.mediatek.AirplayAPK.AirPlayTvInputService",
+            ]
+        );
+        // A device without TV inputs.
+        assert!(parse_bound_tv_input_services("Can't find service: tv_input\n").is_empty());
+    }
+
+    #[test]
+    fn a_package_protected_since_planning_stops_apply_before_its_step() {
+        // ODP becomes an enabled accessibility service after the plan is made.
+        let adb = with_toggles(
+            tv(vec![
+                disabled(&[]),
+                disabled(&[]),
+                disabled(&[]),
+                disabled(&[]),
+                disabled(&[ADSERVICES]),
+                // After undoing step 1.
+                disabled(&[]),
+            ]),
+            &ADS,
+        )
+        .respond_sequence(
+            DeviceCommand::EnabledAccessibilityServices,
+            [
+                synthetic!("accessibility-none.txt").to_owned(),
+                synthetic!("accessibility-none.txt").to_owned(),
+                format!("{ODP}/.Reader\n"),
+            ],
+        );
+        let plan = privacy_plan(&adb, SERIAL, &defaults(), &[PrivacyCategory::Ads], false).unwrap();
+        assert_eq!(
+            plan.steps()[1].requirements(),
+            [Check::NotProtected(package(ODP))]
+        );
+        let approval = plan.approve("privacy").unwrap();
+        let mut store = MemoryJournal::default();
+
+        let error = apply(&adb, &plan, &approval, &mut store, &|_| {}).unwrap_err();
+        assert_eq!(error.code(), "ROLLED_BACK", "{error}");
+        assert!(
+            error.to_string().contains(&format!(
+                "before step 2: no longer true `{ODP} passes the protected-package check`"
+            )),
+            "{error}"
+        );
+        assert_eq!(store.last().status, JournalStatus::RolledBack);
+        assert_eq!(
+            changes(&adb),
+            [
+                DeviceCommand::DisablePackage(package(ADSERVICES)),
+                DeviceCommand::EnablePackage(package(ADSERVICES)),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_tv_input_service_lost_after_the_last_step_rolls_back() {
+        let adb = with_toggles(
+            tv(vec![
+                disabled(&[]),
+                disabled(&[]),
+                disabled(&[]),
+                disabled(&[]),
+                disabled(&[ADSERVICES]),
+                disabled(&[ADSERVICES, ODP]),
+                disabled(&ADS),
+                disabled(&[ADSERVICES, ODP]),
+                disabled(&[ADSERVICES]),
+                disabled(&[]),
+            ]),
+            &ADS,
+        )
+        // The HDMI input service is no longer bound after the last step.
+        .respond_sequence(
+            DeviceCommand::TvInputs,
+            [
+                synthetic!("tv-input.txt").to_owned(),
+                synthetic!("tv-input.txt").replacen("bound: true", "bound: false", 1),
+            ],
+        );
+        let plan = privacy_plan(&adb, SERIAL, &defaults(), &[PrivacyCategory::Ads], false).unwrap();
+        assert!(
+            note(&plan.dry_run().notes, "After the last step")
+                .contains("the 3 TV input services bound now must still be bound"),
+            "{:?}",
+            plan.dry_run().notes
+        );
+        let approval = plan.approve("privacy").unwrap();
+        let mut store = MemoryJournal::default();
+
+        let error = apply(&adb, &plan, &approval, &mut store, &|_| {}).unwrap_err();
+        assert_eq!(error.code(), "ROLLED_BACK", "{error}");
+        assert!(
+            error
+                .to_string()
+                .contains("the TV input services are still bound"),
+            "{error}"
+        );
+        assert_eq!(store.last().status, JournalStatus::RolledBack);
+        assert_eq!(
+            changes(&adb).len(),
+            6,
+            "three disabled, three enabled again"
+        );
+    }
+
+    #[test]
+    fn a_tv_input_of_a_planned_package_is_not_required_afterwards() {
+        let adb = tv(vec![disabled(&[])]).respond(
+            DeviceCommand::ListPackages,
+            format!(
+                "{}package:/system/app/x/x.apk=com.mediatek.AirplayAPK\n",
+                synthetic!("packages-f.txt")
+            ),
+        );
+        let casting = data(PrivacyChoices {
+            categories: vec![PrivacyCategory::Casting],
+            ..PrivacyChoices::default()
+        });
+        let plan = privacy_plan(&adb, SERIAL, &casting, &[], true).unwrap();
+        let last = plan.steps().last().unwrap().verification();
+        let Some(Check::TvInputServicesBound(services)) = last.last() else {
+            panic!("{last:?}");
+        };
+        let services: Vec<&str> = services.iter().map(Component::as_str).collect();
+        assert_eq!(
+            services,
+            [
+                "com.mediatek.tis/com.mediatek.tis.HdmiInputService",
+                "com.mediatek.dtv.tvinput.dvbtuner/com.mediatek.dtv.tvinput.dvbtuner.DvbTvInputService",
+            ]
+        );
     }
 }

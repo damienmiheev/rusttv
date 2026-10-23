@@ -313,12 +313,15 @@ enabled_accessibility_services`), or if it is on `compat/protected.toml`
 installers, network stack, Bluetooth, Play services and the launchers by
 name). This applies to every chosen package, `extra` ones included; one
 protected package refuses the whole plan (`PACKAGE_PROTECTED`; the message
-suggests `keep`). **After the last step:** Home still opens the same activity
-as before, and the set of Home candidates is unchanged; otherwise every step
-is undone. Not built: a check that the TV input service is still running
-after the last step (no typed command reads it yet), and re-running the
-protected-package checks inside `apply` (the CLI plans right before the
-confirmation).
+suggests `keep`). **Right before each step** (2026-10-23) the same protected-package check runs
+again for that step's package; if it fails, the step isn't run and the steps
+done so far are undone. **After the last step:** Home still opens the same
+activity as before, the set of Home candidates is unchanged, and every TV
+input service the system had bound when planning (`dumpsys tv_input`,
+`serviceStateMap` entries with `bound: true`) is still bound, except those of
+packages the plan disables (an AirPlay receiver can also be a TV input);
+otherwise every step is undone. A device without TV inputs gets no TV input
+check.
 
 **Separate from Home takeover.** The deny-list covers the stock launchers and
 setupwraith, so privacy plans never list them; their journals are separate
