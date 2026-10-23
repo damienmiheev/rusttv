@@ -71,8 +71,8 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - name: Install toolchain from rust-toolchain.toml and the Android target
-        run: rustup toolchain install && rustup target add aarch64-linux-android
+      - name: Install toolchain from rust-toolchain.toml and the Android targets
+        run: rustup toolchain install && rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: android
@@ -81,6 +81,6 @@ jobs:
         run: (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;30.0.16248370" "platforms;android-34" > /dev/null
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --version 4.1.2 --locked
-      # build.sh checks the Skia binary against its pinned SHA-256 before using it.
+      # build.sh checks each ABI's Skia binary against its pinned SHA-256 before using it.
       - name: Build the launcher APK
         run: android/build.sh

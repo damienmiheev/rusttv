@@ -22,11 +22,12 @@ session (CLAUDE.md, SECURITY.md).
      listing each command (see the emulator fixture READMEs).
    - Profile: save `compat-profile.toml` as `compat/devices/<suggested-name>.toml`
      and fill in `tested.notes`.
-   - Check `abi.txt`: if it lists no `arm64-v8a`, the APK needs the 32-bit build.
+   - Check `abi.txt`: its first entry is the ABI to install in step 3.
    - Keep `launcher-status.json` (and the raw `home-activities-all.txt`): it shows
      the stock launcher's Home priority, the evidence for decision D12.
-3. **Install the launcher** (**ask first**):
-   `adb -s <serial> install android/app/build/outputs/apk/release/app-release.apk`,
+3. **Install the launcher** (**ask first**): install the APK for the first ABI
+   in `abi.txt` (`arm64-v8a`, `armeabi-v7a` or `x86_64`):
+   `adb -s <serial> install android/app/build/outputs/apk/release/app-<abi>-release.apk`,
    then `adb -s <serial> shell am start -n ai.rusttv.launcher/.LauncherActivity`.
    Check with the remote: every tile reachable, OK launches, hold OK moves a tile,
    Back stays on the home screen, coming back from an app works, labels readable

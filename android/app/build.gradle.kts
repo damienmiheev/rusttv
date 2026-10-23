@@ -13,9 +13,20 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.0.0"
-        // The native library is built for arm64 only (build.sh); TVs with a
-        // 32-bit userspace need armeabi-v7a later (ROADMAP Phase 6).
-        ndk { abiFilters += listOf("arm64-v8a") }
+    }
+
+    // One APK per ABI (app-<abi>-release.apk) instead of a universal one: each
+    // ABI's library carries its own copy of Skia. All share one versionCode,
+    // which is fine for sideloading; a store that hosts several APKs of one
+    // app needs a distinct versionCode per ABI (Phase 6). The ABI list must
+    // match the ABIs build.sh builds (AGP forbids ndk.abiFilters with splits).
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = false
+        }
     }
 
     buildTypes {

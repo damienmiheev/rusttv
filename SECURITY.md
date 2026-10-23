@@ -96,5 +96,6 @@ Residual risk: firmware updates may re-enable the stock launcher or change its p
 
 - `cargo deny check` in CI: RustSec advisories, license allowlist (permissive + MPL + Slint's royalty-free license, D9), banned/duplicate crates. Ignored advisories need a reason in `deny.toml`; so far only unmaintained crates used by the desktop dev mode, never by the APK.
 - `Cargo.lock` committed; dependencies pinned; Slint pinned with `=`.
+- Skia (linked by Slint's Android renderer) is a prebuilt binary per ABI that `android/build.sh` fetches and checks against a pinned SHA-256. arm64-v8a and x86_64 come from rust-skia's skia-binaries releases. rust-skia has no armeabi-v7a build, so ours is built from source by the manual workflow `.github/workflows/skia-armv7.yml` ([run 39956273511](https://github.com/damienmiheev/rusttv/actions/runs/39956273511)) and hosted as the release `skia-0.153.3-armv7` of this repository. It must be rebuilt, re-released and re-pinned whenever Slint (and so skia-bindings) is upgraded.
 - Release APKs signed with a project key kept offline; checksums published with each release. Reproducible builds investigated in Phase 6.
 - No running of unvetted third-party tools (see RESEARCH.md §4).
