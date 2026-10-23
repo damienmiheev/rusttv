@@ -1,0 +1,116 @@
+# Builds everything a release ships, as workflow artifacts only: the CLI and
+# MCP server for macOS and Linux (arm64 and x86_64) with licence notices and
+# SHA-256 sums, and the launcher APKs. It never creates a GitHub release or
+# publishes anything; RELEASE.md says what happens next, by hand.
+name: Release build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  version:
+    name: Check the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: version
+        run: |
+          version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "rusttv-core") | .version')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # A tag must name the version in Cargo.toml (tag v0.1.0 -> 0.1.0).
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match the workspace version $version"
+            exit 1
+          fi
+
+  notices:
+    name: Licence notices
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: licenses
+      - name: Install cargo-about
+        run: cargo install cargo-about --version 0.9.2 --locked --features cli
+      # One file for everything RustTV ships (about.toml lists the CLI targets too).
+      - run: scripts/licenses.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: notices
+          path: THIRD_PARTY_NOTICES.txt
+          if-no-files-found: error
+
+  cli:
+    name: CLI (${{ matrix.target }})
+    needs: [version, notices]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin, os: macos-latest }
+          - { target: x86_64-apple-darwin, os: macos-latest }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install toolchain from rust-toolchain.toml and the target
+        run: rustup toolchain install && rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: release-${{ matrix.target }}
+      - run: cargo build --release --locked --target ${{ matrix.target }} -p rusttv-cli -p rusttv-mcp
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: notices
+      - name: Package
+        env:
+          NAME: rusttv-${{ needs.version.outputs.version }}-${{ matrix.target }}
+        run: |
+          mkdir -p "dist/$NAME"
+          cp target/${{ matrix.target }}/release/rusttv target/${{ matrix.target }}/release/rusttv-mcp \
+            README.md CLI.md MCP.md SECURITY.md LICENSE-MIT LICENSE-APACHE THIRD_PARTY_NOTICES.txt "dist/$NAME/"
+          tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
+          cd dist && shasum -a 256 "$NAME.tar.gz" > "$NAME.tar.gz.sha256"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cli-${{ matrix.target }}
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+
+  checksums:
+    name: SHA256SUMS
+    needs: cli
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: cli-*
+          merge-multiple: true
+      - run: cat -- *.sha256 | sort -k2 > SHA256SUMS && cat SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: SHA256SUMS
+          path: SHA256SUMS
+          if-no-files-found: error
+
+  android:
+    needs: version
+    uses: ./.github/workflows/android-apk.yml
+    with:
+      upload: true

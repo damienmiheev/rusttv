@@ -36,6 +36,8 @@ RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + 
 | [RESEARCH.md](RESEARCH.md) | Prior art and technology evaluation |
 | [RISKS.md](RISKS.md) | Risks and open technical questions |
 | [ROADMAP.md](ROADMAP.md) | Phases, milestones, success criteria |
+| [RELEASE.md](RELEASE.md) | Versioning, APK signing, release checklist |
+| [CHANGELOG.md](CHANGELOG.md) | Changes per release |
 | [CLAUDE.md](CLAUDE.md) | Rules for AI coding agents working on this repo |
 
 ## Getting started

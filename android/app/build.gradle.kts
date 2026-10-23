@@ -1,6 +1,52 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+// The app version is the Rust workspace version ([workspace.package] in
+// Cargo.toml), so the APK, the CLI and the About screen always agree.
+// versionCode = major * 10000 + minor * 100 + patch (0.1.0 -> 100).
+val cargoVersion: String = run {
+    val cargoToml = rootProject.file("../Cargo.toml").readText()
+    val section = cargoToml.substringAfter("[workspace.package]")
+    Regex("""(?m)^version\s*=\s*"([^"]+)"""").find(section)?.groupValues?.get(1)
+        ?: throw GradleException("no version in [workspace.package] of Cargo.toml")
+}
+val cargoVersionCode: Int = run {
+    val parts = Regex("""^(\d+)\.(\d+)\.(\d+)$""").find(cargoVersion)?.destructured?.toList()
+        ?.map { it.toInt() }
+        ?: throw GradleException("Cargo version $cargoVersion is not plain MAJOR.MINOR.PATCH")
+    if (parts.drop(1).any { it > 99 }) {
+        throw GradleException("minor and patch must be below 100 for versionCode: $cargoVersion")
+    }
+    parts[0] * 10000 + parts[1] * 100 + parts[2]
+}
+
+// Release signing key (RELEASE.md "Signing"): from RUSTTV_KEYSTORE_FILE,
+// RUSTTV_KEYSTORE_PASSWORD, RUSTTV_KEY_ALIAS and RUSTTV_KEY_PASSWORD, else from
+// the git-ignored android/keystore.properties (storeFile, storePassword,
+// keyAlias, keyPassword). With neither, release builds are signed with the
+// debug key so local and CI builds still install. A partial setup fails the
+// build rather than quietly falling back to the debug key.
+val releaseSigning: Map<String, String>? = run {
+    val props = Properties()
+    val file = rootProject.file("keystore.properties")
+    if (file.isFile) file.inputStream().use { props.load(it) }
+    val values = mapOf(
+        "storeFile" to (System.getenv("RUSTTV_KEYSTORE_FILE") ?: props.getProperty("storeFile")),
+        "storePassword" to (System.getenv("RUSTTV_KEYSTORE_PASSWORD") ?: props.getProperty("storePassword")),
+        "keyAlias" to (System.getenv("RUSTTV_KEY_ALIAS") ?: props.getProperty("keyAlias")),
+        "keyPassword" to (System.getenv("RUSTTV_KEY_PASSWORD") ?: props.getProperty("keyPassword")),
+    ).filterValues { !it.isNullOrEmpty() }.mapValues { it.value!! }
+    when (values.size) {
+        0 -> null
+        4 -> values
+        else -> throw GradleException(
+            "release signing is partly configured; missing ${listOf("storeFile", "storePassword", "keyAlias", "keyPassword") - values.keys} (RELEASE.md)"
+        )
+    }
 }
 
 android {
@@ -11,8 +57,20 @@ android {
         applicationId = "ai.rusttv.launcher"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.0.0"
+        versionCode = cargoVersionCode
+        versionName = cargoVersion
+    }
+
+    signingConfigs {
+        if (releaseSigning != null) {
+            create("release") {
+                // A relative storeFile is resolved against android/.
+                storeFile = rootProject.file(releaseSigning.getValue("storeFile"))
+                storePassword = releaseSigning.getValue("storePassword")
+                keyAlias = releaseSigning.getValue("keyAlias")
+                keyPassword = releaseSigning.getValue("keyPassword")
+            }
+        }
     }
 
     // One APK per ABI (app-<abi>-release.apk) instead of a universal one: each
@@ -32,9 +90,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Until release signing exists (ROADMAP Phase 6), sign with the debug
-            // key so local builds install.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (releaseSigning != null) "release" else "debug")
         }
     }
 

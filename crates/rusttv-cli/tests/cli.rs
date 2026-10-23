@@ -389,10 +389,11 @@ fn compat_profile_prints_toml_and_suggests_a_path() {
     assert_eq!(output.status.code(), Some(0), "{output:?}");
     let stdout = String::from_utf8(output.stdout).unwrap();
     let committed = include_str!("../../../compat/devices/google-emu64a.toml");
-    // Same profile as the committed one, apart from the hand-written notes.
+    // Same profile as the committed one, apart from the hand-written notes and
+    // the RustTV version it was tested with, which stays as recorded.
     let without_notes = |text: &str| -> String {
         text.lines()
-            .filter(|line| !line.starts_with("notes ="))
+            .filter(|line| !line.starts_with("notes =") && !line.starts_with("rusttv_version ="))
             .collect::<Vec<_>>()
             .join("\n")
     };
