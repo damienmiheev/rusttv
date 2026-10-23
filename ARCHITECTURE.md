@@ -31,7 +31,7 @@ rusttv/
 ├── crates/
 │   ├── rusttv-core/        # device model, Adb trait, typed commands, inspect, perf, (later) safety engine
 │   ├── rusttv-cli/         # binary `rusttv`: clap, output formatting
-│   ├── rusttv-mcp/         # Phase 5
+│   ├── rusttv-mcp/         # binary `rusttv-mcp`: read-only MCP server over stdio (rmcp + tokio)
 │   └── rusttv-launcher/    # home screen: model, Slint UI, JNI bridge; cdylib + desktop dev mode
 ├── android/                # Gradle app ai.rusttv.launcher: Kotlin shim, manifest, build.sh
 ├── compat/
@@ -41,7 +41,7 @@ rusttv/
 └── *.md
 ```
 
-`rusttv-mcp` and `compat/protected.toml` do not exist yet; they are created when their phase starts.
+`compat/protected.toml` does not exist yet; it is created when its phase starts.
 
 ## rusttv-core
 
@@ -68,7 +68,7 @@ pub trait Adb {
 }
 ```
 
-There is intentionally no `shell(&str)`. Values that end up in `adb shell` arguments are validated newtypes (e.g. `PackageName`), because the device shell re-parses them. `adb connect` exits 0 even on failure, so its stdout is parsed to detect errors. `SystemAdb` uses `adb` from `PATH`, or the executable named by the `RUSTTV_ADB` environment variable. Synchronous (`std::process`) in Milestone 1; no tokio until MCP needs it. `FakeAdb` is available under the `test-util` feature.
+There is intentionally no `shell(&str)`. Values that end up in `adb shell` arguments are validated newtypes (e.g. `PackageName`), because the device shell re-parses them. `adb connect` exits 0 even on failure, so its stdout is parsed to detect errors. `SystemAdb` uses `adb` from `PATH`, or the executable named by the `RUSTTV_ADB` environment variable. Synchronous (`std::process`); tokio exists only inside `rusttv-mcp` (D13). `FakeAdb` is available under the `test-util` feature.
 
 ## rusttv-cli
 
@@ -125,7 +125,12 @@ Rust: trait Platform { list_apps(), launch(), take_apps_changed() }
 
 ## MCP (Phase 5)
 
-`rusttv-mcp` exposes core functions as tools (`tv_get_device_info`, `tv_list_packages`, …) over local stdio. Tools call the same core functions as the CLI; modifying tools can only submit plans for human approval (SECURITY.md).
+`rusttv-mcp` exposes the core's read-only functions as MCP tools over local stdio: `device_list`, `device_inspect`, `apps_list`, `launcher_status`, `performance_snapshot` (contract in [MCP.md](MCP.md)).
+
+- Built on the official Rust SDK `rmcp` (D13). `RustTvServer<A: Adb>` is generic so tests use `FakeAdb`; the binary uses `SystemAdb`.
+- The core stays sync (D10): each tool call runs the core function on tokio's blocking pool, holding a mutex around the `Adb`, so calls run one at a time and `Adb` need not be `Sync`.
+- Results are the CLI's `rusttv.v1` envelope as `structuredContent`; core errors are tool errors (`isError`) with the CLI's error codes, bad arguments are rejected before any device access.
+- No tool runs above R0 and none approves anything. Plan tools, if added, only return a dry run (SECURITY.md § AI agents).
 
 ## Initial dependencies (Milestone 1)
 
@@ -138,7 +143,7 @@ Rust: trait Platform { list_apps(), launch(), take_apps_changed() }
 | `tracing`, `tracing-subscriber` | Structured logs | Standard |
 | `toml` | Compat profiles | Chosen format |
 
-Dev/CI tools: `cargo-deny` (covers RustSec advisories + licenses, so `cargo-audit` is redundant), `cargo-nextest` optional. Added later only when needed: `proptest` (parsers), `criterion` (host-side micro-benchmarks), `tokio` + `rmcp` (MCP). Launcher (Phase 1c): `slint`/`slint-build` (=1.18.1), `log`, `material-colors` (backdrop colour), and on Android `android-activity`, `jni`, `android_logger`.
+Dev/CI tools: `cargo-deny` (covers RustSec advisories + licenses, so `cargo-audit` is redundant), `cargo-nextest` optional. Added later only when needed: `proptest` (parsers), `criterion` (host-side micro-benchmarks), MCP (Phase 5, `rusttv-mcp` only): `rmcp` 3.7 (features `server`, `macros`, `transport-io`; Apache-2.0) and `tokio` (current-thread runtime). Launcher (Phase 1c): `slint`/`slint-build` (=1.18.1), `log`, `material-colors` (backdrop colour), and on Android `android-activity`, `jni`, `android_logger`.
 
 ## Decision log
 
@@ -156,3 +161,4 @@ Dev/CI tools: `cargo-deny` (covers RustSec advisories + licenses, so `cargo-audi
 | D10 | 2026-10-23 | Sync core, no tokio in M1 | tokio from day one | MCP or parallel device ops need it |
 | D11 | 2026-10-23 | Launcher activity: Kotlin subclass of `NativeActivity`; Slint's Android backend (Skia renderer, ~10 MB) with a size-tuned release profile (spike) | GameActivity; custom platform with Slint's software renderer (no Skia) | Text input/IME needs GameActivity, or APK size becomes a real problem on TVs |
 | D12 | 2026-10-23 | Home on Google TV: opt-in Home takeover that disables (never uninstalls) the stock launcher, with automatic rollback and `rusttv launcher restore` | App + remote-button mapping; accessibility-service Home override | Google allows third-party HOME priority, or takeover proves unreliable on tested firmware |
+| D13 | 2026-10-23 | MCP server on the official Rust SDK `rmcp` with tokio confined to `rusttv-mcp`; core stays sync and tools run it on the blocking pool | Hand-written sync JSON-RPC over stdio on `serde_json`; `rust-mcp-sdk` | `rmcp` major versions break us often, or tokio leaks into the core |

@@ -19,6 +19,10 @@ serde_json = "1.0.154"
 log = "0.4.34"
 thiserror = "2.0.21"
 toml = "1.1.8"
+# MCP server (crates/rusttv-mcp, ARCHITECTURE D13): the official Rust SDK, stdio only.
+rmcp = { version = "3.7.0", default-features = false, features = ["server", "macros", "transport-io"] }
+# Async runtime for rmcp; only rusttv-mcp uses it, the core stays sync (D10).
+tokio = { version = "1.54.1", default-features = false, features = ["rt", "macros"] }
 # Launcher UI (ARCHITECTURE D9). Pinned: Slint's generated code and runtime must match.
 slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2"] }
 slint-build = "=1.18.1"

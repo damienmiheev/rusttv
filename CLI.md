@@ -5,7 +5,8 @@ The contract for scripts and AI agents. All commands are **read-only** except
 class R1, transient), and `launcher takeover` / `launcher restore`, which
 disable or re-enable the stock launcher (R3) only after a person approves the
 plan at a terminal (see [Changing a device](#changing-a-device)). Run
-`rusttv <command> --help` for every option.
+`rusttv <command> --help` for every option. Agents can use the read-only
+commands as MCP tools too: see [MCP.md](MCP.md).
 
 ## Commands
 
