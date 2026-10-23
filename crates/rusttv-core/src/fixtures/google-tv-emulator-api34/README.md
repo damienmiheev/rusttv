@@ -11,5 +11,7 @@ adb 1.0.41. The RustTV spike launcher (`ai.rusttv.spike`) was installed.
 | `am-start-already-top.txt` | the same while the app was already in front (UNKNOWN, TotalTime 0) |
 | `am-start-error.txt` | `am start -W -n ai.rusttv.spike/.Nope`: "Error type 3", **exit status 0** |
 | `ps-time.txt` | `ps -A -o PID,TIME+,NAME` (cumulative CPU time per process) |
+| `home-activity.txt` | `cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME` (RustTV launcher and spike installed) |
+| `home-candidates.txt` | `cmd package query-activities --brief -a android.intent.action.MAIN -c android.intent.category.HOME`, same state |
 
 No redactions were needed.

@@ -78,6 +78,7 @@ rusttv() {
 rusttv device-inspect.json device inspect --json
 rusttv apps-list.json apps list --json
 rusttv performance-snapshot.json performance snapshot --json
+rusttv launcher-status.json launcher status --json
 rusttv compat-profile.toml compat profile
 
 echo "Done. Review $OUT before copying anything into the repo."

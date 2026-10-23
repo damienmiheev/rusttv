@@ -1,5 +1,6 @@
 mod apps;
 mod compat;
+mod launcher;
 mod output;
 mod performance;
 
@@ -38,6 +39,18 @@ enum Command {
     /// Device compatibility profiles.
     #[command(subcommand)]
     Compat(CompatAction),
+    /// The home screen (launcher) on a device.
+    #[command(subcommand)]
+    Launcher(LauncherAction),
+}
+
+#[derive(Debug, Subcommand)]
+enum LauncherAction {
+    /// Show which launcher the Home button opens and which others could. Read-only.
+    Status {
+        #[command(flatten)]
+        target: Target,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -182,6 +195,9 @@ fn main() -> ExitCode {
         Command::Device(DeviceAction::Connect { address }) => connect(&adb, address, cli.json),
         Command::Device(DeviceAction::Inspect { target }) => inspect(&adb, target, cli.json),
         Command::Apps(AppsAction::List { target }) => apps::list(&adb, target, cli.json),
+        Command::Launcher(LauncherAction::Status { target }) => {
+            launcher::status(&adb, target, cli.json)
+        }
         Command::Performance(PerformanceAction::Snapshot { target, sample_ms }) => {
             performance::snapshot(&adb, target, *sample_ms, cli.json)
         }

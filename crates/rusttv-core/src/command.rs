@@ -55,6 +55,8 @@ pub enum DeviceCommand {
     ProcessList,
     /// The activity that handles the Home button (`cmd package resolve-activity ...`).
     HomeActivity,
+    /// Every activity that can handle Home, with priorities (`cmd package query-activities ...`).
+    HomeCandidates,
     /// Memory usage of one app process (`dumpsys meminfo <package>`).
     PackageMemInfo(PackageName),
     /// Cumulative CPU time of every process (`ps -A -o PID,TIME+,NAME`).
@@ -78,6 +80,7 @@ impl DeviceCommand {
             | Self::CpuStat
             | Self::ProcessList
             | Self::HomeActivity
+            | Self::HomeCandidates
             | Self::PackageMemInfo(_)
             | Self::ProcessCpuTimes => RiskClass::Read,
             Self::ForceStop(_) | Self::StartActivity(_) => RiskClass::Transient,
@@ -100,6 +103,17 @@ impl DeviceCommand {
                 "cmd",
                 "package",
                 "resolve-activity",
+                "--brief",
+                "-a",
+                "android.intent.action.MAIN",
+                "-c",
+                "android.intent.category.HOME",
+            ],
+            Self::HomeCandidates => vec![
+                "shell",
+                "cmd",
+                "package",
+                "query-activities",
                 "--brief",
                 "-a",
                 "android.intent.action.MAIN",
@@ -240,6 +254,7 @@ mod tests {
             DeviceCommand::CpuStat,
             DeviceCommand::ProcessList,
             DeviceCommand::HomeActivity,
+            DeviceCommand::HomeCandidates,
             DeviceCommand::PackageMemInfo(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::ProcessCpuTimes,
             DeviceCommand::ForceStop(PackageName::new("com.example.app").unwrap()),
@@ -256,6 +271,7 @@ mod tests {
                 | DeviceCommand::CpuStat
                 | DeviceCommand::ProcessList
                 | DeviceCommand::HomeActivity
+                | DeviceCommand::HomeCandidates
                 | DeviceCommand::PackageMemInfo(_)
                 | DeviceCommand::ProcessCpuTimes
                 | DeviceCommand::ForceStop(_)

@@ -247,6 +247,45 @@ fn apps_list_json_marks_kind_and_state() {
 }
 
 #[test]
+fn launcher_status_json_shows_home_and_candidates() {
+    let output = rusttv_with_fake_adb("tv", &["launcher", "status", "--json"]);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = json_stdout(&output)["data"].clone();
+    assert_eq!(
+        data["home"],
+        "com.google.android.apps.tv.launcherx/.home.HomeActivity"
+    );
+    assert_eq!(data["rusttv_installed"], true);
+    assert_eq!(data["rusttv_is_home"], false);
+    assert_eq!(data["candidates"][0]["priority"], 2);
+    assert_eq!(
+        data["candidates"][1]["component"],
+        "ai.rusttv.launcher/.LauncherActivity"
+    );
+}
+
+#[test]
+fn launcher_status_text_explains_a_higher_priority_launcher() {
+    let output = rusttv_with_fake_adb("tv", &["launcher", "status"]);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.starts_with(
+            "Home button opens: com.google.android.apps.tv.launcherx/.home.HomeActivity\n\
+         RustTV launcher:   installed, not Home\n"
+        ),
+        "{stdout}"
+    );
+    assert!(stdout.contains("       2  com.google.android.apps.tv.launcherx/.home.HomeActivity"));
+    assert!(
+        stdout.ends_with("always wins the Home button on this device.\n"),
+        "{stdout}"
+    );
+}
+
+#[test]
 fn apps_list_text_ends_with_a_summary() {
     let output = rusttv_with_fake_adb("emulator", &["apps", "list"]);
 

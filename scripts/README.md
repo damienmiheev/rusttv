@@ -22,8 +22,8 @@ session (CLAUDE.md, SECURITY.md).
    - Profile: save `compat-profile.toml` as `compat/devices/<suggested-name>.toml`
      and fill in `tested.notes`.
    - Check `abi.txt`: if it lists no `arm64-v8a`, the APK needs the 32-bit build.
-   - Keep `home-activities-all.txt`: it shows the stock launcher's HOME priority,
-     the evidence for decision D12.
+   - Keep `launcher-status.json` (and the raw `home-activities-all.txt`): it shows
+     the stock launcher's Home priority, the evidence for decision D12.
 3. **Install the launcher** (**ask first**):
    `adb -s <serial> install android/app/build/outputs/apk/release/app-release.apk`,
    then `adb -s <serial> shell am start -n ai.rusttv.launcher/.LauncherActivity`.
@@ -41,7 +41,8 @@ session (CLAUDE.md, SECURITY.md).
 
    Reboot and wait 5 minutes first (BENCHMARK_PLAN.md § Protocol). Numbers from
    one run are not a claim until they meet the claim rule there.
-5. **Home button**: press Home and note which launcher opens. Do not disable the
+5. **Home button**: press Home and note which launcher opens; compare with
+   `rusttv launcher status --serial <serial>`. Do not disable the
    stock launcher: Home takeover is a separate, opt-in flow (SECURITY.md § Home
    takeover) that is not implemented yet.
 6. **Clean up** (**ask first**): `adb -s <serial> uninstall ai.rusttv.launcher` if
