@@ -1,8 +1,8 @@
 #!/bin/sh
-# Builds the launcher APK (arm64-v8a, armeabi-v7a, x86_64): the Rust library
-# with cargo-ndk, then Gradle. Requires the Android SDK (platform 34), NDK 30,
-# JDK 17, cargo-ndk, curl, shasum, and for the armeabi-v7a Skia source build
-# also git, Python 3 and libclang.
+# Builds one launcher APK per ABI (arm64-v8a, armeabi-v7a, x86_64): the Rust
+# library with cargo-ndk, then Gradle. Requires the Android SDK (platform 34),
+# NDK 30, JDK 17, cargo-ndk, curl, shasum, and for the armeabi-v7a Skia source
+# build also git, Python 3 and libclang.
 set -eu
 cd "$(dirname "$0")"
 SDK="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
@@ -72,4 +72,6 @@ env ANDROID_NDK="$ANDROID_NDK_HOME" SKIA_SOURCE_DIR="$SKIA_SRC" \
     cargo ndk -t armeabi-v7a --platform 26 -o app/src/main/jniLibs \
     build -p rusttv-launcher --lib --profile android-release
 ./gradlew -q assembleRelease
-ls -la app/build/outputs/apk/release/app-release.apk
+ls -la app/build/outputs/apk/release/app-arm64-v8a-release.apk \
+    app/build/outputs/apk/release/app-armeabi-v7a-release.apk \
+    app/build/outputs/apk/release/app-x86_64-release.apk
