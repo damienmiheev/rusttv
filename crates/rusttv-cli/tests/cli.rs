@@ -561,11 +561,8 @@ fn launcher_takeover_without_a_terminal_is_refused_before_touching_a_device() {
     assert_eq!(json_stdout(&output)["error"]["code"], "NOT_APPROVED");
 }
 
-#[test]
-fn launcher_restore_dry_run_finds_the_takeover_journal() {
-    let state = state_dir("restore-dry-run");
-    // Fingerprint of the synthetic getprop fixture.
-    let journal = r#"schema_version = 1
+/// A takeover journal for the synthetic getprop fixture's fingerprint.
+const TAKEOVER_JOURNAL: &str = r#"schema_version = 1
 plan = "home-takeover"
 serial = "emulator-5554"
 fingerprint = "google/sdk_google_atv64_arm64/emu64a:14/UTT3.240625.001.K5/12345678:userdebug/dev-keys"
@@ -578,9 +575,13 @@ command = { kind = "disable_package", arg = "com.google.android.apps.tv.launcher
 original_state = { kind = "package_enabled", arg = "com.google.android.apps.tv.launcherx" }
 status = "done"
 "#;
+
+#[test]
+fn launcher_restore_dry_run_finds_the_takeover_journal() {
+    let state = state_dir("restore-dry-run");
     std::fs::write(
         state.join("journals/1761220000000-home-takeover.toml"),
-        journal,
+        TAKEOVER_JOURNAL,
     )
     .unwrap();
 
@@ -615,6 +616,48 @@ fn launcher_restore_without_a_journal_says_so() {
     assert_eq!(output.status.code(), Some(1));
     let json = json_stdout(&output);
     assert_eq!(json["error"]["code"], "NO_JOURNAL");
+    std::fs::remove_dir_all(state).unwrap();
+}
+
+#[test]
+fn launcher_restore_warns_about_unreadable_journals_on_stderr() {
+    let state = state_dir("restore-unreadable");
+    std::fs::write(
+        state.join("journals/1761220000000-home-takeover.toml"),
+        TAKEOVER_JOURNAL,
+    )
+    .unwrap();
+    let corrupt = state.join("journals/1761220000001-home-takeover.toml");
+    std::fs::write(
+        &corrupt,
+        TAKEOVER_JOURNAL.replace("disable_package", "retired_command"),
+    )
+    .unwrap();
+    let corrupt = corrupt.display().to_string();
+
+    // The readable journal is still restored; stdout is the usual JSON.
+    let output = rusttv_with_state(
+        "tv",
+        &state,
+        &["launcher", "restore", "--dry-run", "--json"],
+    );
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    assert_eq!(
+        json_stdout(&output)["data"]["plan"],
+        "home-takeover-restore"
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("warning:"), "{stderr}");
+    assert!(stderr.contains(&format!("--journal {corrupt}")), "{stderr}");
+    assert!(stderr.contains("--from-profile"), "{stderr}");
+
+    // Only the unreadable one left: NO_JOURNAL, still with the warning.
+    std::fs::remove_file(state.join("journals/1761220000000-home-takeover.toml")).unwrap();
+    let output = rusttv_with_state("tv", &state, &["launcher", "restore", "--dry-run"]);
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains(&corrupt), "{stderr}");
+    assert!(stderr.contains("no home-takeover journal"), "{stderr}");
     std::fs::remove_dir_all(state).unwrap();
 }
 

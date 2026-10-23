@@ -183,7 +183,8 @@ fn home_without_rusttv(
     fingerprint: &str,
     journals: &Path,
 ) -> Result<PackageName, PlanError> {
-    match find_restorable_journal(journals, HOME_TAKEOVER, fingerprint) {
+    let search = find_restorable_journal(journals, HOME_TAKEOVER, fingerprint);
+    match search.found {
         Ok((path, journal)) => {
             return Err(PlanError::precondition(format!(
                 "a Home takeover is still active (journal {}, {}), so Home depends on RustTV; \
@@ -194,6 +195,29 @@ fn home_without_rusttv(
         }
         Err(error) if error.code() == "NO_JOURNAL" => {}
         Err(error) => return Err(error),
+    }
+    // An unreadable file may be an unrestored takeover journal: refuse rather
+    // than guess (SECURITY.md rule 6).
+    if !search.unreadable.is_empty() {
+        let paths: Vec<String> = search
+            .unreadable
+            .iter()
+            .map(|file| file.path.display().to_string())
+            .collect();
+        let reasons: Vec<String> = search
+            .unreadable
+            .iter()
+            .map(|file| file.error.to_string())
+            .collect();
+        return Err(PlanError::precondition(format!(
+            "can't read journal file(s) {}, and any of them may be an unrestored Home takeover. \
+             Check each file; if a takeover is still active, run `rusttv launcher restore \
+             --journal <file>` (after fixing it) or `rusttv launcher restore --from-profile`. \
+             Then move the file out of {}. Reason: {}",
+            paths.join(", "),
+            journals.display(),
+            reasons.join("; ")
+        )));
     }
 
     let status = launcher_status(adb, serial)?;
@@ -500,6 +524,35 @@ mod tests {
             vec![synthetic!("packages-f-rusttv.txt")],
             vec![real!("home-candidates.txt")],
         );
+        assert!(uninstall_plan(&adb, SERIAL, &dir.journals()).is_ok());
+    }
+
+    #[test]
+    fn no_upgrade_or_uninstall_while_a_journal_file_is_unreadable() {
+        // Even next to a restored takeover journal: the unreadable file may be
+        // a newer takeover that was never restored.
+        let dir = Dir::new("unreadable-journal");
+        takeover_journal(&dir, JournalStatus::Restored);
+        let corrupt = dir.journals().join("0000000000002-home-takeover.toml");
+        fs::write(&corrupt, "not a journal").unwrap();
+        let adb = tv(
+            &dir,
+            vec![synthetic!("packages-f-rusttv.txt")],
+            vec![real!("home-candidates.txt")],
+        );
+        let error = uninstall_plan(&adb, SERIAL, &dir.journals()).unwrap_err();
+        assert_eq!(error.code(), "PRECONDITION_FAILED");
+        let message = error.to_string();
+        assert!(
+            message.contains(&corrupt.display().to_string()),
+            "{message}"
+        );
+        assert!(message.contains("--from-profile"), "{message}");
+        let error = install_plan(&adb, SERIAL, Some(&dir.apk()), &dir.journals()).unwrap_err();
+        assert_eq!(error.code(), "PRECONDITION_FAILED");
+
+        // Moved aside, the uninstall plans again.
+        fs::remove_file(&corrupt).unwrap();
         assert!(uninstall_plan(&adb, SERIAL, &dir.journals()).is_ok());
     }
 
