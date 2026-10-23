@@ -1,0 +1,54 @@
+# Roadmap
+
+Phases are gates, not dates. A phase starts only when the previous one meets its exit criteria. Order follows decision D2 (CLI first).
+
+| Phase | Goal | Exit criteria |
+|---|---|---|
+| 0 Research | Feasibility, safety design, plan | These docs reviewed and accepted by the owner |
+| 1a CLI core (Milestone 1) | Read-only device inspection over ADB | See Milestone 1 below |
+| 1b Launcher spike | Answer uncertainties 1–4 (RISKS.md) on the Philips TV | Go/no-go note in RESEARCH.md with evidence |
+| 1c Launcher PoC | MVP launcher (ARCHITECTURE.md § Launcher) | Launcher success criteria below |
+| 2 Benchmarks | Baseline + comparison per BENCHMARK_PLAN.md | Published raw data + report for Philips TV; budgets defined |
+| 3 Diagnostics & CLI | `performance`, `apps`, `launcher status/install` commands | All commands have `--json`, schema docs, fixture tests |
+| 4 Safe optimizer | `analyze` → `plan` → `apply` → `restore` with R2 first, R3 later | Fault-injection tests pass on emulator; recovery docs; owner approval before any device run |
+| 5 MCP | `rusttv-mcp` over the same core | Read-only tools + plan creation; no approval path from MCP |
+| 6 First public release | Signed APK, CLI binaries, docs, benchmarks, compat data | Trademark/name check done; release checklist passed |
+| 7+ | Ecosystem apps, AI concierge, cloud, B2B | Only with demonstrated demand; each needs its own proposal |
+
+## Milestone 1 — read-only CLI core
+
+Small PRs, in order:
+
+1. Workspace skeleton: `rusttv-core`, `rusttv-cli`, `rust-toolchain.toml`, `deny.toml`, CI (fmt, clippy, test, deny) on macOS + Linux.
+2. `Adb` trait, `SystemAdb`, `FakeAdb`; typed `DeviceCommand` with `RiskClass`; test asserting every M1 command is R0.
+3. `rusttv device list` and `rusttv device connect <addr>` (connect is a host-side action, not a device change).
+4. `rusttv device inspect [--json]`: manufacturer, model, Android/API level, fingerprint, ABIs, RAM, storage, ADB capabilities probe. Parsers tested on fixtures captured from the emulator and the Philips TV.
+5. `rusttv apps list [--json]` (system/third-party/disabled flags).
+6. `rusttv performance snapshot [--json]`: memory + CPU summary, launcher process memory.
+7. JSON envelope + error codes documented; `compat/` schema and the Philips TV profile generated from `inspect`.
+
+**Done when:** all commands work against the emulator and the Philips TV, all checks green in CI, no device-modifying command exists in the codebase, and a newcomer can run `cargo run -p rusttv-cli -- device inspect` from the README.
+
+## MVP success criteria (end of Phase 2)
+
+Launcher:
+
+- Builds an APK in CI for `arm64-v8a`, `armeabi-v7a`, `x86_64`.
+- Installs alongside the stock launcher; stock launcher untouched.
+- Shows every app the stock launcher shows (LEANBACK_LAUNCHER), with banners/icons.
+- Every tile reachable by D-pad; DPAD_CENTER launches; Home returns to RustTV when it is the default.
+- Works offline; survives a 24 h soak with zero crashes/ANRs on the Philips TV.
+- Fully removable with a single uninstall.
+
+Measurement:
+
+- Benchmarks for RustTV vs stock vs CleanYourTV vs one Kotlin launcher on the Philips TV, with raw data in the repo.
+- Any public performance claim is backed by those results and limited to the measured device.
+
+CLI:
+
+- Read-only commands from Milestone 1 plus Phase 3 commands, all with stable `--json`.
+
+## Recommended first coding milestone
+
+Start Milestone 1, PR 1–2: the workspace skeleton with CI and the typed, read-only `DeviceCommand` + `Adb` trait. It is pure Rust with no Android build tooling, so it is the best place to learn ownership, error handling, and testing, and it creates the safety boundary (no free-form shell) before any other code depends on it.
