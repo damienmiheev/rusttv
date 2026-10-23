@@ -543,7 +543,7 @@ impl<A: Adb + Send + 'static> RustTvServer<A> {
     }
 
     #[tool(
-        description = "Every package of RustTV's catalog installed on the device, and every `extra` of the person's choices file, with its category (telemetry, ads, extras are on by default; casting, smart-home, voice, streaming-apps are opt-in), what it does, side effects, whether it was tested on this model, whether the choices select it, whether it is enabled / disabled, and whether RustTV refuses to touch it (protected). Also every optimizer profile (`optimizer`: allowlisted settings such as the animation scales) with its status on the device (suggested, available, applied, drifted, stale, not_tested, already_set) and the current value of each of its settings. Same as `rusttv optimize analyze --json`.",
+        description = "Every package of RustTV's catalog installed on the device, and every `extra` of the person's choices file, with its category (telemetry, ads, extras are on by default; casting, smart-home, voice, streaming-apps are opt-in), what it does, side effects, whether it was tested on this model, whether the choices select it, whether it is enabled / disabled, and whether RustTV refuses to touch it (protected). Also every optimizer profile (`optimizer`: allowlisted settings such as the animation scales) with its status on the device (suggested, available, applied, drifted, stale, not_tested, already_set, unknown) and the current value of each of its settings (null `current` with a `read_error` when a setting can't be read; that never fails the analysis). Same as `rusttv optimize analyze --json`.",
         annotations(read_only_hint = true)
     )]
     async fn optimize_analyze(

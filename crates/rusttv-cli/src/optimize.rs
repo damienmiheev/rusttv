@@ -43,6 +43,7 @@ fn print_optimizer(statuses: &[OptimizerStatus]) {
             OptimizerState::Stale => "applied on older firmware (stale): restore, then apply",
             OptimizerState::NotTested => "not tested on this model (apply refuses it)",
             OptimizerState::AlreadySet => "already set",
+            OptimizerState::Unknown => "unknown: a setting can't be read",
         };
         println!(
             "  {} v{}: {state}. {}",
@@ -55,12 +56,19 @@ fn print_optimizer(statuses: &[OptimizerStatus]) {
             println!("    journal: {journal}");
         }
         for setting in &status.settings {
+            let now = match (&setting.current, &setting.read_error) {
+                (_, Some(_)) => "unknown",
+                (Some(current), None) => current.as_str(),
+                (None, None) => "unset",
+            };
             println!(
-                "    {:28} now {:6} profile {}",
+                "    {:28} now {now:7} profile {}",
                 setting.key.as_str(),
-                setting.current.as_deref().unwrap_or("unset"),
                 setting.value
             );
+            if let Some(error) = &setting.read_error {
+                println!("      can't read it: {error}");
+            }
         }
     }
 }
