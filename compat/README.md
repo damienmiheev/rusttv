@@ -30,6 +30,16 @@ stock_package = "com.google.android.apps.tv.launcherx"
 takeover_tested = true
 ```
 
+If another system activity also handles Home with a higher priority than
+RustTV (e.g. `com.google.android.tungsten.setupwraith/.RecoveryActivity` on
+some Google TV models), Android would open it instead once the stock launcher
+is disabled, and the takeover is refused. List it, after checking what it is,
+to have the takeover disable that one activity (never its package) first:
+
+```toml
+disable_home_components = ["com.google.android.tungsten.setupwraith/.RecoveryActivity"]
+```
+
 Set `takeover_tested = true` only after `rusttv launcher takeover` **and**
 `rusttv launcher restore` both succeeded on that device and firmware. Profiles
 are compiled into `rusttv`, so add new ones to `BUNDLED_PROFILES` in

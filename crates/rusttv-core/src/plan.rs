@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::adb::Adb;
 use crate::apps::{PackageListError, package_names};
 use crate::bench::Sleep;
-use crate::command::{DeviceCommand, InvalidApk, PackageName, RiskClass};
+use crate::command::{Component, DeviceCommand, InvalidApk, PackageName, RiskClass};
 use crate::error::AdbError;
 use crate::inspect::parse_properties;
 use crate::journal::{Journal, JournalStatus, JournalStep, JournalStore, StepStatus};
@@ -53,6 +53,10 @@ pub enum Check {
     PackageNotInstalled(PackageName),
     /// An activity of this package can handle Home (`query-activities`).
     HomeCandidate(PackageName),
+    /// This activity can handle Home: it is enabled (`query-activities`).
+    HomeComponentEnabled(Component),
+    /// This activity can no longer handle Home: it is disabled.
+    HomeComponentDisabled(Component),
 }
 
 impl Check {
@@ -61,6 +65,12 @@ impl Check {
         match command {
             DeviceCommand::DisablePackage(package) => Some(Self::PackageDisabled(package.clone())),
             DeviceCommand::EnablePackage(package) => Some(Self::PackageEnabled(package.clone())),
+            DeviceCommand::DisableHomeComponent(component) => {
+                Some(Self::HomeComponentDisabled(component.clone()))
+            }
+            DeviceCommand::EnableHomeComponent(component) => {
+                Some(Self::HomeComponentEnabled(component.clone()))
+            }
             DeviceCommand::InstallLauncher(_) | DeviceCommand::UpgradeLauncher(_) => {
                 Some(Self::PackageInstalled(PackageName::rusttv_launcher()))
             }
@@ -108,6 +118,13 @@ impl Check {
                     .iter()
                     .any(|candidate| candidate.package() == package.as_str()))
             }
+            Self::HomeComponentEnabled(component) | Self::HomeComponentDisabled(component) => {
+                let output = adb.run(serial, &DeviceCommand::HomeCandidates)?;
+                let listed = parse_home_candidates(&output)
+                    .iter()
+                    .any(|candidate| component.is(&candidate.component));
+                Ok(listed == matches!(self, Self::HomeComponentEnabled(_)))
+            }
         }
     }
 }
@@ -122,6 +139,12 @@ impl fmt::Display for Check {
             Self::PackageInstalled(package) => write!(f, "{package} is installed"),
             Self::PackageNotInstalled(package) => write!(f, "{package} is not installed"),
             Self::HomeCandidate(package) => write!(f, "{package} can handle Home"),
+            Self::HomeComponentEnabled(component) => {
+                write!(f, "{} can handle Home", component.as_str())
+            }
+            Self::HomeComponentDisabled(component) => {
+                write!(f, "{} can't handle Home", component.as_str())
+            }
         }
     }
 }

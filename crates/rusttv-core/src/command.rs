@@ -105,6 +105,13 @@ pub enum DeviceCommand {
     DisablePackage(PackageName),
     /// Re-enables a package for user 0 (`pm enable --user 0 <package>`). Package state.
     EnablePackage(PackageName),
+    /// Disables one activity that handles Home, not its package, for user 0
+    /// (`pm disable --user 0 <component>`). Package state; only the Home
+    /// takeover plan uses it, for activities its device profile lists.
+    DisableHomeComponent(Component),
+    /// Re-enables one activity that handles Home for user 0 (`pm enable
+    /// --user 0 <component>`). Package state.
+    EnableHomeComponent(Component),
     /// Installs the RustTV launcher from a local APK, which must contain
     /// package `ai.rusttv.launcher` (`adb install --pkg ai.rusttv.launcher
     /// <apk>`). A host-side adb command, not `adb shell`. Package state.
@@ -142,6 +149,8 @@ impl DeviceCommand {
             }
             Self::DisablePackage(_)
             | Self::EnablePackage(_)
+            | Self::DisableHomeComponent(_)
+            | Self::EnableHomeComponent(_)
             | Self::InstallLauncher(_)
             | Self::UpgradeLauncher(_)
             | Self::UninstallLauncher => RiskClass::PackageState,
@@ -164,6 +173,12 @@ impl DeviceCommand {
         match self {
             Self::DisablePackage(package) => Some(Self::EnablePackage(package.clone())),
             Self::EnablePackage(package) => Some(Self::DisablePackage(package.clone())),
+            Self::DisableHomeComponent(component) => {
+                Some(Self::EnableHomeComponent(component.clone()))
+            }
+            Self::EnableHomeComponent(component) => {
+                Some(Self::DisableHomeComponent(component.clone()))
+            }
             Self::InstallLauncher(_) => Some(Self::UninstallLauncher),
             _ => None,
         }
@@ -239,6 +254,13 @@ impl DeviceCommand {
             }
             Self::EnablePackage(package) => {
                 vec!["shell", "pm", "enable", "--user", "0", package.as_str()]
+            }
+            // Not `disable-user`: Android allows that state for packages only.
+            Self::DisableHomeComponent(component) => {
+                vec!["shell", "pm", "disable", "--user", "0", component.as_str()]
+            }
+            Self::EnableHomeComponent(component) => {
+                vec!["shell", "pm", "enable", "--user", "0", component.as_str()]
             }
             // `--pkg` makes Android refuse an APK whose package is not RustTV's.
             Self::InstallLauncher(apk) => vec!["install", "--pkg", RUSTTV_LAUNCHER, apk.as_str()],
@@ -428,6 +450,20 @@ impl Component {
     pub fn as_str(&self) -> &str {
         &self.text
     }
+
+    /// Whether `text` names the same activity, with the class written
+    /// relative (`pkg/.Main`) or in full (`pkg/pkg.Main`), as Android prints
+    /// either.
+    pub fn is(&self, text: &str) -> bool {
+        let full = |text: &str| -> Option<String> {
+            let (package, class) = text.split_once('/')?;
+            Some(match class.strip_prefix('.') {
+                Some(relative) => format!("{package}/{package}.{relative}"),
+                None => text.to_owned(),
+            })
+        };
+        full(text).is_some_and(|other| full(&self.text).is_some_and(|this| this == other))
+    }
 }
 
 impl std::str::FromStr for Component {
@@ -511,6 +547,8 @@ mod tests {
             DeviceCommand::WakeUp,
             DeviceCommand::DisablePackage(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::EnablePackage(PackageName::new("com.example.app").unwrap()),
+            DeviceCommand::DisableHomeComponent("com.example.app/.Home".parse().unwrap()),
+            DeviceCommand::EnableHomeComponent("com.example.app/.Home".parse().unwrap()),
             DeviceCommand::InstallLauncher(apk()),
             DeviceCommand::UpgradeLauncher(apk()),
             DeviceCommand::UninstallLauncher,
@@ -537,6 +575,8 @@ mod tests {
                 | DeviceCommand::WakeUp
                 | DeviceCommand::DisablePackage(_)
                 | DeviceCommand::EnablePackage(_)
+                | DeviceCommand::DisableHomeComponent(_)
+                | DeviceCommand::EnableHomeComponent(_)
                 | DeviceCommand::InstallLauncher(_)
                 | DeviceCommand::UpgradeLauncher(_)
                 | DeviceCommand::UninstallLauncher => {}
@@ -564,6 +604,8 @@ mod tests {
                 | DeviceCommand::WakeUp => RiskClass::Transient,
                 DeviceCommand::DisablePackage(_)
                 | DeviceCommand::EnablePackage(_)
+                | DeviceCommand::DisableHomeComponent(_)
+                | DeviceCommand::EnableHomeComponent(_)
                 | DeviceCommand::InstallLauncher(_)
                 | DeviceCommand::UpgradeLauncher(_)
                 | DeviceCommand::UninstallLauncher => RiskClass::PackageState,
@@ -727,6 +769,18 @@ mod tests {
         ] {
             assert!(PackageName::new(name).is_ok(), "{name}");
         }
+    }
+
+    #[test]
+    fn a_component_matches_its_relative_and_full_spellings() {
+        let short: Component = "com.a.b/.Home".parse().unwrap();
+        assert!(short.is("com.a.b/.Home"));
+        assert!(short.is("com.a.b/com.a.b.Home"));
+        let full: Component = "com.a.b/com.a.b.Home".parse().unwrap();
+        assert!(full.is("com.a.b/.Home"));
+        assert!(!short.is("com.a.b/.Homes"));
+        assert!(!short.is("com.a.bc/.Home"));
+        assert!(!short.is("com.a.b"));
     }
 
     #[test]

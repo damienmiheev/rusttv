@@ -25,7 +25,14 @@ Philips 65OLED818/12, tested 2026-10-23 over wireless debugging (pairing code).
 32-bit userspace only: use the armeabi-v7a APK.
 RustTV launcher 0.0.0 installed (adb install --pkg) and runs: real app banners,
 first cold start ~1.1 s (one run, not a benchmark).
-Home takeover NOT tested and not ready for this device: besides the stock
-launcher (priority 2), com.google.android.tungsten.setupwraith/.RecoveryActivity
-handles Home at priority 1, so disabling only the stock launcher would not make
-RustTV (priority 0) Home."""
+Home takeover NOT tested yet: besides the stock launcher (priority 2),
+com.google.android.tungsten.setupwraith/.RecoveryActivity handles Home at
+priority 1, so the takeover also disables that one activity (not its package).
+Making RustTV the Home role holder alone does not work: Android picks the
+highest-priority Home activity without consulting the preferred one (tested
+by hand 2026-10-23, then undone)."""
+
+[launcher]
+stock_package = "com.google.android.apps.tv.launcherx"
+disable_home_components = ["com.google.android.tungsten.setupwraith/.RecoveryActivity"]
+takeover_tested = false

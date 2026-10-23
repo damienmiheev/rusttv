@@ -10,6 +10,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::command::Component;
 use crate::inspect::DeviceInfo;
 
 /// Version of the profile format. Bump it when fields change meaning.
@@ -60,6 +61,13 @@ pub struct DeviceProfile {
 pub struct ProfileLauncher {
     /// Package of the stock launcher, e.g. `com.google.android.apps.tv.launcherx`.
     pub stock_package: String,
+    /// Other system activities that handle Home with a higher priority than
+    /// RustTV, which the takeover disables one by one (never their package),
+    /// e.g. `com.google.android.tungsten.setupwraith/.RecoveryActivity`.
+    /// With the stock launcher gone, Android would open the highest of them
+    /// instead of RustTV.
+    #[serde(default)]
+    pub disable_home_components: Vec<Component>,
     /// Set only after `rusttv launcher takeover` and `rusttv launcher restore`
     /// both succeeded on this device and firmware family.
     pub takeover_tested: bool,
@@ -349,6 +357,8 @@ mod tests {
         let path = compat_devices_dir().join(profile_file_name(&generated));
         let committed: DeviceProfile = toml::from_str(&fs::read_to_string(path).unwrap()).unwrap();
         generated.tested.clone_from(&committed.tested);
+        // Written by hand from what was seen on the device, like `tested`.
+        generated.launcher.clone_from(&committed.launcher);
         assert_eq!(generated, committed);
     }
 
