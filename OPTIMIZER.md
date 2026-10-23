@@ -65,7 +65,7 @@ launcher numbers (BENCHMARK_PLAN § What we compare).
 | `always_finish_activities` **[verified key]** | Destroys every activity when left: makes switching slower, and breaks apps |
 | `activity_manager_constants` **[verified key, `@hide`]** | A free-form `key=value,…` string, overridden by DeviceConfig; not a fixed value we can validate or reliably restore |
 | `setprop debug.*`, `persist.*` | `persist.*` needs root; `debug.*` doesn't survive reboot and isn't a setting |
-| Package disabling ("debloat") | R3; later phase with its own design (SECURITY.md § Protected package policy) |
+| Package disabling ("debloat") | R3; see § Privacy profiles |
 
 ## 2. `analyze` (R0 only)
 
@@ -281,6 +281,65 @@ and write no journal.
 Exit criteria (ROADMAP Phase 4): steps 1–3 pass; recovery docs (manual
 path: Developer options → animation scales, or `adb shell settings delete
 global <key>`); owner approval before step 4.
+
+## Privacy profiles (R3): telemetry and ads
+
+*Owner decision 2026-10-23: build this on the engine.* A privacy profile
+disables, never uninstalls, packages that collect telemetry, show ads or run
+for nothing on a given TV model. It is the route SECURITY.md § Protected
+package policy already plans for (rule 4: "tested-safe for that model and
+firmware family"); no new exception is needed.
+
+**Profile.** In the device's compat profile, one entry per package:
+
+```toml
+[[privacy.packages]]
+package = "org.droidtv.candeebug"
+category = "telemetry"          # telemetry | ads | extras
+what = "TP Vision analytics collection service; starts at boot"
+side_effects = "none seen"      # what stops working, in plain words
+checked = "2026-10-23"          # date it was disabled and lived with on this model
+```
+
+Entries are written from our own checks on the device; lists from other
+projects (e.g. cleanyourtv's `examples/`) are leads only, credited in
+RESEARCH.md, not copied.
+
+**Commands.** `rusttv optimize analyze` lists the profile's packages that are
+present and enabled (R0). `rusttv optimize apply privacy [--only telemetry,ads]`
+plans one `DisablePackage` step per package, in the profile's order; the dry
+run shows each package with `what` and `side_effects`. Typed confirmation,
+journal, verify, rollback as for every R3 plan. `rusttv optimize restore`
+re-enables exactly what the journal disabled (skipping, and reporting, any
+package re-enabled since).
+
+**Checks before every step** (live, never cached): rules 1–3 of the protected
+package policy: not a Home resolver, not an input method, accessibility
+service, TV input, setup wizard, system UI, settings, installer, network
+stack, Bluetooth/remote pairing or Google Play services package, not on
+`compat/protected.toml`. A package that fails any rule is refused even if a
+profile lists it. **After the last step:** Home still resolves to the same
+activity, and the TV input service is still running (HDMI works).
+
+**Separate from Home takeover.** Privacy plans never list the stock launcher
+or the packages takeover disables; their journals are separate, so either can
+be restored without the other.
+
+**Marking a package tested.** Only after it was disabled on that model,
+the TV was rebooted and used normally (Home, HDMI, apps, remote buttons,
+Settings) and a restore brought it back. Firmware updates may re-enable
+packages; `analyze` reports that.
+
+**First candidates on the Philips 65OLED818** (present and enabled on
+2026-10-23; each still needs the research above before it is listed):
+`org.droidtv.candeebug` (TP Vision analytics, running, ~12 MB PSS),
+`org.droidtv.gel` (TP Vision metrics), `com.google.android.partnersetup`
+(partner referrer), `com.android.adservices.api`,
+`com.android.ondevicepersonalization.services`,
+`com.android.federatedcompute.services` (ad personalisation),
+`com.android.tv.feedbackconsent`, `com.google.android.feedback`,
+`com.google.android.play.games`, `com.google.android.syncadapters.calendar`,
+`com.android.printspooler`, `com.google.android.onetimeinitializer`.
 
 ## Decisions (owner, 2026-10-23)
 
