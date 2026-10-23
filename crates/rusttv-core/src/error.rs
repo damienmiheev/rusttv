@@ -1,0 +1,161 @@
+//! Errors from talking to a device over `adb`.
+
+use std::io;
+
+/// Running a command through `adb` failed.
+///
+/// Follows M-ERRORS-CANONICAL-STRUCTS (rust-guidelines skill): the failure
+/// kind is private; callers use [`AdbError::code`] and the `is_*` helpers.
+/// We skip the recommended `Backtrace`: these errors are expected runtime
+/// conditions (TV off, cable unplugged), not bugs, and are shown to users.
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+pub struct AdbError {
+    kind: ErrorKind,
+}
+
+#[derive(Debug, thiserror::Error)]
+enum ErrorKind {
+    #[error(
+        "`adb` was not found; install Android platform-tools and make sure `adb` is on your PATH"
+    )]
+    AdbNotFound,
+    #[error("could not run `adb`")]
+    Spawn(#[source] io::Error),
+    #[error("device `{0}` not found; check `adb devices` and the TV's network address")]
+    DeviceNotFound(String),
+    #[error("device `{0}` is unauthorized; accept the debugging prompt on the TV")]
+    DeviceUnauthorized(String),
+    #[error("device `{0}` is offline; reconnect it or restart network debugging on the TV")]
+    DeviceOffline(String),
+    #[error("`adb {args}` failed with {status}: {stderr}")]
+    CommandFailed {
+        args: String,
+        status: String,
+        stderr: String,
+    },
+    #[error("`adb {0}` printed output that is not valid UTF-8")]
+    InvalidOutput(String),
+}
+
+impl AdbError {
+    /// Stable machine-readable code, used in `--json` output. Never renamed.
+    pub fn code(&self) -> &'static str {
+        match self.kind {
+            ErrorKind::AdbNotFound => "ADB_NOT_FOUND",
+            ErrorKind::Spawn(_) => "ADB_SPAWN_FAILED",
+            ErrorKind::DeviceNotFound(_) => "DEVICE_NOT_FOUND",
+            ErrorKind::DeviceUnauthorized(_) => "DEVICE_UNAUTHORIZED",
+            ErrorKind::DeviceOffline(_) => "DEVICE_OFFLINE",
+            ErrorKind::CommandFailed { .. } => "COMMAND_FAILED",
+            ErrorKind::InvalidOutput(_) => "INVALID_OUTPUT",
+        }
+    }
+
+    /// The device could not be reached (missing, unauthorized or offline).
+    pub fn is_device_unreachable(&self) -> bool {
+        matches!(
+            self.kind,
+            ErrorKind::DeviceNotFound(_)
+                | ErrorKind::DeviceUnauthorized(_)
+                | ErrorKind::DeviceOffline(_)
+        )
+    }
+
+    pub(crate) fn spawn(error: io::Error) -> Self {
+        let kind = if error.kind() == io::ErrorKind::NotFound {
+            ErrorKind::AdbNotFound
+        } else {
+            ErrorKind::Spawn(error)
+        };
+        Self { kind }
+    }
+
+    pub(crate) fn invalid_output(args: &[&str]) -> Self {
+        Self {
+            kind: ErrorKind::InvalidOutput(args.join(" ")),
+        }
+    }
+
+    /// Classifies a failed `adb` run from its stderr.
+    ///
+    /// `status` describes how the process ended, e.g. "exit code 1".
+    pub(crate) fn from_failure(serial: &str, args: &[&str], status: String, stderr: &str) -> Self {
+        // Messages printed by the adb client (verified against adb 1.0.41).
+        let kind = if stderr.contains("not found") && stderr.contains(serial) {
+            ErrorKind::DeviceNotFound(serial.to_owned())
+        } else if stderr.contains("device unauthorized") {
+            ErrorKind::DeviceUnauthorized(serial.to_owned())
+        } else if stderr.contains("device offline") {
+            ErrorKind::DeviceOffline(serial.to_owned())
+        } else {
+            ErrorKind::CommandFailed {
+                args: args.join(" "),
+                status,
+                stderr: stderr.trim().to_owned(),
+            }
+        };
+        Self { kind }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn classify(stderr: &str) -> AdbError {
+        AdbError::from_failure(
+            "192.168.1.20:5555",
+            &["shell", "getprop"],
+            "exit code 1".to_owned(),
+            stderr,
+        )
+    }
+
+    #[test]
+    fn missing_device_is_unreachable() {
+        // Captured from adb 1.0.41.
+        let error = classify("adb: device '192.168.1.20:5555' not found\n");
+        assert_eq!(error.code(), "DEVICE_NOT_FOUND");
+        assert!(error.is_device_unreachable());
+    }
+
+    #[test]
+    fn unauthorized_device_is_unreachable() {
+        // Text from the adb client source; not yet captured from a real device.
+        let error = classify(
+            "adb: device unauthorized.\n\
+             This adb server's $ADB_VENDOR_KEYS is not set\n\
+             Try 'adb kill-server' if that seems wrong.\n\
+             Otherwise check for a confirmation dialog on your device.\n",
+        );
+        assert_eq!(error.code(), "DEVICE_UNAUTHORIZED");
+        assert!(error.is_device_unreachable());
+    }
+
+    #[test]
+    fn offline_device_is_unreachable() {
+        let error = classify("adb: device offline\n");
+        assert_eq!(error.code(), "DEVICE_OFFLINE");
+        assert!(error.is_device_unreachable());
+    }
+
+    #[test]
+    fn a_failing_command_keeps_its_stderr() {
+        // A device-side failure that merely mentions "not found" must not be
+        // mistaken for a missing device.
+        let error = classify("/system/bin/sh: getprop: not found\n");
+        assert_eq!(error.code(), "COMMAND_FAILED");
+        assert!(!error.is_device_unreachable());
+        let message = error.to_string();
+        assert!(message.contains("adb shell getprop"), "{message}");
+        assert!(message.contains("getprop: not found"), "{message}");
+    }
+
+    #[test]
+    fn missing_adb_binary_has_its_own_code() {
+        let error = AdbError::spawn(io::Error::from(io::ErrorKind::NotFound));
+        assert_eq!(error.code(), "ADB_NOT_FOUND");
+        assert!(!error.is_device_unreachable());
+    }
+}

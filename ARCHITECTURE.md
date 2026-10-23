@@ -62,13 +62,11 @@ Parsers are pure functions over `&str` → unit-tested with real captured output
 
 ```rust
 pub trait Adb {
-    fn devices(&self) -> Result<Vec<DeviceRef>, AdbError>;
-    fn connect(&self, addr: &str) -> Result<(), AdbError>;
-    fn run(&self, device: &DeviceRef, cmd: &DeviceCommand) -> Result<CommandOutput, AdbError>;
+    fn run(&self, serial: &str, command: &DeviceCommand) -> Result<String, AdbError>;
 }
 ```
 
-There is intentionally no `shell(&str)`. Synchronous (`std::process`) in Milestone 1; no tokio until MCP needs it.
+There is intentionally no `shell(&str)`. Values that end up in `adb shell` arguments are validated newtypes (e.g. `PackageName`), because the device shell re-parses them. Host-side operations (`devices`, `connect`) are added with step 3. Synchronous (`std::process`) in Milestone 1; no tokio until MCP needs it. `FakeAdb` is available under the `test-util` feature.
 
 ## rusttv-cli
 

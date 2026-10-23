@@ -13,6 +13,7 @@ publish = false
 [workspace.dependencies]
 rusttv-core = { path = "crates/rusttv-core" }
 clap = { version = "4.6.7", features = ["derive"] }
+thiserror = "2.0.21"
 
 [workspace.lints.rust]
 # Only the future JNI bridge crate may opt out of this.
