@@ -2,7 +2,8 @@
 # Writes the third-party licence notices for everything RustTV ships:
 # Rust crates (cargo-about, about.toml), the Slint licence text, Skia and the libraries
 # compiled into it (licenses/skia/), then the NDK's LLVM runtimes
-# (licenses/llvm/). Fails if a crate has a licence not accepted in about.toml.
+# (licenses/llvm/) and the Rust standard library (licenses/rust-std/).
+# Fails if a crate has a licence not accepted in about.toml.
 # android/build.sh runs it and Gradle packs the result into every APK.
 #
 # Usage: scripts/licenses.sh [output]   (default: THIRD_PARTY_NOTICES.txt)
@@ -32,6 +33,20 @@ cargo about generate --fail --locked licenses/about.hbs > "$TMP"
     printf '\n------------------------------------------------------------------------------\n'
     printf 'libc++, libc++abi and libunwind from the Android NDK (see licenses/llvm/README.md)\n\n'
     cat licenses/llvm/LICENSE.TXT
+    printf '\n------------------------------------------------------------------------------\n'
+    printf 'The Rust standard library and the crates it is built from (see licenses/rust-std/README.md)\n'
+    for file in licenses/rust-std/COPYRIGHT licenses/rust-std/LICENSE-MIT \
+        licenses/rust-std/LICENSE-APACHE licenses/rust-std/Unicode-3.0.txt \
+        licenses/rust-std/compiler-builtins-LICENSE.txt licenses/rust-std/libm-LICENSE.txt \
+        licenses/rust-std/stdarch-LICENSE-MIT.txt licenses/rust-std/addr2line-LICENSE-MIT.txt \
+        licenses/rust-std/adler2-LICENSE-0BSD.txt licenses/rust-std/cfg-if-LICENSE-MIT.txt \
+        licenses/rust-std/gimli-LICENSE-MIT.txt licenses/rust-std/hashbrown-LICENSE-MIT.txt \
+        licenses/rust-std/libc-LICENSE-MIT.txt licenses/rust-std/memchr-LICENSE-MIT.txt \
+        licenses/rust-std/miniz_oxide-LICENSE-MIT.md licenses/rust-std/object-LICENSE-MIT.txt \
+        licenses/rust-std/rustc-demangle-LICENSE-MIT.txt; do
+        printf '\n=== %s ===\n\n' "$(basename "$file")"
+        cat "$file"
+    done
 } >> "$TMP"
 mv "$TMP" "$OUT"
 echo "Wrote $OUT ($(wc -l < "$OUT" | tr -d ' ') lines)"
