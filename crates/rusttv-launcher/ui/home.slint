@@ -18,7 +18,7 @@ export struct Glow {
 export struct TileData {
     label: string,
     image: image,
-    // 0 banner, 1 icon only, 2 no artwork, 3 the built-in About tile.
+    // 0 banner, 1 icon only, 2 no artwork, 3 the built-in About tile, 4 loading.
     kind: int,
 }
 
@@ -44,21 +44,27 @@ component Artwork inherits Rectangle {
     in property <length> u;
     background: Theme.surface;
 
-    if data.kind == 0: Image {
+    // Pictures fade in: on a TV they arrive after the first frame (kind 4,
+    // loading, is an empty card until then).
+    Image {
         width: parent.width;
         height: parent.height;
         source: data.image;
         image-fit: cover;
+        opacity: data.kind == 0 ? 1 : 0;
+        animate opacity { duration: 300ms; easing: ease-out; }
     }
-    if data.kind == 1: Image {
+    Image {
         y: parent.height * 0.15;
         width: 72 * u;
         height: 72 * u;
         x: (parent.width - self.width) / 2;
         source: data.image;
         image-fit: contain;
+        opacity: data.kind == 1 ? 1 : 0;
+        animate opacity { duration: 300ms; easing: ease-out; }
     }
-    if data.kind != 0: Text {
+    if data.kind == 1 || data.kind == 2 || data.kind == 3: Text {
         y: data.kind == 1 ? parent.height * 0.15 + 80 * u : 0;
         width: parent.width;
         height: data.kind == 1 ? 32 * u : parent.height;

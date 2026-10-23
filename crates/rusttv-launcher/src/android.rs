@@ -152,13 +152,14 @@ impl Platform for AndroidPlatform {
                     log::warn!("bridge returned a malformed app entry: {text:?}");
                     continue;
                 };
-                let artwork = artwork(env, bridge, activity, id)?;
+                // Drawing banners takes ~7 ms per app: they load after the
+                // first frame, through `artwork`.
                 apps.push(AppEntry {
                     app: App {
                         id: id.to_owned(),
                         label: label.to_owned(),
                     },
-                    artwork,
+                    artwork: Artwork::Later,
                 });
             }
             Ok(apps)
@@ -187,6 +188,12 @@ impl Platform for AndroidPlatform {
         self.with_bridge("check app changes", |env, bridge, _activity| {
             env.call_static_method(bridge, "takeAppsChanged", "()Z", &[])?
                 .z()
+        })
+    }
+
+    fn artwork(&self, id: &str) -> Result<Artwork, PlatformError> {
+        self.with_bridge("load artwork", |env, bridge, activity| {
+            artwork(env, bridge, activity, id)
         })
     }
 }

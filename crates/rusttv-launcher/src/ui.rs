@@ -3,12 +3,12 @@
 //! Rust owns all state and timers; the window only draws and forwards keys.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 use std::time::{Duration, Instant};
 
-use slint::{ComponentHandle, ModelRc, SharedPixelBuffer, Timer, TimerMode, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, SharedPixelBuffer, Timer, TimerMode, VecModel};
 
 use crate::model::{
     App, Effect, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT, Order, Scroll, State,
@@ -44,6 +44,14 @@ const SWAY_AFTER: Duration = Duration::from_millis(300);
 /// While a tile sways, Skia redraws the whole screen every frame: about 44% of
 /// one core on the Philips 65OLED818. Stopping keeps an idle home screen at ~0%.
 const SWAY_UNTIL: Duration = Duration::from_secs(20);
+
+/// Artwork listed as [`Artwork::Later`] loads this many apps per timer tick,
+/// after the first frame. About 7 ms per app on the Philips TV, so a tick
+/// stays short and keys stay responsive while banners arrive.
+const ARTWORK_PER_TICK: usize = 2;
+
+/// Interval between artwork loading ticks.
+const ARTWORK_TICK: Duration = Duration::from_millis(16);
 
 /// How long focus must rest before the hero follows it.
 const HERO_DELAY: Duration = Duration::from_millis(150);
@@ -276,6 +284,9 @@ struct Controller {
     hero_timer: Timer,
     toast_timer: Timer,
     pause_timer: Timer,
+    /// Apps whose artwork is still [`Artwork::Later`], in tile order.
+    pending_artwork: VecDeque<String>,
+    artwork_timer: Timer,
 }
 
 impl Controller {
@@ -319,6 +330,8 @@ impl Controller {
                 hero_timer: Timer::default(),
                 toast_timer: Timer::default(),
                 pause_timer: Timer::default(),
+                pending_artwork: VecDeque::new(),
+                artwork_timer: Timer::default(),
             })
         });
         *controller.borrow().options.lifecycle.0.borrow_mut() = Rc::downgrade(&controller);
@@ -363,11 +376,68 @@ impl Controller {
                 if self.home.set_apps(&apps) {
                     self.save_order();
                 }
+                self.pending_artwork = self
+                    .home
+                    .tiles()
+                    .iter()
+                    .filter_map(|tile| match tile {
+                        TileId::App(id) if self.apps.get(id).is_some_and(AppView::is_pending) => {
+                            Some(id.clone())
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                self.load_artwork_later();
             }
             Err(error) => {
                 self.home.set_apps(&[]);
                 self.show_toast(format!("Couldn't load apps: {error}"));
             }
+        }
+    }
+
+    /// Starts loading pending artwork on a timer, so the first frame (and each
+    /// key) never waits for every banner.
+    fn load_artwork_later(&mut self) {
+        if self.pending_artwork.is_empty() {
+            self.artwork_timer.stop();
+            return;
+        }
+        let me = self.me.clone();
+        self.artwork_timer
+            .start(TimerMode::Repeated, ARTWORK_TICK, move || {
+                if let Some(controller) = me.upgrade() {
+                    controller.borrow_mut().load_some_artwork();
+                }
+            });
+    }
+
+    /// Loads the next few pending artworks and shows them.
+    fn load_some_artwork(&mut self) {
+        for _ in 0..ARTWORK_PER_TICK {
+            let Some(id) = self.pending_artwork.pop_front() else {
+                break;
+            };
+            let artwork = self.platform.artwork(&id).unwrap_or_else(|error| {
+                log::warn!("loading the artwork of {id} failed: {error}");
+                Artwork::Missing
+            });
+            let Some(app) = self.apps.get_mut(&id) else {
+                continue;
+            };
+            app.set_artwork(&artwork);
+            let tile = TileId::App(id);
+            if let Some(index) = self.shown.iter().position(|shown| *shown == tile) {
+                self.tiles.set_row_data(index, self.tile_data(&tile));
+            }
+            if self.hero.as_ref() == Some(&tile) {
+                // Redraw the hero with the picture (it fades in like a tile).
+                self.hero = None;
+                self.show_hero();
+            }
+        }
+        if self.pending_artwork.is_empty() {
+            self.artwork_timer.stop();
         }
     }
 
@@ -610,25 +680,40 @@ impl Controller {
 struct AppView {
     label: String,
     image: slint::Image,
-    /// The `kind` of `TileData`: 0 banner, 1 icon only, 2 no artwork.
+    /// The `kind` of `TileData`: 0 banner, 1 icon only, 2 no artwork, 4 loading.
     kind: i32,
     glow_source: Option<Bitmap>,
 }
 
 impl AppView {
     fn new(entry: AppEntry) -> Self {
-        let (image, kind, glow_source) = match &entry.artwork {
+        let mut view = Self {
+            label: entry.app.label,
+            image: slint::Image::default(),
+            kind: 2,
+            glow_source: None,
+        };
+        view.set_artwork(&entry.artwork);
+        view
+    }
+
+    /// Takes the picture from `artwork`; its pixels are copied, not kept.
+    fn set_artwork(&mut self, artwork: &Artwork) {
+        let (image, kind, glow_source) = match artwork {
             Artwork::Banner(bitmap) => (image(bitmap), 0, Some(bitmap)),
             Artwork::Icon(bitmap) => (image(bitmap), 1, Some(bitmap)),
             Artwork::Missing => (slint::Image::default(), 2, None),
+            Artwork::Later => (slint::Image::default(), 4, None),
         };
-        Self {
-            label: entry.app.label,
-            image,
-            kind,
-            glow_source: glow_source
-                .map(|bitmap| bitmap.shrink(GLOW_SOURCE_SIZE.0, GLOW_SOURCE_SIZE.1)),
-        }
+        self.image = image;
+        self.kind = kind;
+        self.glow_source =
+            glow_source.map(|bitmap| bitmap.shrink(GLOW_SOURCE_SIZE.0, GLOW_SOURCE_SIZE.1));
+    }
+
+    /// Whether the artwork is still to be loaded ([`Artwork::Later`]).
+    fn is_pending(&self) -> bool {
+        self.kind == 4
     }
 }
 
@@ -721,6 +806,10 @@ mod tests {
 
         fn take_apps_changed(&mut self) -> Result<bool, PlatformError> {
             self.platform.borrow_mut().take_apps_changed()
+        }
+
+        fn artwork(&self, id: &str) -> Result<Artwork, PlatformError> {
+            self.platform.borrow().artwork(id)
         }
     }
 
@@ -879,6 +968,35 @@ mod tests {
         screen.tap(RIGHT);
         screen.wait(400);
         assert_eq!(screen.window.get_idle_phase(), 1);
+    }
+
+    #[test]
+    fn lazy_artwork_shows_empty_cards_first_then_fills_them_in() {
+        let screen = screen(None);
+        // Rebuild the list from a platform that, like Android, lists artwork for later.
+        {
+            let mut platform = screen.shared.platform.borrow_mut();
+            *platform = std::mem::take(&mut *platform).with_lazy_artwork();
+            platform.mark_apps_changed();
+        }
+        screen.lifecycle.resumed();
+        screen.wait(1);
+        let kinds = |screen: &Screen| -> Vec<i32> {
+            screen
+                .window
+                .get_tiles()
+                .iter()
+                .map(|tile| tile.kind)
+                .collect()
+        };
+        // A, B, C loading; About.
+        assert_eq!(kinds(&screen), [4, 4, 4, 3]);
+        assert_eq!(screen.shared.platform.borrow().artwork_calls(), 0);
+
+        screen.wait(20);
+        screen.wait(20);
+        assert_eq!(kinds(&screen), [0, 0, 0, 3]);
+        assert_eq!(screen.shared.platform.borrow().artwork_calls(), 3);
     }
 
     #[test]

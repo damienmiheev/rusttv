@@ -28,6 +28,10 @@ pub trait Platform {
     /// Whether apps were installed, updated or removed since the last call;
     /// clears the flag. Lets the launcher skip re-reading the list on resume.
     fn take_apps_changed(&mut self) -> Result<bool, PlatformError>;
+
+    /// The artwork of an app that [`Platform::list_apps`] returned as
+    /// [`Artwork::Later`]. Called after the first frame, a few apps at a time.
+    fn artwork(&self, id: &str) -> Result<Artwork, PlatformError>;
 }
 
 /// An app and the picture shown on its tile.
@@ -48,6 +52,10 @@ pub enum Artwork {
     Icon(Bitmap),
     /// Nothing to draw; the tile shows the name only.
     Missing,
+    /// Not loaded yet: fetch it with [`Platform::artwork`]. Lets the home
+    /// screen appear before every banner has been drawn (~230 ms for 31 apps
+    /// on the Philips 65OLED818).
+    Later,
 }
 
 /// An RGBA image, 8 bits per channel, rows top to bottom.
@@ -321,6 +329,9 @@ pub struct FakePlatform {
     launched: Vec<String>,
     failing: BTreeSet<String>,
     apps_changed: bool,
+    /// List artwork as [`Artwork::Later`], like the Android bridge.
+    lazy: bool,
+    artwork_calls: std::cell::Cell<usize>,
 }
 
 #[cfg(any(test, feature = "test-util"))]
@@ -364,6 +375,18 @@ impl FakePlatform {
         self.failing.insert(id.to_owned());
     }
 
+    /// Lists artwork as [`Artwork::Later`], to be fetched with [`Platform::artwork`].
+    #[must_use]
+    pub fn with_lazy_artwork(mut self) -> Self {
+        self.lazy = true;
+        self
+    }
+
+    /// How many times [`Platform::artwork`] was called.
+    pub fn artwork_calls(&self) -> usize {
+        self.artwork_calls.get()
+    }
+
     /// Reports a changed app list on the next [`Platform::take_apps_changed`].
     pub fn mark_apps_changed(&mut self) {
         self.apps_changed = true;
@@ -378,7 +401,13 @@ impl FakePlatform {
 #[cfg(any(test, feature = "test-util"))]
 impl Platform for FakePlatform {
     fn list_apps(&self) -> Result<Vec<AppEntry>, PlatformError> {
-        Ok(self.apps.clone())
+        let mut apps = self.apps.clone();
+        if self.lazy {
+            for entry in &mut apps {
+                entry.artwork = Artwork::Later;
+            }
+        }
+        Ok(apps)
     }
 
     fn launch(&mut self, id: &str) -> Result<(), PlatformError> {
@@ -397,6 +426,15 @@ impl Platform for FakePlatform {
 
     fn take_apps_changed(&mut self) -> Result<bool, PlatformError> {
         Ok(std::mem::take(&mut self.apps_changed))
+    }
+
+    fn artwork(&self, id: &str) -> Result<Artwork, PlatformError> {
+        self.artwork_calls.set(self.artwork_calls.get() + 1);
+        self.apps
+            .iter()
+            .find(|entry| entry.app.id == id)
+            .map(|entry| entry.artwork.clone())
+            .ok_or_else(|| PlatformError::not_launchable(id))
     }
 }
 
