@@ -126,6 +126,7 @@ pub use fake::FakeAdb;
 
 #[cfg(any(test, feature = "test-util"))]
 mod fake {
+    use std::cell::RefCell;
     use std::collections::HashMap;
 
     use super::Adb;
@@ -139,7 +140,10 @@ mod fake {
     /// test notices when code runs a command it didn't expect.
     #[derive(Debug, Default)]
     pub struct FakeAdb {
-        responses: HashMap<DeviceCommand, String>,
+        /// Responses per command, served in order; the last one repeats.
+        responses: HashMap<DeviceCommand, Vec<String>>,
+        /// How many times each command has run.
+        calls: RefCell<HashMap<DeviceCommand, usize>>,
         devices: Vec<DeviceEntry>,
     }
 
@@ -150,8 +154,19 @@ mod fake {
         }
 
         /// Makes `command` return `stdout` on every call.
-        pub fn respond(mut self, command: DeviceCommand, stdout: impl Into<String>) -> Self {
-            self.responses.insert(command, stdout.into());
+        pub fn respond(self, command: DeviceCommand, stdout: impl Into<String>) -> Self {
+            self.respond_sequence(command, [stdout.into()])
+        }
+
+        /// Makes successive calls of `command` return these outputs in order;
+        /// after the last one, it keeps returning the last.
+        pub fn respond_sequence(
+            mut self,
+            command: DeviceCommand,
+            outputs: impl IntoIterator<Item = String>,
+        ) -> Self {
+            self.responses
+                .insert(command, outputs.into_iter().collect());
             self
         }
 
@@ -164,14 +179,23 @@ mod fake {
 
         /// Returns the canned stdout for `command`.
         pub fn run(&self, serial: &str, command: &DeviceCommand) -> Result<String, AdbError> {
-            self.responses.get(command).cloned().ok_or_else(|| {
-                AdbError::from_failure(
+            let outputs = self
+                .responses
+                .get(command)
+                .filter(|outputs| !outputs.is_empty());
+            let Some(outputs) = outputs else {
+                return Err(AdbError::from_failure(
                     serial,
                     &command.adb_args(),
                     "no canned response".to_owned(),
                     "FakeAdb has no response for this command",
-                )
-            })
+                ));
+            };
+            let mut calls = self.calls.borrow_mut();
+            let call = calls.entry(command.clone()).or_default();
+            let output = outputs[(*call).min(outputs.len() - 1)].clone();
+            *call += 1;
+            Ok(output)
         }
 
         /// Returns the devices added with [`FakeAdb::with_device`].
@@ -234,6 +258,18 @@ mod tests {
             total_memory_line(&adb, "emulator-5554").unwrap(),
             "MemTotal: 1999876 kB"
         );
+    }
+
+    #[test]
+    fn fake_adb_serves_a_sequence_then_repeats_the_last() {
+        let adb = FakeAdb::new().respond_sequence(
+            DeviceCommand::MemInfo,
+            ["first".to_owned(), "second".to_owned()],
+        );
+        let outputs: Vec<String> = (0..3)
+            .map(|_| adb.run("tv", &DeviceCommand::MemInfo).unwrap())
+            .collect();
+        assert_eq!(outputs, ["first", "second", "second"]);
     }
 
     #[test]

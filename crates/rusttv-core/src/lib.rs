@@ -6,6 +6,7 @@
 
 mod adb;
 mod apps;
+mod bench;
 mod command;
 mod compat;
 mod device;
@@ -17,7 +18,13 @@ mod perf;
 pub use adb::FakeAdb;
 pub use adb::{Adb, SystemAdb};
 pub use apps::{AppInfo, AppKind, list_apps, parse_package_list};
-pub use command::{DeviceCommand, InvalidPackageName, PackageName, RiskClass};
+pub use bench::{
+    AmStart, AppResult, BenchmarkDevice, BenchmarkError, BenchmarkOptions, BenchmarkReport,
+    LaunchKind, LaunchRun, Stats, app_cpu_seconds, parse_am_start, parse_cpu_time, run_benchmark,
+};
+pub use command::{
+    Component, DeviceCommand, InvalidComponent, InvalidPackageName, PackageName, RiskClass,
+};
 pub use compat::{
     DeviceKind, DeviceProfile, MissingField, PROFILE_SCHEMA_VERSION, ProfileDevice,
     ProfileFirmware, ProfileHardware, ProfileTested, profile_file_name, profile_from_info,
@@ -53,6 +60,11 @@ mod tests {
                 device::every_selection_error()
                     .iter()
                     .map(DeviceSelectionError::code),
+            )
+            .chain(
+                bench::every_benchmark_error()
+                    .iter()
+                    .map(BenchmarkError::code),
             )
             .collect();
         let listed: BTreeSet<&str> = ERROR_CODES.iter().copied().collect();

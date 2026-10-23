@@ -7,8 +7,8 @@ use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 use rusttv_core::{
-    Adb, AdbError, ConnectOutcome, DeviceAddress, DeviceEntry, DeviceInfo, DeviceSelectionError,
-    DeviceState, SystemAdb,
+    Adb, AdbError, BenchmarkError, BenchmarkOptions, ConnectOutcome, DeviceAddress, DeviceEntry,
+    DeviceInfo, DeviceSelectionError, DeviceState, SystemAdb,
 };
 use serde::Serialize;
 
@@ -58,6 +58,34 @@ enum PerformanceAction {
         /// How long to sample CPU usage, in milliseconds.
         #[arg(long, default_value_t = 1000, value_parser = clap::value_parser!(u64).range(100..=60_000))]
         sample_ms: u64,
+    },
+    /// Cold start, resume, idle memory and CPU of one or more apps, repeated
+    /// and interleaved (BENCHMARK_PLAN.md). Stops and starts the apps; changes no settings.
+    Benchmark {
+        #[command(flatten)]
+        target: Target,
+        /// Activity to measure, `package/.Activity`. Repeat to compare apps;
+        /// resume times need at least two.
+        #[arg(long = "app", required = true)]
+        apps: Vec<rusttv_core::Component>,
+        /// Counted runs per app and measurement.
+        #[arg(long, default_value_t = BenchmarkOptions::default().runs, value_parser = clap::value_parser!(u32).range(1..=1000))]
+        runs: u32,
+        /// Discarded warm-up runs per app.
+        #[arg(long, default_value_t = BenchmarkOptions::default().warmup)]
+        warmup: u32,
+        /// Pause after stopping or switching apps, in milliseconds.
+        #[arg(long, default_value_t = BenchmarkOptions::default().pause_ms)]
+        pause_ms: u64,
+        /// How long an app idles in front before memory is read, in milliseconds.
+        #[arg(long, default_value_t = BenchmarkOptions::default().settle_ms)]
+        settle_ms: u64,
+        /// Window for idle CPU usage, in milliseconds (0 skips it).
+        #[arg(long, default_value_t = BenchmarkOptions::default().cpu_window_ms)]
+        cpu_window_ms: u64,
+        /// Idle memory/CPU samples per app.
+        #[arg(long, default_value_t = BenchmarkOptions::default().idle_samples)]
+        idle_samples: u32,
     },
 }
 
@@ -117,6 +145,8 @@ enum CliError {
     Selection(#[from] DeviceSelectionError),
     #[error(transparent)]
     IncompleteProfile(#[from] rusttv_core::MissingField),
+    #[error(transparent)]
+    Benchmark(#[from] BenchmarkError),
 }
 
 impl CliError {
@@ -125,6 +155,7 @@ impl CliError {
             Self::Adb(error) => error.code(),
             Self::Selection(error) => error.code(),
             Self::IncompleteProfile(_) => "INCOMPLETE_PROFILE",
+            Self::Benchmark(error) => error.code(),
         }
     }
 
@@ -135,6 +166,8 @@ impl CliError {
             Self::Selection(error) if error.is_ambiguous() => EXIT_USAGE,
             Self::Selection(_) => EXIT_DEVICE_UNREACHABLE,
             Self::IncompleteProfile(_) => EXIT_FAILURE,
+            Self::Benchmark(error) if error.is_device_unreachable() => EXIT_DEVICE_UNREACHABLE,
+            Self::Benchmark(_) => EXIT_FAILURE,
         }
     }
 }
@@ -151,6 +184,26 @@ fn main() -> ExitCode {
         Command::Apps(AppsAction::List { target }) => apps::list(&adb, target, cli.json),
         Command::Performance(PerformanceAction::Snapshot { target, sample_ms }) => {
             performance::snapshot(&adb, target, *sample_ms, cli.json)
+        }
+        Command::Performance(PerformanceAction::Benchmark {
+            target,
+            apps,
+            runs,
+            warmup,
+            pause_ms,
+            settle_ms,
+            cpu_window_ms,
+            idle_samples,
+        }) => {
+            let options = BenchmarkOptions {
+                runs: *runs,
+                warmup: *warmup,
+                pause_ms: *pause_ms,
+                settle_ms: *settle_ms,
+                cpu_window_ms: *cpu_window_ms,
+                idle_samples: *idle_samples,
+            };
+            performance::benchmark(&adb, target, apps, options, cli.json)
         }
         Command::Compat(CompatAction::Profile { target }) => {
             compat::profile(&adb, target, cli.json)

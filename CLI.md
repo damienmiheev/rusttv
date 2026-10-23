@@ -1,7 +1,9 @@
 # `rusttv` CLI reference
 
-The contract for scripts and AI agents. All commands are **read-only**: none
-changes anything on the device. Run `rusttv <command> --help` for every option.
+The contract for scripts and AI agents. All commands are **read-only** except
+`performance benchmark`, which stops and starts the apps it measures (risk
+class R1, transient). No command changes settings or packages. Run
+`rusttv <command> --help` for every option.
 
 ## Commands
 
@@ -12,6 +14,7 @@ changes anything on the device. Run `rusttv <command> --help` for every option.
 | `device inspect` | Identity, firmware, CPU, memory, storage | [DeviceInfo](#deviceinfo) |
 | `apps list` | Installed packages | array of [App](#app) |
 | `performance snapshot [--sample-ms N]` | CPU (N ms sample, default 1000), memory, launcher memory, top processes | [PerformanceSnapshot](#performancesnapshot) |
+| `performance benchmark --app <package/.Activity>...` | Repeated, interleaved cold start, resume, idle memory and CPU per app (BENCHMARK_PLAN.md); progress on stderr. **Stops and starts the apps.** Resume needs two or more apps | [BenchmarkReport](#benchmarkreport) |
 | `compat profile` | Compatibility profile for `compat/devices/` (TOML on stdout; `--json` wraps it) | `{"path": string, "profile": object}` |
 
 Commands that target a device take `--serial <serial>`. Without it, the only
@@ -60,6 +63,7 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
 | `CONNECT_FAILED` | 3 | `adb connect` failed (refused, unknown host, ...) |
 | `COMMAND_FAILED` | 1 | An adb command failed for another reason; the message has its stderr |
 | `INVALID_OUTPUT` | 1 | adb printed something that isn't UTF-8 |
+| `LAUNCH_FAILED` | 1 | `am start` couldn't start a benchmarked activity (wrong component, app not installed) |
 | `INCOMPLETE_PROFILE` | 1 | The device didn't report a value a compatibility profile needs |
 | `INTERNAL` | 1 | Output couldn't be serialized (a bug; please report it) |
 
@@ -103,3 +107,19 @@ sample_ms}` or null when no CPU time elapsed); `home_app` (`{package,
 activity, pss_kib, rss_kib}` or null; memory values are null when the
 launcher isn't running); `top_processes` (up to 10 `{pid, name, rss_kib}`,
 largest first).
+
+### BenchmarkReport
+
+`rusttv_version`; `device` (`serial`, `manufacturer`, `model`, `api_level`,
+`build_fingerprint`); `options` (`runs`, `warmup`, `pause_ms`, `settle_ms`,
+`cpu_window_ms`, `idle_samples`); `apps`: one per `--app`, with `component`,
+`cold_start_ms`, `resume_ms`, `idle_pss_kib`, `idle_cpu_percent` (each a
+[Stats](#stats) or null) and `discarded_runs`; `runs`: every launch with
+`component`, `kind` (`cold` \| `resume`), `round`, `launch_state` (Android's
+`COLD`/`WARM`/`HOT`/...), `total_time_ms`, `wait_time_ms`, `counted`,
+`discarded_because` (string or null).
+
+### Stats
+
+`n`, `min`, `p10`, `median`, `p90`, `max`, `iqr` (p75 − p25). Percentiles use
+the nearest-rank method.

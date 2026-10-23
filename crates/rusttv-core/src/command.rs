@@ -57,6 +57,12 @@ pub enum DeviceCommand {
     HomeActivity,
     /// Memory usage of one app process (`dumpsys meminfo <package>`).
     PackageMemInfo(PackageName),
+    /// Cumulative CPU time of every process (`ps -A -o PID,TIME+,NAME`).
+    ProcessCpuTimes,
+    /// Stops an app's processes (`am force-stop <package>`). Transient.
+    ForceStop(PackageName),
+    /// Starts an activity and waits for its first frame (`am start -W -n <component>`). Transient.
+    StartActivity(Component),
 }
 
 impl DeviceCommand {
@@ -72,7 +78,9 @@ impl DeviceCommand {
             | Self::CpuStat
             | Self::ProcessList
             | Self::HomeActivity
-            | Self::PackageMemInfo(_) => RiskClass::Read,
+            | Self::PackageMemInfo(_)
+            | Self::ProcessCpuTimes => RiskClass::Read,
+            Self::ForceStop(_) | Self::StartActivity(_) => RiskClass::Transient,
         }
     }
 
@@ -99,6 +107,11 @@ impl DeviceCommand {
                 "android.intent.category.HOME",
             ],
             Self::PackageMemInfo(package) => vec!["shell", "dumpsys", "meminfo", package.as_str()],
+            Self::ProcessCpuTimes => vec!["shell", "ps", "-A", "-o", "PID,TIME+,NAME"],
+            Self::ForceStop(package) => vec!["shell", "am", "force-stop", package.as_str()],
+            Self::StartActivity(component) => {
+                vec!["shell", "am", "start", "-W", "-n", component.as_str()]
+            }
         }
     }
 }
@@ -145,6 +158,71 @@ impl fmt::Display for PackageName {
 #[error("`{0}` is not a valid Android package name")]
 pub struct InvalidPackageName(String);
 
+/// A validated activity component, `<package>/<activity>`, e.g.
+/// `ai.rusttv.spike/.LauncherActivity`. Safe to pass to `adb shell`.
+///
+/// The activity is a class name, relative (`.Main`) or fully qualified
+/// (`com.example.Main`): ASCII letters, digits, `_` and `.`. Inner classes
+/// (`$`) are rejected because `$` is shell syntax.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Component {
+    /// `package/activity`, kept whole so it can be borrowed as one argument.
+    text: String,
+    package_len: usize,
+}
+
+impl Component {
+    /// The package part.
+    pub fn package(&self) -> PackageName {
+        // Validated in `from_str`.
+        PackageName(self.text[..self.package_len].to_owned())
+    }
+
+    /// The whole component as `package/activity`.
+    pub fn as_str(&self) -> &str {
+        &self.text
+    }
+}
+
+impl std::str::FromStr for Component {
+    type Err = InvalidComponent;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        let invalid = || InvalidComponent(input.to_owned());
+        let (package, activity) = input.split_once('/').ok_or_else(invalid)?;
+        PackageName::new(package).map_err(|_| invalid())?;
+        let class = activity.strip_prefix('.').unwrap_or(activity);
+        let valid_class = !class.is_empty()
+            && class.split('.').all(|segment| {
+                let mut chars = segment.chars();
+                chars
+                    .next()
+                    .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                    && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+            });
+        if !valid_class {
+            return Err(invalid());
+        }
+        Ok(Self {
+            text: input.to_owned(),
+            package_len: package.len(),
+        })
+    }
+}
+
+impl fmt::Display for Component {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.text)
+    }
+}
+
+/// Returned when parsing a [`Component`] fails.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error(
+    "`{0}` is not a valid activity component; expected `package/.Activity`, e.g. `ai.rusttv.spike/.LauncherActivity`"
+)]
+pub struct InvalidComponent(String);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,6 +241,9 @@ mod tests {
             DeviceCommand::ProcessList,
             DeviceCommand::HomeActivity,
             DeviceCommand::PackageMemInfo(PackageName::new("com.example.app").unwrap()),
+            DeviceCommand::ProcessCpuTimes,
+            DeviceCommand::ForceStop(PackageName::new("com.example.app").unwrap()),
+            DeviceCommand::StartActivity("com.example.app/.MainActivity".parse().unwrap()),
         ];
         for command in &all {
             match command {
@@ -175,16 +256,56 @@ mod tests {
                 | DeviceCommand::CpuStat
                 | DeviceCommand::ProcessList
                 | DeviceCommand::HomeActivity
-                | DeviceCommand::PackageMemInfo(_) => {}
+                | DeviceCommand::PackageMemInfo(_)
+                | DeviceCommand::ProcessCpuTimes
+                | DeviceCommand::ForceStop(_)
+                | DeviceCommand::StartActivity(_) => {}
             }
         }
         all
     }
 
     #[test]
-    fn milestone_1_commands_are_read_only() {
+    fn nothing_above_transient_exists_yet() {
+        // R2/R3 commands need the plan/approve/journal engine (SECURITY.md),
+        // which doesn't exist yet. Only stopping and starting apps is R1.
         for command in every_command() {
-            assert_eq!(command.risk(), RiskClass::Read, "{command:?}");
+            let expected = match command {
+                DeviceCommand::ForceStop(_) | DeviceCommand::StartActivity(_) => {
+                    RiskClass::Transient
+                }
+                _ => RiskClass::Read,
+            };
+            assert_eq!(command.risk(), expected, "{command:?}");
+        }
+    }
+
+    #[test]
+    fn components_accept_relative_and_qualified_activities() {
+        let component: Component = "ai.rusttv.spike/.LauncherActivity".parse().unwrap();
+        assert_eq!(component.package().as_str(), "ai.rusttv.spike");
+        assert!(
+            "com.google.android.apps.tv.launcherx/com.google.android.apps.tv.launcherx.home.HomeActivity"
+                .parse::<Component>()
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn components_with_shell_syntax_or_bad_shape_are_rejected() {
+        for input in [
+            "",
+            "ai.rusttv.spike",
+            "ai.rusttv.spike/",
+            "ai.rusttv.spike/.",
+            "/.Main",
+            "ai.rusttv.spike/.Main$Inner",
+            "ai.rusttv.spike/.Main;reboot",
+            "ai.rusttv.spike/.Main reboot",
+            "evil;reboot/.Main",
+            "ai.rusttv.spike/..Main",
+        ] {
+            assert!(input.parse::<Component>().is_err(), "{input:?}");
         }
     }
 

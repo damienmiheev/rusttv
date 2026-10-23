@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use rusttv_core::{Adb, PerformanceSnapshot};
+use rusttv_core::{Adb, BenchmarkOptions, BenchmarkReport, Component, PerformanceSnapshot, Stats};
 
 use crate::{CliError, Target, output};
 
@@ -65,4 +65,91 @@ fn print_summary(snapshot: &PerformanceSnapshot) {
             process.pid
         );
     }
+}
+
+/// `rusttv performance benchmark`. Progress goes to stderr; results to stdout.
+pub fn benchmark(
+    adb: &dyn Adb,
+    target: &Target,
+    apps: &[Component],
+    options: BenchmarkOptions,
+    json: bool,
+) -> Result<(), CliError> {
+    let serial = target.resolve(adb)?;
+    output::print_note(&format!(
+        "Benchmarking {} app(s) on {serial}: this stops and starts them repeatedly \
+         and changes no settings. Leave the TV alone until it finishes.",
+        apps.len()
+    ));
+    let mut progress = |line: &str| output::print_note(line);
+    let report = rusttv_core::run_benchmark(
+        adb,
+        &serial,
+        apps,
+        options,
+        &std::thread::sleep,
+        &mut progress,
+    )?;
+    if json {
+        output::print_json(&report);
+    } else {
+        print_report(&report);
+    }
+    Ok(())
+}
+
+fn print_report(report: &BenchmarkReport) {
+    let device = &report.device;
+    println!(
+        "{} {} (API {}), build {}",
+        device.manufacturer.as_deref().unwrap_or("unknown"),
+        device.model.as_deref().unwrap_or("unknown"),
+        device
+            .api_level
+            .map_or_else(|| "?".to_owned(), |api| api.to_string()),
+        device.build_fingerprint.as_deref().unwrap_or("unknown"),
+    );
+    let stats = |value: Option<Stats>, unit: &str, scale: f64| {
+        value.map_or_else(
+            || "not measured".to_owned(),
+            |s| {
+                format!(
+                    "median {:.1}{unit}  (p10 {:.1}, p90 {:.1}, IQR {:.1}, n={})",
+                    s.median / scale,
+                    s.p10 / scale,
+                    s.p90 / scale,
+                    s.iqr / scale,
+                    s.n
+                )
+            },
+        )
+    };
+    for app in &report.apps {
+        println!("\n{}", app.component);
+        println!(
+            "  {:12} {}",
+            "cold start",
+            stats(app.cold_start_ms, " ms", 1.0)
+        );
+        println!("  {:12} {}", "resume", stats(app.resume_ms, " ms", 1.0));
+        println!(
+            "  {:12} {}",
+            "idle PSS",
+            stats(app.idle_pss_kib, " MiB", 1024.0)
+        );
+        println!(
+            "  {:12} {}",
+            "idle CPU",
+            stats(app.idle_cpu_percent, "%", 1.0)
+        );
+        if app.discarded_runs > 0 {
+            println!(
+                "  {} run(s) discarded; see --json for reasons",
+                app.discarded_runs
+            );
+        }
+    }
+    println!(
+        "\nCompare only results from the same device and build. Keep the raw runs: rerun with --json > file.json."
+    );
 }

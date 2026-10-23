@@ -27,7 +27,7 @@ Every `DeviceCommand` declares one:
 | R3 Package state | Enable/disable an app for user 0 | `pm disable-user --user 0` | Only via an approved plan, Phase 4+, known-device profile only |
 | R4 Forbidden | Not implementable | uninstall, stock-launcher changes outside Home takeover, system partition writes | Nobody |
 
-Milestone 1 contains only R0 commands; a unit test enforces this.
+So far only R0 commands exist, plus two R1 commands for benchmarking (`am force-stop`, `am start`); a unit test fails if anything else appears. R2/R3 wait for the plan/approve/journal engine.
 
 ## Protected package policy
 

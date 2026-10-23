@@ -359,3 +359,91 @@ fn compat_profile_json_includes_the_suggested_path() {
     assert_eq!(data["profile"]["device"]["kind"], "emulator");
     assert_eq!(data["profile"]["firmware"]["api_level"], 34);
 }
+
+/// Fast settings for benchmark tests: no waiting.
+const QUICK_BENCHMARK: [&str; 10] = [
+    "--runs",
+    "3",
+    "--warmup",
+    "1",
+    "--pause-ms",
+    "0",
+    "--settle-ms",
+    "0",
+    "--cpu-window-ms",
+    "0",
+];
+
+#[test]
+fn performance_benchmark_json_reports_cold_starts_and_raw_runs() {
+    let mut args = vec![
+        "performance",
+        "benchmark",
+        "--app",
+        "ai.rusttv.spike/.LauncherActivity",
+        "--idle-samples",
+        "1",
+        "--json",
+    ];
+    args.extend(QUICK_BENCHMARK);
+    let output = rusttv_with_fake_adb("emulator", &args);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    let app = &data["apps"][0];
+    assert_eq!(app["component"], "ai.rusttv.spike/.LauncherActivity");
+    assert_eq!(app["cold_start_ms"]["n"], 3);
+    assert_eq!(app["cold_start_ms"]["median"], 281.0);
+    assert_eq!(
+        app["resume_ms"],
+        Value::Null,
+        "one app has no resume measurement"
+    );
+    assert_eq!(app["idle_pss_kib"]["median"], 44_081.0);
+    assert_eq!(
+        data["runs"].as_array().unwrap().len(),
+        4,
+        "warm-up + 3 runs"
+    );
+    assert_eq!(data["device"]["manufacturer"], "Google");
+    let progress = String::from_utf8(output.stderr).unwrap();
+    assert!(progress.contains("cold 4/4"), "{progress}");
+}
+
+#[test]
+fn performance_benchmark_of_a_missing_activity_fails_clearly() {
+    let mut args = vec![
+        "performance",
+        "benchmark",
+        "--app",
+        "ai.rusttv.spike/.Missing",
+        "--json",
+    ];
+    args.extend(QUICK_BENCHMARK);
+    let output = rusttv_with_fake_adb("emulator", &args);
+
+    assert_eq!(output.status.code(), Some(1));
+    let error = &json_stdout(&output)["error"];
+    assert_eq!(error["code"], "LAUNCH_FAILED");
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("does not exist")
+    );
+}
+
+#[test]
+fn performance_benchmark_rejects_unsafe_components() {
+    let output = rusttv_with_fake_adb(
+        "emulator",
+        &[
+            "performance",
+            "benchmark",
+            "--app",
+            "ai.rusttv.spike/.Main;reboot",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(2));
+}

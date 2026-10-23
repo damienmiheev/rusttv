@@ -43,7 +43,14 @@ Optional later: end-to-end latency with a high-speed camera (remote press → pi
 7. **Claim rule**: "X is faster than Y" only if the median difference exceeds run-to-run noise (IQRs don't overlap) on that device; always state the device. No cross-device generalization without data from that device.
 8. **Regressions**: a CI-or-manual run showing a regression beyond noise blocks the merge until explained.
 
-The CLI command `rusttv performance benchmark --json` will implement this protocol so anyone can run it. Its building block, `rusttv performance snapshot`, already exists: CPU (two `/proc/stat` samples), memory, launcher PSS/RSS and top processes by RSS (`ps`), stamped with host time and build fingerprint. It avoids a full `dumpsys meminfo`, which timed out (10 s) on a busy emulator.
+`rusttv performance benchmark --app <component>... --json` implements steps 3–5 and keeps every raw run in its output (save it under `benchmarks/raw/<device>/<date>/` for step 6). How it measures:
+
+- **Cold start**: `am force-stop`, a check that the process is really gone (runs where it isn't are discarded), then `am start -W`; only runs Android reports as `COLD` count.
+- **Resume**: bringing an app that's still in memory back to the front (`HOT`), which is what pressing Home feels like. Apps take turns being in front, so this needs two or more apps.
+- **Idle**: after `--settle-ms` in front, PSS from `dumpsys meminfo <package>` and CPU from `ps` time deltas over `--cpu-window-ms`, summed over the app's processes.
+- Defaults: 30 runs + 3 warm-up, 2 s pause, 10 s settle, 5 s CPU window, 3 idle samples.
+
+The quick check `rusttv performance snapshot` measures CPU (two `/proc/stat` samples), memory, launcher PSS/RSS and top processes by RSS (`ps`), stamped with host time and build fingerprint. It avoids a full `dumpsys meminfo`, which timed out (10 s) on a busy emulator.
 
 ## Emulator vs real hardware
 

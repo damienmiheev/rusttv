@@ -1,0 +1,8 @@
+Starting: Intent { cmp=ai.rusttv.spike/.LauncherActivity }
+Warning: Activity not started, its current task has been brought to the front
+Status: ok
+LaunchState: HOT
+Activity: ai.rusttv.spike/.LauncherActivity
+TotalTime: 33
+WaitTime: 37
+Complete

@@ -1,0 +1,8 @@
+Starting: Intent { cmp=ai.rusttv.spike/.LauncherActivity }
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+Status: ok
+LaunchState: UNKNOWN (0)
+Activity: ai.rusttv.spike/.LauncherActivity
+TotalTime: 0
+WaitTime: 12
+Complete

@@ -1,0 +1,7 @@
+Starting: Intent { cmp=ai.rusttv.spike/.LauncherActivity }
+Status: ok
+LaunchState: COLD
+Activity: ai.rusttv.spike/.LauncherActivity
+TotalTime: 281
+WaitTime: 287
+Complete
