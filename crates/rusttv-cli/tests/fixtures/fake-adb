@@ -15,6 +15,7 @@ install="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-launcher-in
 pm_errors="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-pm-list-errors"
 philips="$(dirname "$0")/../../../rusttv-core/src/fixtures/philips-65oled818-api34"
 privacy="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-privacy"
+optimizer="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-optimizer"
 
 case "$FAKE_ADB_SCENARIO:$*" in
 tv:devices\ -l)
@@ -73,6 +74,16 @@ philips:shell\ pm\ list\ packages\ -d)
     ;;
 philips:shell\ dumpsys\ tv_input)
     cat "$privacy/tv-input.txt"
+    ;;
+# Animation scales: window and animator stored as 1.0, transition unset.
+philips:shell\ settings\ get\ global\ window_animation_scale)
+    cat "$optimizer/settings-get-1.0.txt"
+    ;;
+philips:shell\ settings\ get\ global\ transition_animation_scale)
+    cat "$optimizer/settings-get-null.txt"
+    ;;
+philips:shell\ settings\ get\ global\ animator_duration_scale)
+    cat "$optimizer/settings-get-1.0.txt"
     ;;
 emulator:devices\ -l)
     cat "$captures/devices-l.txt"

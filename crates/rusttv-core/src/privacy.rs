@@ -8,6 +8,7 @@
 //! `compat/protected.toml`, compiled into the binary.
 
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +21,7 @@ use crate::error::AdbError;
 use crate::inspect::parse_properties;
 use crate::journal::{Journal, JournalStatus, StepStatus};
 use crate::launcher::{HomeCandidate, launcher_status};
+use crate::optimizer::{OptimizerStatus, optimizer_statuses};
 use crate::plan::{Check, Plan, PlanError, Step, device_fingerprint, restore_plan};
 
 /// Plan name of a privacy profile, also used in journal file names.
@@ -280,6 +282,9 @@ pub struct OptimizeAnalysis {
     /// Every catalog package installed on the device and every `extra` of
     /// the choices, in plan order.
     pub packages: Vec<PrivacyPackageStatus>,
+    /// Every bundled optimizer profile (R2 settings) and where it stands on
+    /// the device, with the current values of its settings.
+    pub optimizer: Vec<OptimizerStatus>,
 }
 
 /// One package and what RustTV knows and would do about it.
@@ -454,14 +459,17 @@ fn candidates<'a>(
 }
 
 /// Lists the catalog packages installed on the device and the `extra`
-/// packages of the choices, with what the choices would do. Read-only (R0).
+/// packages of the choices, with what the choices would do, and where each
+/// optimizer profile stands (reading the restorable journals in `journals`).
+/// Read-only (R0).
 pub fn optimize_analyze(
     adb: &dyn Adb,
     serial: &str,
     data: &PrivacyData,
+    journals: &Path,
 ) -> Result<OptimizeAnalysis, PlanError> {
     data.choices.choices.validate(&data.catalog)?;
-    let (_, profile) = matching_profile(adb, serial, &data.profiles)?;
+    let (properties, profile) = matching_profile(adb, serial, &data.profiles)?;
     let live = LiveState::read(adb, serial)?;
     let states = PackageStates::read(adb, serial)?;
     let packages = candidates(data, profile, &[])
@@ -503,6 +511,7 @@ pub fn optimize_analyze(
             .map(|path| path.display().to_string()),
         categories: data.choices.choices.categories.clone(),
         packages,
+        optimizer: optimizer_statuses(adb, serial, &properties, profile, journals)?,
     })
 }
 
@@ -827,8 +836,10 @@ mod tests {
     use crate::RiskClass;
     use crate::adb::FakeAdb;
     use crate::catalog::PrivacyChoices;
+    use crate::command::SettingKey;
     use crate::journal::tests::MemoryJournal;
     use crate::journal::{JOURNAL_SCHEMA_VERSION, JournalStep};
+    use crate::optimizer::OptimizerState;
     use crate::plan::{apply, restore};
 
     const SERIAL: &str = "tv";
@@ -920,7 +931,24 @@ mod tests {
             )
             .respond(DeviceCommand::ListPackages, synthetic!("packages-f.txt"))
             .respond(DeviceCommand::TvInputs, synthetic!("tv-input.txt"))
+            .respond(
+                DeviceCommand::GetSetting(SettingKey::WindowAnimationScale),
+                "null\n",
+            )
+            .respond(
+                DeviceCommand::GetSetting(SettingKey::TransitionAnimationScale),
+                "null\n",
+            )
+            .respond(
+                DeviceCommand::GetSetting(SettingKey::AnimatorDurationScale),
+                "null\n",
+            )
             .respond_sequence(DeviceCommand::ListDisabledPackages, disabled)
+    }
+
+    /// A journal directory that doesn't exist: no journals.
+    fn no_journals() -> std::path::PathBuf {
+        std::env::temp_dir().join("rusttv-privacy-tests-no-journals")
     }
 
     /// [`tv`] with one more package installed.
@@ -1190,7 +1218,7 @@ mod tests {
         let adb = FakeAdb::new();
         let error = privacy_plan(&adb, SERIAL, &data(choices.clone()), &[], false).unwrap_err();
         assert_eq!(error.code(), "INVALID_CHOICES");
-        let error = optimize_analyze(&adb, SERIAL, &data(choices)).unwrap_err();
+        let error = optimize_analyze(&adb, SERIAL, &data(choices), &no_journals()).unwrap_err();
         assert_eq!(error.code(), "INVALID_CHOICES");
         assert!(adb.calls().is_empty());
     }
@@ -1635,7 +1663,7 @@ mod tests {
                 synthetic!("packages-f.txt").replace(PRINTSPOOLER, "com.example.unrelated")
             ),
         );
-        let analysis = optimize_analyze(&adb, SERIAL, &data(choices)).unwrap();
+        let analysis = optimize_analyze(&adb, SERIAL, &data(choices), &no_journals()).unwrap();
         assert_eq!(analysis.profile.as_deref(), Some("tpv-ph1m-ww-9972.toml"));
         assert_eq!(analysis.choices, None);
         assert_eq!(analysis.categories, PrivacyCategory::DEFAULT);
@@ -1684,10 +1712,20 @@ mod tests {
             DeviceCommand::GetProperties,
             include_str!("fixtures/synthetic-home-takeover/getprop.txt"),
         );
-        let analysis = optimize_analyze(&adb, SERIAL, &defaults()).unwrap();
+        let analysis = optimize_analyze(&adb, SERIAL, &defaults(), &no_journals()).unwrap();
         assert_eq!(analysis.profile, None);
         assert!(analysis.packages.iter().all(|entry| !entry.tested));
         assert_eq!(analysis.packages.len(), 15);
+        // The optimizer profiles are reported next to the packages.
+        let optimizer: Vec<(&str, OptimizerState)> = analysis
+            .optimizer
+            .iter()
+            .map(|status| (status.profile.as_str(), status.status))
+            .collect();
+        assert_eq!(
+            optimizer,
+            [(crate::REDUCED_ANIMATIONS, OptimizerState::NotTested)]
+        );
     }
 
     #[test]

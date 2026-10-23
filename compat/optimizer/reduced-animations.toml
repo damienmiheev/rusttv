@@ -1,0 +1,19 @@
+# Optimizer profile (OPTIMIZER.md § 3). Compiled into rusttv; a test loads it.
+# Bump `version` on any change to the settings or values: device entries
+# (`[[optimizer]]` in compat/devices/) for the old version then count for nothing.
+schema_version = 1
+name = "reduced-animations"
+version = 1
+description = "Halve window, transition and animator animation durations."
+
+[[settings]]
+key = "window_animation_scale"
+value = "0.5"
+
+[[settings]]
+key = "transition_animation_scale"
+value = "0.5"
+
+[[settings]]
+key = "animator_duration_scale"
+value = "0.5"

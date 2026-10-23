@@ -18,7 +18,9 @@ use serde::{Deserialize, Serialize};
 use crate::adb::Adb;
 use crate::apps::{PackageListError, package_names};
 use crate::bench::Sleep;
-use crate::command::{Component, DeviceCommand, InvalidApk, PackageName, RiskClass};
+use crate::command::{
+    Component, DeviceCommand, InvalidApk, PackageName, RiskClass, SettingKey, SettingState,
+};
 use crate::error::AdbError;
 use crate::inspect::parse_properties;
 use crate::journal::{Journal, JournalStatus, JournalStep, JournalStore, StepStatus};
@@ -67,12 +69,24 @@ pub enum Check {
     /// Each of these TV input services is still bound by the system
     /// (`dumpsys tv_input`); others may be bound too.
     TvInputServicesBound(Vec<Component>),
+    /// The global setting is in this state (`settings get global <key>`;
+    /// `null` is unset). Output that isn't a valid value never matches.
+    SettingIs {
+        /// The setting.
+        key: SettingKey,
+        /// Its expected state.
+        state: SettingState,
+    },
 }
 
 impl Check {
     /// The state `command` should leave behind, if it is a state-changing command.
     fn effect_of(command: &DeviceCommand) -> Option<Self> {
         match command {
+            DeviceCommand::SetSetting { key, to, .. } => Some(Self::SettingIs {
+                key: *key,
+                state: to.clone(),
+            }),
             DeviceCommand::DisablePackage(package) => Some(Self::PackageDisabled(package.clone())),
             DeviceCommand::EnablePackage(package) => Some(Self::PackageEnabled(package.clone())),
             DeviceCommand::InstallLauncher(_) | DeviceCommand::UpgradeLauncher(_) => {
@@ -151,6 +165,10 @@ impl Check {
                 let bound = parse_bound_tv_input_services(&output);
                 Ok(expected.iter().all(|service| bound.contains(service)))
             }
+            Self::SettingIs { key, state } => {
+                let output = adb.run(serial, &DeviceCommand::GetSetting(*key))?;
+                Ok(SettingState::from_output(&output).is_ok_and(|now| now == *state))
+            }
         }
     }
 }
@@ -181,6 +199,7 @@ impl fmt::Display for Check {
                     names.join(", ")
                 )
             }
+            Self::SettingIs { key, state } => write!(f, "{key} is {state}"),
         }
     }
 }
@@ -633,13 +652,18 @@ pub fn restore_plan(journal: &Journal, serial: &str, fingerprint: &str) -> Resul
 /// Undoes the steps of `journal` in reverse, as planned by [`restore_plan`],
 /// and updates the journal. Restoring is never rolled back: a failed undo is
 /// reported with the exact command to run by hand.
+///
+/// A setting changed since the plan ran (neither the value the step set nor
+/// the one it found) is left as is, never overwritten (OPTIMIZER.md § 4,
+/// owner decision 3): its step is marked undone and named in the returned
+/// notes.
 pub fn restore(
     adb: &dyn Adb,
     plan: &Plan,
     approval: &Approval,
     journal: &mut Journal,
     store: &mut dyn JournalStore,
-) -> Result<(), PlanError> {
+) -> Result<Vec<String>, PlanError> {
     approval.check(plan)?;
     let expected = restore_plan(journal, &plan.serial, &plan.fingerprint)?;
     if expected.steps != plan.steps {
@@ -648,7 +672,7 @@ pub fn restore(
         )
         .into());
     }
-    let mut problems = undo_steps(adb, &plan.serial, journal, store);
+    let (mut problems, left_as_is) = undo_steps(adb, &plan.serial, journal, store, true);
     journal.status = if problems.is_empty() {
         JournalStatus::Restored
     } else {
@@ -658,7 +682,7 @@ pub fn restore(
         problems.push(format!("could not write the journal: {error}"));
     }
     if problems.is_empty() {
-        Ok(())
+        Ok(left_as_is)
     } else {
         Err(PlanErrorKind::RestoreFailed(problems).into())
     }
@@ -710,7 +734,9 @@ fn rollback(
     reason: String,
 ) -> PlanError {
     let serial = journal.serial.clone();
-    let mut problems = undo_steps(adb, &serial, journal, store);
+    // Nothing can have changed a setting in between: a value other than the
+    // two expected is the failed step's own doing, so it is undone.
+    let (mut problems, _) = undo_steps(adb, &serial, journal, store, false);
     journal.status = if problems.is_empty() {
         JournalStatus::RolledBack
     } else {
@@ -729,17 +755,28 @@ fn rollback(
 /// Undoes every step that may have run, last first, verifying each undo.
 /// An undo that fails while the device already is in the original state
 /// (e.g. Android refused both the step and its undo) still counts as undone. Keeps going after a failure;
-/// returns what went wrong, with the command to run by hand.
+/// returns what went wrong, with the command to run by hand, and (with
+/// `skip_drifted`) the settings left as is because they changed since.
 fn undo_steps(
     adb: &dyn Adb,
     serial: &str,
     journal: &mut Journal,
     store: &mut dyn JournalStore,
-) -> Vec<String> {
+    skip_drifted: bool,
+) -> (Vec<String>, Vec<String>) {
     let mut problems = Vec::new();
+    let mut left_as_is = Vec::new();
     for index in (0..journal.steps.len()).rev() {
         let step = &journal.steps[index];
         if !step.status.may_have_run() || !Step::needs_undo(&step.command) {
+            continue;
+        }
+        if skip_drifted && let Some(note) = drifted_setting(adb, serial, &step.command) {
+            left_as_is.push(note);
+            journal.steps[index].status = StepStatus::Undone;
+            if let Err(error) = store.save(journal) {
+                problems.push(format!("could not write the journal: {error}"));
+            }
             continue;
         }
         let Some(undo) = step.command.inverse() else {
@@ -766,7 +803,29 @@ fn undo_steps(
             )),
         }
     }
-    problems
+    (problems, left_as_is)
+}
+
+/// For a [`DeviceCommand::SetSetting`] step: a note if its setting now
+/// holds neither the value the step set nor the one it found, i.e. someone
+/// changed it since. `None` for other commands, and when the setting can't
+/// be read or holds an invalid value: then the undo runs and its
+/// verification reports any problem.
+pub(crate) fn drifted_setting(
+    adb: &dyn Adb,
+    serial: &str,
+    command: &DeviceCommand,
+) -> Option<String> {
+    let DeviceCommand::SetSetting { key, to, from } = command else {
+        return None;
+    };
+    let output = adb.run(serial, &DeviceCommand::GetSetting(*key)).ok()?;
+    let now = SettingState::from_output(&output).ok()?;
+    (now != *to && now != *from).then(|| {
+        format!(
+            "Skipped {key}: it is {now} now, not the {to} RustTV set (changed since); left as is."
+        )
+    })
 }
 
 /// `ro.build.fingerprint` of the device; plans and journals are tied to it.
@@ -823,6 +882,8 @@ enum PlanErrorKind {
     #[error("{0}")]
     ProfileNotTested(String),
     #[error("{0}")]
+    OptimizeNotTested(String),
+    #[error("{0}")]
     Protected(String),
     #[error("privacy choices: {0}")]
     InvalidChoices(String),
@@ -831,7 +892,7 @@ enum PlanErrorKind {
     #[error("{0}; every completed step was undone and verified")]
     RolledBack(String),
     #[error(
-        "{reason}; rolling back ALSO failed: {}. Recovery is not guaranteed; run those commands by hand, or restore from the journal (`rusttv launcher restore`, or `rusttv optimize restore` for a privacy plan) once the device is reachable",
+        "{reason}; rolling back ALSO failed: {}. Recovery is not guaranteed; run those commands by hand, or restore from the journal (`rusttv launcher restore`, or `rusttv optimize restore` for a privacy or optimizer plan) once the device is reachable",
         problems.join("; ")
     )]
     RollbackFailed {
@@ -869,6 +930,7 @@ impl PlanError {
             PlanErrorKind::NoJournal(_) => "NO_JOURNAL",
             PlanErrorKind::NotTested(_) => "TAKEOVER_NOT_TESTED",
             PlanErrorKind::ProfileNotTested(_) => "PROFILE_NOT_TESTED",
+            PlanErrorKind::OptimizeNotTested(_) => "OPTIMIZE_NOT_TESTED",
             PlanErrorKind::Protected(_) => "PACKAGE_PROTECTED",
             PlanErrorKind::InvalidChoices(_) => "INVALID_CHOICES",
             PlanErrorKind::InvalidApk(_) => "INVALID_APK",
@@ -910,6 +972,14 @@ impl PlanError {
         PlanErrorKind::ProfileNotTested(reason).into()
     }
 
+    pub(crate) fn optimize_not_tested(reason: String) -> Self {
+        PlanErrorKind::OptimizeNotTested(reason).into()
+    }
+
+    pub(crate) fn invalid_plan(reason: String) -> Self {
+        PlanErrorKind::InvalidPlan(reason).into()
+    }
+
     pub(crate) fn protected(reason: String) -> Self {
         PlanErrorKind::Protected(reason).into()
     }
@@ -943,6 +1013,7 @@ pub(crate) fn every_plan_error() -> Vec<PlanError> {
         PlanErrorKind::NoJournal(String::new()).into(),
         PlanErrorKind::NotTested(String::new()).into(),
         PlanErrorKind::ProfileNotTested(String::new()).into(),
+        PlanErrorKind::OptimizeNotTested(String::new()).into(),
         PlanErrorKind::Protected(String::new()).into(),
         PlanErrorKind::InvalidChoices(String::new()).into(),
         PlanErrorKind::InvalidApk(InvalidApk::new(String::new())).into(),
@@ -964,6 +1035,7 @@ pub(crate) fn every_plan_error() -> Vec<PlanError> {
             | PlanErrorKind::NoJournal(_)
             | PlanErrorKind::NotTested(_)
             | PlanErrorKind::ProfileNotTested(_)
+            | PlanErrorKind::OptimizeNotTested(_)
             | PlanErrorKind::Protected(_)
             | PlanErrorKind::InvalidChoices(_)
             | PlanErrorKind::InvalidApk(_)

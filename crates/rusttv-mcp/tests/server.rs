@@ -17,8 +17,9 @@ use rusttv_core::{
     Adb, AdbError, Check, ConnectOutcome, DeviceAddress, DeviceCommand, DeviceEntry, DeviceState,
     FakeAdb, FileJournal, HOME_TAKEOVER, JOURNAL_SCHEMA_VERSION, Journal, JournalStatus,
     JournalStep, JournalStore, LoadedChoices, PackageName, PrivacyCategory, PrivacyChoices,
-    PrivacyData, RiskClass, StepStatus, bundled_profiles, inspect, install_plan, launcher_status,
-    list_apps, optimize_analyze, parse_device_list, privacy_plan, snapshot,
+    PrivacyData, REDUCED_ANIMATIONS, RiskClass, SettingKey, SettingState, SettingValue, StepStatus,
+    bundled_optimizer_profile, bundled_profiles, inspect, install_plan, launcher_status, list_apps,
+    optimize_analyze, optimizer_plan, parse_device_list, privacy_plan, snapshot,
     takeover_journal_from_profile, takeover_restore_plan, uninstall_plan,
 };
 use rusttv_mcp::RustTvServer;
@@ -190,16 +191,16 @@ impl Client {
     }
 }
 
-/// `data` of a successful `rusttv.v5` envelope.
+/// `data` of a successful `rusttv.v6` envelope.
 fn data(envelope: Value) -> Value {
-    assert_eq!(envelope["schema"], "rusttv.v5");
+    assert_eq!(envelope["schema"], "rusttv.v6");
     assert_eq!(envelope["ok"], true, "{envelope}");
     envelope["data"].clone()
 }
 
-/// `error.code` of a failed `rusttv.v5` envelope.
+/// `error.code` of a failed `rusttv.v6` envelope.
 fn error_code(envelope: &Value) -> &str {
-    assert_eq!(envelope["schema"], "rusttv.v5");
+    assert_eq!(envelope["schema"], "rusttv.v6");
     assert_eq!(envelope["ok"], false, "{envelope}");
     assert!(
         envelope["error"]["message"]
@@ -228,6 +229,8 @@ async fn lists_exactly_the_read_only_and_plan_tools() {
             "launcher_status",
             "launcher_uninstall_plan",
             "optimize_analyze",
+            "optimize_plan",
+            "optimize_restore_plan",
             "performance_snapshot",
             "privacy_plan"
         ]
@@ -369,12 +372,26 @@ async fn invalid_arguments_and_unknown_tools_are_rejected() {
         ),
         ("privacy_apply", json!({})),
         ("optimize_restore", json!({})),
+        ("optimize_apply", json!({"profile": "reduced-animations"})),
+        ("optimize_plan", json!({})),
+        ("optimize_plan", json!({"profile": "privacy"})),
+        ("optimize_plan", json!({"profile": "reduced_animations"})),
+        (
+            "optimize_plan",
+            json!({"profile": "reduced-animations", "key": "window_animation_scale"}),
+        ),
+        (
+            "optimize_plan",
+            json!({"profile": "reduced-animations", "value": "0"}),
+        ),
+        ("optimize_restore_plan", json!({"journal": "/etc/passwd"})),
+        ("optimize_restore_plan", json!({"profile": "bloat"})),
     ] {
         let response = client
             .request("tools/call", json!({"name": tool, "arguments": arguments}))
             .await;
         // A JSON-RPC error, or (for arguments rmcp can't deserialize) a tool
-        // error without a `rusttv.v5` envelope: either way nothing ran.
+        // error without a `rusttv.v6` envelope: either way nothing ran.
         let rejected = response["error"]["code"].is_i64()
             || (response["result"]["isError"] == true
                 && response["result"]["structuredContent"].is_null());
@@ -975,6 +992,18 @@ fn philips_privacy() -> FakeAdb {
         .respond(
             DeviceCommand::ListDisabledPackages,
             "package:org.droidtv.gel\n",
+        )
+        .respond(
+            DeviceCommand::GetSetting(SettingKey::WindowAnimationScale),
+            capture!("synthetic-optimizer", "settings-get-1.0.txt"),
+        )
+        .respond(
+            DeviceCommand::GetSetting(SettingKey::TransitionAnimationScale),
+            capture!("synthetic-optimizer", "settings-get-null.txt"),
+        )
+        .respond(
+            DeviceCommand::GetSetting(SettingKey::AnimatorDurationScale),
+            capture!("synthetic-optimizer", "settings-get-1.0.txt"),
         );
     for device in parse_device_list(capture!("emulator-pixel3a-api34", "devices-l.txt")) {
         adb = adb.with_device(device);
@@ -1003,8 +1032,14 @@ fn casting_choices() -> LoadedChoices {
 
 #[tokio::test]
 async fn optimize_analyze_returns_the_same_data_as_the_cli() {
+    let dir = Dir::new("optimize-analyze");
     let adb = SharedAdb::new(philips_privacy());
-    let mut client = Client::serve(RustTvServer::new(adb.clone()).with_choices(no_choices())).await;
+    let mut client = Client::serve(
+        RustTvServer::new(adb.clone())
+            .with_journals_dir(dir.journals())
+            .with_choices(no_choices()),
+    )
+    .await;
 
     let analysis = data(client.call("optimize_analyze", json!({}), false).await);
 
@@ -1012,6 +1047,7 @@ async fn optimize_analyze_returns_the_same_data_as_the_cli() {
         &philips_privacy(),
         SERIAL,
         &PrivacyData::bundled(no_choices()),
+        &dir.journals(),
     )
     .unwrap();
     assert_eq!(analysis, serde_json::to_value(&expected).unwrap());
@@ -1019,7 +1055,182 @@ async fn optimize_analyze_returns_the_same_data_as_the_cli() {
     assert_eq!(analysis["packages"][1]["package"], "org.droidtv.gel");
     assert_eq!(analysis["packages"][1]["state"], "disabled");
     assert_eq!(analysis["packages"][1]["tested"], true);
+    assert_eq!(analysis["optimizer"][0]["profile"], "reduced-animations");
+    assert_eq!(analysis["optimizer"][0]["status"], "not_tested");
+    assert_eq!(
+        analysis["optimizer"][0]["settings"][1]["current"],
+        Value::Null
+    );
     assert_eq!(adb.changes(), []);
+}
+
+/// The bundled profiles, with the Philips one recording `reduced-animations` v1 as tested.
+fn animations_tested_profiles() -> Vec<rusttv_core::DeviceProfile> {
+    let mut profiles = bundled_profiles();
+    for profile in &mut profiles {
+        if profile.device.model.starts_with("Philips") {
+            profile.optimizer = vec![rusttv_core::ProfileOptimizer {
+                profile: "reduced-animations".to_owned(),
+                version: 1,
+                tested: true,
+                evidence: None,
+            }];
+        }
+    }
+    profiles
+}
+
+#[tokio::test]
+async fn optimize_plan_returns_the_cli_dry_run_and_the_command_to_apply_it() {
+    let dir = Dir::new("optimize-plan");
+    let adb = SharedAdb::new(philips_privacy());
+    let mut client =
+        Client::serve(RustTvServer::new(adb.clone()).with_journals_dir(dir.journals())).await;
+
+    // The bundled Philips profile records no optimizer test.
+    let refused = client
+        .call(
+            "optimize_plan",
+            json!({"profile": "reduced-animations"}),
+            true,
+        )
+        .await;
+    assert_eq!(error_code(&refused), "OPTIMIZE_NOT_TESTED", "{refused}");
+
+    let proposal = data(
+        client
+            .call(
+                "optimize_plan",
+                json!({"profile": "reduced-animations", "allow_untested": true}),
+                false,
+            )
+            .await,
+    );
+    let profile = bundled_optimizer_profile(REDUCED_ANIMATIONS).unwrap();
+    let expected = optimizer_plan(
+        &philips_privacy(),
+        SERIAL,
+        &profile,
+        &bundled_profiles(),
+        &dir.journals(),
+        true,
+    )
+    .unwrap()
+    .dry_run();
+    assert_eq!(
+        proposal["dry_run"],
+        serde_json::to_value(&expected).unwrap()
+    );
+    assert_eq!(
+        proposal["dry_run"]["plan"],
+        "optimize-reduced-animations-v1"
+    );
+    assert_eq!(proposal["dry_run"]["steps"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        proposal["apply_command"],
+        format!("rusttv optimize apply reduced-animations --serial {SERIAL} --allow-untested")
+    );
+
+    // On a model whose profile records the test, no flag is needed.
+    let mut client = Client::serve(
+        RustTvServer::new(adb.clone())
+            .with_journals_dir(dir.journals())
+            .with_profiles(animations_tested_profiles()),
+    )
+    .await;
+    let proposal = data(
+        client
+            .call(
+                "optimize_plan",
+                json!({"profile": "reduced-animations"}),
+                false,
+            )
+            .await,
+    );
+    assert_eq!(
+        proposal["apply_command"],
+        format!("rusttv optimize apply reduced-animations --serial {SERIAL}")
+    );
+    assert_eq!(adb.changes(), [], "planning changed the device");
+    assert_eq!(dir.journal_files(), [], "planning wrote a journal");
+}
+
+#[tokio::test]
+async fn optimize_restore_plan_names_the_journal_and_leaves_it_untouched() {
+    let dir = Dir::new("optimize-restore-plan");
+    let fingerprint = rusttv_core::parse_properties(capture!(
+        "philips-65oled818-api34",
+        "getprop.txt"
+    ))["ro.build.fingerprint"]
+        .clone();
+    let set = |key, to: &str, from: SettingState| DeviceCommand::SetSetting {
+        key,
+        to: SettingState::Value(SettingValue::new(to).unwrap()),
+        from,
+    };
+    let done = |command| JournalStep {
+        adb: String::new(),
+        command,
+        original_state: None,
+        status: StepStatus::Done,
+    };
+    // Window set from 0.5 to 1.0 (the fake reads 1.0: put back); transition
+    // from unset (reads unset: skipped).
+    let path = dir
+        .journals()
+        .join("0000000000002-optimize-reduced-animations-v1.toml");
+    FileJournal::new(&path)
+        .save(&Journal {
+            schema_version: JOURNAL_SCHEMA_VERSION,
+            plan: "optimize-reduced-animations-v1".to_owned(),
+            serial: SERIAL.to_owned(),
+            fingerprint,
+            started_at_unix_ms: 2,
+            status: JournalStatus::Applied,
+            steps: vec![
+                done(set(
+                    SettingKey::WindowAnimationScale,
+                    "1.0",
+                    SettingState::Value(SettingValue::new("0.5").unwrap()),
+                )),
+                done(set(
+                    SettingKey::TransitionAnimationScale,
+                    "0.5",
+                    SettingState::Unset,
+                )),
+            ],
+        })
+        .unwrap();
+    let before = dir.journal_files();
+    let adb = SharedAdb::new(philips_privacy());
+    let mut client =
+        Client::serve(RustTvServer::new(adb.clone()).with_journals_dir(dir.journals())).await;
+
+    let proposal = data(client.call("optimize_restore_plan", json!({}), false).await);
+    assert_eq!(
+        proposal["dry_run"]["plan"],
+        "optimize-reduced-animations-v1-restore"
+    );
+    let steps = proposal["dry_run"]["steps"].as_array().unwrap();
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["command"],
+        format!("adb -s {SERIAL} shell settings put global window_animation_scale 0.5")
+    );
+    assert_eq!(
+        proposal["apply_command"],
+        format!(
+            "rusttv optimize restore reduced-animations --serial {SERIAL} --journal {}",
+            path.display()
+        )
+    );
+    // Asked for privacy, there is none.
+    let refused = client
+        .call("optimize_restore_plan", json!({"profile": "privacy"}), true)
+        .await;
+    assert_eq!(error_code(&refused), "NO_JOURNAL", "{refused}");
+    assert_eq!(adb.changes(), []);
+    assert_eq!(dir.journal_files(), before, "the journal is never written");
 }
 
 #[tokio::test]

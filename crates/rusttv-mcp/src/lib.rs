@@ -1,7 +1,7 @@
 //! Read-only MCP server for RustTV.
 //!
 //! Exposes the core's read-only functions as MCP tools. Every tool result is
-//! the CLI's `rusttv.v5` JSON envelope (CLI.md § Output), so `data` is exactly
+//! the CLI's `rusttv.v6` JSON envelope (CLI.md § Output), so `data` is exactly
 //! what `rusttv <command> --json` prints and errors carry the same stable
 //! codes. The `*_plan` tools build a change plan and return its dry run with
 //! the `rusttv` command a person runs to apply it. There is deliberately no
@@ -24,19 +24,19 @@ use rmcp::model::{
 use rmcp::{ServerHandler, schemars, tool, tool_handler, tool_router};
 use rusttv_core::{
     Adb, AdbError, ApkPath, DeviceCommand, DeviceProfile, DeviceSelectionError, DryRun,
-    HOME_TAKEOVER, LoadedChoices, Plan, PlanError, PrivacyCategory, PrivacyData,
+    HOME_TAKEOVER, LoadedChoices, OptimizeKind, Plan, PlanError, PrivacyCategory, PrivacyData,
 };
 use serde::{Deserialize, Serialize};
 
 /// Version of the JSON output contract; the same as the CLI's `--json`.
-pub const SCHEMA: &str = "rusttv.v5";
+pub const SCHEMA: &str = "rusttv.v6";
 
 /// Default and allowed range of `performance_snapshot`'s `sample_ms`, as in the CLI.
 const DEFAULT_SAMPLE_MS: u64 = 1000;
 const SAMPLE_MS_RANGE: std::ops::RangeInclusive<u64> = 100..=60_000;
 
 const INSTRUCTIONS: &str = "Read-only tools for Android TVs connected through adb. \
-Results are the `rusttv.v5` envelope of the `rusttv` CLI: on success `data` is the \
+Results are the `rusttv.v6` envelope of the `rusttv` CLI: on success `data` is the \
 same as `rusttv <command> --json`; on failure `error.code` is a stable code from \
 CLI.md. Device-targeting tools take an optional `serial`; it is required when several \
 devices are connected (`MULTIPLE_DEVICES`). Nothing here changes a device or approves \
@@ -109,6 +109,71 @@ pub struct PrivacyPlanParams {
     /// Also plan packages not tested on this model, each marked UNTESTED in the dry run (the CLI's `--allow-untested`). Default false.
     #[serde(default)]
     pub allow_untested: bool,
+}
+
+/// Arguments of `optimize_plan`.
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+#[serde(deny_unknown_fields)]
+pub struct OptimizePlanParams {
+    /// adb serial of the device (see `device_list`); needed when several are connected.
+    #[serde(default)]
+    pub serial: Option<String>,
+    /// The bundled optimizer profile to plan.
+    pub profile: OptimizerProfileName,
+    /// Plan it although this model's compatibility profile doesn't record it as tested, marked UNTESTED in the dry run (the CLI's `--allow-untested`). Default false.
+    #[serde(default)]
+    pub allow_untested: bool,
+}
+
+/// A bundled optimizer profile; a closed list, so no setting can be named.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+#[serde(rename_all = "kebab-case")]
+pub enum OptimizerProfileName {
+    /// Window, transition and animator animation scales at 0.5.
+    ReducedAnimations,
+}
+
+impl OptimizerProfileName {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::ReducedAnimations => rusttv_core::REDUCED_ANIMATIONS,
+        }
+    }
+}
+
+/// Arguments of `optimize_restore_plan`.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+#[serde(deny_unknown_fields)]
+pub struct OptimizeRestorePlanParams {
+    /// adb serial of the device (see `device_list`); needed when several are connected.
+    #[serde(default)]
+    pub serial: Option<String>,
+    /// Which change to undo; needed only when both kinds can be restored on the device. Default: the only kind that can be.
+    #[serde(default)]
+    pub profile: Option<RestoreKind>,
+}
+
+/// What `optimize_restore_plan` undoes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+#[serde(rename_all = "kebab-case")]
+pub enum RestoreKind {
+    /// The newest restorable privacy journal.
+    Privacy,
+    /// The newest restorable `reduced-animations` journal.
+    ReducedAnimations,
+}
+
+impl From<RestoreKind> for OptimizeKind {
+    fn from(kind: RestoreKind) -> Self {
+        match kind {
+            RestoreKind::Privacy => Self::Privacy,
+            RestoreKind::ReducedAnimations => Self::ReducedAnimations,
+        }
+    }
 }
 
 /// A catalog category; a closed list, so no package can be named.
@@ -478,7 +543,7 @@ impl<A: Adb + Send + 'static> RustTvServer<A> {
     }
 
     #[tool(
-        description = "Every package of RustTV's catalog installed on the device, and every `extra` of the person's choices file, with its category (telemetry, ads, extras are on by default; casting, smart-home, voice, streaming-apps are opt-in), what it does, side effects, whether it was tested on this model, whether the choices select it, whether it is enabled / disabled, and whether RustTV refuses to touch it (protected). Same as `rusttv optimize analyze --json`.",
+        description = "Every package of RustTV's catalog installed on the device, and every `extra` of the person's choices file, with its category (telemetry, ads, extras are on by default; casting, smart-home, voice, streaming-apps are opt-in), what it does, side effects, whether it was tested on this model, whether the choices select it, whether it is enabled / disabled, and whether RustTV refuses to touch it (protected). Also every optimizer profile (`optimizer`: allowlisted settings such as the animation scales) with its status on the device (suggested, available, applied, drifted, stale, not_tested, already_set) and the current value of each of its settings. Same as `rusttv optimize analyze --json`.",
         annotations(read_only_hint = true)
     )]
     async fn optimize_analyze(
@@ -486,10 +551,106 @@ impl<A: Adb + Send + 'static> RustTvServer<A> {
         Parameters(params): Parameters<TargetParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let data = self.privacy_data();
+        let journals = self.journals.clone();
         self.run(move |adb| {
             let data = data()?;
             let serial = resolve(adb, params.serial.as_deref())?;
-            Ok(rusttv_core::optimize_analyze(adb, &serial, &data)?)
+            Ok(rusttv_core::optimize_analyze(
+                adb,
+                &serial,
+                &data,
+                &journals_dir(journals)?,
+            )?)
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Plan applying an optimizer profile: `reduced-animations` puts the window, transition and animator animation scales (global settings) at 0.5. Refused with `OPTIMIZE_NOT_TESTED` unless this model's compatibility profile records it as tested, or `allow_untested` (the dry run then says UNTESTED); refused while an optimizer change is still applied (`PRECONDITION_FAILED`). Changes nothing: returns the plan's dry run (`data.dry_run`, same as `rusttv optimize apply <profile> --dry-run --json`) and the command a person runs at a terminal to apply it (`data.apply_command`). Show both to the user; you cannot apply or approve it, and you cannot name settings or values.",
+        annotations(read_only_hint = true)
+    )]
+    async fn optimize_plan(
+        &self,
+        Parameters(params): Parameters<OptimizePlanParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let profiles = self.profiles.clone();
+        let journals = self.journals.clone();
+        self.run(move |adb| {
+            let serial = resolve(adb, params.serial.as_deref())?;
+            let name = params.profile.as_str();
+            let profile = rusttv_core::bundled_optimizer_profile(name)?;
+            let plan = rusttv_core::optimizer_plan(
+                adb,
+                &serial,
+                &profile,
+                &profiles.unwrap_or_else(rusttv_core::bundled_profiles),
+                &journals_dir(journals)?,
+                params.allow_untested,
+            )?;
+            let mut args = vec!["optimize", "apply", name, "--serial", plan.serial()];
+            if params.allow_untested {
+                args.push("--allow-untested");
+            }
+            let apply_command = command_line(&args);
+            Ok(proposal(&plan, apply_command))
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Plan undoing an `optimize apply` from its journal: re-enabling the packages a privacy journal disabled, or putting back the settings an optimizer journal changed (settings changed since are left as they are, and named in the notes). `profile` (`privacy` or `reduced-animations`) is needed only when both kinds can be restored. Changes nothing: returns the plan's dry run (`data.dry_run`, same as `rusttv optimize restore [<profile>] --dry-run --json`) and the command a person runs at a terminal to apply it (`data.apply_command`). Show both to the user; you cannot apply or approve it. Journal files that can't be read are reported in a second text content item, or in the `NO_JOURNAL` message.",
+        annotations(read_only_hint = true)
+    )]
+    async fn optimize_restore_plan(
+        &self,
+        Parameters(params): Parameters<OptimizeRestorePlanParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let journals = self.journals.clone();
+        self.run_with_notes(move |adb| {
+            let serial = resolve(adb, params.serial.as_deref())?;
+            let fingerprint = rusttv_core::device_fingerprint(adb, &serial)?;
+            let search = rusttv_core::find_optimize_journal(
+                &journals_dir(journals)?,
+                &fingerprint,
+                params.profile.map(OptimizeKind::from),
+            );
+            // As the CLI's warnings: any of them may still need restoring.
+            let notes: Vec<String> = search
+                .unreadable
+                .iter()
+                .map(|file| {
+                    format!(
+                        "warning: skipped {}, which can't be read. If it is a privacy or \
+                         optimizer plan that still needs restoring, it must be fixed and passed \
+                         as `--journal`. Reason: {}",
+                        file.path.display(),
+                        file.error
+                    )
+                })
+                .collect();
+            let (kind, path, mut journal) = search.found.map_err(|error| {
+                if notes.is_empty() || error.code() != "NO_JOURNAL" {
+                    error
+                } else {
+                    PlanError::no_journal(format!("{error}; {}", notes.join("; ")))
+                }
+            })?;
+            // The journal is changed in memory only (steps to skip); this
+            // tool never writes it.
+            let plan = rusttv_core::optimize_restore_plan(adb, &serial, kind, &mut journal)?;
+            let journal = path.to_str().ok_or_else(|| {
+                PlanError::journal(format!("{} is not valid UTF-8", path.display()))
+            })?;
+            let apply_command = command_line(&[
+                "optimize",
+                "restore",
+                kind.as_str(),
+                "--serial",
+                plan.serial(),
+                "--journal",
+                journal,
+            ]);
+            Ok((proposal(&plan, apply_command), notes))
         })
         .await
     }
@@ -527,7 +688,7 @@ impl<A: Adb + Send + 'static> RustTvServer<A> {
         .await
     }
 
-    /// Runs a blocking core call and wraps its outcome in the `rusttv.v5` envelope.
+    /// Runs a blocking core call and wraps its outcome in the `rusttv.v6` envelope.
     ///
     /// Core failures are tool results with `isError` (the agent sees the code);
     /// only a crashed task or unserializable data is a protocol error.

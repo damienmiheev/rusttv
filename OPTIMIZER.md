@@ -1,6 +1,13 @@
 # Safe optimizer (Phase 4) — design
 
-Status (2026-10-23): § 1–6 (R2 animation settings) are **design, not built**.
+Status (2026-10-23): § 1–6 (R2 animation settings) are **built** for the
+three animation scales and tested against fakes only (`crates/rusttv-core/src/optimizer.rs`,
+`compat/optimizer/reduced-animations.toml`), with the owner's adjustments of
+2026-10-23 (*As built* notes below). **Not built yet:** the general `rusttv
+restore --journal` (§ 4), emulator device-tests (§ 6 step 3), the Philips run
+and benefit measurement (§ 6 step 4), `disable_window_blurs`. No device
+profile records the profile as tested, so `apply` needs `--allow-untested`
+everywhere for now.
 § Privacy profiles (R3) is **built** in its generic form (catalog, device
 profiles, choices; § Generic design) and tested against fakes; twelve
 packages were tested on the owner's Philips 65OLED818 (2026-10-23).
@@ -97,6 +104,18 @@ after, device, date, path to raw data), never a general claim. No profile has
 evidence today, so `analyze` will suggest nothing until the Philips run in
 § 6 produces some.
 
+*As built (2026-10-23):* `rusttv optimize analyze` keeps its privacy output
+and adds `optimizer` (JSON `rusttv.v6`, CLI.md): per bundled profile its
+status, `tested`, `evidence`, the journal behind it, and each key's profile
+value and current value (`null` = unset). One status was added:
+`available`, for `tested = true` without `evidence` (apply allowed, not
+suggested; § 3). Precedence: a restorable journal on this fingerprint
+(`applied`/`drifted`), then one on another fingerprint of the same firmware
+family (`stale`), then `already_set`, then `suggested`/`available`/
+`not_tested`. Not built: `ro.config.low_ram`,
+`ro.surface_flinger.supports_background_blur` and `/proc/meminfo` in the
+report, and takeover journals in it.
+
 ## 3. Profiles
 
 Two kinds of TOML, both compiled into the binary like device profiles today
@@ -148,6 +167,15 @@ evidence = "benchmarks/raw/philips-65oled818/2026-11-xx/reduced-animations/repor
 - The plan's name carries the version: `optimize-reduced-animations-v1`, so
   journals say exactly what was applied without a journal schema change.
 
+*As built (2026-10-23):* both kinds of file as above
+(`OPTIMIZER_SCHEMA_VERSION` 1, `PROFILE_SCHEMA_VERSION` 5; schema 3 and 4
+profiles still load, with no `[[optimizer]]`). A test checks every
+`[[optimizer]]` entry names a bundled profile and that its `evidence` file
+exists. *Owner adjustment:* `--allow-untested` (MCP `allow_untested`) plans
+the profile on an untested device for the first real-device test; the dry
+run says "UNTESTED on this model" and nothing else changes (SECURITY.md
+§ Protected package policy). The Philips profile is **not** marked tested.
+
 ## 4. Plan, apply, restore on the existing engine
 
 ### New typed pieces (rusttv-core)
@@ -190,6 +218,13 @@ that fails `SettingValue` validation (e.g. a vendor wrote something odd)
 makes `plan` refuse that profile (`PRECONDITION_FAILED`), never restore an
 unvalidated string.
 
+*As built (2026-10-23):* as above, in `command.rs` and `plan.rs`, except
+that the check is a struct variant, `Check::SettingIs { key, state }` (TOML
+`{ kind = "setting_is", arg = { key = "...", state = "unset" } }`), and
+`SettingState` serializes as `"unset"` or `{ value = "0.5" }`. A
+`settings get` output that isn't `null` or a valid value never satisfies a
+check.
+
 ### Plan shape
 
 1. One `SetSetting` step per key, in profile order; R2; confirmation word
@@ -199,6 +234,13 @@ unvalidated string.
    existing check and also holds with a takeover active (Home = RustTV).
 3. `Plan::new` already rejects R2 steps without an inverse. An extra builder
    check: optimizer plans contain only `SetSetting` steps (no package steps).
+
+*As built (2026-10-23):* `optimizer_plan`. The last step checks
+`HomeActivityIs(<activity Home opened at plan time>)`, stricter than
+`HomeIs(package)`. Keys already at the profile's value are skipped and named
+(no `from == to` step is ever built; the builder refuses one with
+`PRECONDITION_FAILED`, and any non-`SetSetting` step with `INVALID_PLAN`);
+all of them already set is `PRECONDITION_FAILED` "nothing to do".
 
 ### Journals and restore
 
@@ -223,6 +265,29 @@ unvalidated string.
 - General `rusttv restore --journal <file>` (promised in SECURITY.md step 7)
   dispatches on the plan name to the takeover or optimizer validator; without
   `--journal` it refuses if more than one kind is restorable and lists them.
+
+*As built (2026-10-23), with the owner's restore decision:* `rusttv optimize
+restore [privacy|reduced-animations] [--journal <file>] [--dry-run]`.
+Without a name it behaves as before when only one kind (privacy or
+`optimize-*`) is restorable for the device's firmware; with both it refuses
+(`PRECONDITION_FAILED`) and names `optimize restore privacy` and `optimize
+restore reduced-animations`. With `--journal` and no name, the journal's plan
+picks the validator (anything else goes to the privacy one, which refuses it
+as before). `optimizer_restore_plan` accepts only `optimize-<name>-v<n>`
+journals whose every undo is a `SetSetting`; `privacy_restore_plan` refuses
+them. Drift is checked twice: when planning the restore (a key back at its
+original is skipped; a key that is neither is skipped and named "left as
+is"; both marked undone in memory, saved by the restore; if nothing is left,
+the CLI marks the journal restored, as for privacy), and in the engine right
+before each undo (`plan::restore` only, never in a rollback after a failed
+apply, where any other value is the failed step's own doing; `restore` now
+returns the "left as is" notes). A key that reads as no valid value is not
+treated as drift: the undo runs and its verification reports a failure.
+"One at a time" covers restorable `optimize-*` journals of the same
+**firmware family** (not only the same fingerprint, so a `stale` one blocks
+too; the message gives `--journal <file>`); unreadable journal files are a
+warning note in the plan, not a refusal. The general `rusttv restore` is not
+built.
 
 ### Firmware changes
 
@@ -258,6 +323,11 @@ Agents may analyze and plan, never apply or restore (SECURITY.md § AI agents):
 No tool takes a setting key, value, journal path or command. All run R0 only
 and write no journal.
 
+*As built (2026-10-23):* as above; `optimize_plan` also takes
+`allow_untested`, and `optimize_restore_plan` takes `profile?` (`privacy` \|
+`reduced-animations`) with the CLI's dispatch (MCP.md). `privacy_plan` stays
+the privacy planner.
+
 ## 6. Test plan
 
 1. **Unit, fakes** (`FakeAdb`, `MemoryJournal`): render/parse of every new
@@ -281,6 +351,12 @@ and write no journal.
    TV → `restore` → `analyze` shows nothing applied. Then the benefit
    measurement (Open question 2), commit raw data and report, set `tested`
    and `evidence`.
+
+*As built (2026-10-23):* steps 1 and 2 in `optimizer.rs` (a stateful fake
+TV whose settings change when written; synthetic `settings get` outputs in
+`crates/rusttv-core/src/fixtures/synthetic-optimizer/`), `command.rs`,
+`compat.rs` and the CLI/MCP tests. Steps 3 (emulator) and 4 (Philips) are
+not done.
 
 Exit criteria (ROADMAP Phase 4): steps 1–3 pass; recovery docs (manual
 path: Developer options → animation scales, or `adb shell settings delete

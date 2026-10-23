@@ -23,7 +23,10 @@ use crate::inspect::DeviceInfo;
 /// 4: `[privacy]` lists only which catalog packages were tested
 ///    (`[[privacy.tested]]`); what they are lives in `compat/packages/`.
 ///    Version 3 sections still load (see [`ProfilePrivacy`]).
-pub const PROFILE_SCHEMA_VERSION: u32 = 4;
+/// 5: optional `[[optimizer]]` entries (optimizer profiles tested on the
+///    device, OPTIMIZER.md § 3). Version 3 and 4 profiles still load: they
+///    have none.
+pub const PROFILE_SCHEMA_VERSION: u32 = 5;
 
 /// Every profile in `compat/devices/`, compiled into the binary.
 ///
@@ -63,6 +66,30 @@ pub struct DeviceProfile {
     /// Absent means none: every package counts as untested here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub privacy: Option<ProfilePrivacy>,
+    /// Optimizer profiles (`compat/optimizer/`) tried on this device. Empty
+    /// means none: `optimize apply <profile>` is refused here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub optimizer: Vec<ProfileOptimizer>,
+}
+
+/// One optimizer profile on one device and firmware family (OPTIMIZER.md
+/// § 3), like `[launcher] takeover_tested`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProfileOptimizer {
+    /// Name of the optimizer profile, e.g. `reduced-animations`.
+    pub profile: String,
+    /// The optimizer profile's `version` this entry is about; an entry for
+    /// another version counts for nothing.
+    pub version: u32,
+    /// Set only after `optimize apply` and `optimize restore` both succeeded
+    /// on this device and firmware family.
+    pub tested: bool,
+    /// Path, from the repository root, of the committed report measuring the
+    /// benefit (BENCHMARK_PLAN.md). Only entries with evidence are suggested
+    /// by `optimize analyze`; a test checks the file exists.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
 }
 
 /// Which packages of the catalog (`compat/packages/`) were tested on one
@@ -414,6 +441,7 @@ pub fn profile_from_info(info: &DeviceInfo) -> Result<DeviceProfile, MissingFiel
         },
         launcher: None,
         privacy: None,
+        optimizer: Vec::new(),
     })
 }
 
@@ -536,7 +564,63 @@ mod tests {
         // Written by hand from what was seen on the device, like `tested`.
         generated.launcher.clone_from(&committed.launcher);
         generated.privacy.clone_from(&committed.privacy);
+        generated.optimizer.clone_from(&committed.optimizer);
         assert_eq!(generated, committed);
+    }
+
+    #[test]
+    fn optimizer_entries_name_bundled_profiles_and_existing_evidence() {
+        let repo = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+        let optimizer = crate::optimizer::bundled_optimizer_profiles();
+        for profile in bundled_profiles() {
+            for entry in &profile.optimizer {
+                assert!(
+                    optimizer.iter().any(|known| known.name == entry.profile),
+                    "{}: unknown optimizer profile {}",
+                    profile.device.model,
+                    entry.profile
+                );
+                if let Some(evidence) = &entry.evidence {
+                    assert!(
+                        repo.join(evidence).is_file(),
+                        "{}: evidence {evidence} is not a committed file",
+                        profile.device.model
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn optimizer_entries_parse_and_older_profiles_still_load() {
+        let entry = "[[optimizer]]\nprofile = \"reduced-animations\"\nversion = 1\ntested = true\n";
+        #[derive(Debug, Deserialize)]
+        struct Wrapper {
+            optimizer: Vec<ProfileOptimizer>,
+        }
+        let parsed: Wrapper = toml::from_str(entry).unwrap();
+        assert_eq!(parsed.optimizer[0].evidence, None);
+        assert!(toml::from_str::<Wrapper>(&format!("{entry}measured = true\n")).is_err());
+
+        // A schema 4 profile (no `[[optimizer]]`) loads with none.
+        let mut text = toml::to_string(&profile_from_info(&emulator_info()).unwrap()).unwrap();
+        text = text.replace("schema_version = 5", "schema_version = 4");
+        let profile: DeviceProfile = toml::from_str(&text).unwrap();
+        assert_eq!(profile.schema_version, 4);
+        assert!(profile.optimizer.is_empty());
+    }
+
+    #[test]
+    fn the_philips_profile_is_not_optimizer_tested() {
+        // Owner decision 2026-10-23: nothing measured on the Philips yet.
+        let properties = crate::inspect::parse_properties(include_str!(
+            "fixtures/philips-65oled818-api34/getprop.txt"
+        ));
+        let profile = bundled_profiles()
+            .into_iter()
+            .find(|profile| profile.matches(&properties))
+            .unwrap();
+        assert!(!profile.optimizer.iter().any(|entry| entry.tested));
     }
 
     #[test]
