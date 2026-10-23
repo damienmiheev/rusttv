@@ -130,3 +130,25 @@ Decided "not for now"; raise again when the core launcher is done.
     never inside Home, with a written safety review and remote-confirmed
     approvals designed so nothing confirms by accident.
   - Leaning when picked up: A + B first; C only as its own decision.
+
+- **Settings page with Screen care (OLED), and a top-right status corner** —
+  parked 2026-10-23. Facts from the Philips 65OLED818 (read-only): Google TV's
+  slideshow screensaver (`dreamx` Backdrop) is on after 10 min
+  (`screen_off_timeout` 600000) and works over RustTV; TP Vision's
+  `ImageStickingService` (GFX capture, in `org.droidtv.tvsystemui`) runs all
+  the time and dims static areas of the whole picture. So RustTV's own care
+  adds little on this TV, but should be configurable for others. Design
+  discussed:
+  - Settings in RustTV's app storage (typed values, safe defaults if broken;
+    a first step towards the level 1 theme file above). Remote-friendly
+    choices from fixed steps, no sliders.
+  - Screen care: pixel shift on/off (default on: slow ±4 UI px every 3 min);
+    dim when idle off / 1 / 2 / 5 min (default off on TVs that protect
+    themselves); dim to 20 / 40 / 60 %; first press when dimmed only wakes or
+    wakes and acts (owner leaned: 40 %, only wake). Shows the TV's own
+    screensaver timeout read-only, flags a dim time later than it, and opens
+    Android's screensaver settings (an app can't change them).
+  - Entry point (owner's idea): a gear in the top-right corner, possibly with
+    more status there — avatar, Wi-Fi status, notifications — to be discussed.
+  - Must be a clean design aligned with the current home screen; use the
+    `emil-design-eng` skill when designing it.
