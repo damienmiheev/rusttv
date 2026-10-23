@@ -177,3 +177,59 @@ Decided "not for now"; raise again when the core launcher is done.
     picked up: a read-only check on the Philips of which keys reach an app
     and which the system consumes.
   - Depends on the Settings page above.
+
+- **Phone remote and second screen** — parked 2026-10-24; owner: "probably
+  the #1 killer feature", to discuss later. Idea: the phone becomes a remote,
+  keyboard, touchpad and per-app second screen, with nothing to install on it.
+  Discussion so far (estimates, nothing measured or tried on a TV yet):
+  - **Web page served by RustTV** on the home network: scan a QR code on the
+    TV, the page opens in Safari or Chrome; "Add to Home Screen" gives it an
+    icon. Works the same on iPhone and Android (no vibration on iPhone; full
+    screen on iPhone only from the home-screen icon). Plain HTTP on the LAN:
+    no certificate for a bare IP, so no secure-context APIs (no clipboard
+    read, no Web Crypto); typing, touch and the user's own Paste still work.
+  - **Pair once per phone:** the QR carries a one-time secret; the TV asks
+    "Allow this phone?" and gives it a long-term secret kept in the page's
+    storage; the TV keeps a list of paired phones (revocable later in
+    Settings). Afterwards the icon just connects; unpaired phones get only
+    "scan the QR on your TV". Consequences: after the first pairing a tiny
+    listener runs while the TV is on and answers only paired phones (idle
+    cost to be measured); the TV needs a fixed address (DHCP reservation in
+    the router), because the page and its secret belong to the address it was
+    opened from (`rusttv.local` via mDNS is unreliable on Android phones).
+  - **Control beyond RustTV:** opening apps, Home and volume work for any
+    app. Arrows/OK/Back inside other apps are blocked for normal apps; best
+    route is the TV's own **Android TV Remote Service** (what the Google TV
+    phone app uses; its protocol is documented by open-source clients such as
+    Home Assistant's): RustTV pairs with it once as a remote client, then the
+    phone's buttons work everywhere like the real remote. Rejected: an
+    accessibility service (too broad, no real arrow keys) and ADB over Wi-Fi
+    on the TV (fragile, shell-level power in Home).
+  - **Keyboard only when a text field is focused:** a RustTV input method,
+    picked once as the TV's keyboard, is told by Android when input starts
+    and ends and what kind of field it is (search, password, email, number,
+    URL), so the phone shows the matching keyboard and hides it again. With
+    another keyboard selected on the TV, a manual "⌨" button on the phone; the
+    TV can hint "Type on your phone" when a field focuses. The input method
+    can run in its own process so Home's memory doesn't grow.
+  - **Layout per open app:** which app is in front comes from apps RustTV
+    opened itself, the remote service (believed to report the current app;
+    check), or, opt-in, usage access (granted via `rusttv` from the Mac where
+    the TV hides the screen). **Media sessions** (opt-in notification access)
+    give title, artwork, position and exact seek/play/pause for most players.
+    Examples: YouTube scrub bar with ±10 s double-tap and "play this link on
+    the TV" shared from the phone (deep link); Netflix and others: seek, next
+    episode, captions, search keyboard (nothing more is exposed); Jellyfin as
+    the full second screen through its remote-control API (browse, pick an
+    episode, audio and subtitle tracks); Live TV number pad and channels;
+    music artwork and controls; gamepad for games; touchpad for the browser.
+  - **Layouts as data add-ons:** one file per app (package name → controls →
+    actions from a fixed list: send key, seek, deep link, Jellyfin call), so
+    layout packs can't do anything dangerous; ship packs for popular apps.
+    Never read other apps' screens or private APIs.
+  - **Cost (estimates):** a few hundred KB while connected, near-zero CPU
+    (messages only on input), no per-frame work on Home. Measure Home resume
+    and memory with and without a phone connected (BENCHMARK_PLAN.md).
+  - **First step when picked up:** a read-only check on the Philips whether
+    the Android TV Remote Service is installed and listening, and whether it
+    reports the current app.
