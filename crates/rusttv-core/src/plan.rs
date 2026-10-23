@@ -802,7 +802,8 @@ impl PlanError {
         PlanErrorKind::Precondition(reason).into()
     }
 
-    pub(crate) fn no_journal(reason: String) -> Self {
+    /// No journal to restore from (`NO_JOURNAL`).
+    pub fn no_journal(reason: String) -> Self {
         PlanErrorKind::NoJournal(reason).into()
     }
 

@@ -18,7 +18,9 @@ use std::time::Duration;
 
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{CallToolResult, ErrorData, Implementation, ServerCapabilities, ServerConfig};
+use rmcp::model::{
+    CallToolResult, ContentBlock, ErrorData, Implementation, ServerCapabilities, ServerConfig,
+};
 use rmcp::{ServerHandler, schemars, tool, tool_handler, tool_router};
 use rusttv_core::{
     Adb, AdbError, ApkPath, DeviceCommand, DeviceSelectionError, DryRun, HOME_TAKEOVER, Plan,
@@ -78,6 +80,19 @@ pub struct InstallPlanParams {
     /// Absolute path of the launcher APK on this computer, file name of ASCII letters, digits, `.`, `_`, `-` ending in `.apk`. Default: the APK `android/build.sh` builds for the device's primary ABI, relative to the server's working directory.
     #[serde(default)]
     pub apk: Option<String>,
+}
+
+/// Arguments of `launcher_restore_plan`.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+#[serde(deny_unknown_fields)]
+pub struct RestorePlanParams {
+    /// adb serial of the device (see `device_list`); needed when several are connected.
+    #[serde(default)]
+    pub serial: Option<String>,
+    /// Plan from the device's compatibility profile instead of a takeover journal, for when the journal is lost: re-enable the packages a takeover disables that are disabled now (the CLI's `--from-profile`). Default false.
+    #[serde(default)]
+    pub from_profile: bool,
 }
 
 /// `data` of the `*_plan` tools: the plan's dry run and how a person applies it.
@@ -303,23 +318,59 @@ impl<A: Adb + Send + 'static> RustTvServer<A> {
     }
 
     #[tool(
-        description = "Plan undoing a Home takeover (re-enabling the stock launcher) from the newest takeover journal for the device's firmware. Changes nothing: returns the plan's dry run (`data.dry_run`, same as `rusttv launcher restore --dry-run --json`) and the command a person runs at a terminal to apply it (`data.apply_command`). Show both to the user; you cannot apply or approve it.",
+        description = "Plan undoing a Home takeover (re-enabling the stock launcher) from the newest takeover journal for the device's firmware, or with `from_profile` from the device's compatibility profile when the journal is lost. Changes nothing: returns the plan's dry run (`data.dry_run`, same as `rusttv launcher restore --dry-run --json`) and the command a person runs at a terminal to apply it (`data.apply_command`). Show both to the user; you cannot apply or approve it. Journal files that can't be read are reported in a second text content item, or in the `NO_JOURNAL` message.",
         annotations(read_only_hint = true)
     )]
     async fn launcher_restore_plan(
         &self,
-        Parameters(params): Parameters<TargetParams>,
+        Parameters(params): Parameters<RestorePlanParams>,
     ) -> Result<CallToolResult, ErrorData> {
         let journals = self.journals.clone();
-        self.run(move |adb| {
+        self.run_with_notes(move |adb| {
             let serial = resolve(adb, params.serial.as_deref())?;
+            if params.from_profile {
+                let journal = rusttv_core::takeover_journal_from_profile(
+                    adb,
+                    &serial,
+                    &rusttv_core::bundled_profiles(),
+                )?;
+                let plan = rusttv_core::takeover_restore_plan(adb, &serial, &journal)?;
+                let apply_command = command_line(&[
+                    "launcher",
+                    "restore",
+                    "--serial",
+                    plan.serial(),
+                    "--from-profile",
+                ]);
+                return Ok((proposal(&plan, apply_command), Vec::new()));
+            }
             let fingerprint = rusttv_core::device_fingerprint(adb, &serial)?;
-            let (path, journal) = rusttv_core::find_restorable_journal(
+            let search = rusttv_core::find_restorable_journal(
                 &journals_dir(journals)?,
                 HOME_TAKEOVER,
                 &fingerprint,
-            )
-            .found?;
+            );
+            // As the CLI's warnings: any of them may still need restoring.
+            let notes: Vec<String> = search
+                .unreadable
+                .iter()
+                .map(|file| {
+                    format!(
+                        "warning: skipped {}, which can't be read. If it is a takeover that \
+                         still needs restoring, it must be fixed and passed as `--journal`, or \
+                         planned with `from_profile`. Reason: {}",
+                        file.path.display(),
+                        file.error
+                    )
+                })
+                .collect();
+            let (path, journal) = search.found.map_err(|error| {
+                if notes.is_empty() || error.code() != "NO_JOURNAL" {
+                    error
+                } else {
+                    PlanError::no_journal(format!("{error}; {}", notes.join("; ")))
+                }
+            })?;
             let plan = rusttv_core::takeover_restore_plan(adb, &serial, &journal)?;
             let journal = path.to_str().ok_or_else(|| {
                 PlanError::journal(format!("{} is not valid UTF-8", path.display()))
@@ -332,7 +383,7 @@ impl<A: Adb + Send + 'static> RustTvServer<A> {
                 "--journal",
                 journal,
             ]);
-            Ok(proposal(&plan, apply_command))
+            Ok((proposal(&plan, apply_command), notes))
         })
         .await
     }
@@ -347,6 +398,19 @@ impl<A: Adb + Send + 'static> RustTvServer<A> {
         F: FnOnce(&dyn Adb) -> Result<T, ToolError> + Send + 'static,
         T: Send + 'static,
     {
+        self.run_with_notes(move |adb| call(adb).map(|data| (data, Vec::new())))
+            .await
+    }
+
+    /// [`Self::run`] for a call that may also return notes for the agent. Each
+    /// note is one more text content item after the envelope, which stays the
+    /// same as the CLI's.
+    async fn run_with_notes<T, F>(&self, call: F) -> Result<CallToolResult, ErrorData>
+    where
+        T: Serialize,
+        F: FnOnce(&dyn Adb) -> Result<(T, Vec<String>), ToolError> + Send + 'static,
+        T: Send + 'static,
+    {
         let adb = Arc::clone(&self.adb);
         let outcome = tokio::task::spawn_blocking(move || {
             // A poisoned lock only means an earlier call panicked; the adb
@@ -357,19 +421,23 @@ impl<A: Adb + Send + 'static> RustTvServer<A> {
         .await
         .map_err(|error| ErrorData::internal_error(format!("tool task failed: {error}"), None))?;
 
-        let envelope = match outcome {
-            Ok(data) => serde_json::to_value(Success {
-                schema: SCHEMA,
-                ok: true,
-                data,
-            }),
+        let (data, notes) = match outcome {
+            Ok(outcome) => outcome,
             Err(error) => {
                 return Ok(CallToolResult::structured_error(failure_value(&error)));
             }
         };
-        envelope.map(CallToolResult::structured).map_err(|error| {
-            ErrorData::internal_error(format!("serializing result: {error}"), None)
+        let envelope = serde_json::to_value(Success {
+            schema: SCHEMA,
+            ok: true,
+            data,
         })
+        .map_err(|error| ErrorData::internal_error(format!("serializing result: {error}"), None))?;
+        let mut result = CallToolResult::structured(envelope);
+        result
+            .content
+            .extend(notes.into_iter().map(ContentBlock::text));
+        Ok(result)
     }
 }
 

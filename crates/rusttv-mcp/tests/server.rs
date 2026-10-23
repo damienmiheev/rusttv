@@ -16,8 +16,9 @@ use rmcp::ServiceExt;
 use rusttv_core::{
     Adb, AdbError, Check, ConnectOutcome, DeviceAddress, DeviceCommand, DeviceEntry, DeviceState,
     FakeAdb, FileJournal, HOME_TAKEOVER, JOURNAL_SCHEMA_VERSION, Journal, JournalStatus,
-    JournalStep, JournalStore, PackageName, RiskClass, StepStatus, inspect, install_plan,
-    launcher_status, list_apps, parse_device_list, snapshot, takeover_restore_plan, uninstall_plan,
+    JournalStep, JournalStore, PackageName, RiskClass, StepStatus, bundled_profiles, inspect,
+    install_plan, launcher_status, list_apps, parse_device_list, snapshot,
+    takeover_journal_from_profile, takeover_restore_plan, uninstall_plan,
 };
 use rusttv_mcp::RustTvServer;
 use serde_json::{Value, json};
@@ -351,6 +352,7 @@ async fn invalid_arguments_and_unknown_tools_are_rejected() {
             json!({"package": "com.google.android.apps.tv.launcherx"}),
         ),
         ("launcher_restore_plan", json!({"journal": "/etc/passwd"})),
+        ("launcher_restore_plan", json!({"from_profile": "yes"})),
     ] {
         let response = client
             .request("tools/call", json!({"name": tool, "arguments": arguments}))
@@ -671,6 +673,149 @@ async fn restore_plan_names_the_journal_and_leaves_it_untouched() {
     );
     assert_eq!(adb.changes(), []);
     assert_eq!(dir.journal_files(), before, "planning changed the journal");
+}
+
+/// The Philips TV (bundled profile with a `[launcher]` section) with
+/// `disabled` packages disabled. Answers only read commands.
+fn philips(disabled: &[&str]) -> FakeAdb {
+    let disabled: String = disabled
+        .iter()
+        .map(|package| format!("package:{package}\n"))
+        .collect();
+    let mut adb = FakeAdb::new()
+        .respond(
+            DeviceCommand::GetProperties,
+            capture!("philips-65oled818-api34", "getprop.txt"),
+        )
+        .respond(DeviceCommand::ListDisabledPackages, disabled);
+    for device in parse_device_list(capture!("emulator-pixel3a-api34", "devices-l.txt")) {
+        adb = adb.with_device(device);
+    }
+    adb
+}
+
+const STOCK: &str = "com.google.android.apps.tv.launcherx";
+const SETUPWRAITH: &str = "com.google.android.tungsten.setupwraith";
+
+#[tokio::test]
+async fn restore_plan_from_profile_re_enables_what_a_takeover_disabled() {
+    let dir = Dir::new("from-profile");
+    let adb = SharedAdb::new(philips(&[STOCK, SETUPWRAITH]));
+    let mut client = plan_client(&adb, &dir).await;
+
+    let proposal = data(
+        client
+            .call(
+                "launcher_restore_plan",
+                json!({"from_profile": true}),
+                false,
+            )
+            .await,
+    );
+
+    let expected_adb = philips(&[STOCK, SETUPWRAITH]);
+    let journal =
+        takeover_journal_from_profile(&expected_adb, SERIAL, &bundled_profiles()).unwrap();
+    let expected = takeover_restore_plan(&expected_adb, SERIAL, &journal)
+        .unwrap()
+        .dry_run();
+    assert_eq!(
+        proposal["dry_run"],
+        serde_json::to_value(&expected).unwrap()
+    );
+    assert_eq!(proposal["dry_run"]["plan"], "home-takeover-restore");
+    let commands: Vec<&str> = proposal["dry_run"]["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|step| step["command"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        commands,
+        [
+            format!("adb -s {SERIAL} shell pm enable --user 0 {STOCK}"),
+            format!("adb -s {SERIAL} shell pm enable --user 0 {SETUPWRAITH}"),
+        ]
+    );
+    assert_eq!(
+        proposal["apply_command"],
+        format!("rusttv launcher restore --serial {SERIAL} --from-profile")
+    );
+    assert_eq!(adb.changes(), [], "planning changed the device");
+    assert_eq!(dir.journal_files(), [], "planning wrote a journal");
+}
+
+#[tokio::test]
+async fn restore_plan_from_profile_fails_with_the_cli_error_codes() {
+    let dir = Dir::new("from-profile-errors");
+
+    // Nothing a takeover disables is disabled.
+    let enabled = SharedAdb::new(philips(&[]));
+    let mut client = plan_client(&enabled, &dir).await;
+    let nothing = client
+        .call("launcher_restore_plan", json!({"from_profile": true}), true)
+        .await;
+    assert_eq!(error_code(&nothing), "PRECONDITION_FAILED");
+
+    // No bundled profile with a `[launcher]` section matches the Google TV
+    // emulator, even with a journal there: `from_profile` doesn't read it.
+    dir.takeover_journal();
+    let unknown = SharedAdb::new(google_tv(&dir, true));
+    let mut client = plan_client(&unknown, &dir).await;
+    let no_profile = client
+        .call("launcher_restore_plan", json!({"from_profile": true}), true)
+        .await;
+    assert_eq!(error_code(&no_profile), "NO_JOURNAL");
+
+    assert_eq!(enabled.changes(), []);
+    assert_eq!(unknown.changes(), []);
+}
+
+#[tokio::test]
+async fn restore_plan_reports_unreadable_journal_files() {
+    let dir = Dir::new("unreadable");
+    let journal = dir.takeover_journal();
+    let corrupt = dir.journals().join("0000000000002-home-takeover.toml");
+    fs::write(&corrupt, "not a journal").unwrap();
+    let adb = SharedAdb::new(google_tv(&dir, true));
+    let mut client = plan_client(&adb, &dir).await;
+
+    // The readable journal is still planned; the envelope is unchanged and
+    // the warning is a second text item.
+    let response = client
+        .request(
+            "tools/call",
+            json!({"name": "launcher_restore_plan", "arguments": {}}),
+        )
+        .await;
+    let result = &response["result"];
+    assert_eq!(result["isError"], false, "{response}");
+    let proposal = data(result["structuredContent"].clone());
+    assert_eq!(
+        proposal["apply_command"],
+        format!(
+            "rusttv launcher restore --serial {SERIAL} --journal {}",
+            journal.display()
+        )
+    );
+    let content = result["content"].as_array().unwrap();
+    assert_eq!(content.len(), 2, "{response}");
+    let note = content[1]["text"].as_str().unwrap();
+    assert!(note.starts_with("warning: skipped "), "{note}");
+    assert!(note.contains(&corrupt.display().to_string()), "{note}");
+    assert!(note.contains("from_profile"), "{note}");
+
+    // Only the unreadable file left: NO_JOURNAL, naming it.
+    fs::remove_file(&journal).unwrap();
+    let no_journal = client.call("launcher_restore_plan", json!({}), true).await;
+    assert_eq!(error_code(&no_journal), "NO_JOURNAL");
+    let message = no_journal["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains(&corrupt.display().to_string()),
+        "{message}"
+    );
+
+    assert_eq!(adb.changes(), []);
 }
 
 #[tokio::test]
