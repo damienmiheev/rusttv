@@ -197,13 +197,30 @@ pub fn journal_file_name(journal_started_at_unix_ms: u64, plan: &str) -> String 
     format!("{journal_started_at_unix_ms:013}-{plan}.toml")
 }
 
+/// What [`find_restorable_journal`] found.
+#[derive(Debug)]
+pub struct JournalSearch {
+    /// The newest restorable journal and its path; `NO_JOURNAL` if there is
+    /// none, `JOURNAL_FAILED` if the directory can't be listed.
+    pub found: Result<(PathBuf, Journal), PlanError>,
+    /// `.toml` files in the directory that could not be read, newest first.
+    /// Any of them may be a journal that still needs restoring.
+    pub unreadable: Vec<UnreadableJournal>,
+}
+
+/// A file in the journal directory that [`load_journal`] refused.
+#[derive(Debug)]
+pub struct UnreadableJournal {
+    /// The file.
+    pub path: PathBuf,
+    /// Why it could not be read (`JOURNAL_FAILED`).
+    pub error: PlanError,
+}
+
 /// The newest journal in `dir` for `plan` on the device with `fingerprint`
-/// that may still need restoring. Files that don't parse are skipped.
-pub fn find_restorable_journal(
-    dir: &Path,
-    plan: &str,
-    fingerprint: &str,
-) -> Result<(PathBuf, Journal), PlanError> {
+/// that may still need restoring. Every `.toml` file is read; files that
+/// can't be are listed in [`JournalSearch::unreadable`], not skipped silently.
+pub fn find_restorable_journal(dir: &Path, plan: &str, fingerprint: &str) -> JournalSearch {
     let not_found = || {
         PlanError::no_journal(format!(
             "no {plan} journal to restore for firmware `{fingerprint}` in {}; pass `--journal <file>`, or `--from-profile` to re-enable what this device's profile says a takeover disables",
@@ -212,8 +229,17 @@ pub fn find_restorable_journal(
     };
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
-        Err(error) if error.kind() == io::ErrorKind::NotFound => return Err(not_found()),
-        Err(error) => return Err(PlanError::journal(format!("{}: {error}", dir.display()))),
+        Err(error) => {
+            let found = if error.kind() == io::ErrorKind::NotFound {
+                not_found()
+            } else {
+                PlanError::journal(format!("{}: {error}", dir.display()))
+            };
+            return JournalSearch {
+                found: Err(found),
+                unreadable: Vec::new(),
+            };
+        }
     };
     let mut paths: Vec<PathBuf> = entries
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
@@ -222,18 +248,29 @@ pub fn find_restorable_journal(
                 .is_some_and(|extension| extension == "toml")
         })
         .collect();
-    // Names start with a zero-padded timestamp: newest last.
+    // Names start with a zero-padded timestamp: newest first.
     paths.sort();
-    paths
-        .into_iter()
-        .rev()
-        .filter_map(|path| load_journal(&path).ok().map(|journal| (path, journal)))
-        .find(|(_, journal)| {
-            journal.plan == plan
-                && journal.fingerprint == fingerprint
-                && journal.status.is_restorable()
-        })
-        .ok_or_else(not_found)
+    paths.reverse();
+    let mut found = None;
+    let mut unreadable = Vec::new();
+    for path in paths {
+        match load_journal(&path) {
+            Ok(journal) => {
+                if found.is_none()
+                    && journal.plan == plan
+                    && journal.fingerprint == fingerprint
+                    && journal.status.is_restorable()
+                {
+                    found = Some((path, journal));
+                }
+            }
+            Err(error) => unreadable.push(UnreadableJournal { path, error }),
+        }
+    }
+    JournalSearch {
+        found: found.ok_or_else(not_found),
+        unreadable,
+    }
 }
 
 #[cfg(test)]
@@ -334,21 +371,63 @@ pub(crate) mod tests {
             let path = dir.join(journal_file_name(time, "home-takeover"));
             FileJournal::new(path).save(&journal(status, time)).unwrap();
         }
-        fs::write(dir.join("9999999999999-garbage.toml"), "not a journal").unwrap();
 
-        let (path, found) = find_restorable_journal(&dir, "home-takeover", &fingerprint).unwrap();
+        let search = find_restorable_journal(&dir, "home-takeover", &fingerprint);
+        let (path, found) = search.found.unwrap();
         assert_eq!(found.started_at_unix_ms, 2);
         assert!(path.ends_with("0000000000002-home-takeover.toml"));
+        assert!(search.unreadable.is_empty());
 
-        let error = find_restorable_journal(&dir, "home-takeover", "other").unwrap_err();
-        assert_eq!(error.code(), "NO_JOURNAL");
+        let search = find_restorable_journal(&dir, "home-takeover", "other");
+        assert_eq!(search.found.unwrap_err().code(), "NO_JOURNAL");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_unreadable_journal_is_reported_next_to_a_good_one() {
+        let dir = temp_dir("good-and-corrupt");
+        let fingerprint = journal(JournalStatus::Applied, 0).fingerprint;
+        let good = dir.join(journal_file_name(1, "home-takeover"));
+        FileJournal::new(&good)
+            .save(&journal(JournalStatus::Applied, 1))
+            .unwrap();
+        // E.g. written by an older build with a command that no longer exists.
+        let corrupt = dir.join(journal_file_name(2, "home-takeover"));
+        let text = toml::to_string(&journal(JournalStatus::Applied, 2))
+            .unwrap()
+            .replace("disable_package", "retired_command");
+        fs::write(&corrupt, text).unwrap();
+
+        let search = find_restorable_journal(&dir, "home-takeover", &fingerprint);
+        assert_eq!(search.found.unwrap().0, good);
+        assert_eq!(search.unreadable.len(), 1);
+        assert_eq!(search.unreadable[0].path, corrupt);
+        assert_eq!(search.unreadable[0].error.code(), "JOURNAL_FAILED");
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn only_unreadable_journals_mean_no_journal_and_are_reported() {
+        let dir = temp_dir("only-corrupt");
+        fs::create_dir_all(&dir).unwrap();
+        let corrupt = dir.join("9999999999999-garbage.toml");
+        fs::write(&corrupt, "not a journal").unwrap();
+        // Not a journal file at all: ignored.
+        fs::write(dir.join("notes.txt"), "not a journal").unwrap();
+
+        let search = find_restorable_journal(&dir, "home-takeover", "x");
+        assert_eq!(search.found.unwrap_err().code(), "NO_JOURNAL");
+        assert_eq!(search.unreadable.len(), 1);
+        assert_eq!(search.unreadable[0].path, corrupt);
+        let message = search.unreadable[0].error.to_string();
+        assert!(message.contains("9999999999999-garbage.toml"), "{message}");
         fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn a_missing_journal_directory_means_no_journal() {
-        let error =
-            find_restorable_journal(&temp_dir("missing"), "home-takeover", "x").unwrap_err();
-        assert_eq!(error.code(), "NO_JOURNAL");
+        let search = find_restorable_journal(&temp_dir("missing"), "home-takeover", "x");
+        assert_eq!(search.found.unwrap_err().code(), "NO_JOURNAL");
+        assert!(search.unreadable.is_empty());
     }
 }

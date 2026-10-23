@@ -51,8 +51,9 @@ pub use install::{
     LAUNCHER_INSTALL, LAUNCHER_UNINSTALL, default_apk, install_plan, uninstall_plan,
 };
 pub use journal::{
-    FileJournal, JOURNAL_SCHEMA_VERSION, Journal, JournalStatus, JournalStep, JournalStore,
-    StepStatus, find_restorable_journal, journal_file_name, journals_dir, load_journal,
+    FileJournal, JOURNAL_SCHEMA_VERSION, Journal, JournalSearch, JournalStatus, JournalStep,
+    JournalStore, StepStatus, UnreadableJournal, find_restorable_journal, journal_file_name,
+    journals_dir, load_journal,
 };
 pub use launcher::{
     HomeCandidate, LauncherStatus, RUSTTV_LAUNCHER, launcher_status, parse_home_candidates,

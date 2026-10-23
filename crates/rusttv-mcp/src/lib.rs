@@ -318,7 +318,8 @@ impl<A: Adb + Send + 'static> RustTvServer<A> {
                 &journals_dir(journals)?,
                 HOME_TAKEOVER,
                 &fingerprint,
-            )?;
+            )
+            .found?;
             let plan = rusttv_core::takeover_restore_plan(adb, &serial, &journal)?;
             let journal = path.to_str().ok_or_else(|| {
                 PlanError::journal(format!("{} is not valid UTF-8", path.display()))

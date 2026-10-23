@@ -184,11 +184,21 @@ pub fn restore(
         ),
         None => {
             let fingerprint = rusttv_core::device_fingerprint(adb, &serial)?;
-            rusttv_core::find_restorable_journal(
+            let search = rusttv_core::find_restorable_journal(
                 &rusttv_core::journals_dir()?,
                 HOME_TAKEOVER,
                 &fingerprint,
-            )?
+            );
+            for file in &search.unreadable {
+                output::print_note(&format!(
+                    "warning: skipped {}, which can't be read. If it is a takeover that still \
+                     needs restoring, fix it and pass `--journal {0}`, or use `--from-profile`. \
+                     Reason: {}",
+                    file.path.display(),
+                    file.error
+                ));
+            }
+            search.found?
         }
     };
     let plan = rusttv_core::takeover_restore_plan(adb, &serial, &journal)?;
