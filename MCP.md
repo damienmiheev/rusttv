@@ -105,14 +105,14 @@ user, not run it: never give an agent a terminal running `rusttv`
 
 ## Results
 
-A tool result's `structuredContent` is the CLI's `rusttv.v2` envelope
+A tool result's `structuredContent` is the CLI's `rusttv.v3` envelope
 (CLI.md § Output), and its first text content item is the same JSON as a
 string (`launcher_restore_plan` may add warnings as further text items, see
 § Plan tools):
 
 ```json
-{"schema":"rusttv.v2","ok":true,"data":{}}
-{"schema":"rusttv.v2","ok":false,"error":{"code":"NO_DEVICE","message":"no devices found; connect one with `rusttv device connect <address>`"}}
+{"schema":"rusttv.v3","ok":true,"data":{}}
+{"schema":"rusttv.v3","ok":false,"error":{"code":"NO_DEVICE","message":"no devices found; connect one with `rusttv device connect <address>`"}}
 ```
 
 - Success: `isError` is `false` and `data` is exactly what the CLI prints.

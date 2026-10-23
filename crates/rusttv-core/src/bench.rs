@@ -7,7 +7,11 @@
 //! - **resume**: bringing the app back to the front while it's still in
 //!   memory (what pressing Home feels like); only `HOT` runs count. Needs at
 //!   least two apps, which take turns being in front.
-//! - **idle memory and CPU**: after the app has been in front and idle.
+//! - **fresh idle memory**: after a fresh cold start, before the cold-start
+//!   and resume series, so it can't include anything those leave behind.
+//! - **idle memory and CPU after the series**: after the app has been in
+//!   front and idle. Compared with fresh idle memory, this shows memory an app
+//!   keeps per pause/resume (a leak looked like a high idle median).
 //!
 //! Apps are interleaved (A, B, A, B, ...) so drift and heat affect each
 //! equally. Stops and starts apps (R1, transient); changes no settings.
@@ -35,8 +39,12 @@ pub struct BenchmarkOptions {
     pub warmup: u32,
     /// Pause after stopping or switching apps, in milliseconds.
     pub pause_ms: u64,
-    /// How long an app sits idle in front before its memory is read.
+    /// How long an app sits idle in front before its memory is read, after
+    /// the resume series.
     pub settle_ms: u64,
+    /// How long an app sits idle after a fresh cold start before its memory
+    /// is read: longer than `settle_ms`, past the start-up peak.
+    pub fresh_settle_ms: u64,
     /// Window over which idle CPU usage is measured.
     pub cpu_window_ms: u64,
     /// Idle memory/CPU samples per app.
@@ -50,6 +58,7 @@ impl Default for BenchmarkOptions {
             warmup: 3,
             pause_ms: 2_000,
             settle_ms: 10_000,
+            fresh_settle_ms: 20_000,
             cpu_window_ms: 5_000,
             idle_samples: 3,
         }
@@ -96,8 +105,14 @@ pub struct AppResult {
     pub cold_start_ms: Option<Stats>,
     /// `TotalTime` of counted resumes, in milliseconds.
     pub resume_ms: Option<Stats>,
-    /// Proportional set size while idle in front, in KiB.
-    pub idle_pss_kib: Option<Stats>,
+    /// Proportional set size while idle after a fresh cold start, in KiB.
+    pub idle_pss_kib_fresh: Option<Stats>,
+    /// Proportional set size while idle in front after the cold-start and
+    /// resume series, in KiB.
+    pub idle_pss_kib_after_resumes: Option<Stats>,
+    /// Median after resumes minus median fresh, in KiB; positive when the
+    /// series left the app bigger.
+    pub idle_pss_growth_kib: Option<f64>,
     /// CPU used while idle in front, % of one core, all of the app's processes.
     pub idle_cpu_percent: Option<Stats>,
     /// Runs left out of the statistics (wrong launch state, process didn't stop).
@@ -318,6 +333,34 @@ pub fn run_benchmark(
     let rounds = options.warmup + options.runs;
     let mut runs = Vec::new();
 
+    // Fresh idle memory first, before any series can leave memory behind.
+    let mut fresh: Vec<Vec<f64>> = vec![Vec::new(); apps.len()];
+    for sample in 0..options.idle_samples {
+        for (app, pss) in apps.iter().zip(&mut fresh) {
+            wake_if_needed(adb, serial, sleep, pause, progress)?;
+            adb.run(serial, &DeviceCommand::ForceStop(app.package()))?;
+            sleep(pause);
+            let started = adb.run(serial, &DeviceCommand::StartActivity(app.clone()))?;
+            let started =
+                parse_am_start(&started).map_err(|message| launch_failed(app, message))?;
+            sleep(Duration::from_millis(options.fresh_settle_ms));
+            let memory = adb.run(serial, &DeviceCommand::PackageMemInfo(app.package()))?;
+            let label = format!("fresh idle {}/{} {app}", sample + 1, options.idle_samples);
+            if !is_awake(adb, serial)? {
+                progress(&format!("{label} (discarded: screensaver came on)"));
+                continue;
+            }
+            if started.launch_state.as_deref() != Some("COLD") {
+                progress(&format!("{label} (discarded: not a cold start)"));
+                continue;
+            }
+            if let Some((pss_kib, _)) = parse_app_memory(&memory) {
+                pss.push(pss_kib as f64);
+            }
+            progress(&label);
+        }
+    }
+
     for round in 0..rounds {
         for app in apps {
             wake_if_needed(adb, serial, sleep, pause, progress)?;
@@ -383,7 +426,8 @@ pub fn run_benchmark(
     let results = apps
         .iter()
         .zip(idle)
-        .map(|(app, (pss, cpu))| {
+        .zip(fresh)
+        .map(|((app, (pss, cpu)), fresh_pss)| {
             let component = app.to_string();
             let times = |kind: LaunchKind| {
                 let values: Vec<f64> = runs
@@ -397,10 +441,16 @@ pub fn run_benchmark(
                 .iter()
                 .filter(|run| run.component == component && run.discarded_because.is_some())
                 .count();
+            let idle_pss_kib_fresh = Stats::from_values(&fresh_pss);
+            let idle_pss_kib_after_resumes = Stats::from_values(&pss);
             AppResult {
                 cold_start_ms: times(LaunchKind::Cold),
                 resume_ms: times(LaunchKind::Resume),
-                idle_pss_kib: Stats::from_values(&pss),
+                idle_pss_growth_kib: idle_pss_kib_after_resumes
+                    .zip(idle_pss_kib_fresh)
+                    .map(|(after, fresh)| after.median - fresh.median),
+                idle_pss_kib_fresh,
+                idle_pss_kib_after_resumes,
                 idle_cpu_percent: Stats::from_values(&cpu),
                 discarded_runs: u32::try_from(discarded).unwrap_or(u32::MAX),
                 component,
@@ -576,9 +626,17 @@ mod tests {
         AWAKE.replace("mWakefulness=Awake", "mWakefulness=Dreaming")
     }
 
-    /// A device where `apps` cold-start (4 rounds), then resume HOT.
+    const MEMINFO: &str = include_str!("fixtures/emulator-pixel3a-api34/meminfo-launcher.txt");
+
+    /// `MEMINFO` with a different `TOTAL PSS`.
+    fn meminfo_with_pss(pss_kib: u32) -> String {
+        MEMINFO.replace("TOTAL PSS:    44081", &format!("TOTAL PSS:    {pss_kib}"))
+    }
+
+    /// A device where `apps` cold-start (2 fresh idle samples + 4 rounds),
+    /// then resume HOT.
     fn device(apps: &[&str], processes_after_stop: &str) -> FakeAdb {
-        let rounds = 4;
+        let cold_starts = 2 + 4;
         let mut adb = FakeAdb::new()
             .respond(
                 DeviceCommand::GetProperties,
@@ -604,15 +662,12 @@ mod tests {
         for app in apps {
             let component: Component = app.parse().unwrap();
             let starts =
-                std::iter::repeat_n(capture!("am-start-cold.txt").to_owned(), rounds).chain(
+                std::iter::repeat_n(capture!("am-start-cold.txt").to_owned(), cold_starts).chain(
                     std::iter::repeat_n(capture!("am-start-hot.txt").to_owned(), 64),
                 );
             adb = adb
                 .respond(DeviceCommand::ForceStop(component.package()), "")
-                .respond(
-                    DeviceCommand::PackageMemInfo(component.package()),
-                    include_str!("fixtures/emulator-pixel3a-api34/meminfo-launcher.txt"),
-                )
+                .respond(DeviceCommand::PackageMemInfo(component.package()), MEMINFO)
                 .respond_sequence(DeviceCommand::StartActivity(component), starts);
         }
         adb
@@ -690,10 +745,11 @@ mod tests {
 
     #[test]
     fn an_idle_sample_taken_under_the_screensaver_is_dropped() {
-        // 2 apps x 4 rounds x (cold + resume) checks are awake, then each idle
-        // sample checks before its start and after its window: the
-        // screensaver comes on during the very first idle window only.
-        let before_idle = 2 * 4 * 2;
+        // Each idle sample checks before its start and after its window:
+        // 2 samples x 2 apps x 2 fresh checks, then 2 apps x 4 rounds x
+        // (cold + resume) checks are awake; the screensaver comes on during
+        // the very first idle window after the series only.
+        let before_idle = 2 * 2 * 2 + 2 * 4 * 2;
         let states = std::iter::repeat_n(AWAKE.to_owned(), before_idle + 1)
             .chain([dreaming()])
             .chain([AWAKE.to_owned()]);
@@ -703,12 +759,76 @@ mod tests {
         let report = run(&adb, &[SPIKE, STOCK]);
 
         assert_eq!(
-            report.apps[0].idle_pss_kib.unwrap().n,
+            report.apps[0].idle_pss_kib_after_resumes.unwrap().n,
             1,
             "one of two dropped"
         );
         assert_eq!(report.apps[0].idle_cpu_percent.unwrap().n, 1);
-        assert_eq!(report.apps[1].idle_pss_kib.unwrap().n, 2);
+        assert_eq!(report.apps[0].idle_pss_kib_fresh.unwrap().n, 2);
+        assert_eq!(report.apps[1].idle_pss_kib_after_resumes.unwrap().n, 2);
+    }
+
+    #[test]
+    fn a_fresh_idle_sample_taken_under_the_screensaver_is_dropped() {
+        // The first fresh sample's start check is awake, the check after its
+        // settle finds the screensaver; it's woken before the next start.
+        let states = [AWAKE.to_owned(), dreaming(), dreaming(), AWAKE.to_owned()];
+        let adb = device(&[SPIKE, STOCK], "  PID    RSS NAME\n")
+            .respond_sequence(DeviceCommand::PowerState, states)
+            .respond(DeviceCommand::WakeUp, "");
+        let mut lines = Vec::new();
+        let apps: Vec<Component> = [SPIKE, STOCK]
+            .iter()
+            .map(|app| app.parse().unwrap())
+            .collect();
+        let report = run_benchmark(&adb, "tv", &apps, options(), &no_sleep, &mut |line| {
+            lines.push(line.to_owned());
+        })
+        .unwrap();
+
+        assert_eq!(report.apps[0].idle_pss_kib_fresh.unwrap().n, 1);
+        assert_eq!(report.apps[1].idle_pss_kib_fresh.unwrap().n, 2);
+        assert_eq!(report.apps[0].idle_pss_kib_after_resumes.unwrap().n, 2);
+        assert_eq!(report.apps[0].idle_pss_growth_kib, Some(0.0));
+        assert_eq!(
+            lines[0],
+            format!("fresh idle 1/2 {SPIKE} (discarded: screensaver came on)")
+        );
+        assert_eq!(lines[1], "screensaver or sleep: waking the TV");
+    }
+
+    #[test]
+    fn memory_kept_by_the_series_shows_as_growth() {
+        // PSS grows by 2 MiB with every read, like a leak per resume: the 2
+        // fresh reads come first, the 2 after the series last.
+        let component: Component = SPIKE.parse().unwrap();
+        let adb = device(&[SPIKE], "  PID    RSS NAME\n").respond_sequence(
+            DeviceCommand::PackageMemInfo(component.package()),
+            [60_000, 62_048, 64_096, 66_144].map(meminfo_with_pss),
+        );
+        let report = run(&adb, &[SPIKE]);
+
+        let app = &report.apps[0];
+        assert_eq!(app.idle_pss_kib_fresh.unwrap().median, 60_000.0);
+        assert_eq!(app.idle_pss_kib_after_resumes.unwrap().median, 64_096.0);
+        assert_eq!(app.idle_pss_growth_kib, Some(4_096.0));
+    }
+
+    #[test]
+    fn a_fresh_start_that_is_not_cold_is_not_fresh_idle_memory() {
+        // E.g. force-stop didn't stop it: every start reports HOT.
+        let component: Component = SPIKE.parse().unwrap();
+        let adb = device(&[], "  PID    RSS NAME\n")
+            .respond(DeviceCommand::ForceStop(component.package()), "")
+            .respond(DeviceCommand::PackageMemInfo(component.package()), MEMINFO)
+            .respond(
+                DeviceCommand::StartActivity(component),
+                capture!("am-start-hot.txt"),
+            );
+        let report = run(&adb, &[SPIKE]);
+        assert_eq!(report.apps[0].idle_pss_kib_fresh, None);
+        assert_eq!(report.apps[0].idle_pss_growth_kib, None);
+        assert_eq!(report.apps[0].idle_pss_kib_after_resumes.unwrap().n, 2);
     }
 
     #[test]
@@ -758,7 +878,9 @@ mod tests {
         assert_eq!((cold.n, cold.median), (3, 281.0), "warm-up run excluded");
         let resume = spike.resume_ms.unwrap();
         assert_eq!((resume.n, resume.median), (3, 33.0));
-        assert_eq!(spike.idle_pss_kib.unwrap().median, 44_081.0);
+        assert_eq!(spike.idle_pss_kib_fresh.unwrap().median, 44_081.0);
+        assert_eq!(spike.idle_pss_kib_after_resumes.unwrap().median, 44_081.0);
+        assert_eq!(spike.idle_pss_growth_kib, Some(0.0));
         // 0.05 s of CPU in a 1 s window.
         assert!((spike.idle_cpu_percent.unwrap().median - 5.0).abs() < 1e-9);
         assert_eq!(spike.discarded_runs, 0);

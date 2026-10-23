@@ -29,7 +29,7 @@ fn rusttv_with_fake_adb(scenario: &str, args: &[&str]) -> Output {
 
 fn json_stdout(output: &Output) -> Value {
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["schema"], "rusttv.v2");
+    assert_eq!(value["schema"], "rusttv.v3");
     value
 }
 
@@ -416,7 +416,7 @@ fn compat_profile_json_includes_the_suggested_path() {
 }
 
 /// Fast settings for benchmark tests: no waiting.
-const QUICK_BENCHMARK: [&str; 10] = [
+const QUICK_BENCHMARK: [&str; 12] = [
     "--runs",
     "3",
     "--warmup",
@@ -424,6 +424,8 @@ const QUICK_BENCHMARK: [&str; 10] = [
     "--pause-ms",
     "0",
     "--settle-ms",
+    "0",
+    "--fresh-settle-ms",
     "0",
     "--cpu-window-ms",
     "0",
@@ -454,7 +456,10 @@ fn performance_benchmark_json_reports_cold_starts_and_raw_runs() {
         Value::Null,
         "one app has no resume measurement"
     );
-    assert_eq!(app["idle_pss_kib"]["median"], 44_081.0);
+    assert_eq!(app["idle_pss_kib_fresh"]["median"], 44_081.0);
+    assert_eq!(app["idle_pss_kib_after_resumes"]["median"], 44_081.0);
+    assert_eq!(app["idle_pss_growth_kib"], 0.0);
+    assert_eq!(data["options"]["fresh_settle_ms"], 0);
     assert_eq!(
         data["runs"].as_array().unwrap().len(),
         4,
@@ -463,6 +468,34 @@ fn performance_benchmark_json_reports_cold_starts_and_raw_runs() {
     assert_eq!(data["device"]["manufacturer"], "Google");
     let progress = String::from_utf8(output.stderr).unwrap();
     assert!(progress.contains("cold 4/4"), "{progress}");
+}
+
+#[test]
+fn performance_benchmark_text_shows_fresh_and_after_resumes_memory() {
+    let mut args = vec![
+        "performance",
+        "benchmark",
+        "--app",
+        "ai.rusttv.spike/.LauncherActivity",
+        "--idle-samples",
+        "1",
+    ];
+    args.extend(QUICK_BENCHMARK);
+    let output = rusttv_with_fake_adb("emulator", &args);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        text.contains("idle PSS fresh         median 43.0 MiB"),
+        "{text}"
+    );
+    assert!(
+        text.contains("idle PSS after resumes median 43.0 MiB"),
+        "{text}"
+    );
+    assert!(text.contains("idle PSS growth        +0.0 MiB"), "{text}");
+    let progress = String::from_utf8(output.stderr).unwrap();
+    assert!(progress.contains("fresh idle 1/1"), "{progress}");
 }
 
 #[test]
