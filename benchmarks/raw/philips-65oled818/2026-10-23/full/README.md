@@ -23,7 +23,8 @@ Idle memory is not understood yet, so make no claim from it. This run and
 `../rerun/` give RustTV ~123–127 MB after the 30-run cold/resume series, but
 two short runs that day (2 runs each) gave 68–70 MB, `../memory-profile.md`
 measured ~63 MB steady, and one reading right after a single cold start gave
-115 MB. The screensaver is ruled out (it did not start in this run). Under
-investigation.
+115 MB. The screensaver is ruled out (it did not start in this run). Explained in
+`../resume-leak.md`: ~65 MB settled, plus ~1.6–1.9 MB that is never freed
+per leave/return cycle, and these idle samples follow 30 resumes.
 
 Redaction: the adb serial (the TV's local IP and port) was replaced with `tv`.
