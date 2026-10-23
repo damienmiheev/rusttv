@@ -1,0 +1,33 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/damienmiheev/rusttv"
+publish = false
+
+[workspace.dependencies]
+rusttv-core = { path = "crates/rusttv-core" }
+clap = { version = "4.6.7", features = ["derive"] }
+
+[workspace.lints.rust]
+# Only the future JNI bridge crate may opt out of this.
+unsafe_code = "forbid"
+missing_debug_implementations = "warn"
+
+[workspace.lints.clippy]
+# See CLAUDE.md: no unwrap/expect outside tests (clippy.toml allows them in tests).
+unwrap_used = "warn"
+expect_used = "warn"
+dbg_macro = "warn"
+print_stderr = "warn"
+todo = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

@@ -1,0 +1,38 @@
+# cargo-deny configuration. Run: cargo deny check
+# Docs: https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+all-features = true
+
+[advisories]
+# RustSec advisories; vulnerable, unmaintained and yanked crates fail the check.
+ignore = []
+
+[licenses]
+# Permissive licenses + MPL-2.0 (SECURITY.md § Supply chain).
+# Slint's license is added when the launcher crate lands (ARCHITECTURE.md D9).
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.9
+# The list is a policy, not an inventory: don't warn about licenses no crate uses yet.
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Workspace path dependencies have no version; that is not a wildcard.
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

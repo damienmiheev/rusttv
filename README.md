@@ -4,7 +4,7 @@
 
 RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + Slint launcher, a safe ADB-based optimizer, and CLI/MCP tools for humans and AI agents. Local-first, no telemetry, and every performance claim backed by published benchmarks.
 
-> **Status: Phase 0 — research and planning.** There is no runnable code yet. The design docs below describe what will be built and how. See [ROADMAP.md](ROADMAP.md) for what comes next.
+> **Status: Milestone 1 in progress.** The Rust workspace and CI exist; the CLI does nothing useful yet. See [ROADMAP.md](ROADMAP.md) for what comes next.
 
 ## What it will be
 
@@ -38,7 +38,20 @@ RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + 
 
 ## Getting started
 
-Nothing to install yet. The first milestone is a read-only CLI (`rusttv device inspect`); build instructions will appear here when it lands.
+Requirements: [Rust via rustup](https://rustup.rs) (the pinned toolchain in `rust-toolchain.toml` installs automatically) and, for device commands later, Android platform-tools (`adb`).
+
+```bash
+cargo run -p rusttv-cli -- --version
+```
+
+Before sending a change, run the same checks as CI:
+
+```bash
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace
+cargo deny check   # cargo install --locked cargo-deny
+```
 
 ## Contributing
 
