@@ -5,6 +5,7 @@
 //! still to come (`device`, `packages`, `perf`, ...).
 
 mod adb;
+mod apps;
 mod command;
 mod device;
 mod error;
@@ -13,6 +14,7 @@ mod inspect;
 #[cfg(any(test, feature = "test-util"))]
 pub use adb::FakeAdb;
 pub use adb::{Adb, SystemAdb};
+pub use apps::{AppInfo, AppKind, list_apps, parse_package_list};
 pub use command::{DeviceCommand, InvalidPackageName, PackageName, RiskClass};
 pub use device::{
     ConnectOutcome, DEFAULT_ADB_PORT, DeviceAddress, DeviceEntry, DeviceSelectionError,

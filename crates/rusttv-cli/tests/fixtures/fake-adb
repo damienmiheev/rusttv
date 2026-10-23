@@ -23,6 +23,15 @@ emulator:shell\ cat\ /proc/meminfo)
 emulator:shell\ df\ -k\ /data)
     cat "$captures/df-data.txt"
     ;;
+emulator:shell\ pm\ list\ packages\ -f)
+    cat "$captures/packages-f.txt"
+    ;;
+emulator:shell\ pm\ list\ packages\ -3)
+    cat "$captures/packages-3.txt"
+    ;;
+emulator:shell\ pm\ list\ packages\ -d)
+    cat "$captures/packages-d.txt"
+    ;;
 two-devices:devices*)
     printf 'List of devices attached\n'
     printf 'emulator-5554          device product:sdk_google_atv_x86 model:Android_TV_on_x86 device:generic_x86 transport_id:1\n'

@@ -27,7 +27,7 @@ Small PRs, in order:
 6. `rusttv performance snapshot [--json]`: memory + CPU summary, launcher process memory.
 7. JSON envelope + error codes documented; `compat/` schema and the Philips TV profile generated from `inspect`.
 
-**Progress (2026-10-23):** steps 1–3 done. Step 4 done except the ADB capability probe and a capture from the Philips TV; tested on a real Pixel emulator capture (`crates/rusttv-core/src/fixtures/`).
+**Progress (2026-10-23):** steps 1–3 and 5 done. Step 4 done except the ADB capability probe and a capture from the Philips TV; tested on a real Pixel emulator capture (`crates/rusttv-core/src/fixtures/`).
 
 **Done when:** all commands work against the emulator and the Philips TV, all checks green in CI, no device-modifying command exists in the codebase, and a newcomer can run `cargo run -p rusttv-cli -- device inspect` from the README.
 

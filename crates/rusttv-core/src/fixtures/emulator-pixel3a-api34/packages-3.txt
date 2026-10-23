@@ -1,0 +1,3 @@
+package:com.redphx.deviceid
+package:com.ytheekshana.deviceinfo
+package:com.akademiteknoloji.androidallid

@@ -1,8 +1,9 @@
+mod apps;
 mod output;
 
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use rusttv_core::{
     Adb, AdbError, ConnectOutcome, DeviceAddress, DeviceEntry, DeviceInfo, DeviceSelectionError,
     DeviceState, SystemAdb,
@@ -26,6 +27,35 @@ enum Command {
     /// Find and connect to devices.
     #[command(subcommand)]
     Device(DeviceAction),
+    /// Inspect installed apps.
+    #[command(subcommand)]
+    Apps(AppsAction),
+}
+
+#[derive(Debug, Subcommand)]
+enum AppsAction {
+    /// List installed packages: system or third-party, enabled or disabled. Read-only.
+    List {
+        #[command(flatten)]
+        target: Target,
+    },
+}
+
+/// Which device a command runs on.
+#[derive(Debug, Args)]
+struct Target {
+    /// adb serial of the device (see `rusttv device list`); needed when several are connected.
+    #[arg(long)]
+    serial: Option<String>,
+}
+
+impl Target {
+    /// Resolves to the serial of a single ready device.
+    fn resolve(&self, adb: &dyn Adb) -> Result<String, CliError> {
+        let devices = adb.devices()?;
+        let device = rusttv_core::select_device(&devices, self.serial.as_deref())?;
+        Ok(device.serial.clone())
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -39,9 +69,8 @@ enum DeviceAction {
     },
     /// Show manufacturer, model, Android version, CPU, memory and storage. Read-only.
     Inspect {
-        /// adb serial of the device (see `rusttv device list`); needed when several are connected.
-        #[arg(long)]
-        serial: Option<String>,
+        #[command(flatten)]
+        target: Target,
     },
 }
 
@@ -85,9 +114,8 @@ fn main() -> ExitCode {
     let result = match &cli.command {
         Command::Device(DeviceAction::List) => list(&adb, cli.json),
         Command::Device(DeviceAction::Connect { address }) => connect(&adb, address, cli.json),
-        Command::Device(DeviceAction::Inspect { serial }) => {
-            inspect(&adb, serial.as_deref(), cli.json)
-        }
+        Command::Device(DeviceAction::Inspect { target }) => inspect(&adb, target, cli.json),
+        Command::Apps(AppsAction::List { target }) => apps::list(&adb, target, cli.json),
     };
 
     match result {
@@ -170,10 +198,9 @@ fn connect(adb: &dyn Adb, address: &DeviceAddress, json: bool) -> Result<(), Cli
     Ok(())
 }
 
-fn inspect(adb: &dyn Adb, serial: Option<&str>, json: bool) -> Result<(), CliError> {
-    let devices = adb.devices()?;
-    let device = rusttv_core::select_device(&devices, serial)?;
-    let info = rusttv_core::inspect(adb, &device.serial)?;
+fn inspect(adb: &dyn Adb, target: &Target, json: bool) -> Result<(), CliError> {
+    let serial = target.resolve(adb)?;
+    let info = rusttv_core::inspect(adb, &serial)?;
     if json {
         output::print_json(&info);
     } else {

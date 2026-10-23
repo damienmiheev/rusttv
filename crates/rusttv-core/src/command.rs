@@ -41,6 +41,10 @@ pub enum DeviceCommand {
     GetProperties,
     /// All installed packages with their APK paths (`pm list packages -f`).
     ListPackages,
+    /// Packages not part of the system image (`pm list packages -3`).
+    ListThirdPartyPackages,
+    /// Disabled packages (`pm list packages -d`).
+    ListDisabledPackages,
     /// System-wide memory counters (`cat /proc/meminfo`).
     MemInfo,
     /// Size and free space of the user data partition (`df -k /data`).
@@ -55,6 +59,8 @@ impl DeviceCommand {
         match self {
             Self::GetProperties
             | Self::ListPackages
+            | Self::ListThirdPartyPackages
+            | Self::ListDisabledPackages
             | Self::MemInfo
             | Self::DataStorage
             | Self::PackageMemInfo(_) => RiskClass::Read,
@@ -66,6 +72,8 @@ impl DeviceCommand {
         match self {
             Self::GetProperties => vec!["shell", "getprop"],
             Self::ListPackages => vec!["shell", "pm", "list", "packages", "-f"],
+            Self::ListThirdPartyPackages => vec!["shell", "pm", "list", "packages", "-3"],
+            Self::ListDisabledPackages => vec!["shell", "pm", "list", "packages", "-d"],
             Self::MemInfo => vec!["shell", "cat", "/proc/meminfo"],
             Self::DataStorage => vec!["shell", "df", "-k", "/data"],
             Self::PackageMemInfo(package) => vec!["shell", "dumpsys", "meminfo", package.as_str()],
@@ -125,6 +133,8 @@ mod tests {
         let all = vec![
             DeviceCommand::GetProperties,
             DeviceCommand::ListPackages,
+            DeviceCommand::ListThirdPartyPackages,
+            DeviceCommand::ListDisabledPackages,
             DeviceCommand::MemInfo,
             DeviceCommand::DataStorage,
             DeviceCommand::PackageMemInfo(PackageName::new("com.example.app").unwrap()),
@@ -133,6 +143,8 @@ mod tests {
             match command {
                 DeviceCommand::GetProperties
                 | DeviceCommand::ListPackages
+                | DeviceCommand::ListThirdPartyPackages
+                | DeviceCommand::ListDisabledPackages
                 | DeviceCommand::MemInfo
                 | DeviceCommand::DataStorage
                 | DeviceCommand::PackageMemInfo(_) => {}

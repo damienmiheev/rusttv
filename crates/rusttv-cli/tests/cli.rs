@@ -224,3 +224,45 @@ fn device_inspect_of_an_unauthorized_device_says_so() {
             .contains("accept the debugging prompt")
     );
 }
+
+#[test]
+fn apps_list_json_marks_kind_and_state() {
+    let output = rusttv_with_fake_adb("emulator", &["apps", "list", "--json"]);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let apps = json_stdout(&output)["data"].as_array().unwrap().clone();
+    assert_eq!(apps.len(), 224);
+    let app = |name: &str| {
+        apps.iter()
+            .find(|app| app["package"] == name)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(app("com.redphx.deviceid")["kind"], "third_party");
+    assert_eq!(app("com.android.nfc")["enabled"], false);
+    assert_eq!(
+        app("android")["apk_path"],
+        "/system/framework/framework-res.apk"
+    );
+}
+
+#[test]
+fn apps_list_text_ends_with_a_summary() {
+    let output = rusttv_with_fake_adb("emulator", &["apps", "list"]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.starts_with("PACKAGE"), "{stdout}");
+    assert_eq!(
+        stdout.lines().last(),
+        Some("224 packages: 221 system, 3 third-party; 2 disabled")
+    );
+}
+
+#[test]
+fn apps_list_needs_a_serial_when_several_devices_are_connected() {
+    let output = rusttv_with_fake_adb("two-devices", &["apps", "list", "--json"]);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(json_stdout(&output)["error"]["code"], "MULTIPLE_DEVICES");
+}
