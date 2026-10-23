@@ -10,6 +10,7 @@ if [ "$1" = "-s" ]; then
 fi
 captures="$(dirname "$0")/../../../rusttv-core/src/fixtures/emulator-pixel3a-api34"
 tv_captures="$(dirname "$0")/../../../rusttv-core/src/fixtures/google-tv-emulator-api34"
+synthetic="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-home-takeover"
 
 case "$FAKE_ADB_SCENARIO:$*" in
 tv:devices\ -l)
@@ -20,6 +21,12 @@ tv:shell\ cmd\ package\ resolve-activity\ *)
     ;;
 tv:shell\ cmd\ package\ query-activities\ *)
     cat "$tv_captures/home-candidates.txt"
+    ;;
+tv:shell\ getprop)
+    cat "$synthetic/getprop.txt"
+    ;;
+tv:shell\ pm\ list\ packages\ -3)
+    cat "$synthetic/packages-3.txt"
     ;;
 emulator:devices\ -l)
     cat "$captures/devices-l.txt"

@@ -19,6 +19,23 @@ to be safe (Phase 4).
 4. Describe in `tested.notes` what you tried and anything unusual.
 5. Run `cargo test -p rusttv-core` and open a pull request.
 
+## Home takeover
+
+`rusttv launcher takeover` is refused unless a profile matching the device's
+model and firmware family has:
+
+```toml
+[launcher]
+stock_package = "com.google.android.apps.tv.launcherx"
+takeover_tested = true
+```
+
+Set `takeover_tested = true` only after `rusttv launcher takeover` **and**
+`rusttv launcher restore` both succeeded on that device and firmware. Profiles
+are compiled into `rusttv`, so add new ones to `BUNDLED_PROFILES` in
+`crates/rusttv-core/src/compat.rs` too (a test checks). Emulator profiles are
+never marked tested.
+
 ## Format
 
 The Rust types in `crates/rusttv-core/src/compat.rs` are the schema: unknown

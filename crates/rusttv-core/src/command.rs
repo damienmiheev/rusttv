@@ -6,6 +6,8 @@
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 /// How much a command can change on the device.
 ///
 /// Ordered from least to most risky, so policies can compare with `<=`.
@@ -22,6 +24,18 @@ pub enum RiskClass {
     PackageState,
 }
 
+impl RiskClass {
+    /// Short code used in SECURITY.md and JSON output: `R0` to `R3`.
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::Read => "R0",
+            Self::Transient => "R1",
+            Self::Setting => "R2",
+            Self::PackageState => "R3",
+        }
+    }
+}
+
 impl fmt::Display for RiskClass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
@@ -34,7 +48,10 @@ impl fmt::Display for RiskClass {
 }
 
 /// A command RustTV may run on a device.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+///
+/// Serialized (in plans and journals) as `{kind = "...", arg = "..."}`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "arg", rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum DeviceCommand {
     /// All system properties (`getprop`).
@@ -65,6 +82,15 @@ pub enum DeviceCommand {
     ForceStop(PackageName),
     /// Starts an activity and waits for its first frame (`am start -W -n <component>`). Transient.
     StartActivity(Component),
+    /// Activity manager state, including the resumed activity (`dumpsys activity activities`).
+    Activities,
+    /// Presses the Home button (`input keyevent KEYCODE_HOME`). Transient.
+    PressHome,
+    /// Disables a package for user 0 (`pm disable-user --user 0 <package>`).
+    /// Package state; only the Home takeover plan uses it (SECURITY.md).
+    DisablePackage(PackageName),
+    /// Re-enables a package for user 0 (`pm enable --user 0 <package>`). Package state.
+    EnablePackage(PackageName),
 }
 
 impl DeviceCommand {
@@ -82,8 +108,22 @@ impl DeviceCommand {
             | Self::HomeActivity
             | Self::HomeCandidates
             | Self::PackageMemInfo(_)
-            | Self::ProcessCpuTimes => RiskClass::Read,
-            Self::ForceStop(_) | Self::StartActivity(_) => RiskClass::Transient,
+            | Self::ProcessCpuTimes
+            | Self::Activities => RiskClass::Read,
+            Self::ForceStop(_) | Self::StartActivity(_) | Self::PressHome => RiskClass::Transient,
+            Self::DisablePackage(_) | Self::EnablePackage(_) => RiskClass::PackageState,
+        }
+    }
+
+    /// The command that undoes this one, if there is one.
+    ///
+    /// Every R2/R3 command must have an inverse: plans refuse steps that can't
+    /// be undone (SECURITY.md § Change lifecycle).
+    pub fn inverse(&self) -> Option<Self> {
+        match self {
+            Self::DisablePackage(package) => Some(Self::EnablePackage(package.clone())),
+            Self::EnablePackage(package) => Some(Self::DisablePackage(package.clone())),
+            _ => None,
         }
     }
 
@@ -126,6 +166,21 @@ impl DeviceCommand {
             Self::StartActivity(component) => {
                 vec!["shell", "am", "start", "-W", "-n", component.as_str()]
             }
+            Self::Activities => vec!["shell", "dumpsys", "activity", "activities"],
+            Self::PressHome => vec!["shell", "input", "keyevent", "KEYCODE_HOME"],
+            Self::DisablePackage(package) => {
+                vec![
+                    "shell",
+                    "pm",
+                    "disable-user",
+                    "--user",
+                    "0",
+                    package.as_str(),
+                ]
+            }
+            Self::EnablePackage(package) => {
+                vec!["shell", "pm", "enable", "--user", "0", package.as_str()]
+            }
         }
     }
 }
@@ -136,7 +191,8 @@ impl DeviceCommand {
 /// interprets, so any value we pass must not contain shell syntax. Android
 /// package names are dot-separated segments of ASCII letters, digits and `_`,
 /// each starting with a letter; that rules out every shell metacharacter.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub struct PackageName(String);
 
 impl PackageName {
@@ -161,6 +217,20 @@ impl PackageName {
     }
 }
 
+impl TryFrom<String> for PackageName {
+    type Error = InvalidPackageName;
+
+    fn try_from(name: String) -> Result<Self, Self::Error> {
+        Self::new(&name)
+    }
+}
+
+impl From<PackageName> for String {
+    fn from(package: PackageName) -> Self {
+        package.0
+    }
+}
+
 impl fmt::Display for PackageName {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.0)
@@ -178,7 +248,8 @@ pub struct InvalidPackageName(String);
 /// The activity is a class name, relative (`.Main`) or fully qualified
 /// (`com.example.Main`): ASCII letters, digits, `_` and `.`. Inner classes
 /// (`$`) are rejected because `$` is shell syntax.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub struct Component {
     /// `package/activity`, kept whole so it can be borrowed as one argument.
     text: String,
@@ -224,6 +295,20 @@ impl std::str::FromStr for Component {
     }
 }
 
+impl TryFrom<String> for Component {
+    type Error = InvalidComponent;
+
+    fn try_from(text: String) -> Result<Self, Self::Error> {
+        text.parse()
+    }
+}
+
+impl From<Component> for String {
+    fn from(component: Component) -> Self {
+        component.text
+    }
+}
+
 impl fmt::Display for Component {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&self.text)
@@ -259,6 +344,10 @@ mod tests {
             DeviceCommand::ProcessCpuTimes,
             DeviceCommand::ForceStop(PackageName::new("com.example.app").unwrap()),
             DeviceCommand::StartActivity("com.example.app/.MainActivity".parse().unwrap()),
+            DeviceCommand::Activities,
+            DeviceCommand::PressHome,
+            DeviceCommand::DisablePackage(PackageName::new("com.example.app").unwrap()),
+            DeviceCommand::EnablePackage(PackageName::new("com.example.app").unwrap()),
         ];
         for command in &all {
             match command {
@@ -275,25 +364,62 @@ mod tests {
                 | DeviceCommand::PackageMemInfo(_)
                 | DeviceCommand::ProcessCpuTimes
                 | DeviceCommand::ForceStop(_)
-                | DeviceCommand::StartActivity(_) => {}
+                | DeviceCommand::StartActivity(_)
+                | DeviceCommand::Activities
+                | DeviceCommand::PressHome
+                | DeviceCommand::DisablePackage(_)
+                | DeviceCommand::EnablePackage(_) => {}
             }
         }
         all
     }
 
     #[test]
-    fn nothing_above_transient_exists_yet() {
-        // R2/R3 commands need the plan/approve/journal engine (SECURITY.md),
-        // which doesn't exist yet. Only stopping and starting apps is R1.
+    fn only_package_enable_and_disable_are_above_transient() {
+        // This used to assert that nothing above R1 existed, because R2/R3
+        // commands needed the plan/approve/journal engine (SECURITY.md). The
+        // engine now exists (`crate::plan`), and Home takeover needs exactly
+        // two R3 commands. Anything else above R1 must be added here on purpose.
         for command in every_command() {
             let expected = match command {
-                DeviceCommand::ForceStop(_) | DeviceCommand::StartActivity(_) => {
-                    RiskClass::Transient
+                DeviceCommand::ForceStop(_)
+                | DeviceCommand::StartActivity(_)
+                | DeviceCommand::PressHome => RiskClass::Transient,
+                DeviceCommand::DisablePackage(_) | DeviceCommand::EnablePackage(_) => {
+                    RiskClass::PackageState
                 }
                 _ => RiskClass::Read,
             };
             assert_eq!(command.risk(), expected, "{command:?}");
         }
+    }
+
+    #[test]
+    fn every_command_above_transient_can_be_undone() {
+        for command in every_command() {
+            if command.risk() > RiskClass::Transient {
+                let inverse = command.inverse().expect("R2/R3 commands need an inverse");
+                assert_eq!(inverse.inverse(), Some(command.clone()), "{command:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn commands_round_trip_through_toml_and_reject_invalid_packages() {
+        #[derive(Debug, PartialEq, Serialize, Deserialize)]
+        struct Wrapper {
+            command: DeviceCommand,
+        }
+        for command in every_command() {
+            let text = toml::to_string(&Wrapper {
+                command: command.clone(),
+            })
+            .unwrap();
+            let back: Wrapper = toml::from_str(&text).unwrap();
+            assert_eq!(back.command, command, "{text}");
+        }
+        let evil = "command = { kind = \"disable_package\", arg = \"com.x; reboot\" }";
+        assert!(toml::from_str::<Wrapper>(evil).is_err());
     }
 
     #[test]

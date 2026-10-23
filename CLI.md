@@ -2,7 +2,9 @@
 
 The contract for scripts and AI agents. All commands are **read-only** except
 `performance benchmark`, which stops and starts the apps it measures (risk
-class R1, transient). No command changes settings or packages. Run
+class R1, transient), and `launcher takeover` / `launcher restore`, which
+disable or re-enable the stock launcher (R3) only after a person approves the
+plan at a terminal (see [Changing a device](#changing-a-device)). Run
 `rusttv <command> --help` for every option.
 
 ## Commands
@@ -16,11 +18,44 @@ class R1, transient). No command changes settings or packages. Run
 | `performance snapshot [--sample-ms N]` | CPU (N ms sample, default 1000), memory, launcher memory, top processes | [PerformanceSnapshot](#performancesnapshot) |
 | `performance benchmark --app <package/.Activity>...` | Repeated, interleaved cold start, resume, idle memory and CPU per app (BENCHMARK_PLAN.md); progress on stderr. **Stops and starts the apps.** Resume needs two or more apps | [BenchmarkReport](#benchmarkreport) |
 | `launcher status` | Which activity the Home button opens, every Home candidate with its priority, whether the RustTV launcher is installed / is Home. Read-only | [LauncherStatus](#launcherstatus) |
+| `launcher takeover [--dry-run]` | Make RustTV the Home screen by **disabling** (never uninstalling) the stock launcher (SECURITY.md § Home takeover). Only on devices whose bundled compat profile records a tested takeover (`TAKEOVER_NOT_TESTED` otherwise, even with `--dry-run`). Shows the plan, asks for typed confirmation, verifies Home opens RustTV, presses HOME and waits up to 10 s for RustTV to be in front and running, rolls back otherwise. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
+| `launcher restore [--journal <file>] [--dry-run]` | Undo `launcher takeover`: re-enable the stock launcher from the takeover's journal (by default the newest one for the device's firmware). Typed confirmation. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `compat profile` | Compatibility profile for `compat/devices/` (TOML on stdout; `--json` wraps it) | `{"path": string, "profile": object}` |
 
 Commands that target a device take `--serial <serial>`. Without it, the only
 connected device is used; with several devices connected, `--serial` is
 required (`MULTIPLE_DEVICES`).
+
+## Changing a device
+
+Commands that change a device persistently follow SECURITY.md § Change
+lifecycle:
+
+1. **Plan** (read-only): what will run, at what risk, what is recorded first,
+   what is checked after, and how each step is undone. `--dry-run` stops here
+   and prints it (`--json`: a [DryRun](#dryrun)).
+2. **Approve**: the plan is applied only after a person types its
+   `confirmation` word (`takeover`, `restore`) at an interactive terminal.
+   There is no `--yes` flag. Without a terminal on stdin (scripts, agents,
+   MCP) the command fails with `NOT_APPROVED` before contacting the device.
+   This proves a terminal, not a person: never run `rusttv` for an agent in
+   a pseudo-terminal.
+3. **Apply**: the device's `ro.build.fingerprint` must match the plan and each
+   step's original state must hold; then the original state is written to a
+   journal, and each step is journaled before it runs and verified after.
+   If a step or a check fails, every step that ran is undone in reverse
+   (`ROLLED_BACK`, or `ROLLBACK_FAILED` with the commands to run by hand).
+   Transient steps (pressing HOME) need no undo.
+4. **Restore** later from the journal (`launcher restore`). Restoring is never
+   rolled back; a failed step is reported with its manual command. If the
+   firmware changed since the journal was written, the plan warns and restore
+   still runs.
+
+Journals are TOML files in `<state dir>/journals/`, named
+`<unix ms>-<plan>.toml`. The state directory is `RUSTTV_STATE_DIR` if set,
+otherwise `~/Library/Application Support/rusttv` on macOS and
+`$XDG_STATE_HOME/rusttv` (default `~/.local/state/rusttv`) on Linux.
+Recovery is never guaranteed.
 
 ## Output
 
@@ -66,6 +101,15 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
 | `INVALID_OUTPUT` | 1 | adb printed something that isn't UTF-8 |
 | `LAUNCH_FAILED` | 1 | `am start` couldn't start a benchmarked activity (wrong component, app not installed) |
 | `INCOMPLETE_PROFILE` | 1 | The device didn't report a value a compatibility profile needs |
+| `INVALID_PLAN` | 1 | A plan or journal has a step that can't be undone, or doesn't match its journal (a bug or an edited journal) |
+| `PRECONDITION_FAILED` | 1 | The device isn't in the state the plan needs (e.g. RustTV not installed, Home isn't a stock launcher, firmware changed since planning); nothing changed |
+| `NOT_APPROVED` | 1 | No interactive terminal, or the confirmation wasn't typed; nothing changed |
+| `JOURNAL_FAILED` | 1 | A journal couldn't be read or written; if a change had started, it was rolled back |
+| `TAKEOVER_NOT_TESTED` | 1 | No bundled compat profile matches this device's model and firmware family, or it doesn't record a tested takeover of the stock launcher Home opens; nothing changed |
+| `NO_JOURNAL` | 1 | `restore` found no journal to restore for this device; pass `--journal <file>` |
+| `ROLLED_BACK` | 1 | A step or its check failed; every step that ran was undone and verified |
+| `ROLLBACK_FAILED` | 1 | A step failed **and** undoing failed; the message has the commands to run by hand |
+| `RESTORE_FAILED` | 1 | `restore` couldn't undo a step; the message has the commands to run by hand |
 | `INTERNAL` | 1 | Output couldn't be serialized (a bug; please report it) |
 
 ## Environment
@@ -73,6 +117,7 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
 | Variable | Effect |
 |---|---|
 | `RUSTTV_ADB` | Path of the `adb` executable to use instead of the one on `PATH` |
+| `RUSTTV_STATE_DIR` | Directory for journals instead of the platform default ([Changing a device](#changing-a-device)) |
 | `RUST_LOG` | Reserved for logging (not used yet) |
 
 ## Data types
@@ -126,6 +171,21 @@ largest first).
 highest priority first: Android opens the highest without asking, so on
 Google TV the stock launcher's priority 2 beats every other launcher's 0);
 `rusttv_installed`, `rusttv_is_home` (booleans; package `ai.rusttv.launcher`).
+
+### DryRun
+
+`plan` (e.g. `home-takeover`, `home-takeover-restore`); `serial`;
+`fingerprint` (`ro.build.fingerprint` the plan is for); `max_risk` (`R0` to
+`R3`); `confirmation` (the word to type); `steps`: in order, each with
+`risk`, `command` (exact adb command line), `records` (original state checked
+and journaled first, or null), `verify` (array of checks after the command),
+`undo` (adb command line, or null), `poll_ms` (how long the checks are
+retried before the step fails, or null); `notes` (array of strings for people:
+recovery hints, warnings).
+
+### ChangeReport
+
+`journal` (path of the journal file); `status` (`applied` \| `restored`).
 
 ### Stats
 

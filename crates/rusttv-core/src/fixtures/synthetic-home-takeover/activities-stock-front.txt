@@ -1,0 +1,9 @@
+ACTIVITY MANAGER ACTIVITIES (dumpsys activity activities)
+Display #0 (activities from top to bottom):
+  * Task{1a2b3c4 #3 type=home A=10087:com.google.android.apps.tv.launcherx}
+    mResumedActivity: ActivityRecord{9e8d7c6 u0 com.google.android.apps.tv.launcherx/.home.HomeActivity t3}
+    * Hist  #0: ActivityRecord{9e8d7c6 u0 com.google.android.apps.tv.launcherx/.home.HomeActivity t3}
+
+  ResumedActivity: ActivityRecord{9e8d7c6 u0 com.google.android.apps.tv.launcherx/.home.HomeActivity t3}
+
+  topResumedActivity=ActivityRecord{9e8d7c6 u0 com.google.android.apps.tv.launcherx/.home.HomeActivity t3}

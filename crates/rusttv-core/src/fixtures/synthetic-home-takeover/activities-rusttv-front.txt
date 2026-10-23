@@ -1,0 +1,9 @@
+ACTIVITY MANAGER ACTIVITIES (dumpsys activity activities)
+Display #0 (activities from top to bottom):
+  * Task{7c1e2a1 #12 type=home A=10123:ai.rusttv.launcher}
+    mResumedActivity: ActivityRecord{3f2b9d0 u0 ai.rusttv.launcher/.LauncherActivity t12}
+    * Hist  #0: ActivityRecord{3f2b9d0 u0 ai.rusttv.launcher/.LauncherActivity t12}
+
+  ResumedActivity: ActivityRecord{3f2b9d0 u0 ai.rusttv.launcher/.LauncherActivity t12}
+
+  topResumedActivity=ActivityRecord{3f2b9d0 u0 ai.rusttv.launcher/.LauncherActivity t12}

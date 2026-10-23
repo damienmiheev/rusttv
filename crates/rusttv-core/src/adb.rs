@@ -144,6 +144,8 @@ mod fake {
         responses: HashMap<DeviceCommand, Vec<String>>,
         /// How many times each command has run.
         calls: RefCell<HashMap<DeviceCommand, usize>>,
+        /// Every command run, in order, including ones without a response.
+        log: RefCell<Vec<DeviceCommand>>,
         devices: Vec<DeviceEntry>,
     }
 
@@ -177,8 +179,14 @@ mod fake {
             self
         }
 
+        /// Every command run so far, in order.
+        pub fn calls(&self) -> Vec<DeviceCommand> {
+            self.log.borrow().clone()
+        }
+
         /// Returns the canned stdout for `command`.
         pub fn run(&self, serial: &str, command: &DeviceCommand) -> Result<String, AdbError> {
+            self.log.borrow_mut().push(command.clone());
             let outputs = self
                 .responses
                 .get(command)
