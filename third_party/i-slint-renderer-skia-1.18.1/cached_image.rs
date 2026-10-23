@@ -40,6 +40,24 @@ pub(crate) fn as_skia_image(
         ImageInner::None => None,
         ImageInner::EmbeddedImage { buffer, cache_key } => {
             let result = image_buffer_to_skia_image(buffer);
+            // Unkeyed images (e.g. from `Image::from_rgba8`) are only cached per item, and
+            // that cache is cleared with the surface, so a texture can't outlive its context.
+            // Upload them once and keep the texture: Skia would upload the raster image
+            // anyway, and the raster image's own copy of the pixels can then be freed
+            // (Slint already holds them in `buffer`).
+            if matches!(cache_key, ImageCacheKey::Invalid) {
+                if let (Some(img), Some(mut context)) = (result.as_ref(), canvas.direct_context()) {
+                    if let Some(texture) = skia_safe::gpu::images::texture_from_image(
+                        &mut context,
+                        img,
+                        skia_safe::gpu::Mipmapped::No,
+                        skia_safe::gpu::Budgeted::Yes,
+                    ) {
+                        return Some(texture);
+                    }
+                }
+                return result;
+            }
             if let Some(img) = result.as_ref() {
                 core_cache::replace_cached_image(
                     cache_key.clone(),
