@@ -1,0 +1,5 @@
+10-23 12:10:01.000  4567  4567 I RustTV.HiddenFeature: airplay start: com.mediatek.partner.airplay_sys/.BootupService
+10-23 12:10:01.100  1234  1250 I AirPlaySystemServiceBootup: onStartCommand
+10-23 12:10:01.400  1234  1250 I AirPlaySystemServiceHal: IProxy.init done
+10-23 12:10:02.000  2345  2360 I AirPlayDaemonMain: setup complete, starting server
+10-23 12:10:02.500  3456  3470 I AirPlayTIS: renderer bound
