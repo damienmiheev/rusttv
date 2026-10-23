@@ -476,7 +476,7 @@ mod tests {
     }
 
     #[test]
-    fn the_philips_privacy_profile_is_listed_by_category_and_not_yet_tested() {
+    fn the_philips_privacy_profile_is_listed_by_category_and_tested() {
         let properties = crate::inspect::parse_properties(include_str!(
             "fixtures/philips-65oled818-api34/getprop.txt"
         ));
@@ -485,14 +485,14 @@ mod tests {
             .find(|profile| profile.matches(&properties))
             .and_then(|profile| profile.privacy)
             .unwrap();
-        // The owner tests it on the TV before anything is marked.
-        assert!(!privacy.tested);
+        // Applied, used, rebooted and restored on the owner's TV on 2026-10-23.
+        assert!(privacy.tested);
         assert_eq!(privacy.packages.len(), 12);
         assert!(
             privacy
                 .packages
                 .iter()
-                .all(|entry| entry.checked.is_empty())
+                .all(|entry| entry.checked == "2026-10-23")
         );
         let categories: Vec<PrivacyCategory> = privacy
             .packages

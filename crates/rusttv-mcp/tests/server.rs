@@ -1039,11 +1039,20 @@ async fn privacy_plan_returns_the_cli_dry_run_and_the_command_to_apply_it() {
 }
 
 #[tokio::test]
-async fn privacy_plan_is_refused_while_the_bundled_profile_is_untested() {
+async fn privacy_plan_from_the_bundled_tested_profile_changes_nothing() {
+    // The bundled Philips privacy profile is tested (2026-10-23): the tool
+    // plans it, and still only returns the dry run and the command.
     let adb = SharedAdb::new(philips_privacy());
     let mut client = Client::serve(RustTvServer::new(adb.clone())).await;
 
-    let refused = client.call("privacy_plan", json!({}), true).await;
-    assert_eq!(error_code(&refused), "PROFILE_NOT_TESTED");
+    let proposal = data(client.call("privacy_plan", json!({}), false).await);
+    assert!(
+        proposal["apply_command"]
+            .as_str()
+            .unwrap()
+            .contains("optimize apply privacy"),
+        "{proposal}"
+    );
+    assert!(!proposal["dry_run"]["steps"].as_array().unwrap().is_empty());
     assert_eq!(adb.changes(), []);
 }

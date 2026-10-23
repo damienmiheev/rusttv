@@ -909,7 +909,7 @@ fn optimize_analyze_json_lists_the_privacy_profile_with_package_states() {
     let data = &json_stdout(&output)["data"];
     assert_eq!(data["serial"], "emulator-5554");
     assert_eq!(data["profile"], "tpv-ph1m-ww-9972.toml");
-    assert_eq!(data["privacy"]["tested"], false);
+    assert_eq!(data["privacy"]["tested"], true);
     let packages = data["privacy"]["packages"].as_array().unwrap();
     assert_eq!(packages.len(), 12);
     assert_eq!(packages[0]["package"], "org.droidtv.candeebug");
@@ -922,12 +922,15 @@ fn optimize_analyze_json_lists_the_privacy_profile_with_package_states() {
 }
 
 #[test]
-fn optimize_analyze_text_says_the_profile_is_not_tested() {
+fn optimize_analyze_text_says_the_profile_is_tested() {
     let output = rusttv_with_fake_adb("philips", &["optimize", "analyze"]);
 
     assert_eq!(output.status.code(), Some(0), "{output:?}");
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.contains("NOT tested on this model"), "{stdout}");
+    assert!(
+        stdout.contains("Privacy profile: tested on this model."),
+        "{stdout}"
+    );
     assert!(
         stdout.contains("telemetry  disabled  org.droidtv.gel"),
         "{stdout}"
@@ -935,10 +938,10 @@ fn optimize_analyze_text_says_the_profile_is_not_tested() {
 }
 
 #[test]
-fn optimize_apply_privacy_dry_run_is_refused_while_the_profile_is_untested() {
-    // The bundled Philips privacy profile isn't tested yet, so even a dry run
-    // stops here. The plan itself is tested in rusttv-core.
-    let state = state_dir("privacy-untested");
+fn optimize_apply_privacy_dry_run_plans_the_chosen_categories() {
+    // The bundled Philips privacy profile is tested (2026-10-23). A dry run
+    // plans one step per enabled package and writes no journal.
+    let state = state_dir("privacy-dry-run");
     let output = rusttv_with_state(
         "philips",
         &state,
@@ -953,16 +956,39 @@ fn optimize_apply_privacy_dry_run_is_refused_while_the_profile_is_untested() {
         ],
     );
 
-    assert_eq!(output.status.code(), Some(1), "{output:?}");
-    let json = json_stdout(&output);
-    assert_eq!(json["error"]["code"], "PROFILE_NOT_TESTED");
-    let message = json["error"]["message"].as_str().unwrap();
-    assert!(message.contains("tpv-ph1m-ww-9972.toml"), "{message}");
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    let packages: Vec<&str> = data["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|step| {
+            step["command"]
+                .as_str()
+                .unwrap()
+                .rsplit(' ')
+                .next()
+                .unwrap()
+        })
+        .collect();
+    // gel is already disabled in this scenario, so it is skipped.
     assert_eq!(
-        std::fs::read_dir(state.join("journals")).unwrap().count(),
-        0
+        packages,
+        [
+            "org.droidtv.candeebug",
+            "com.google.android.partnersetup",
+            "com.google.android.feedback",
+            "com.android.tv.feedbackconsent",
+            "com.android.adservices.api",
+            "com.android.ondevicepersonalization.services",
+            "com.android.federatedcompute.services",
+        ]
     );
-    std::fs::remove_dir_all(state).unwrap();
+    assert!(
+        !state.join("journals").exists()
+            || std::fs::read_dir(state.join("journals")).unwrap().count() == 0
+    );
+    std::fs::remove_dir_all(state).ok();
 }
 
 #[test]

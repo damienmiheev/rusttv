@@ -814,14 +814,14 @@ mod tests {
 
     #[test]
     fn an_untested_or_missing_privacy_profile_is_refused() {
-        // The bundled Philips profile isn't tested yet.
-        let error = privacy_plan(
-            &tv(vec![disabled(&[])]),
-            SERIAL,
-            &crate::bundled_profiles(),
-            &[],
-        )
-        .unwrap_err();
+        // A profile whose privacy section isn't marked tested.
+        let mut untested = crate::bundled_profiles();
+        for profile in &mut untested {
+            if let Some(privacy) = &mut profile.privacy {
+                privacy.tested = false;
+            }
+        }
+        let error = privacy_plan(&tv(vec![disabled(&[])]), SERIAL, &untested, &[]).unwrap_err();
         assert_eq!(error.code(), "PROFILE_NOT_TESTED");
         assert!(error.to_string().contains("tested = true"), "{error}");
 
@@ -1173,7 +1173,8 @@ mod tests {
         let analysis = optimize_analyze(&adb, SERIAL, &crate::bundled_profiles()).unwrap();
         assert_eq!(analysis.profile.as_deref(), Some("tpv-ph1m-ww-9972.toml"));
         let privacy = analysis.privacy.unwrap();
-        assert!(!privacy.tested);
+        // Tested on the owner's TV on 2026-10-23.
+        assert!(privacy.tested);
         assert_eq!(privacy.packages.len(), 12);
         let state = |name: &str| {
             privacy
