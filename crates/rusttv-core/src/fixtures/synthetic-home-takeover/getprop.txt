@@ -1,0 +1,3 @@
+[ro.build.characteristics]: [tv]
+[ro.build.fingerprint]: [google/sdk_google_atv64_arm64/emu64a:14/UTT3.240625.001.K5/12345678:userdebug/dev-keys]
+[ro.product.model]: [sdk_google_atv64_arm64]

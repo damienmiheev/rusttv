@@ -27,7 +27,7 @@ Every `DeviceCommand` declares one:
 | R3 Package state | Enable/disable an app for user 0 | `pm disable-user --user 0` | Only via an approved plan, Phase 4+, known-device profile only |
 | R4 Forbidden | Not implementable | uninstall, stock-launcher changes outside Home takeover, system partition writes | Nobody |
 
-So far only R0 commands exist, plus two R1 commands for benchmarking (`am force-stop`, `am start`); a unit test fails if anything else appears. R2/R3 wait for the plan/approve/journal engine.
+So far: R0 commands, two R1 commands for benchmarking (`am force-stop`, `am start`), and two R3 commands used only by Home takeover (`pm disable-user --user 0`, `pm enable --user 0`), run only through the safety engine (`rusttv-core` `plan` module). A unit test fails if anything else above R0 appears, and every R2/R3 command must have an inverse.
 
 ## Protected package policy
 
@@ -50,7 +50,7 @@ Rules 1–2 are computed live on the device each time, not cached. Unknown devic
 6. **Verify**: re-read state; confirm HOME still resolves to a launchable activity.
 7. **Restore**: `rusttv optimize restore` replays recorded originals from the journal in reverse order.
 
-Plans and journals live in a local state directory (`~/.local/state/rusttv/` on Linux, the platform equivalent on macOS) and are plain text for auditability.
+Plans and journals live in a local state directory (`~/.local/state/rusttv/` on Linux, `~/Library/Application Support/rusttv/` on macOS, `RUSTTV_STATE_DIR` to override) and are plain text for auditability. As built: the journal (TOML, `journals/<unix ms>-<plan>.toml`) holds the plan's steps, the original state checked before any step, and each step's progress; there is no separate plan file yet. A journal is untrusted input when restoring: Home takeover restore refuses any step other than re-enabling a package.
 
 ## Recovery scenarios
 

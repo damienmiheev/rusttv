@@ -4,12 +4,13 @@ mod launcher;
 mod output;
 mod performance;
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 use rusttv_core::{
     Adb, AdbError, BenchmarkError, BenchmarkOptions, ConnectOutcome, DeviceAddress, DeviceEntry,
-    DeviceInfo, DeviceSelectionError, DeviceState, SystemAdb,
+    DeviceInfo, DeviceSelectionError, DeviceState, PlanError, SystemAdb,
 };
 use serde::Serialize;
 
@@ -50,6 +51,29 @@ enum LauncherAction {
     Status {
         #[command(flatten)]
         target: Target,
+    },
+    /// Make RustTV the Home screen by disabling (never uninstalling) the stock
+    /// launcher. Shows the plan and asks you to type a confirmation; rolls back
+    /// on failure. Undo with `launcher restore`.
+    Takeover {
+        #[command(flatten)]
+        target: Target,
+        /// Only show the plan; change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Undo `launcher takeover`: re-enable the stock launcher, using the
+    /// takeover's journal. Shows the plan and asks you to type a confirmation.
+    Restore {
+        #[command(flatten)]
+        target: Target,
+        /// Journal file to restore from; by default the newest takeover journal
+        /// for this device's firmware.
+        #[arg(long)]
+        journal: Option<PathBuf>,
+        /// Only show the plan; change nothing.
+        #[arg(long)]
+        dry_run: bool,
     },
 }
 
@@ -160,6 +184,8 @@ enum CliError {
     IncompleteProfile(#[from] rusttv_core::MissingField),
     #[error(transparent)]
     Benchmark(#[from] BenchmarkError),
+    #[error(transparent)]
+    Plan(#[from] PlanError),
 }
 
 impl CliError {
@@ -169,6 +195,7 @@ impl CliError {
             Self::Selection(error) => error.code(),
             Self::IncompleteProfile(_) => "INCOMPLETE_PROFILE",
             Self::Benchmark(error) => error.code(),
+            Self::Plan(error) => error.code(),
         }
     }
 
@@ -181,6 +208,8 @@ impl CliError {
             Self::IncompleteProfile(_) => EXIT_FAILURE,
             Self::Benchmark(error) if error.is_device_unreachable() => EXIT_DEVICE_UNREACHABLE,
             Self::Benchmark(_) => EXIT_FAILURE,
+            Self::Plan(error) if error.is_device_unreachable() => EXIT_DEVICE_UNREACHABLE,
+            Self::Plan(_) => EXIT_FAILURE,
         }
     }
 }
@@ -198,6 +227,14 @@ fn main() -> ExitCode {
         Command::Launcher(LauncherAction::Status { target }) => {
             launcher::status(&adb, target, cli.json)
         }
+        Command::Launcher(LauncherAction::Takeover { target, dry_run }) => {
+            launcher::takeover(&adb, target, *dry_run, cli.json)
+        }
+        Command::Launcher(LauncherAction::Restore {
+            target,
+            journal,
+            dry_run,
+        }) => launcher::restore(&adb, target, journal.as_deref(), *dry_run, cli.json),
         Command::Performance(PerformanceAction::Snapshot { target, sample_ms }) => {
             performance::snapshot(&adb, target, *sample_ms, cli.json)
         }

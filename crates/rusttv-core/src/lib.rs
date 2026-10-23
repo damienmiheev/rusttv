@@ -1,7 +1,8 @@
 //! Shared core for RustTV.
 //!
 //! All device access goes through this crate: build a [`DeviceCommand`] and
-//! run it with an [`Adb`] implementation. See ARCHITECTURE.md for the modules
+//! run it with an [`Adb`] implementation. Anything that changes a device
+//! persistently goes through the safety engine ([`Plan`], [`apply`]). See ARCHITECTURE.md for the modules
 //! still to come (`device`, `packages`, `perf`, ...).
 
 mod adb;
@@ -12,8 +13,11 @@ mod compat;
 mod device;
 mod error;
 mod inspect;
+mod journal;
 mod launcher;
 mod perf;
+mod plan;
+mod takeover;
 
 #[cfg(any(test, feature = "test-util"))]
 pub use adb::FakeAdb;
@@ -38,9 +42,18 @@ pub use error::{AdbError, ERROR_CODES};
 pub use inspect::{
     DeviceInfo, MemoryInfo, StorageInfo, inspect, parse_df, parse_meminfo, parse_properties,
 };
+pub use journal::{
+    FileJournal, JOURNAL_SCHEMA_VERSION, Journal, JournalStatus, JournalStep, JournalStore,
+    StepStatus, find_restorable_journal, journal_file_name, load_journal,
+};
 pub use launcher::{
     HomeCandidate, LauncherStatus, RUSTTV_LAUNCHER, launcher_status, parse_home_candidates,
 };
+pub use plan::{
+    Approval, Check, DryRun, DryRunStep, Plan, PlanError, Step, apply, device_fingerprint, restore,
+    restore_plan,
+};
+pub use takeover::{HOME_TAKEOVER, takeover_plan, takeover_restore_plan};
 
 pub use perf::{
     CpuUsage, HomeApp, PerformanceSnapshot, ProcessMemory, TOP_PROCESS_COUNT, cpu_busy_percent,
@@ -70,6 +83,7 @@ mod tests {
                     .iter()
                     .map(BenchmarkError::code),
             )
+            .chain(plan::every_plan_error().iter().map(PlanError::code))
             .collect();
         let listed: BTreeSet<&str> = ERROR_CODES.iter().copied().collect();
 
