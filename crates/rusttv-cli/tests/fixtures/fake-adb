@@ -1,0 +1,30 @@
+#!/bin/sh
+# Stand-in for `adb` in the CLI tests, selected with RUSTTV_ADB.
+# FAKE_ADB_SCENARIO picks the behaviour; output mimics adb 1.0.41.
+# A committed script (not written at test time) avoids "text file busy"
+# races when tests run in parallel.
+
+case "$FAKE_ADB_SCENARIO:$1" in
+two-devices:devices)
+    printf 'List of devices attached\n'
+    printf 'emulator-5554          device product:sdk_google_atv_x86 model:Android_TV_on_x86 device:generic_x86 transport_id:1\n'
+    printf '192.168.1.20:5555      unauthorized transport_id:2\n\n'
+    ;;
+no-devices:devices)
+    printf 'List of devices attached\n\n'
+    ;;
+connect-ok:connect)
+    echo "connected to $2"
+    ;;
+connect-ok:devices)
+    printf 'List of devices attached\n192.168.1.20:5555      unauthorized transport_id:3\n\n'
+    ;;
+connect-refused:connect)
+    # Real adb exits 0 on connection failures.
+    echo "failed to connect to '$2': Connection refused"
+    ;;
+*)
+    echo "fake-adb: unexpected call: $*" >&2
+    exit 1
+    ;;
+esac

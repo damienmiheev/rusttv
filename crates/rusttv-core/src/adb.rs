@@ -5,17 +5,27 @@
 //! `FakeAdb` from the `test-util` feature.
 
 use std::ffi::OsString;
-use std::process::Command;
+use std::process::{Command, Output};
 
 use crate::command::DeviceCommand;
+use crate::device::{self, ConnectOutcome, DeviceAddress, DeviceEntry};
 use crate::error::AdbError;
 
-/// Runs typed commands on a device.
+/// Talks to devices through the local `adb` server.
 ///
 /// There is intentionally no method that takes a free-form shell string.
 pub trait Adb {
     /// Runs `command` on the device with the given `adb` serial and returns its stdout.
     fn run(&self, serial: &str, command: &DeviceCommand) -> Result<String, AdbError>;
+
+    /// Lists devices known to the local `adb` server (`adb devices -l`).
+    fn devices(&self) -> Result<Vec<DeviceEntry>, AdbError>;
+
+    /// Connects to a device over the network (`adb connect`).
+    ///
+    /// Only changes state on this computer. The TV may then ask the user to
+    /// authorize the computer; until they do, the device is `unauthorized`.
+    fn connect(&self, address: &DeviceAddress) -> Result<ConnectOutcome, AdbError>;
 }
 
 /// Runs commands with the `adb` program from Android platform-tools.
@@ -40,12 +50,7 @@ impl SystemAdb {
     /// Runs `command` on the device with the given `adb` serial and returns its stdout.
     pub fn run(&self, serial: &str, command: &DeviceCommand) -> Result<String, AdbError> {
         let args = command.adb_args();
-        let output = Command::new(&self.program)
-            .arg("-s")
-            .arg(serial)
-            .args(&args)
-            .output()
-            .map_err(AdbError::spawn)?;
+        let output = self.exec(["-s", serial].iter().chain(&args))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -57,6 +62,42 @@ impl SystemAdb {
             ));
         }
         String::from_utf8(output.stdout).map_err(|_| AdbError::invalid_output(&args))
+    }
+
+    /// Lists devices known to the local `adb` server (`adb devices -l`).
+    pub fn devices(&self) -> Result<Vec<DeviceEntry>, AdbError> {
+        let args = ["devices", "-l"];
+        let stdout = self.exec_host(&args)?;
+        Ok(device::parse_device_list(&stdout))
+    }
+
+    /// Connects to a device over the network (`adb connect`).
+    pub fn connect(&self, address: &DeviceAddress) -> Result<ConnectOutcome, AdbError> {
+        let address_arg = address.to_string();
+        let stdout = self.exec_host(&["connect", &address_arg])?;
+        device::parse_connect_output(&stdout)
+            .map_err(|message| AdbError::connect_failed(address_arg, message))
+    }
+
+    fn exec<'a>(&self, args: impl IntoIterator<Item = &'a &'a str>) -> Result<Output, AdbError> {
+        Command::new(&self.program)
+            .args(args)
+            .output()
+            .map_err(AdbError::spawn)
+    }
+
+    /// Runs a host-side command (not addressed to a device) and returns stdout.
+    fn exec_host(&self, args: &[&str]) -> Result<String, AdbError> {
+        let output = self.exec(args)?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AdbError::host_failure(
+                args,
+                output.status.to_string(),
+                &stderr,
+            ));
+        }
+        String::from_utf8(output.stdout).map_err(|_| AdbError::invalid_output(args))
     }
 }
 
@@ -70,6 +111,14 @@ impl Adb for SystemAdb {
     fn run(&self, serial: &str, command: &DeviceCommand) -> Result<String, AdbError> {
         Self::run(self, serial, command)
     }
+
+    fn devices(&self) -> Result<Vec<DeviceEntry>, AdbError> {
+        Self::devices(self)
+    }
+
+    fn connect(&self, address: &DeviceAddress) -> Result<ConnectOutcome, AdbError> {
+        Self::connect(self, address)
+    }
 }
 
 #[cfg(any(test, feature = "test-util"))]
@@ -81,6 +130,7 @@ mod fake {
 
     use super::Adb;
     use crate::command::DeviceCommand;
+    use crate::device::{ConnectOutcome, DeviceAddress, DeviceEntry};
     use crate::error::AdbError;
 
     /// An [`Adb`] that returns canned output instead of touching a device.
@@ -90,6 +140,7 @@ mod fake {
     #[derive(Debug, Default)]
     pub struct FakeAdb {
         responses: HashMap<DeviceCommand, String>,
+        devices: Vec<DeviceEntry>,
     }
 
     impl FakeAdb {
@@ -104,6 +155,13 @@ mod fake {
             self
         }
 
+        /// Adds a device to the list. `connect` to an address equal to its
+        /// serial reports `AlreadyConnected`; any other address fails.
+        pub fn with_device(mut self, device: DeviceEntry) -> Self {
+            self.devices.push(device);
+            self
+        }
+
         /// Returns the canned stdout for `command`.
         pub fn run(&self, serial: &str, command: &DeviceCommand) -> Result<String, AdbError> {
             self.responses.get(command).cloned().ok_or_else(|| {
@@ -115,11 +173,37 @@ mod fake {
                 )
             })
         }
+
+        /// Returns the devices added with [`FakeAdb::with_device`].
+        pub fn devices(&self) -> Result<Vec<DeviceEntry>, AdbError> {
+            Ok(self.devices.clone())
+        }
+
+        /// Succeeds only for addresses of devices added with [`FakeAdb::with_device`].
+        pub fn connect(&self, address: &DeviceAddress) -> Result<ConnectOutcome, AdbError> {
+            let address = address.to_string();
+            if self.devices.iter().any(|device| device.serial == address) {
+                Ok(ConnectOutcome::AlreadyConnected)
+            } else {
+                Err(AdbError::connect_failed(
+                    address,
+                    "FakeAdb has no device at this address".to_owned(),
+                ))
+            }
+        }
     }
 
     impl Adb for FakeAdb {
         fn run(&self, serial: &str, command: &DeviceCommand) -> Result<String, AdbError> {
             Self::run(self, serial, command)
+        }
+
+        fn devices(&self) -> Result<Vec<DeviceEntry>, AdbError> {
+            Self::devices(self)
+        }
+
+        fn connect(&self, address: &DeviceAddress) -> Result<ConnectOutcome, AdbError> {
+            Self::connect(self, address)
         }
     }
 }

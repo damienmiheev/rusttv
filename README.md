@@ -4,7 +4,7 @@
 
 RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + Slint launcher, a safe ADB-based optimizer, and CLI/MCP tools for humans and AI agents. Local-first, no telemetry, and every performance claim backed by published benchmarks.
 
-> **Status: Milestone 1 in progress.** The Rust workspace and CI exist; the CLI does nothing useful yet. See [ROADMAP.md](ROADMAP.md) for what comes next.
+> **Status: Milestone 1 in progress.** The CLI can list and connect to devices; device inspection is next. See [ROADMAP.md](ROADMAP.md) for what comes next.
 
 ## What it will be
 
@@ -41,8 +41,12 @@ RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + 
 Requirements: [Rust via rustup](https://rustup.rs) (the pinned toolchain in `rust-toolchain.toml` installs automatically) and, for device commands later, Android platform-tools (`adb`).
 
 ```bash
-cargo run -p rusttv-cli -- --version
+cargo run -p rusttv-cli -- device list                 # devices known to adb
+cargo run -p rusttv-cli -- device connect 192.168.1.20 # connect over Wi-Fi (port 5555 by default)
+cargo run -p rusttv-cli -- device list --json          # machine-readable output
 ```
+
+To connect over the network, first enable Developer options and network/wireless debugging on the TV. The first connection shows a prompt on the TV asking you to allow this computer. If `adb` is not on your `PATH`, set `RUSTTV_ADB=/path/to/adb`.
 
 Before sending a change, run the same checks as CI:
 

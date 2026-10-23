@@ -63,16 +63,20 @@ Parsers are pure functions over `&str` → unit-tested with real captured output
 ```rust
 pub trait Adb {
     fn run(&self, serial: &str, command: &DeviceCommand) -> Result<String, AdbError>;
+    fn devices(&self) -> Result<Vec<DeviceEntry>, AdbError>;
+    fn connect(&self, address: &DeviceAddress) -> Result<ConnectOutcome, AdbError>;
 }
 ```
 
-There is intentionally no `shell(&str)`. Values that end up in `adb shell` arguments are validated newtypes (e.g. `PackageName`), because the device shell re-parses them. Host-side operations (`devices`, `connect`) are added with step 3. Synchronous (`std::process`) in Milestone 1; no tokio until MCP needs it. `FakeAdb` is available under the `test-util` feature.
+There is intentionally no `shell(&str)`. Values that end up in `adb shell` arguments are validated newtypes (e.g. `PackageName`), because the device shell re-parses them. `adb connect` exits 0 even on failure, so its stdout is parsed to detect errors. `SystemAdb` uses `adb` from `PATH`, or the executable named by the `RUSTTV_ADB` environment variable. Synchronous (`std::process`) in Milestone 1; no tokio until MCP needs it. `FakeAdb` is available under the `test-util` feature.
 
 ## rusttv-cli
 
 - `clap` derive. Commands map 1:1 to core functions; no logic in the CLI beyond formatting.
 - Default output: human text. `--json`: envelope `{"schema": "rusttv.v1", "ok": bool, "data": …, "error": {"code", "message"}}`.
 - Exit codes: 0 ok, 1 operation error, 2 usage error, 3 device not reachable/unauthorized.
+- Error codes so far: `ADB_NOT_FOUND`, `ADB_SPAWN_FAILED`, `DEVICE_NOT_FOUND`, `DEVICE_UNAUTHORIZED`, `DEVICE_OFFLINE`, `CONNECT_FAILED`, `COMMAND_FAILED`, `INVALID_OUTPUT`. With `--json`, errors are also a JSON envelope on stdout.
+- CLI tests run the real binary against `tests/fixtures/fake-adb` (selected with `RUSTTV_ADB`), so they need no device.
 - Logging via `tracing` to stderr (`-v`/`RUST_LOG`); stdout reserved for results.
 
 ## Launcher (Phase 1b)

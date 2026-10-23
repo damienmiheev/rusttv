@@ -34,6 +34,8 @@ enum ErrorKind {
         status: String,
         stderr: String,
     },
+    #[error("could not connect to `{address}`: {message}")]
+    ConnectFailed { address: String, message: String },
     #[error("`adb {0}` printed output that is not valid UTF-8")]
     InvalidOutput(String),
 }
@@ -48,6 +50,7 @@ impl AdbError {
             ErrorKind::DeviceUnauthorized(_) => "DEVICE_UNAUTHORIZED",
             ErrorKind::DeviceOffline(_) => "DEVICE_OFFLINE",
             ErrorKind::CommandFailed { .. } => "COMMAND_FAILED",
+            ErrorKind::ConnectFailed { .. } => "CONNECT_FAILED",
             ErrorKind::InvalidOutput(_) => "INVALID_OUTPUT",
         }
     }
@@ -59,6 +62,7 @@ impl AdbError {
             ErrorKind::DeviceNotFound(_)
                 | ErrorKind::DeviceUnauthorized(_)
                 | ErrorKind::DeviceOffline(_)
+                | ErrorKind::ConnectFailed { .. }
         )
     }
 
@@ -69,6 +73,23 @@ impl AdbError {
             ErrorKind::Spawn(error)
         };
         Self { kind }
+    }
+
+    pub(crate) fn connect_failed(address: String, message: String) -> Self {
+        Self {
+            kind: ErrorKind::ConnectFailed { address, message },
+        }
+    }
+
+    /// A host-side command (`adb devices`, ...) failed; no device is involved.
+    pub(crate) fn host_failure(args: &[&str], status: String, stderr: &str) -> Self {
+        Self {
+            kind: ErrorKind::CommandFailed {
+                args: args.join(" "),
+                status,
+                stderr: stderr.trim().to_owned(),
+            },
+        }
     }
 
     pub(crate) fn invalid_output(args: &[&str]) -> Self {

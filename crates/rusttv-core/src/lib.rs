@@ -6,12 +6,17 @@
 
 mod adb;
 mod command;
+mod device;
 mod error;
 
 #[cfg(any(test, feature = "test-util"))]
 pub use adb::FakeAdb;
 pub use adb::{Adb, SystemAdb};
 pub use command::{DeviceCommand, InvalidPackageName, PackageName, RiskClass};
+pub use device::{
+    ConnectOutcome, DEFAULT_ADB_PORT, DeviceAddress, DeviceEntry, DeviceState,
+    InvalidDeviceAddress, parse_connect_output, parse_device_list,
+};
 pub use error::AdbError;
 
 /// Version of the core crate, shown by `rusttv --version`.
