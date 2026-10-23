@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 
 /**
  * The home screen. All UI and logic live in the Rust library
@@ -22,6 +23,14 @@ class LauncherActivity : NativeActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // NativeActivity.onCreate sets STATE_UNSPECIFIED (overriding the
+        // manifest), and its content view reports itself as a text editor, so
+        // Android auto-showed the keyboard on focus until Slint hid it again.
+        // The home screen has no text input: keep it hidden.
+        window.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or
+                WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
+        )
         // Registered at runtime: since Android 8 these broadcasts no longer reach
         // receivers declared in the manifest. Kept while the activity exists, so
         // changes made while another app is in front are seen on return.

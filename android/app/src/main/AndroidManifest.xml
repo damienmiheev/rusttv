@@ -26,7 +26,6 @@
             android:launchMode="singleTask"
             android:stateNotNeeded="true"
             android:excludeFromRecents="true"
-            android:windowSoftInputMode="stateAlwaysHidden"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode|density">
             <meta-data android:name="android.app.lib_name" android:value="rusttv_launcher" />
 
