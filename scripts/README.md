@@ -30,7 +30,7 @@ session (CLAUDE.md, SECURITY.md).
    in `abi.txt` (`arm64-v8a`, `armeabi-v7a` or `x86_64`):
    `adb -s <serial> install android/app/build/outputs/apk/release/app-<abi>-release.apk`,
    then `adb -s <serial> shell am start -n ai.rusttv.launcher/.LauncherActivity`.
-   Check with the remote: every tile reachable, OK launches, hold OK moves a tile,
+   Check with the remote: every tile reachable, OK launches, hold OK opens a menu that moves or hides a tile,
    Back stays on the home screen, coming back from an app works, labels readable
    from the sofa, backdrop look. Note anything odd.
 4. **Benchmark** (**ask first**: it force-stops and starts the apps it measures, R1):

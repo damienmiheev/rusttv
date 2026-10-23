@@ -1,6 +1,7 @@
 //! Desktop dev mode: the home screen in a window, with made-up apps.
 //!
-//! Arrow keys move, Return is OK (hold it to move a tile), Escape is Back.
+//! Arrow keys move, Return is OK (hold it for a menu to move or hide a tile),
+//! Escape is Back.
 //!
 //! `--order <file>` keeps the tile order in that file between runs.
 //!
@@ -66,8 +67,11 @@ fn demo_script() -> Vec<DemoStep> {
         Snapshot("07-back-to-first-row"),
         Press(OK),
         ms(900),
-        Snapshot("08-move-mode"),
+        Snapshot("08-menu"),
         Release(OK),
+        Tap(OK),
+        ms(300),
+        Snapshot("08b-move-mode"),
         Tap(RIGHT),
         ms(300),
         Snapshot("09-tile-moved"),
@@ -81,6 +85,28 @@ fn demo_script() -> Vec<DemoStep> {
         Tap(OK),
         ms(300),
         Snapshot("11-launch-error"),
+        Press(OK),
+        ms(700),
+        Release(OK),
+        Tap(DOWN),
+        ms(300),
+        Snapshot("12-menu-hide"),
+        Tap(OK),
+        ms(400),
+        Snapshot("13-hidden"),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(RIGHT),
+        Tap(RIGHT),
+        Tap(RIGHT),
+        ms(400),
+        Snapshot("14-hidden-apps-tile"),
+        Tap(OK),
+        ms(400),
+        Snapshot("15-hidden-apps-page"),
+        Tap(OK),
+        ms(400),
+        Snapshot("16-shown-again"),
         Tap(UP),
     ]
 }

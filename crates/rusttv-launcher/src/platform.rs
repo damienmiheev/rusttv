@@ -731,7 +731,7 @@ mod tests {
         let mut platform = FakePlatform::sample();
         let entries = platform.list_apps().unwrap();
         let apps: Vec<App> = entries.iter().map(|entry| entry.app.clone()).collect();
-        let mut home = Home::new(Order::default(), false);
+        let mut home = Home::new(Order::default(), Default::default(), false);
         home.set_apps(&apps);
 
         // 14 apps + About: three rows, the last one short.
