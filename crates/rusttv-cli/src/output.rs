@@ -85,3 +85,14 @@ fn message_with_causes(error: &dyn Error) -> String {
     }
     message
 }
+
+/// Formats KiB as GiB with one decimal, e.g. `1.9 GiB`.
+pub fn gib(kib: u64) -> String {
+    // Display only; f64 is exact for any realistic device size.
+    format!("{:.1} GiB", kib as f64 / (1024.0 * 1024.0))
+}
+
+/// Formats KiB as MiB with one decimal, e.g. `43.0 MiB`.
+pub fn mib(kib: u64) -> String {
+    format!("{:.1} MiB", kib as f64 / 1024.0)
+}

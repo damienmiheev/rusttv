@@ -43,7 +43,7 @@ Optional later: end-to-end latency with a high-speed camera (remote press → pi
 7. **Claim rule**: "X is faster than Y" only if the median difference exceeds run-to-run noise (IQRs don't overlap) on that device; always state the device. No cross-device generalization without data from that device.
 8. **Regressions**: a CI-or-manual run showing a regression beyond noise blocks the merge until explained.
 
-The CLI command `rusttv performance benchmark --json` implements this protocol so anyone can run it.
+The CLI command `rusttv performance benchmark --json` will implement this protocol so anyone can run it. Its building block, `rusttv performance snapshot`, already exists: CPU (two `/proc/stat` samples), memory, launcher PSS/RSS and top processes by RSS (`ps`), stamped with host time and build fingerprint. It avoids a full `dumpsys meminfo`, which timed out (10 s) on a busy emulator.
 
 ## Emulator vs real hardware
 

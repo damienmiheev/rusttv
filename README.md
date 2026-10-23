@@ -4,7 +4,7 @@
 
 RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + Slint launcher, a safe ADB-based optimizer, and CLI/MCP tools for humans and AI agents. Local-first, no telemetry, and every performance claim backed by published benchmarks.
 
-> **Status: Milestone 1 in progress.** The CLI can list, connect to and inspect devices and list installed apps (all read-only). See [ROADMAP.md](ROADMAP.md) for what comes next.
+> **Status: Milestone 1 in progress.** The read-only CLI works: list, connect, inspect devices, list apps, take performance snapshots. See [ROADMAP.md](ROADMAP.md) for what comes next.
 
 ## What it will be
 
@@ -45,6 +45,7 @@ cargo run -p rusttv-cli -- device list                 # devices known to adb
 cargo run -p rusttv-cli -- device connect 192.168.1.20 # connect over Wi-Fi (port 5555 by default)
 cargo run -p rusttv-cli -- device inspect               # model, Android version, CPU, memory, storage (read-only)
 cargo run -p rusttv-cli -- apps list                    # installed packages: system/third-party, enabled/disabled
+cargo run -p rusttv-cli -- performance snapshot         # CPU, memory, launcher memory, biggest processes
 cargo run -p rusttv-cli -- device list --json          # machine-readable output
 ```
 

@@ -14,6 +14,16 @@ on that AVD.
 | `packages-f.txt` | `adb shell pm list packages -f` |
 | `packages-3.txt` | `adb shell pm list packages -3` |
 | `packages-d.txt` | `adb shell pm list packages -d` |
+| `proc-stat-1.txt`, `proc-stat-2.txt` | `adb shell cat /proc/stat`, about 1 s apart |
+| `ps.txt` | `adb shell ps -A -o PID,RSS,NAME` |
+| `home-activity.txt` | `adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME` |
+| `meminfo-launcher.txt` | `adb shell dumpsys meminfo com.google.android.apps.nexuslauncher` |
+| `meminfo-not-running.txt` | `adb shell dumpsys meminfo com.android.nfc` (app not running) |
+
+The `/proc/stat` samples were taken seconds after boot, while the emulator was
+fully busy: the idle counter does not move between them (100% busy). A full `dumpsys meminfo` (no package) timed out after
+10 s at that point; on the idle emulator later it took ~1 s. Snapshots use
+`ps` instead because it stays fast under load.
 
 Redactions: `persist.sys.timezone` and `vendor.qemu.timezone` set to `Etc/UTC`
 (the emulator copies the host's timezone). Nothing else was changed.

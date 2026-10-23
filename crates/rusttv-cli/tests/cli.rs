@@ -266,3 +266,51 @@ fn apps_list_needs_a_serial_when_several_devices_are_connected() {
     assert_eq!(output.status.code(), Some(2));
     assert_eq!(json_stdout(&output)["error"]["code"], "MULTIPLE_DEVICES");
 }
+
+#[test]
+fn performance_snapshot_json_has_launcher_and_top_processes() {
+    let output = rusttv_with_fake_adb(
+        "emulator",
+        &["performance", "snapshot", "--sample-ms", "100", "--json"],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    assert_eq!(data["serial"], "emulator-5554");
+    // The fake returns the same /proc/stat twice, so no time passes.
+    assert_eq!(data["cpu"], Value::Null);
+    assert_eq!(
+        data["home_app"]["package"],
+        "com.google.android.apps.nexuslauncher"
+    );
+    assert_eq!(data["home_app"]["pss_kib"], 44_081);
+    assert_eq!(data["top_processes"].as_array().unwrap().len(), 10);
+    assert_eq!(data["top_processes"][0]["name"], "system_server");
+    assert_eq!(data["top_processes"][0]["rss_kib"], 243_832);
+}
+
+#[test]
+fn performance_snapshot_text_names_the_launcher() {
+    let output = rusttv_with_fake_adb(
+        "emulator",
+        &["performance", "snapshot", "--sample-ms", "100"],
+    );
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("com.google.android.apps.nexuslauncher (43.0 MiB PSS, 77.0 MiB RSS)"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("Top processes by resident memory:"),
+        "{stdout}"
+    );
+}
+
+#[test]
+fn performance_snapshot_rejects_tiny_sample_intervals() {
+    let output = rusttv_with_fake_adb("emulator", &["performance", "snapshot", "--sample-ms", "5"]);
+
+    assert_eq!(output.status.code(), Some(2));
+}

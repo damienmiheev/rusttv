@@ -32,6 +32,18 @@ emulator:shell\ pm\ list\ packages\ -3)
 emulator:shell\ pm\ list\ packages\ -d)
     cat "$captures/packages-d.txt"
     ;;
+emulator:shell\ cat\ /proc/stat)
+    cat "$captures/proc-stat-1.txt"
+    ;;
+emulator:shell\ ps\ -A\ -o\ PID,RSS,NAME)
+    cat "$captures/ps.txt"
+    ;;
+emulator:shell\ cmd\ package\ resolve-activity\ *)
+    cat "$captures/home-activity.txt"
+    ;;
+emulator:shell\ dumpsys\ meminfo\ com.google.android.apps.nexuslauncher)
+    cat "$captures/meminfo-launcher.txt"
+    ;;
 two-devices:devices*)
     printf 'List of devices attached\n'
     printf 'emulator-5554          device product:sdk_google_atv_x86 model:Android_TV_on_x86 device:generic_x86 transport_id:1\n'

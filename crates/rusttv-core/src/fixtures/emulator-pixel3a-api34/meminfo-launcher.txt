@@ -1,0 +1,58 @@
+Applications Memory Usage (in Kilobytes):
+Uptime: 102203 Realtime: 102203
+
+** MEMINFO in pid 1047 [com.google.android.apps.nexuslauncher] **
+                   Pss  Private  Private  SwapPss      Rss     Heap     Heap     Heap
+                 Total    Dirty    Clean    Dirty    Total     Size    Alloc     Free
+                ------   ------   ------   ------   ------   ------   ------   ------
+  Native Heap     1367     1328       32    29986     2544    45612    35470     6245
+  Dalvik Heap     1072      680      320     4118     1860    12195     6114     6081
+ Dalvik Other      400      380       20     1451      648                           
+        Stack      116      100       16      652      124                           
+       Ashmem        7        0        0        0      592                           
+    Other dev       56        0       56        0      268                           
+     .so mmap      584       28        8      225    18596                           
+    .jar mmap      598        0       24        0    21316                           
+    .apk mmap     1370        0     1324        0     2328                           
+    .dex mmap       59        0       52        4      720                           
+    .oat mmap      302        0        0        0    11620                           
+    .art mmap      666      240       12      508    17160                           
+   Other mmap       10        0        4        4      596                           
+      Unknown       98       64       32      428      456                           
+        TOTAL    44081     2820     1900    37376    78828    57807    41584    12326
+ 
+ App Summary
+                       Pss(KB)                        Rss(KB)
+                        ------                         ------
+           Java Heap:      932                          19020
+         Native Heap:     1328                           2544
+                Code:     1436                          54596
+               Stack:      100                            124
+            Graphics:        0                              0
+       Private Other:      924
+              System:    39361
+             Unknown:                                    2544
+ 
+           TOTAL PSS:    44081            TOTAL RSS:    78828       TOTAL SWAP PSS:    37376
+ 
+ Objects
+               Views:      458         ViewRootImpl:        1
+         AppContexts:       12           Activities:        2
+              Assets:       21        AssetManagers:        0
+       Local Binders:       99        Proxy Binders:       78
+       Parcel memory:      195         Parcel count:      110
+    Death Recipients:        5             WebViews:        0
+ 
+ SQL
+         MEMORY_USED:      153
+  PAGECACHE_OVERFLOW:       20          MALLOC_SIZE:       46
+ 
+ DATABASES
+      pgsz     dbsz   Lookaside(b) cache hits cache misses cache size  Dbname
+PER CONNECTION STATS
+         4       96             74     6    20     4  /data/user/0/com.google.android.apps.nexuslauncher/databases/launcher.db
+         4     1428            110   258    24     8  /data/user/0/com.google.android.apps.nexuslauncher/databases/app_icons.db
+POOL STATS
+     cache hits  cache misses    cache size  Dbname
+              6            21            27  /data/user/0/com.google.android.apps.nexuslauncher/databases/launcher.db
+            258            25           283  /data/user/0/com.google.android.apps.nexuslauncher/databases/app_icons.db

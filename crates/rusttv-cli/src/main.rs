@@ -1,5 +1,6 @@
 mod apps;
 mod output;
+mod performance;
 
 use std::process::ExitCode;
 
@@ -30,6 +31,21 @@ enum Command {
     /// Inspect installed apps.
     #[command(subcommand)]
     Apps(AppsAction),
+    /// Measure device load.
+    #[command(subcommand)]
+    Performance(PerformanceAction),
+}
+
+#[derive(Debug, Subcommand)]
+enum PerformanceAction {
+    /// CPU, memory, launcher memory and the biggest processes right now. Read-only.
+    Snapshot {
+        #[command(flatten)]
+        target: Target,
+        /// How long to sample CPU usage, in milliseconds.
+        #[arg(long, default_value_t = 1000, value_parser = clap::value_parser!(u64).range(100..=60_000))]
+        sample_ms: u64,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -116,6 +132,9 @@ fn main() -> ExitCode {
         Command::Device(DeviceAction::Connect { address }) => connect(&adb, address, cli.json),
         Command::Device(DeviceAction::Inspect { target }) => inspect(&adb, target, cli.json),
         Command::Apps(AppsAction::List { target }) => apps::list(&adb, target, cli.json),
+        Command::Performance(PerformanceAction::Snapshot { target, sample_ms }) => {
+            performance::snapshot(&adb, target, *sample_ms, cli.json)
+        }
     };
 
     match result {
@@ -227,10 +246,10 @@ fn print_device_info(info: &DeviceInfo) {
         |memory| match memory.available_kib {
             Some(available) => format!(
                 "{} total, {} available",
-                gib(memory.total_kib),
-                gib(available)
+                output::gib(memory.total_kib),
+                output::gib(available)
             ),
-            None => format!("{} total", gib(memory.total_kib)),
+            None => format!("{} total", output::gib(memory.total_kib)),
         },
     );
     let storage = info.data_storage.map_or_else(
@@ -238,8 +257,8 @@ fn print_device_info(info: &DeviceInfo) {
         |storage| {
             format!(
                 "{} total, {} free",
-                gib(storage.total_kib),
-                gib(storage.available_kib)
+                output::gib(storage.total_kib),
+                output::gib(storage.available_kib)
             )
         },
     );
@@ -263,12 +282,6 @@ fn print_device_info(info: &DeviceInfo) {
     ] {
         println!("{label:16} {value}");
     }
-}
-
-/// Formats KiB as GiB with one decimal, e.g. `1.9 GiB`.
-fn gib(kib: u64) -> String {
-    // Display only; f64 is exact for any realistic device size.
-    format!("{:.1} GiB", kib as f64 / (1024.0 * 1024.0))
 }
 
 #[cfg(test)]

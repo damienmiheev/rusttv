@@ -49,6 +49,12 @@ pub enum DeviceCommand {
     MemInfo,
     /// Size and free space of the user data partition (`df -k /data`).
     DataStorage,
+    /// Cumulative CPU time counters (`cat /proc/stat`).
+    CpuStat,
+    /// All processes with their resident memory (`ps -A -o PID,RSS,NAME`).
+    ProcessList,
+    /// The activity that handles the Home button (`cmd package resolve-activity ...`).
+    HomeActivity,
     /// Memory usage of one app process (`dumpsys meminfo <package>`).
     PackageMemInfo(PackageName),
 }
@@ -63,6 +69,9 @@ impl DeviceCommand {
             | Self::ListDisabledPackages
             | Self::MemInfo
             | Self::DataStorage
+            | Self::CpuStat
+            | Self::ProcessList
+            | Self::HomeActivity
             | Self::PackageMemInfo(_) => RiskClass::Read,
         }
     }
@@ -76,6 +85,19 @@ impl DeviceCommand {
             Self::ListDisabledPackages => vec!["shell", "pm", "list", "packages", "-d"],
             Self::MemInfo => vec!["shell", "cat", "/proc/meminfo"],
             Self::DataStorage => vec!["shell", "df", "-k", "/data"],
+            Self::CpuStat => vec!["shell", "cat", "/proc/stat"],
+            Self::ProcessList => vec!["shell", "ps", "-A", "-o", "PID,RSS,NAME"],
+            Self::HomeActivity => vec![
+                "shell",
+                "cmd",
+                "package",
+                "resolve-activity",
+                "--brief",
+                "-a",
+                "android.intent.action.MAIN",
+                "-c",
+                "android.intent.category.HOME",
+            ],
             Self::PackageMemInfo(package) => vec!["shell", "dumpsys", "meminfo", package.as_str()],
         }
     }
@@ -137,6 +159,9 @@ mod tests {
             DeviceCommand::ListDisabledPackages,
             DeviceCommand::MemInfo,
             DeviceCommand::DataStorage,
+            DeviceCommand::CpuStat,
+            DeviceCommand::ProcessList,
+            DeviceCommand::HomeActivity,
             DeviceCommand::PackageMemInfo(PackageName::new("com.example.app").unwrap()),
         ];
         for command in &all {
@@ -147,6 +172,9 @@ mod tests {
                 | DeviceCommand::ListDisabledPackages
                 | DeviceCommand::MemInfo
                 | DeviceCommand::DataStorage
+                | DeviceCommand::CpuStat
+                | DeviceCommand::ProcessList
+                | DeviceCommand::HomeActivity
                 | DeviceCommand::PackageMemInfo(_) => {}
             }
         }

@@ -10,6 +10,7 @@ mod command;
 mod device;
 mod error;
 mod inspect;
+mod perf;
 
 #[cfg(any(test, feature = "test-util"))]
 pub use adb::FakeAdb;
@@ -25,5 +26,9 @@ pub use inspect::{
     DeviceInfo, MemoryInfo, StorageInfo, inspect, parse_df, parse_meminfo, parse_properties,
 };
 
+pub use perf::{
+    CpuUsage, HomeApp, PerformanceSnapshot, ProcessMemory, TOP_PROCESS_COUNT, cpu_busy_percent,
+    parse_app_memory, parse_home_activity, parse_process_list, snapshot,
+};
 /// Version of the core crate, shown by `rusttv --version`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
