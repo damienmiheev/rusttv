@@ -1,6 +1,6 @@
 # SYNTHETIC fixtures: Home takeover
 
-**None of these files were captured from a device.** They are hand-written
+**None of these files were captured from a device.** (A takeover and restore have since run on the Philips 65OLED818, 2026-10-23, and behaved as these files assume; they were not re-captured.) They are hand-written
 stand-ins for states that no device in this project has been put in yet
 (no takeover has ever run). They let the safety engine and Home takeover be
 tested against `FakeAdb`. Replace each with a real capture, and update this

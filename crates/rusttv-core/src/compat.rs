@@ -362,7 +362,7 @@ mod tests {
     }
 
     #[test]
-    fn the_philips_profile_matches_its_capture_but_records_no_takeover() {
+    fn the_philips_profile_matches_its_capture_and_records_a_tested_takeover() {
         let properties = crate::inspect::parse_properties(include_str!(
             "fixtures/philips-65oled818-api34/getprop.txt"
         ));
@@ -376,11 +376,13 @@ mod tests {
             .into_iter()
             .find(|profile| profile.matches(&properties))
             .unwrap();
-        assert!(
-            profile
-                .launcher
-                .is_none_or(|launcher| !launcher.takeover_tested),
-            "takeover was not tested on the Philips (setupwraith Home candidate)"
+        // Takeover and restore were tested on it on 2026-10-23, with
+        // setupwraith disabled too (its Home activity outranks RustTV).
+        let launcher = profile.launcher.unwrap();
+        assert!(launcher.takeover_tested);
+        assert_eq!(
+            launcher.disable_home_packages,
+            ["com.google.android.tungsten.setupwraith"]
         );
     }
 

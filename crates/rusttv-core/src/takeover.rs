@@ -264,7 +264,7 @@ mod tests {
     }
 
     /// A profile for the synthetic Google TV device, with `launcher` as given.
-    /// Hand-written for tests; no committed profile is takeover-tested.
+    /// Hand-written for tests.
     fn profile(launcher: Option<ProfileLauncher>) -> DeviceProfile {
         DeviceProfile {
             schema_version: crate::compat::PROFILE_SCHEMA_VERSION,
