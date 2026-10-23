@@ -1,8 +1,9 @@
 # Safe optimizer (Phase 4) — design
 
 Status (2026-10-23): § 1–6 (R2 animation settings) are **design, not built**.
-§ Privacy profiles (R3) is **built** and tested against fakes; it has not run
-on a device, and the Philips profile is not marked tested yet.
+§ Privacy profiles (R3) is **built** in its generic form (catalog, device
+profiles, choices; § Generic design) and tested against fakes; twelve
+packages were tested on the owner's Philips 65OLED818 (2026-10-23).
 It builds on the safety engine that Home takeover already uses
 (`crates/rusttv-core/src/plan.rs`, `journal.rs`; SECURITY.md § Change
 lifecycle) and changes only what the optimizer needs.
@@ -124,7 +125,8 @@ value = "0.5"
 ```
 
 **Device gating**, in the existing device profile (`compat/devices/*.toml`,
-`PROFILE_SCHEMA_VERSION` 3 → 4; 3 added `[privacy]`), like `[launcher] takeover_tested`:
+`PROFILE_SCHEMA_VERSION` 4 → 5; 3 added `[privacy]`, 4 made it
+`[[privacy.tested]]`), like `[launcher] takeover_tested`:
 
 ```toml
 [[optimizer]]
@@ -282,115 +284,105 @@ and write no journal.
 
 Exit criteria (ROADMAP Phase 4): steps 1–3 pass; recovery docs (manual
 path: Developer options → animation scales, or `adb shell settings delete
-global <key>`); owner approval before step 4.
-
 ## Privacy profiles (R3): telemetry and ads
 
-*Owner decision 2026-10-23: build this on the engine.* **As built
-2026-10-23** (`crates/rusttv-core/src/privacy.rs`); not yet run on a device.
-A privacy profile disables, never uninstalls, packages that collect telemetry,
-show ads or run for nothing on a given TV model. It is the route SECURITY.md
-§ Protected package policy already plans for (rule 4: "tested-safe for that
-model and firmware family"); no new exception is needed.
+*Owner decision 2026-10-23: build this on the engine.* A privacy profile
+disables, never uninstalls, packages that collect telemetry, show ads or run
+for nothing, and optional features a person chooses to turn off. It is the
+route SECURITY.md § Protected package policy already plans for (rule 4:
+"tested-safe for that model and firmware family"), with one explicit,
+per-plan override (`--allow-untested`, § Generic design).
 
-**Profile.** In the device's compat profile (`PROFILE_SCHEMA_VERSION` 3), one
-entry per package, in the order they are disabled (telemetry, ads, extras):
-
-```toml
-[privacy]
-tested = false                  # true only after apply, reboot, normal use, restore on this model
-
-[[privacy.packages]]
-package = "org.droidtv.candeebug"   # validated like every PackageName
-category = "telemetry"              # telemetry | ads | extras
-what = "TP Vision service that collects analytics; ..."
-side_effects = "none expected"      # what stops working, in plain words
-checked = ""                        # date it was disabled and lived with on this model
-```
-
-Entries are written from our own checks on the device; lists from other
-projects (e.g. cleanyourtv's `examples/`) are leads only, credited in
-RESEARCH.md, not copied. The Philips 65OLED818 profile lists twelve packages
-(five telemetry, three ads, four extras), seen present and enabled on
-2026-10-23, with `tested = false` and empty `checked` until the owner tests
-them on the TV.
-
-**Commands.**
-
-- `rusttv optimize analyze` (R0): the matching profile, whether its privacy
-  profile is tested, and each package with its category, `what`,
-  `side_effects`, state (`absent` / `enabled` / `disabled`, so a firmware
-  update re-enabling one shows) and whether it is protected.
-- `rusttv optimize apply privacy [--only telemetry,ads,extras] [--dry-run]`:
-  refused with `PROFILE_NOT_TESTED` unless the matching profile has
-  `[privacy] tested = true`. One `DisablePackage` step per package, in
-  profile order; packages not installed or already disabled are skipped and
-  named in the notes; each planned package's `what` and `side_effects` are in
-  the dry run's notes. Typed confirmation `privacy`, journal (`<ms>-privacy.toml`),
-  verify, rollback as for every R3 plan.
-- `rusttv optimize restore [--journal <file>] [--dry-run]`: the newest
-  restorable privacy journal for the firmware. Like `takeover_restore_plan`,
-  the journal is untrusted: refused unless it is a `privacy` journal whose
-  every undo is `EnablePackage`. Packages enabled again since are skipped
-  (their steps marked undone) and named in the notes; if all are,
-  `PRECONDITION_FAILED`.
+**History.** The first build (commit bc04d9a, profile schema 3) listed each
+package with its description inside the device profile and gated the whole
+list on one `[privacy] tested = true`. The Philips 65OLED818 list of twelve
+packages (five telemetry, three ads, four extras) was applied, used, rebooted
+and restored on the owner's TV on 2026-10-23 with it. That form was then
+replaced by the generic design below (*as built* 2026-10-23,
+`crates/rusttv-core/src/{catalog,privacy}.rs`); the twelve became the
+Philips profile's `[[privacy.tested]]` list and their descriptions moved to
+the catalog. Journals did not change, so `optimize restore` restores
+journals written by the first build.
 
 **Checks before planning** (live, never cached; SECURITY.md § Protected
-package policy *As built*): a listed package is refused if Home opens it or
+package policy *As built*): a chosen package is refused if Home opens it or
 it can handle Home, if it provides an input method (`ime list -a -s`) or an
 enabled accessibility service (`settings get secure
 enabled_accessibility_services`), or if it is on `compat/protected.toml`
 (compiled in; covers TV inputs, setup wizard, system UI, settings,
 installers, network stack, Bluetooth, Play services and the launchers by
-name). One protected package refuses the whole plan (`PACKAGE_PROTECTED`).
-**After the last step:** Home still opens the same activity as before, and
-the set of Home candidates is unchanged; otherwise every step is undone.
-Not built: a check that the TV input service is still running after the last
-step (no typed command reads it yet), and re-running the protected-package
-checks inside `apply` (the CLI plans right before the confirmation).
+name). This applies to every chosen package, `extra` ones included; one
+protected package refuses the whole plan (`PACKAGE_PROTECTED`; the message
+suggests `keep`). **After the last step:** Home still opens the same activity
+as before, and the set of Home candidates is unchanged; otherwise every step
+is undone. Not built: a check that the TV input service is still running
+after the last step (no typed command reads it yet), and re-running the
+protected-package checks inside `apply` (the CLI plans right before the
+confirmation).
 
 **Separate from Home takeover.** The deny-list covers the stock launchers and
 setupwraith, so privacy plans never list them; their journals are separate
 (`launcher restore` and `optimize restore` each refuse the other's), so either
 can be restored without the other.
 
-**Marking a profile tested.** Only after its packages were disabled on that
-model, the TV was rebooted and used normally (Home, HDMI, apps, remote
-buttons, Settings) and a restore brought them back. Then set `tested = true`
-and each package's `checked` date. Firmware updates may re-enable packages;
-`analyze` shows that.
-
-**MCP:** `optimize_analyze` (R0) and `privacy_plan` (`serial?`, `only?` from
-the closed category list; returns the dry run and the CLI command). No tool
-takes a package name, applies or restores.
+**Restore.** `rusttv optimize restore [--journal <file>] [--dry-run]`: the
+newest restorable privacy journal for the firmware. Like
+`takeover_restore_plan`, the journal is untrusted: refused unless it is a
+`privacy` journal whose every undo is `EnablePackage`. Packages enabled again
+since are skipped (their steps marked undone) and named in the notes; if all
+are, `PRECONDITION_FAILED`.
 
 ### Generic design: catalog, device profiles, your choices
 
 *Owner decision 2026-10-23:* privacy profiles must work for anyone's TV and be
-customisable, not just the owner's Philips. Three layers:
+customisable, not just the owner's Philips. Three layers. **As built
+2026-10-23**; tested against fakes and synthetic fixtures.
 
-**1. Package catalog** (`compat/packages/*.toml`, compiled in). One entry per
-package, written once and shared by every device that has it, grouped by who
-ships it (e.g. `android.toml` for AOSP/Google packages, `tp-vision.toml` for
-`org.droidtv.*`, `samba-tv.toml`, `streaming-apps.toml`):
+**1. Package catalog** (`compat/packages/*.toml`, compiled in,
+`CATALOG_SCHEMA_VERSION` 1). One entry per package, written once and shared by
+every device that has it, grouped by who ships it (`android.toml` for
+AOSP/Google packages, `tp-vision.toml` for `org.droidtv.*`, `acr.toml` for
+third-party content recognition such as Samba TV, one file per TV maker,
+`streaming-apps.toml`):
 
 ```toml
 schema_version = 1
 [[packages]]
 package = "tv.samba.ssm"
 category = "telemetry"
-what = "Samba TV: recognises what is on screen for ad targeting"
-side_effects = "reported to cause problems when disabled on some Sony TVs"
-sources = ["https://help.samba.tv/hc/en-us/articles/360006908772-What-is-Samba-TV"]
+what = "Samba TV / Samba Services Manager: automatic content recognition of what is on screen for ad targeting"
+side_effects = "reported to cause problems when disabled on some Sony TVs; test carefully"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23", "cleanyourtv examples, 26 models"]
 ```
 
 Categories: **default** `telemetry`, `ads`, `extras` (nobody needs them; on
 unless a person opts out); **opt-in** `casting`, `smart-home`, `voice`,
 `streaming-apps` (features some people use; never applied unless chosen).
-A test keeps catalog entries off `compat/protected.toml` and unique.
+Tests keep catalog entries valid, unique, off `compat/protected.toml`, with
+non-empty `what`, `side_effects` and `sources`, and every tested package of a
+bundled profile in the catalog.
 
-**2. Device profiles** (`compat/devices/*.toml`). Only which catalog entries
-were tested on that model and firmware family, and when:
+*Seeded (2026-10-23), 279 entries:* 47 telemetry, 66 ads, 71 extras, 22
+casting, 12 smart-home, 18 voice, 43 streaming-apps. 25 come from our own
+checks on the owner's Philips (the twelve tested ones, plus thirteen seen
+there and untested: Samba TV, the TP Vision auto-log service and demo mode,
+Chromecast built-in, AirPlay, DLNA, Alexa, Control4, IP control, Netflix,
+Prime Video, Rakuten TV); 23 of them also appear in cleanyourtv. The other
+254 are derived from cleanyourtv (MIT, commit f9f0c53): packages on at least
+three of its per-model `examples/*/debloat.txt` lists or in the `CATALOGUE`
+of its `tools/privacy.py`, categorised by judgement, with `what` and
+`side_effects` from its notes. Left out: anything on `protected.toml`, Home
+screens, TV inputs and FAST channel inputs, tuners, HDMI, remote pairing and
+remote helpers, firmware and OTA updaters, network and Wi-Fi helpers,
+WebView, setup wizards, keyboards, TTS and accessibility, launcher partner
+customisers that also supply the stock Home's Inputs button, and features
+that fit no opt-in category (USB media players, galleries, browsers,
+screensavers). Each derived file carries cleanyourtv's MIT notice;
+`licenses/cleanyourtv/` has the licence, and `scripts/licenses.sh` ships it.
+
+**2. Device profiles** (`compat/devices/*.toml`, `PROFILE_SCHEMA_VERSION` 4).
+Only which catalog entries were tested on that model and firmware family,
+and when:
 
 ```toml
 [[privacy.tested]]
@@ -400,7 +392,10 @@ checked = "2026-10-23"
 
 A package counts as tested on a device only if it is listed there (and in the
 catalog). Tested means: disabled, the TV rebooted and used normally, and a
-restore worked, on that model.
+restore worked, on that model. Within a category, packages are disabled in
+the order of this list, then untested ones in catalog order. A schema 3
+`[privacy]` section still loads: with `tested = true`, each package with a
+`checked` date counts as tested.
 
 **3. Your choices** (a local file, never in the repo):
 `<config dir>/privacy.toml`, where the config dir is `RUSTTV_CONFIG_DIR` if
@@ -415,24 +410,36 @@ also = ["org.droidtv.amazonalexa"]                     # catalog entries outside
 extra = ["com.example.preinstalled"]                   # not in the catalog at all
 ```
 
-Without a file, the default categories apply. `keep` wins over everything.
+Without a file, the default categories apply. `keep` wins over everything. A
+file that exists but doesn't parse, a `--choices` file that doesn't exist, an
+`also` package not in the catalog or an `extra` one that is, are refused
+(`INVALID_CHOICES`), never silently replaced by the defaults.
 
 **What gets planned.** The packages selected by the choices that are present
 and enabled on the device. Each is one of:
 - *tested*: in the catalog and tested on this device's profile;
 - *untested*: in the catalog but not tested on this model, or in `extra`
   (not in the catalog). Planned only with `--allow-untested`; the dry run marks
-  each one "UNTESTED on this model" with what is known about it.
+  each one "UNTESTED on this model" with what is known about it (for an
+  `extra`, that nothing is). Without the flag they are named in one note.
 A plan with no tested and no allowed-untested package is refused
 (`PROFILE_NOT_TESTED`). The live protected-package check applies to every
 package, including `extra`; a protected package refuses the whole plan.
+Absent or already disabled packages are skipped and named in the notes; the
+last note says how many planned packages are tested on this model. Typed
+confirmation `privacy`, journal (`<ms>-privacy.toml`), verify and rollback
+as for every R3 plan.
 
-**Commands.** `rusttv optimize analyze` lists every catalog entry present on
-the device (state, category, default or opt-in, tested on this model or not)
-and every `extra` from the choices file. `rusttv optimize apply privacy
-[--only <categories>] [--choices <file>] [--allow-untested] [--dry-run]`.
-`rusttv optimize restore` is unchanged (journals record what was disabled).
-`--only` narrows the categories from the choices file.
+**Commands.** `rusttv optimize analyze [--choices <file>]` lists every
+catalog entry present on the device (state, category, default or opt-in,
+tested on this model or not, chosen or not, protected or not) and every
+`extra` from the choices file; it works without a matching profile (then
+nothing is tested). `rusttv optimize apply privacy [--only <categories>]
+[--choices <file>] [--allow-untested] [--dry-run]`. `rusttv optimize
+restore` is unchanged (journals record what was disabled). `--only` narrows
+the categories from the choices file; it never adds one, `also` counts only
+within it, and `extra` packages are left out with it. JSON contract
+`rusttv.v5` (CLI.md).
 
 **Contributing a model.** Run `optimize analyze`, choose, apply with
 `--allow-untested`, use the TV for a while, reboot, restore, then send a pull
@@ -440,7 +447,11 @@ request adding the catalog entries you learned about (with sources) and the
 `[[privacy.tested]]` list for your model (`compat/README.md`).
 
 **MCP.** `optimize_analyze` and `privacy_plan` read the same catalog, profiles
-and choices file; `privacy_plan` takes `only` and `allow_untested`, never
+and choices file (on every call; no path parameter); `privacy_plan` takes
+`only` and `allow_untested`, never applies, and returns the CLI command
+(with `--allow-untested` when set). No tool takes a package name, applies or
+restores.
+
 applies, and returns the CLI command.
 
 ## Decisions (owner, 2026-10-23)

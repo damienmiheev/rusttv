@@ -21,3 +21,6 @@ package:/system/app/x/x.apk=com.google.android.syncadapters.calendar
 package:/system/app/x/x.apk=com.android.printspooler
 package:/system/app/x/x.apk=com.google.android.onetimeinitializer
 package:/data/app/~~synthetic==/ai.rusttv.launcher-1/base.apk=ai.rusttv.launcher
+package:/system/app/x/x.apk=org.droidtv.customautologservice
+package:/system/app/x/x.apk=org.droidtv.amazonalexa
+package:/system/app/x/x.apk=com.google.android.apps.mediashell

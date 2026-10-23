@@ -6,7 +6,7 @@ class R1, transient), `launcher takeover` / `launcher restore`, which
 disable or re-enable the stock launcher, and `launcher install` /
 `launcher uninstall`, which install or remove the RustTV launcher, and
 `optimize apply privacy` / `optimize restore`, which disable or re-enable the
-packages of a privacy profile (all R3),
+packages your privacy choices select (all R3),
 only after a person approves the plan at a terminal (see [Changing a device](#changing-a-device)). Run
 `rusttv <command> --help` for every option. Agents can use the read-only
 commands, and the `--dry-run` of `launcher install` / `uninstall` / `restore`
@@ -27,8 +27,8 @@ and `optimize apply privacy`, as MCP tools too: see [MCP.md](MCP.md).
 | `launcher install [--apk <file>] [--dry-run]` | Install the RustTV launcher (`ai.rusttv.launcher`) with `adb install --pkg ai.rusttv.launcher`, which makes Android refuse an APK of any other package. The APK is `android/app/build/outputs/apk/release/app-<abi>-release.apk` (from `android/build.sh`, relative to the current directory, so run from the repository root) for the device's primary ABI, the first of `ro.product.cpu.abilist` (`arm64-v8a`, `armeabi-v7a` or `x86_64`; `INVALID_APK` otherwise), or `--apk <file>` (any directory; file name of ASCII letters, digits, `.`, `_`, `-` ending in `.apk`). Checks RustTV is installed and can handle Home; a fresh install is uninstalled again otherwise. If RustTV is already installed it is an **upgrade** (`adb install -r`, keeps its data) that can't be undone: the plan says so, and it is refused while Home depends on RustTV (as for `uninstall`). Typed confirmation. Doesn't change which app Home opens. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `launcher uninstall [--dry-run]` | Uninstall the RustTV launcher and its data (`pm uninstall ai.rusttv.launcher`; it can remove no other package). Refused (`PRECONDITION_FAILED`) while a Home takeover is active: a takeover journal for this firmware that isn't restored, a journal file that can't be read (it may be one; check it, then move it out of the journal directory), or no system launcher other than RustTV handling Home. Run `launcher restore` first, so the TV is never left with only Android's fallback Home. Then checks RustTV is gone and Home opens the launcher it opened before (or the system launcher, if it opened RustTV). Can't be undone; reinstall with `launcher install`. Typed confirmation. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `launcher restore [--journal <file> \| --from-profile] [--dry-run]` | Undo `launcher takeover`: re-enable the stock launcher (and any other package the takeover disabled) from the takeover's journal (by default the newest one for the device's firmware; each journal file that can't be read is named in a warning on stderr, also with `--json`, and skipped). Without a journal (lost, or the takeover ran on another computer), `--from-profile` rebuilds one from the device's compiled-in profile: it re-enables the packages that profile's takeover disables, only where they are disabled now, and saves the result as a new `<ms>-home-takeover-from-profile.toml` journal. Typed confirmation. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
-| `optimize analyze` | The device's privacy profile (from its bundled compat profile, OPTIMIZER.md § Privacy profiles): whether it is tested on this model, and each listed package with its category, what it does, side effects, whether it is installed / enabled / disabled, and whether RustTV refuses to touch it (protected). Read-only | [OptimizeAnalysis](#optimizeanalysis) |
-| `optimize apply privacy [--only telemetry,ads,extras] [--dry-run]` | **Disable** (never uninstall) the packages the device's privacy profile lists, in profile order; `--only` limits it to those categories (default all). Only on devices whose bundled compat profile has `[privacy] tested = true` (`PROFILE_NOT_TESTED` otherwise, even with `--dry-run`). Every listed package is checked live first (SECURITY.md § Protected package policy): if one handles or can handle Home, provides an input method or an enabled accessibility service, or is on `compat/protected.toml`, nothing is planned (`PACKAGE_PROTECTED`). Packages not installed or already disabled are skipped and named in the notes. After the last step Home must open the same activity as before and the Home candidates must be unchanged, otherwise everything is rolled back. Typed confirmation `privacy`. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
+| `optimize analyze [--choices <file>]` | Every package of the catalog (`compat/packages/`, OPTIMIZER.md § Generic design) installed on the device, and every `extra` of your [choices](#privacy-choices), in plan order: category (default or opt-in), what it does, side effects, whether it was tested on this model (listed in the matching compat profile's `[[privacy.tested]]`), whether your choices select it, whether it is enabled / disabled, and whether RustTV refuses to touch it (protected). Works on any device; without a matching profile nothing is tested. Read-only | [OptimizeAnalysis](#optimizeanalysis) |
+| `optimize apply privacy [--only <categories>] [--choices <file>] [--allow-untested] [--dry-run]` | **Disable** (never uninstall) the packages your [choices](#privacy-choices) select that are installed and enabled: catalog packages in the chosen categories (by default `telemetry`, `ads`, `extras`) or in `also`, plus `extra` ones, minus `keep`. `--only` narrows the categories (comma-separated: `telemetry`, `ads`, `extras`, `casting`, `smart-home`, `voice`, `streaming-apps`); it never adds one, and with it `extra` packages are left out. Order: category, then the order of the profile's tested list, then catalog order, `extra` last. Packages not tested on this model are left out and named in the notes, unless `--allow-untested`: then they are planned and each note says "UNTESTED on this model". With nothing tested or allowed left, `PROFILE_NOT_TESTED` (even with `--dry-run`). Every chosen package is checked live first (SECURITY.md § Protected package policy): if one handles or can handle Home, provides an input method or an enabled accessibility service, or is on `compat/protected.toml`, nothing is planned (`PACKAGE_PROTECTED`). Packages not installed or already disabled are skipped and named in the notes. After the last step Home must open the same activity as before and the Home candidates must be unchanged, otherwise everything is rolled back. Typed confirmation `privacy`. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `optimize restore [--journal <file>] [--dry-run]` | Undo `optimize apply privacy`: re-enable what the privacy journal disabled (by default the newest one for the device's firmware; unreadable journal files are named in a warning on stderr and skipped). Packages already enabled again (e.g. in Settings) are skipped and named in the notes; if every one is, `PRECONDITION_FAILED`. Only re-enables: a journal asking for anything else is refused. Typed confirmation `restore`. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `compat profile` | Compatibility profile for `compat/devices/` (TOML on stdout; `--json` wraps it) | `{"path": string, "profile": object}` |
 
@@ -80,6 +80,27 @@ otherwise `~/Library/Application Support/rusttv` on macOS and
 `$XDG_STATE_HOME/rusttv` (default `~/.local/state/rusttv`) on Linux.
 Recovery is never guaranteed.
 
+### Privacy choices
+
+`optimize analyze` and `optimize apply privacy` read your choices from
+`--choices <file>` or else `<config dir>/privacy.toml`, where the config dir is
+`RUSTTV_CONFIG_DIR` if set, otherwise `~/Library/Application Support/rusttv`
+on macOS and `$XDG_CONFIG_HOME/rusttv` (default `~/.config/rusttv`) elsewhere.
+Without a file the defaults apply. The file is yours; it is never in the
+repository:
+
+```toml
+categories = ["telemetry", "ads", "extras", "casting"]  # default: telemetry, ads, extras
+keep = ["com.google.android.apps.mediashell"]          # never disable these; wins over everything
+also = ["org.droidtv.amazonalexa"]                     # catalog packages outside the chosen categories
+extra = ["com.example.preinstalled"]                   # packages not in the catalog; always untested
+```
+
+Every field is optional; unknown fields and invalid package names are
+refused (`INVALID_CHOICES`). `casting`, `smart-home`, `voice` and
+`streaming-apps` are features some people use, so they are planned only if
+the file chooses them (or names a package in `also`).
+
 ## Output
 
 Without `--json`: human-readable text on stdout, errors and hints on stderr.
@@ -87,12 +108,20 @@ Without `--json`: human-readable text on stdout, errors and hints on stderr.
 With `--json`, stdout carries exactly one JSON object, success or failure:
 
 ```json
-{"schema":"rusttv.v4","ok":true,"data":{}}
-{"schema":"rusttv.v4","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
+{"schema":"rusttv.v5","ok":true,"data":{}}
+{"schema":"rusttv.v5","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
 ```
 
-- `schema` identifies the contract version. Within `rusttv.v4`, fields are only
+- `schema` identifies the contract version. Within `rusttv.v5`, fields are only
   added, never renamed, removed or changed in meaning; anything else bumps it.
+  - `rusttv.v5`: [OptimizeAnalysis](#optimizeanalysis) lists catalog packages
+    (`privacy` with its `tested` flag and `packages` is gone; `choices`,
+    `categories` and `packages` with `source`, `default`, `tested`,
+    `chosen` are new); categories `casting`, `smart-home`, `voice`,
+    `streaming-apps` are new; new error code `INVALID_CHOICES`;
+    `PROFILE_NOT_TESTED` now means no tested or allowed package is left.
+    `optimize apply privacy` takes `--choices` and `--allow-untested`.
+    Everything else is unchanged.
   - `rusttv.v4`: new error codes `PROFILE_NOT_TESTED` and `PACKAGE_PROTECTED`
     (`optimize apply privacy`); new commands `optimize analyze`, `optimize
     apply privacy`, `optimize restore`. Everything else is unchanged.
@@ -140,8 +169,9 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
 | `NOT_APPROVED` | 1 | No interactive terminal, or the confirmation wasn't typed; nothing changed |
 | `JOURNAL_FAILED` | 1 | A journal couldn't be read or written; if a change had started, it was rolled back |
 | `TAKEOVER_NOT_TESTED` | 1 | No bundled compat profile matches this device's model and firmware family, or it doesn't record a tested takeover of the stock launcher Home opens; nothing changed |
-| `PROFILE_NOT_TESTED` | 1 | `optimize apply`: no bundled compat profile matches this device's model and firmware family, it has no privacy profile, or the privacy profile isn't marked `tested = true` on this model; nothing changed |
-| `PACKAGE_PROTECTED` | 1 | `optimize apply`: the profile lists a package RustTV never disables (it handles or can handle Home, provides an input method or an enabled accessibility service, or is on `compat/protected.toml`); the message names each one and why; nothing changed |
+| `PROFILE_NOT_TESTED` | 1 | `optimize apply`: none of the chosen packages that are enabled on the device is tested on this model (no compat profile matches, or its `[[privacy.tested]]` doesn't list them), and `--allow-untested` wasn't given; the message names them; nothing changed |
+| `PACKAGE_PROTECTED` | 1 | `optimize apply`: your choices select a package RustTV never disables (it handles or can handle Home, provides an input method or an enabled accessibility service, or is on `compat/protected.toml`); the message names each one and why (add it to `keep`, or remove it from `extra`); nothing changed |
+| `INVALID_CHOICES` | 1 | `optimize`: the [choices file](#privacy-choices) can't be read or parsed (a file given with `--choices` must exist), `also` names a package not in the catalog, or `extra` one that is; nothing changed |
 | `INVALID_APK` | 1 | `launcher install` found no APK to install: no APK is built for the device's primary ABI, the file is missing or not a file, or its path isn't absolute UTF-8 with a plain `.apk` file name; nothing changed |
 | `NO_JOURNAL` | 1 | `restore` found no journal to restore for this device; pass `--journal <file>` |
 | `ROLLED_BACK` | 1 | A step or its check failed; every step that ran was undone and verified |
@@ -155,6 +185,7 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
 |---|---|
 | `RUSTTV_ADB` | Path of the `adb` executable to use instead of the one on `PATH` |
 | `RUSTTV_STATE_DIR` | Directory for journals instead of the platform default ([Changing a device](#changing-a-device)) |
+| `RUSTTV_CONFIG_DIR` | Directory of the privacy choices file `privacy.toml` instead of the platform default ([Privacy choices](#privacy-choices)) |
 | `RUST_LOG` | Reserved for logging (not used yet) |
 
 ## Data types
@@ -229,13 +260,20 @@ recovery hints, warnings).
 ### OptimizeAnalysis
 
 `serial`; `profile` (file name of the bundled compat profile matching the
-device, e.g. `tpv-ph1m-ww-9972.toml`, or null); `privacy` (null when no
-profile matches or it has no privacy profile): `tested` (boolean; `optimize
-apply privacy` is refused while false) and `packages`, in profile order, each
-with `package`, `category` (`telemetry` \| `ads` \| `extras`), `what`,
-`side_effects`, `checked` (date it was disabled and lived with on this model,
-or empty), `state` (`absent` \| `enabled` \| `disabled`) and `protected`
-(why RustTV refuses to disable it, or null).
+device, e.g. `tpv-ph1m-ww-9972.toml`, or null: then nothing is tested);
+`choices` (path of the choices file read, or null for the defaults);
+`categories` (the categories the choices apply); `packages`: every catalog
+package installed on the device and every `extra` of the choices (installed
+or not), in plan order, each with `package`, `source` (`catalog` \|
+`extra`), `category` (`telemetry` \| `ads` \| `extras` \| `casting` \|
+`smart-home` \| `voice` \| `streaming-apps`, or null for an `extra`),
+`default` (boolean: the category is on unless opted out), `what` and
+`side_effects` (null for an `extra`), `tested` (boolean: listed in the
+profile's `[[privacy.tested]]`), `checked` (date it was tested on this
+model, or null), `chosen` (boolean: the choices select it; `optimize apply
+privacy` plans it if it is enabled and tested, or with `--allow-untested`),
+`state` (`absent` \| `enabled` \| `disabled`) and `protected` (why RustTV
+refuses to disable it, or null).
 
 ### ChangeReport
 

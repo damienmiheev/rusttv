@@ -1,20 +1,21 @@
-//! Privacy profiles (R3): disable, never uninstall, the packages a device's
-//! compat profile lists as telemetry, ads or extras, and undo it
-//! (OPTIMIZER.md § Privacy profiles, SECURITY.md § Protected package policy).
+//! Privacy profiles (R3): disable, never uninstall, the catalog packages a
+//! person's choices select, and undo it (OPTIMIZER.md § Generic design,
+//! SECURITY.md § Protected package policy).
 //!
 //! Both directions are [`Plan`]s run by the safety engine in [`crate::plan`].
 //! Every package is checked against the protected-package policy first:
 //! rules 1–2 live on the device ([`LiveState`]), rule 3 against the deny-list
 //! `compat/protected.toml`, compiled into the binary.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
 use crate::adb::Adb;
 use crate::apps::package_names;
+use crate::catalog::{CatalogEntry, LoadedChoices};
 use crate::command::{Component, DeviceCommand, PackageName};
-use crate::compat::{DeviceProfile, PrivacyCategory, ProfilePrivacy, profile_file_name};
+use crate::compat::{DeviceProfile, PrivacyCategory, TestedPackage, profile_file_name};
 use crate::inspect::parse_properties;
 use crate::journal::{Journal, StepStatus};
 use crate::launcher::{HomeCandidate, launcher_status};
@@ -187,44 +188,82 @@ fn component_package(text: &str) -> Option<String> {
         .map(String::from)
 }
 
-/// `rusttv optimize analyze`: what the device's privacy profile would do. Read-only.
+/// What a privacy plan or analysis reads besides the device: the catalog,
+/// the device profiles and the person's choices.
+#[derive(Debug, Clone)]
+pub struct PrivacyData {
+    /// Normally [`crate::bundled_catalog`].
+    pub catalog: Vec<CatalogEntry>,
+    /// Normally [`crate::bundled_profiles`].
+    pub profiles: Vec<DeviceProfile>,
+    /// Normally [`crate::load_choices`].
+    pub choices: LoadedChoices,
+}
+
+impl PrivacyData {
+    /// The bundled catalog and profiles with these choices.
+    pub fn bundled(choices: LoadedChoices) -> Self {
+        Self {
+            catalog: crate::bundled_catalog(),
+            profiles: crate::bundled_profiles(),
+            choices,
+        }
+    }
+}
+
+/// `rusttv optimize analyze`: catalog packages on the device and what the
+/// choices would do with them. Read-only.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OptimizeAnalysis {
     /// Target device.
     pub serial: String,
     /// File name of the bundled compat profile matching the device, if any.
     pub profile: Option<String>,
-    /// The profile's `[privacy]` section with each package's state now;
-    /// `None` if no profile matches or it has none.
-    pub privacy: Option<PrivacyAnalysis>,
-}
-
-/// A privacy profile checked against the device.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct PrivacyAnalysis {
-    /// Whether the profile is tested on this model; `apply` is refused otherwise.
-    pub tested: bool,
-    /// Every package of the profile, in profile order.
+    /// The choices file read, or `None` for the defaults.
+    pub choices: Option<String>,
+    /// The categories the choices apply.
+    pub categories: Vec<PrivacyCategory>,
+    /// Every catalog package installed on the device and every `extra` of
+    /// the choices, in plan order.
     pub packages: Vec<PrivacyPackageStatus>,
 }
 
-/// One package of a privacy profile and its state on the device.
+/// One package and what RustTV knows and would do about it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PrivacyPackageStatus {
     /// Package name.
     pub package: String,
-    /// `telemetry`, `ads` or `extras`.
-    pub category: PrivacyCategory,
-    /// What it does.
-    pub what: String,
-    /// What stops working while it is disabled.
-    pub side_effects: String,
-    /// Date it was disabled and lived with on this model, or empty.
-    pub checked: String,
+    /// In the catalog, or an `extra` of the choices.
+    pub source: PackageSource,
+    /// Its catalog category; `None` for an `extra`.
+    pub category: Option<PrivacyCategory>,
+    /// Whether its category is on by default (telemetry, ads, extras).
+    pub default: bool,
+    /// What it does; `None` for an `extra`.
+    pub what: Option<String>,
+    /// What stops working while it is disabled; `None` for an `extra`.
+    pub side_effects: Option<String>,
+    /// Whether it was tested on this model and firmware family.
+    pub tested: bool,
+    /// Date it was tested on this model, if it was.
+    pub checked: Option<String>,
+    /// Whether the choices select it (`optimize apply privacy` would plan it
+    /// if it is enabled, and tested or `--allow-untested` is given).
+    pub chosen: bool,
     /// Installed and enabled, installed and disabled, or not installed.
     pub state: PackageState,
     /// Why RustTV refuses to disable it, if it does (protected-package policy).
     pub protected: Option<String>,
+}
+
+/// Where a package in a privacy plan comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PackageSource {
+    /// The catalog, `compat/packages/`.
+    Catalog,
+    /// `extra` in the person's choices: nothing is known about it.
+    Extra,
 }
 
 /// Whether a package is installed and enabled for user 0.
@@ -239,104 +278,189 @@ pub enum PackageState {
     Disabled,
 }
 
-/// The bundled profile matching the device, with its file name.
+/// The bundled profile matching the device, with the device's properties.
 fn matching_profile<'a>(
     adb: &dyn Adb,
     serial: &str,
     profiles: &'a [DeviceProfile],
-) -> Result<
-    (
-        std::collections::HashMap<String, String>,
-        Option<&'a DeviceProfile>,
-    ),
-    PlanError,
-> {
+) -> Result<(HashMap<String, String>, Option<&'a DeviceProfile>), PlanError> {
     let properties = parse_properties(&adb.run(serial, &DeviceCommand::GetProperties)?);
     let profile = profiles.iter().find(|profile| profile.matches(&properties));
     Ok((properties, profile))
 }
 
 /// Installed and disabled packages now.
-fn package_states(
-    adb: &dyn Adb,
-    serial: &str,
-) -> Result<(HashSet<String>, HashSet<String>), PlanError> {
-    let installed = adb.run(serial, &DeviceCommand::ListPackages)?;
-    let disabled = adb.run(serial, &DeviceCommand::ListDisabledPackages)?;
-    let owned = |names: HashSet<&str>| names.into_iter().map(str::to_owned).collect();
-    Ok((
-        owned(package_names(&installed)?),
-        owned(package_names(&disabled)?),
-    ))
+struct PackageStates {
+    installed: HashSet<String>,
+    disabled: HashSet<String>,
 }
 
-/// Checks the device against its privacy profile. Read-only (R0).
-pub fn optimize_analyze(
-    adb: &dyn Adb,
-    serial: &str,
-    profiles: &[DeviceProfile],
-) -> Result<OptimizeAnalysis, PlanError> {
-    let (_, profile) = matching_profile(adb, serial, profiles)?;
-    let Some(profile) = profile else {
-        return Ok(OptimizeAnalysis {
-            serial: serial.to_owned(),
-            profile: None,
-            privacy: None,
-        });
-    };
-    let privacy = match &profile.privacy {
-        Some(privacy) => Some(analyze_privacy(adb, serial, privacy)?),
-        None => None,
-    };
-    Ok(OptimizeAnalysis {
-        serial: serial.to_owned(),
-        profile: Some(profile_file_name(profile)),
-        privacy,
-    })
+impl PackageStates {
+    fn read(adb: &dyn Adb, serial: &str) -> Result<Self, PlanError> {
+        let installed = adb.run(serial, &DeviceCommand::ListPackages)?;
+        let disabled = adb.run(serial, &DeviceCommand::ListDisabledPackages)?;
+        let owned = |names: HashSet<&str>| names.into_iter().map(str::to_owned).collect();
+        Ok(Self {
+            installed: owned(package_names(&installed)?),
+            disabled: owned(package_names(&disabled)?),
+        })
+    }
+
+    fn of(&self, package: &str) -> PackageState {
+        if !self.installed.contains(package) {
+            PackageState::Absent
+        } else if self.disabled.contains(package) {
+            PackageState::Disabled
+        } else {
+            PackageState::Enabled
+        }
+    }
 }
 
-fn analyze_privacy(
-    adb: &dyn Adb,
-    serial: &str,
-    privacy: &ProfilePrivacy,
-) -> Result<PrivacyAnalysis, PlanError> {
-    let live = LiveState::read(adb, serial)?;
-    let (installed, disabled) = package_states(adb, serial)?;
-    let packages = privacy
-        .packages
+/// A catalog entry or an `extra`, with what the device profile and the
+/// choices say about it.
+struct Candidate<'a> {
+    package: &'a PackageName,
+    entry: Option<&'a CatalogEntry>,
+    /// Date tested on this model, if it was.
+    checked: Option<&'a str>,
+    chosen: bool,
+    /// Plan order: category, then tested order, then catalog order.
+    order: (usize, usize, usize),
+}
+
+impl Candidate<'_> {
+    fn label(&self) -> String {
+        match self.entry {
+            Some(entry) => format!("{} ({})", self.package, entry.category),
+            None => format!("{} (extra, not in the catalog)", self.package),
+        }
+    }
+}
+
+/// Every catalog entry and every `extra`, in plan order, marked chosen or
+/// not. `only` narrows the chosen categories (CLI `--only`); with it, `also`
+/// counts only within those categories and `extra` not at all.
+fn candidates<'a>(
+    data: &'a PrivacyData,
+    profile: Option<&'a DeviceProfile>,
+    only: &[PrivacyCategory],
+) -> Vec<Candidate<'a>> {
+    let choices = &data.choices.choices;
+    let tested: &[TestedPackage] = profile
+        .and_then(|profile| profile.privacy.as_ref())
+        .map_or(&[], |privacy| privacy.tested.as_slice());
+    let allowed = |category: PrivacyCategory| only.is_empty() || only.contains(&category);
+    let kept = |package: &PackageName| choices.keep.contains(package);
+    let category_index = |category: PrivacyCategory| {
+        PrivacyCategory::ALL
+            .iter()
+            .position(|c| *c == category)
+            .unwrap_or(PrivacyCategory::ALL.len())
+    };
+
+    let mut list: Vec<Candidate<'a>> = data
+        .catalog
         .iter()
-        .map(|entry| {
-            let name = entry.package.as_str();
-            let state = if !installed.contains(name) {
-                PackageState::Absent
-            } else if disabled.contains(name) {
-                PackageState::Disabled
-            } else {
-                PackageState::Enabled
-            };
-            PrivacyPackageStatus {
-                package: name.to_owned(),
-                category: entry.category,
-                what: entry.what.clone(),
-                side_effects: entry.side_effects.clone(),
-                checked: entry.checked.clone(),
-                state,
-                protected: live.protection(name),
+        .enumerate()
+        .map(|(index, entry)| {
+            let tested_at = tested.iter().position(|t| t.package == entry.package);
+            let by_category = choices.categories.contains(&entry.category);
+            let by_also = choices.also.contains(&entry.package);
+            Candidate {
+                package: &entry.package,
+                entry: Some(entry),
+                checked: tested_at.map(|at| tested[at].checked.as_str()),
+                chosen: !kept(&entry.package)
+                    && (by_category || by_also)
+                    && allowed(entry.category),
+                order: (
+                    category_index(entry.category),
+                    tested_at.unwrap_or(usize::MAX),
+                    index,
+                ),
             }
         })
         .collect();
-    Ok(PrivacyAnalysis {
-        tested: privacy.tested,
+    list.sort_by_key(|candidate| candidate.order);
+    list.extend(
+        choices
+            .extra
+            .iter()
+            .enumerate()
+            .map(|(index, package)| Candidate {
+                package,
+                entry: None,
+                checked: None,
+                chosen: !kept(package) && only.is_empty(),
+                order: (PrivacyCategory::ALL.len(), usize::MAX, index),
+            }),
+    );
+    list
+}
+
+/// Lists the catalog packages installed on the device and the `extra`
+/// packages of the choices, with what the choices would do. Read-only (R0).
+pub fn optimize_analyze(
+    adb: &dyn Adb,
+    serial: &str,
+    data: &PrivacyData,
+) -> Result<OptimizeAnalysis, PlanError> {
+    data.choices.choices.validate(&data.catalog)?;
+    let (_, profile) = matching_profile(adb, serial, &data.profiles)?;
+    let live = LiveState::read(adb, serial)?;
+    let states = PackageStates::read(adb, serial)?;
+    let packages = candidates(data, profile, &[])
+        .into_iter()
+        .filter_map(|candidate| {
+            let name = candidate.package.as_str();
+            let state = states.of(name);
+            if candidate.entry.is_some() && state == PackageState::Absent {
+                return None;
+            }
+            Some(PrivacyPackageStatus {
+                package: name.to_owned(),
+                source: if candidate.entry.is_some() {
+                    PackageSource::Catalog
+                } else {
+                    PackageSource::Extra
+                },
+                category: candidate.entry.map(|entry| entry.category),
+                default: candidate
+                    .entry
+                    .is_some_and(|entry| entry.category.is_default()),
+                what: candidate.entry.map(|entry| entry.what.clone()),
+                side_effects: candidate.entry.map(|entry| entry.side_effects.clone()),
+                tested: candidate.checked.is_some(),
+                checked: candidate.checked.map(str::to_owned),
+                chosen: candidate.chosen,
+                state,
+                protected: live.protection(name),
+            })
+        })
+        .collect();
+    Ok(OptimizeAnalysis {
+        serial: serial.to_owned(),
+        profile: profile.map(profile_file_name),
+        choices: data
+            .choices
+            .path
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        categories: data.choices.choices.categories.clone(),
         packages,
     })
 }
 
-/// Plans disabling the packages of the device's privacy profile in
-/// `categories` (all if empty). Read-only.
+/// Plans disabling the packages the choices select that are installed and
+/// enabled. Read-only.
 ///
-/// - One of `profiles` (normally [`crate::bundled_profiles`]) must match the
-///   device's model and firmware family and have a `[privacy]` section with
-///   `tested = true`; otherwise `PROFILE_NOT_TESTED`.
+/// - Selected: catalog entries in the chosen categories (narrowed by `only`)
+///   or in `also`, plus `extra` (only without `only`), minus `keep`.
+/// - A package counts as tested only if the device's profile lists it under
+///   `[[privacy.tested]]`. Untested ones are planned only with
+///   `allow_untested`, and the notes mark each "UNTESTED on this model". With
+///   nothing tested or allowed left, `PROFILE_NOT_TESTED`.
 /// - Every selected package is checked against the protected-package policy
 ///   (Home, Home candidates, input methods, enabled accessibility services,
 ///   `compat/protected.toml`); if any is protected the whole plan is refused
@@ -348,57 +472,49 @@ fn analyze_privacy(
 pub fn privacy_plan(
     adb: &dyn Adb,
     serial: &str,
-    profiles: &[DeviceProfile],
-    categories: &[PrivacyCategory],
+    data: &PrivacyData,
+    only: &[PrivacyCategory],
+    allow_untested: bool,
 ) -> Result<Plan, PlanError> {
-    let (properties, profile) = matching_profile(adb, serial, profiles)?;
+    data.choices.choices.validate(&data.catalog)?;
+    let (properties, profile) = matching_profile(adb, serial, &data.profiles)?;
     let property = |name: &str| properties.get(name).map_or("unknown", String::as_str);
-    let Some(profile) = profile else {
-        return Err(PlanError::profile_not_tested(format!(
-            "no compatibility profile in compat/devices/ matches this device ({} {}, `{}`, \
-             firmware `{}`); privacy profiles are only offered on devices where they were tested",
-            property("ro.product.manufacturer"),
-            property("ro.product.model"),
-            property("ro.product.device"),
-            property("ro.build.fingerprint"),
-        )));
-    };
-    let profile_name = profile_file_name(profile);
-    let Some(privacy) = &profile.privacy else {
-        return Err(PlanError::profile_not_tested(format!(
-            "the compatibility profile {profile_name} has no privacy profile (`[privacy]`)"
-        )));
-    };
-    if !privacy.tested {
-        return Err(PlanError::profile_not_tested(format!(
-            "the privacy profile in {profile_name} isn't tested on this model yet; `[privacy] \
-             tested = true` is set only after apply, a reboot, normal use and restore all \
-             worked on it"
-        )));
-    }
-    let selected: Vec<_> = privacy
-        .packages
-        .iter()
-        .filter(|entry| categories.is_empty() || categories.contains(&entry.category))
+    let selected: Vec<Candidate<'_>> = candidates(data, profile, only)
+        .into_iter()
+        .filter(|candidate| candidate.chosen)
         .collect();
     if selected.is_empty() {
+        let categories: Vec<&str> = data
+            .choices
+            .choices
+            .categories
+            .iter()
+            .filter(|category| only.is_empty() || only.contains(category))
+            .map(|category| category.as_str())
+            .collect();
         return Err(PlanError::precondition(format!(
-            "the privacy profile in {profile_name} lists no package in the chosen categories"
+            "your choices select no package (categories: {}); opt-in categories (casting, \
+             smart-home, voice, streaming-apps) are chosen only in the choices file",
+            if categories.is_empty() {
+                "none".to_owned()
+            } else {
+                categories.join(", ")
+            }
         )));
     }
 
     let live = LiveState::read(adb, serial)?;
     let refused: Vec<String> = selected
         .iter()
-        .filter_map(|entry| {
-            live.protection(entry.package.as_str())
-                .map(|why| format!("`{}`: {why}", entry.package))
+        .filter_map(|candidate| {
+            live.protection(candidate.package.as_str())
+                .map(|why| format!("`{}`: {why}", candidate.package))
         })
         .collect();
     if !refused.is_empty() {
         return Err(PlanError::protected(format!(
-            "the privacy profile in {profile_name} lists protected packages, so nothing is \
-             planned: {}",
+            "your choices select protected packages, so nothing is planned (add them to `keep` \
+             in your choices file, or remove them from `extra`): {}",
             refused.join("; ")
         )));
     }
@@ -410,38 +526,66 @@ pub fn privacy_plan(
     let home: Component = home
         .parse()
         .map_err(|error| PlanError::precondition(format!("Home: {error}")))?;
-    let candidates: Vec<Component> = live
+    let home_candidates: Vec<Component> = live
         .candidates
         .iter()
         .map(|candidate| candidate.component.parse())
         .collect::<Result<_, _>>()
         .map_err(|error| PlanError::precondition(format!("Home candidate: {error}")))?;
 
-    let (installed, disabled) = package_states(adb, serial)?;
+    let states = PackageStates::read(adb, serial)?;
     let mut notes = Vec::new();
     let mut skipped = Vec::new();
+    let mut untested_left_out = Vec::new();
     let mut packages = Vec::new();
-    for entry in selected {
-        let name = entry.package.as_str();
-        if !installed.contains(name) {
-            skipped.push(format!("Skipped {name}: not installed."));
-        } else if disabled.contains(name) {
-            skipped.push(format!("Skipped {name}: already disabled."));
-        } else {
-            notes.push(format!(
-                "{name} ({}): {}. Side effects: {}.",
-                entry.category, entry.what, entry.side_effects
-            ));
-            packages.push(entry.package.clone());
+    let mut tested_count = 0;
+    for candidate in &selected {
+        let name = candidate.package.as_str();
+        match states.of(name) {
+            PackageState::Absent => skipped.push(format!("Skipped {name}: not installed.")),
+            PackageState::Disabled => skipped.push(format!("Skipped {name}: already disabled.")),
+            PackageState::Enabled if candidate.checked.is_none() && !allow_untested => {
+                untested_left_out.push(name.to_owned());
+            }
+            PackageState::Enabled => {
+                notes.push(plan_note(candidate));
+                tested_count += usize::from(candidate.checked.is_some());
+                packages.push(candidate.package.clone());
+            }
         }
     }
+    let profile_name = profile.map(profile_file_name);
+    let tested_on = match &profile_name {
+        Some(name) => format!("this model's profile ({name})"),
+        None => format!(
+            "no profile: none in compat/devices/ matches this device ({} {}, `{}`, firmware `{}`)",
+            property("ro.product.manufacturer"),
+            property("ro.product.model"),
+            property("ro.product.device"),
+            property("ro.build.fingerprint"),
+        ),
+    };
     if packages.is_empty() {
+        if !untested_left_out.is_empty() {
+            return Err(PlanError::profile_not_tested(format!(
+                "none of the chosen packages that are enabled on this device is tested on this \
+                 model ({tested_on}). Untested: {}. Pass --allow-untested to plan them anyway, \
+                 each marked UNTESTED in the dry run",
+                untested_left_out.join(", ")
+            )));
+        }
         return Err(PlanError::precondition(format!(
             "nothing to do: every chosen package is absent or already disabled ({})",
             skipped.join(" ")
         )));
     }
     notes.extend(skipped);
+    if !untested_left_out.is_empty() {
+        notes.push(format!(
+            "Not planned, UNTESTED on this model (pass --allow-untested to include them): {}.",
+            untested_left_out.join(", ")
+        ));
+    }
     notes.extend([
         "Checked just now: none of these packages handles Home, provides an input method or \
          an enabled accessibility service, or is on compat/protected.toml."
@@ -455,7 +599,9 @@ pub fn privacy_plan(
             .to_owned(),
         "Recovery is never guaranteed (SECURITY.md).".to_owned(),
         format!(
-            "This privacy profile was tested on this model and firmware family ({profile_name})."
+            "Tested on this model and firmware family, according to {tested_on}: {tested_count} \
+             of the {} planned packages.",
+            packages.len()
         ),
     ]);
 
@@ -467,7 +613,7 @@ pub fn privacy_plan(
             let checks = if index == last {
                 vec![
                     Check::HomeActivityIs(home.clone()),
-                    Check::HomeCandidatesAre(candidates.clone()),
+                    Check::HomeCandidatesAre(home_candidates.clone()),
                 ]
             } else {
                 Vec::new()
@@ -477,6 +623,25 @@ pub fn privacy_plan(
         .collect();
     let fingerprint = property("ro.build.fingerprint");
     Plan::new(PRIVACY, serial, fingerprint, PRIVACY, steps, notes)
+}
+
+/// The dry-run note for one planned package.
+fn plan_note(candidate: &Candidate<'_>) -> String {
+    let label = candidate.label();
+    match (candidate.entry, candidate.checked) {
+        (Some(entry), Some(checked)) => format!(
+            "{label}: {}. Side effects: {}. Tested on this model ({checked}).",
+            entry.what, entry.side_effects
+        ),
+        (Some(entry), None) => format!(
+            "{label}: UNTESTED on this model. {}. Side effects: {}.",
+            entry.what, entry.side_effects
+        ),
+        (None, _) => format!(
+            "{label}: UNTESTED on this model; RustTV knows nothing about what it does or what \
+             stops working without it."
+        ),
+    }
 }
 
 /// Plans undoing a privacy plan recorded in `journal`. Read-only on the
@@ -541,11 +706,12 @@ pub fn privacy_restore_plan(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::RiskClass;
     use crate::adb::FakeAdb;
+    use crate::catalog::PrivacyChoices;
     use crate::journal::tests::MemoryJournal;
     use crate::journal::{JOURNAL_SCHEMA_VERSION, JournalStatus, JournalStep};
     use crate::plan::{apply, restore};
-    use crate::{PrivacyPackage, RiskClass};
 
     const SERIAL: &str = "tv";
 
@@ -566,9 +732,34 @@ mod tests {
     const ODP: &str = "com.android.ondevicepersonalization.services";
     const FEDERATED: &str = "com.android.federatedcompute.services";
     const PRINTSPOOLER: &str = "com.android.printspooler";
+    /// Telemetry in the catalog, installed in the fixture, not tested on the Philips.
+    const AUTOLOG: &str = "org.droidtv.customautologservice";
+    /// Opt-in (casting), installed in the fixture, not tested on the Philips.
+    const MEDIASHELL: &str = "com.google.android.apps.mediashell";
+    /// Opt-in (voice), installed in the fixture, not tested on the Philips.
+    const ALEXA: &str = "org.droidtv.amazonalexa";
+
+    const TELEMETRY: [&str; 5] = [
+        CANDEEBUG,
+        GEL,
+        "com.google.android.partnersetup",
+        "com.google.android.feedback",
+        "com.android.tv.feedbackconsent",
+    ];
+    const ADS: [&str; 3] = [ADSERVICES, ODP, FEDERATED];
+    const EXTRAS: [&str; 4] = [
+        "com.google.android.play.games",
+        "com.google.android.syncadapters.calendar",
+        PRINTSPOOLER,
+        "com.google.android.onetimeinitializer",
+    ];
 
     fn package(name: &str) -> PackageName {
         PackageName::new(name).unwrap()
+    }
+
+    fn packages(names: &[&str]) -> Vec<PackageName> {
+        names.iter().map(|name| package(name)).collect()
     }
 
     /// `pm list packages -d` output listing `names`.
@@ -579,37 +770,22 @@ mod tests {
             .collect()
     }
 
-    /// The bundled Philips profile, with its privacy profile marked tested.
-    fn tested() -> Vec<DeviceProfile> {
-        let mut profiles = crate::bundled_profiles();
-        for profile in &mut profiles {
-            if let Some(privacy) = &mut profile.privacy {
-                privacy.tested = true;
-            }
-        }
-        profiles
+    /// The bundled catalog and profiles with these choices (no file).
+    fn data(choices: PrivacyChoices) -> PrivacyData {
+        PrivacyData::bundled(LoadedChoices {
+            path: None,
+            choices,
+        })
     }
 
-    /// Like [`tested`], with `extra` appended to the Philips privacy profile.
-    fn tested_with(extra: &str) -> Vec<DeviceProfile> {
-        let mut profiles = tested();
-        for profile in &mut profiles {
-            if let Some(privacy) = &mut profile.privacy {
-                privacy.packages.push(PrivacyPackage {
-                    package: package(extra),
-                    category: PrivacyCategory::Extras,
-                    what: "test".to_owned(),
-                    side_effects: "none".to_owned(),
-                    checked: String::new(),
-                });
-            }
-        }
-        profiles
+    /// The bundled data with the default choices.
+    fn defaults() -> PrivacyData {
+        data(PrivacyChoices::default())
     }
 
-    /// The Philips TV with every profile package installed and enabled,
-    /// RustTV installed, no accessibility service on. `disabled` is the
-    /// output of `pm list packages -d` on each call.
+    /// The Philips TV with the catalog packages of the fixture installed and
+    /// enabled, RustTV installed, no accessibility service on. `disabled` is
+    /// the output of `pm list packages -d` on each call.
     fn tv(disabled: Vec<String>) -> FakeAdb {
         FakeAdb::new()
             .respond(DeviceCommand::GetProperties, philips!("getprop.txt"))
@@ -625,6 +801,17 @@ mod tests {
             )
             .respond(DeviceCommand::ListPackages, synthetic!("packages-f.txt"))
             .respond_sequence(DeviceCommand::ListDisabledPackages, disabled)
+    }
+
+    /// [`tv`] with one more package installed.
+    fn tv_with(extra: &str, disabled: Vec<String>) -> FakeAdb {
+        tv(disabled).respond(
+            DeviceCommand::ListPackages,
+            format!(
+                "{}package:/data/app/x/base.apk={extra}\n",
+                synthetic!("packages-f.txt")
+            ),
+        )
     }
 
     fn with_toggles(mut adb: FakeAdb, names: &[&str]) -> FakeAdb {
@@ -651,6 +838,13 @@ mod tests {
                 other => panic!("unexpected step {other:?}"),
             })
             .collect()
+    }
+
+    fn note<'a>(notes: &'a [String], start: &str) -> &'a str {
+        notes
+            .iter()
+            .find(|note| note.starts_with(start))
+            .unwrap_or_else(|| panic!("no note starting with {start}: {notes:?}"))
     }
 
     #[test]
@@ -689,20 +883,6 @@ mod tests {
     }
 
     #[test]
-    fn no_bundled_privacy_profile_lists_a_statically_protected_package() {
-        for profile in crate::bundled_profiles() {
-            for entry in profile.privacy.iter().flat_map(|privacy| &privacy.packages) {
-                assert_eq!(
-                    statically_protected(entry.package.as_str()),
-                    None,
-                    "{}",
-                    entry.package
-                );
-            }
-        }
-    }
-
-    #[test]
     fn input_method_and_accessibility_output_is_parsed_or_refused() {
         let imes = parse_input_methods(
             "com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME\n\
@@ -729,51 +909,176 @@ mod tests {
     }
 
     #[test]
-    fn plan_disables_each_category_in_profile_order() {
-        let telemetry = [
-            CANDEEBUG,
-            GEL,
-            "com.google.android.partnersetup",
-            "com.google.android.feedback",
-            "com.android.tv.feedbackconsent",
-        ];
-        let ads = [ADSERVICES, ODP, FEDERATED];
-        let extras = [
-            "com.google.android.play.games",
-            "com.google.android.syncadapters.calendar",
-            PRINTSPOOLER,
-            "com.google.android.onetimeinitializer",
-        ];
+    fn default_categories_plan_the_tested_packages_in_order() {
         use PrivacyCategory::{Ads, Extras, Telemetry};
-        let all: Vec<&str> = telemetry
+        let all: Vec<&str> = TELEMETRY
             .iter()
-            .chain(&ads)
-            .chain(&extras)
+            .chain(&ADS)
+            .chain(&EXTRAS)
             .copied()
             .collect();
-        for (categories, expected) in [
+        for (only, expected) in [
             (vec![], all.clone()),
             (vec![Telemetry, Ads, Extras], all.clone()),
-            (vec![Telemetry], telemetry.to_vec()),
-            (vec![Ads], ads.to_vec()),
-            (vec![Extras], extras.to_vec()),
-            // Profile order, whatever order the categories are given in.
+            (vec![Telemetry], TELEMETRY.to_vec()),
+            (vec![Ads], ADS.to_vec()),
+            (vec![Extras], EXTRAS.to_vec()),
+            // Category order, then tested order, whatever order `only` has.
             (
                 vec![Ads, Telemetry],
-                telemetry.iter().chain(&ads).copied().collect(),
+                TELEMETRY.iter().chain(&ADS).copied().collect(),
             ),
         ] {
             let adb = tv(vec![disabled(&[])]);
-            let plan = privacy_plan(&adb, SERIAL, &tested(), &categories).unwrap();
-            assert_eq!(planned(&plan), expected, "{categories:?}");
+            let plan = privacy_plan(&adb, SERIAL, &defaults(), &only, false).unwrap();
+            assert_eq!(planned(&plan), expected, "{only:?}");
             assert!(changes(&adb).is_empty(), "planning is read-only");
         }
     }
 
     #[test]
+    fn untested_packages_are_left_out_and_named_without_the_flag() {
+        let adb = tv(vec![disabled(&[])]);
+        let plan = privacy_plan(&adb, SERIAL, &defaults(), &[], false).unwrap();
+        assert!(!planned(&plan).contains(&AUTOLOG.to_owned()));
+        let notes = plan.dry_run().notes;
+        let left_out = note(&notes, "Not planned, UNTESTED on this model");
+        assert!(left_out.contains(AUTOLOG), "{left_out}");
+        // Opt-in packages aren't chosen at all, so not mentioned.
+        assert!(!left_out.contains(MEDIASHELL) && !left_out.contains(ALEXA));
+        assert!(
+            note(&notes, "Tested on this model").contains("12 of the 12 planned"),
+            "{notes:?}"
+        );
+    }
+
+    #[test]
+    fn allow_untested_plans_them_marked_untested() {
+        let adb = tv(vec![disabled(&[])]);
+        let plan = privacy_plan(
+            &adb,
+            SERIAL,
+            &defaults(),
+            &[PrivacyCategory::Telemetry],
+            true,
+        )
+        .unwrap();
+        let mut expected = TELEMETRY.to_vec();
+        expected.push(AUTOLOG);
+        assert_eq!(planned(&plan), expected);
+        let notes = plan.dry_run().notes;
+        assert!(
+            note(&notes, AUTOLOG)
+                .starts_with(&format!("{AUTOLOG} (telemetry): UNTESTED on this model. ")),
+            "{notes:?}"
+        );
+        assert!(
+            note(&notes, CANDEEBUG).ends_with("Tested on this model (2026-10-23)."),
+            "{notes:?}"
+        );
+        assert!(note(&notes, "Tested on this model").contains("5 of the 6 planned"));
+    }
+
+    #[test]
+    fn opt_in_categories_are_planned_only_when_chosen() {
+        // Not by default, and `--only` can't add them: it only narrows.
+        let error = privacy_plan(
+            &tv(vec![disabled(&[])]),
+            SERIAL,
+            &defaults(),
+            &[PrivacyCategory::Casting],
+            true,
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), "PRECONDITION_FAILED");
+        assert!(error.to_string().contains("select no package"), "{error}");
+
+        // Chosen in the choices file: planned, but untested on the Philips.
+        let casting = data(PrivacyChoices {
+            categories: vec![PrivacyCategory::Casting],
+            ..PrivacyChoices::default()
+        });
+        let error =
+            privacy_plan(&tv(vec![disabled(&[])]), SERIAL, &casting, &[], false).unwrap_err();
+        assert_eq!(error.code(), "PROFILE_NOT_TESTED");
+        let message = error.to_string();
+        assert!(
+            message.contains(MEDIASHELL) && message.contains("--allow-untested"),
+            "{message}"
+        );
+        let plan = privacy_plan(&tv(vec![disabled(&[])]), SERIAL, &casting, &[], true).unwrap();
+        assert_eq!(planned(&plan), [MEDIASHELL]);
+        let notes = plan.dry_run().notes;
+        assert!(note(&notes, MEDIASHELL).contains("(casting): UNTESTED on this model"));
+    }
+
+    #[test]
+    fn keep_also_and_extra_change_what_is_chosen() {
+        let choices = PrivacyChoices {
+            categories: vec![PrivacyCategory::Telemetry],
+            keep: packages(&[CANDEEBUG]),
+            also: packages(&[ALEXA, PRINTSPOOLER]),
+            extra: packages(&["com.example.preinstalled"]),
+        };
+        let adb = tv_with("com.example.preinstalled", vec![disabled(&[])]);
+        let plan = privacy_plan(&adb, SERIAL, &data(choices.clone()), &[], true).unwrap();
+        let mut expected: Vec<&str> = TELEMETRY[1..].to_vec();
+        expected.extend([AUTOLOG, PRINTSPOOLER, ALEXA, "com.example.preinstalled"]);
+        assert_eq!(planned(&plan), expected);
+        let notes = plan.dry_run().notes;
+        assert!(
+            note(&notes, "com.example.preinstalled").contains(
+                "(extra, not in the catalog): UNTESTED on this model; RustTV knows nothing"
+            ),
+            "{notes:?}"
+        );
+
+        // `keep` wins over `also` and `extra`.
+        let kept = PrivacyChoices {
+            keep: packages(&[CANDEEBUG, ALEXA, "com.example.preinstalled"]),
+            ..choices.clone()
+        };
+        let adb = tv_with("com.example.preinstalled", vec![disabled(&[])]);
+        let plan = privacy_plan(&adb, SERIAL, &data(kept), &[], true).unwrap();
+        assert!(
+            !planned(&plan).iter().any(|name| name == ALEXA
+                || name == CANDEEBUG
+                || name == "com.example.preinstalled")
+        );
+
+        // `--only` narrows: `also` only within those categories, `extra` not at all.
+        let adb = tv_with("com.example.preinstalled", vec![disabled(&[])]);
+        let plan = privacy_plan(
+            &adb,
+            SERIAL,
+            &data(choices),
+            &[PrivacyCategory::Telemetry, PrivacyCategory::Extras],
+            true,
+        )
+        .unwrap();
+        let mut expected: Vec<&str> = TELEMETRY[1..].to_vec();
+        expected.extend([AUTOLOG, PRINTSPOOLER]);
+        assert_eq!(planned(&plan), expected);
+    }
+
+    #[test]
+    fn invalid_choices_are_refused_before_reading_the_device() {
+        let choices = PrivacyChoices {
+            also: packages(&["com.example.unknown"]),
+            ..PrivacyChoices::default()
+        };
+        let adb = FakeAdb::new();
+        let error = privacy_plan(&adb, SERIAL, &data(choices.clone()), &[], false).unwrap_err();
+        assert_eq!(error.code(), "INVALID_CHOICES");
+        let error = optimize_analyze(&adb, SERIAL, &data(choices)).unwrap_err();
+        assert_eq!(error.code(), "INVALID_CHOICES");
+        assert!(adb.calls().is_empty());
+    }
+
+    #[test]
     fn dry_run_shows_what_and_side_effects_and_checks_home_after_the_last_step() {
         let adb = tv(vec![disabled(&[])]);
-        let plan = privacy_plan(&adb, SERIAL, &tested(), &[PrivacyCategory::Ads]).unwrap();
+        let plan = privacy_plan(&adb, SERIAL, &defaults(), &[PrivacyCategory::Ads], false).unwrap();
         let dry_run = plan.dry_run();
         assert_eq!(dry_run.plan, PRIVACY);
         assert_eq!(dry_run.max_risk, "R3");
@@ -800,11 +1105,7 @@ mod tests {
             last[2].starts_with("the Home candidates are still "),
             "{last:?}"
         );
-        let ads_note = dry_run
-            .notes
-            .iter()
-            .find(|note| note.starts_with(ADSERVICES))
-            .unwrap();
+        let ads_note = note(&dry_run.notes, ADSERVICES);
         assert!(ads_note.contains("(ads)"), "{ads_note}");
         assert!(
             ads_note.contains("told they are unavailable"),
@@ -813,42 +1114,33 @@ mod tests {
     }
 
     #[test]
-    fn an_untested_or_missing_privacy_profile_is_refused() {
-        // A profile whose privacy section isn't marked tested.
-        let mut untested = crate::bundled_profiles();
-        for profile in &mut untested {
-            if let Some(privacy) = &mut profile.privacy {
-                privacy.tested = false;
-            }
-        }
-        let error = privacy_plan(&tv(vec![disabled(&[])]), SERIAL, &untested, &[]).unwrap_err();
-        assert_eq!(error.code(), "PROFILE_NOT_TESTED");
-        assert!(error.to_string().contains("tested = true"), "{error}");
-
-        // A profile without `[privacy]`.
-        let mut profiles = tested();
-        for profile in &mut profiles {
+    fn nothing_tested_or_allowed_is_refused_as_not_tested() {
+        // A profile that lists no tested package.
+        let mut untested = defaults();
+        for profile in &mut untested.profiles {
             profile.privacy = None;
         }
-        let error = privacy_plan(&tv(vec![disabled(&[])]), SERIAL, &profiles, &[]).unwrap_err();
+        let error =
+            privacy_plan(&tv(vec![disabled(&[])]), SERIAL, &untested, &[], false).unwrap_err();
         assert_eq!(error.code(), "PROFILE_NOT_TESTED");
-        assert!(error.to_string().contains("`[privacy]`"), "{error}");
+        assert!(error.to_string().contains("--allow-untested"), "{error}");
+        // With the flag every package is planned, all marked untested.
+        let plan = privacy_plan(&tv(vec![disabled(&[])]), SERIAL, &untested, &[], true).unwrap();
+        assert_eq!(planned(&plan).len(), 13);
+        assert!(note(&plan.dry_run().notes, "Tested on this model").contains("0 of the 13"));
 
         // No profile for the device at all.
         let adb = tv(vec![disabled(&[])]).respond(
             DeviceCommand::GetProperties,
             include_str!("fixtures/synthetic-home-takeover/getprop.txt"),
         );
-        let error = privacy_plan(&adb, SERIAL, &tested(), &[]).unwrap_err();
+        let error = privacy_plan(&adb, SERIAL, &defaults(), &[], false).unwrap_err();
         assert_eq!(error.code(), "PROFILE_NOT_TESTED");
-        assert!(
-            error.to_string().contains("no compatibility profile"),
-            "{error}"
-        );
+        assert!(error.to_string().contains("no profile"), "{error}");
     }
 
     #[test]
-    fn a_protected_package_in_the_profile_refuses_the_whole_plan() {
+    fn a_protected_package_among_the_chosen_refuses_the_whole_plan() {
         let cases: Vec<(&str, FakeAdb, &str)> = vec![
             (
                 "com.example.keyboard",
@@ -891,11 +1183,16 @@ mod tests {
             ("com.mediatek.tvinput", tv(vec![disabled(&[])]), "TV input"),
         ];
         for (extra, adb, why) in cases {
-            let error = privacy_plan(&adb, SERIAL, &tested_with(extra), &[]).unwrap_err();
+            // Through `extra`, even with --allow-untested.
+            let choices = PrivacyChoices {
+                extra: packages(&[extra]),
+                ..PrivacyChoices::default()
+            };
+            let error = privacy_plan(&adb, SERIAL, &data(choices), &[], true).unwrap_err();
             assert_eq!(error.code(), "PACKAGE_PROTECTED", "{extra}: {error}");
             let message = error.to_string();
             assert!(
-                message.contains(extra) && message.contains(why),
+                message.contains(extra) && message.contains(why) && message.contains("`keep`"),
                 "{message}"
             );
             assert!(changes(&adb).is_empty());
@@ -908,7 +1205,7 @@ mod tests {
             DeviceCommand::InputMethods,
             "cmd: Can't find service: input_method\n",
         );
-        let error = privacy_plan(&adb, SERIAL, &tested(), &[]).unwrap_err();
+        let error = privacy_plan(&adb, SERIAL, &defaults(), &[], false).unwrap_err();
         assert_eq!(error.code(), "PRECONDITION_FAILED");
         assert!(error.to_string().contains("input methods"), "{error}");
     }
@@ -919,7 +1216,7 @@ mod tests {
             DeviceCommand::ListPackages,
             synthetic!("packages-f.txt").replace(PRINTSPOOLER, "com.example.unrelated"),
         );
-        let plan = privacy_plan(&adb, SERIAL, &tested(), &[]).unwrap();
+        let plan = privacy_plan(&adb, SERIAL, &defaults(), &[], false).unwrap();
         let steps = planned(&plan);
         assert_eq!(steps.len(), 10);
         assert!(!steps.iter().any(|step| step == GEL || step == PRINTSPOOLER));
@@ -934,15 +1231,15 @@ mod tests {
         );
 
         // Nothing left to disable.
-        let adb = tv(vec![disabled(&[ADSERVICES, ODP, FEDERATED])]);
-        let error = privacy_plan(&adb, SERIAL, &tested(), &[PrivacyCategory::Ads]).unwrap_err();
+        let adb = tv(vec![disabled(&ADS)]);
+        let error =
+            privacy_plan(&adb, SERIAL, &defaults(), &[PrivacyCategory::Ads], false).unwrap_err();
         assert_eq!(error.code(), "PRECONDITION_FAILED");
         assert!(error.to_string().contains("nothing to do"), "{error}");
     }
 
     #[test]
     fn apply_then_restore_skips_a_package_re_enabled_since() {
-        let ads = [ADSERVICES, ODP, FEDERATED];
         let adb = with_toggles(
             tv(vec![
                 // Planning, then the original state of each step.
@@ -953,16 +1250,16 @@ mod tests {
                 // After each step.
                 disabled(&[ADSERVICES]),
                 disabled(&[ADSERVICES, ODP]),
-                disabled(&ads),
+                disabled(&ADS),
                 // Restore planning: the person re-enabled ODP in Settings.
                 disabled(&[ADSERVICES, FEDERATED]),
                 // After each re-enable.
                 disabled(&[ADSERVICES]),
                 disabled(&[]),
             ]),
-            &ads,
+            &ADS,
         );
-        let plan = privacy_plan(&adb, SERIAL, &tested(), &[PrivacyCategory::Ads]).unwrap();
+        let plan = privacy_plan(&adb, SERIAL, &defaults(), &[PrivacyCategory::Ads], false).unwrap();
         let approval = plan.approve("privacy").unwrap();
         let mut store = MemoryJournal::default();
         let journal = apply(&adb, &plan, &approval, &mut store, &|_| {}).unwrap();
@@ -979,13 +1276,9 @@ mod tests {
                 &DeviceCommand::EnablePackage(package(ADSERVICES)),
             ]
         );
-        assert!(
-            plan.dry_run()
-                .notes
-                .iter()
-                .any(|note| note.starts_with(&format!("Skipped {ODP}: it is enabled now"))),
-            "{:?}",
-            plan.dry_run().notes
+        note(
+            &plan.dry_run().notes,
+            &format!("Skipped {ODP}: it is enabled now"),
         );
         let approval = plan.approve("restore").unwrap();
         restore(&adb, &plan, &approval, &mut journal, &mut store).unwrap();
@@ -1010,8 +1303,29 @@ mod tests {
     }
 
     #[test]
+    fn a_journal_written_by_the_previous_version_still_restores() {
+        // The exact format `optimize apply privacy` wrote before the catalog
+        // existed (plan `privacy`, one disable step per package).
+        let text = format!(
+            "schema_version = 1\nplan = \"privacy\"\nserial = \"{SERIAL}\"\n\
+             fingerprint = \"Philips/PH1M_WW_9972/PH1M_WW_9972:14/UKN2.241117.001/3000518:user/release-keys\"\n\
+             started_at_unix_ms = 1761220000000\nstatus = \"applied\"\n\n\
+             [[steps]]\nadb = \"adb -s {SERIAL} shell pm disable-user --user 0 {CANDEEBUG}\"\n\
+             command = {{ kind = \"disable_package\", arg = \"{CANDEEBUG}\" }}\n\
+             original_state = {{ kind = \"package_enabled\", arg = \"{CANDEEBUG}\" }}\n\
+             status = \"done\"\n"
+        );
+        let mut journal: Journal = toml::from_str(&text).unwrap();
+        let adb = tv(vec![disabled(&[CANDEEBUG])]);
+        let plan = privacy_restore_plan(&adb, SERIAL, &mut journal).unwrap();
+        assert_eq!(
+            plan.steps().iter().map(Step::command).collect::<Vec<_>>(),
+            [&DeviceCommand::EnablePackage(package(CANDEEBUG))]
+        );
+    }
+
+    #[test]
     fn home_changing_after_the_last_step_rolls_everything_back() {
-        let ads = [ADSERVICES, ODP, FEDERATED];
         let adb = with_toggles(
             tv(vec![
                 disabled(&[]),
@@ -1020,13 +1334,13 @@ mod tests {
                 disabled(&[]),
                 disabled(&[ADSERVICES]),
                 disabled(&[ADSERVICES, ODP]),
-                disabled(&ads),
+                disabled(&ADS),
                 // After each undo, last first.
                 disabled(&[ADSERVICES, ODP]),
                 disabled(&[ADSERVICES]),
                 disabled(&[]),
             ]),
-            &ads,
+            &ADS,
         )
         // Home opens the stock launcher when planning, then setupwraith.
         .respond_sequence(
@@ -1036,7 +1350,7 @@ mod tests {
                 "com.google.android.tungsten.setupwraith/.RecoveryActivity\n".to_owned(),
             ],
         );
-        let plan = privacy_plan(&adb, SERIAL, &tested(), &[PrivacyCategory::Ads]).unwrap();
+        let plan = privacy_plan(&adb, SERIAL, &defaults(), &[PrivacyCategory::Ads], false).unwrap();
         let approval = plan.approve("privacy").unwrap();
         let mut store = MemoryJournal::default();
 
@@ -1080,18 +1394,17 @@ mod tests {
                 philips!("home-candidates.txt"),
             ],
         );
-        let profiles = {
-            let mut profiles = tested();
-            for profile in &mut profiles {
-                if let Some(privacy) = &mut profile.privacy {
-                    privacy
-                        .packages
-                        .retain(|entry| entry.package.as_str() == PRINTSPOOLER);
-                }
-            }
-            profiles
-        };
-        let plan = privacy_plan(&adb, SERIAL, &profiles, &[]).unwrap();
+        let only_printing = data(PrivacyChoices {
+            categories: vec![PrivacyCategory::Extras],
+            keep: packages(&[
+                "com.google.android.play.games",
+                "com.google.android.syncadapters.calendar",
+                "com.google.android.onetimeinitializer",
+            ]),
+            ..PrivacyChoices::default()
+        });
+        let plan = privacy_plan(&adb, SERIAL, &only_printing, &[], false).unwrap();
+        assert_eq!(planned(&plan), [PRINTSPOOLER]);
         let approval = plan.approve("privacy").unwrap();
         let error = apply(
             &adb,
@@ -1165,43 +1478,71 @@ mod tests {
     }
 
     #[test]
-    fn analyze_reports_state_and_protection_of_every_package() {
+    fn analyze_lists_present_catalog_packages_and_extras() {
+        let choices = PrivacyChoices {
+            keep: packages(&[CANDEEBUG]),
+            extra: packages(&["com.example.preinstalled", "com.android.vending"]),
+            ..PrivacyChoices::default()
+        };
         let adb = tv(vec![disabled(&[GEL])]).respond(
             DeviceCommand::ListPackages,
-            synthetic!("packages-f.txt").replace(PRINTSPOOLER, "com.example.unrelated"),
+            format!(
+                "{}package:/data/app/x/base.apk=com.example.preinstalled\n",
+                synthetic!("packages-f.txt").replace(PRINTSPOOLER, "com.example.unrelated")
+            ),
         );
-        let analysis = optimize_analyze(&adb, SERIAL, &crate::bundled_profiles()).unwrap();
+        let analysis = optimize_analyze(&adb, SERIAL, &data(choices)).unwrap();
         assert_eq!(analysis.profile.as_deref(), Some("tpv-ph1m-ww-9972.toml"));
-        let privacy = analysis.privacy.unwrap();
-        // Tested on the owner's TV on 2026-10-23.
-        assert!(privacy.tested);
-        assert_eq!(privacy.packages.len(), 12);
-        let state = |name: &str| {
-            privacy
+        assert_eq!(analysis.choices, None);
+        assert_eq!(analysis.categories, PrivacyCategory::DEFAULT);
+        let names: Vec<&str> = analysis
+            .packages
+            .iter()
+            .map(|entry| entry.package.as_str())
+            .collect();
+        // Present catalog packages in plan order, then the extras (absent too).
+        assert_eq!(names.len(), 14 + 2, "{names:?}");
+        assert_eq!(names[0], CANDEEBUG);
+        assert_eq!(
+            &names[names.len() - 2..],
+            ["com.example.preinstalled", "com.android.vending"]
+        );
+        assert!(
+            !names.contains(&PRINTSPOOLER),
+            "absent catalog packages aren't listed"
+        );
+        let entry = |name: &str| {
+            analysis
                 .packages
                 .iter()
                 .find(|entry| entry.package == name)
                 .unwrap()
-                .state
         };
-        assert_eq!(state(CANDEEBUG), PackageState::Enabled);
-        assert_eq!(state(GEL), PackageState::Disabled);
-        assert_eq!(state(PRINTSPOOLER), PackageState::Absent);
-        assert!(
-            privacy
-                .packages
-                .iter()
-                .all(|entry| entry.protected.is_none())
-        );
+        assert_eq!(entry(GEL).state, PackageState::Disabled);
+        assert!(entry(GEL).tested && entry(GEL).chosen && entry(GEL).default);
+        assert_eq!(entry(GEL).checked.as_deref(), Some("2026-10-23"));
+        assert!(!entry(CANDEEBUG).chosen, "kept");
+        assert!(!entry(AUTOLOG).tested && entry(AUTOLOG).chosen);
+        let cast = entry(MEDIASHELL);
+        assert_eq!(cast.category, Some(PrivacyCategory::Casting));
+        assert!(!cast.default && !cast.chosen && !cast.tested);
+        let extra = entry("com.example.preinstalled");
+        assert_eq!(extra.source, PackageSource::Extra);
+        assert_eq!((extra.category, extra.what.as_deref()), (None, None));
+        assert!(extra.chosen && !extra.tested);
+        assert_eq!(extra.state, PackageState::Enabled);
+        let vending = entry("com.android.vending");
+        assert!(vending.protected.as_deref().unwrap().contains("Play Store"));
         assert!(changes(&adb).is_empty());
 
-        // Another device: nothing to report, and nothing else is read.
-        let adb = FakeAdb::new().respond(
+        // Another device: no profile, nothing tested, same catalog.
+        let adb = tv(vec![disabled(&[])]).respond(
             DeviceCommand::GetProperties,
             include_str!("fixtures/synthetic-home-takeover/getprop.txt"),
         );
-        let analysis = optimize_analyze(&adb, SERIAL, &crate::bundled_profiles()).unwrap();
+        let analysis = optimize_analyze(&adb, SERIAL, &defaults()).unwrap();
         assert_eq!(analysis.profile, None);
-        assert_eq!(analysis.privacy, None);
+        assert!(analysis.packages.iter().all(|entry| !entry.tested));
+        assert_eq!(analysis.packages.len(), 15);
     }
 }

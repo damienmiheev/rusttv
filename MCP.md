@@ -42,7 +42,7 @@ connect <address>`); the MCP server does not connect devices.
 | `launcher_uninstall_plan` | `serial?` | `rusttv launcher uninstall --dry-run --json` | [PlanProposal](#planproposal) |
 | `launcher_restore_plan` | `serial?`, `from_profile?` (default false) | `rusttv launcher restore --dry-run --json` | [PlanProposal](#planproposal) |
 | `optimize_analyze` | `serial?` | `rusttv optimize analyze --json` | [OptimizeAnalysis](CLI.md#optimizeanalysis) |
-| `privacy_plan` | `serial?`, `only?` (array of `telemetry` \| `ads` \| `extras`; default all) | `rusttv optimize apply privacy [--only ...] --dry-run --json` | [PlanProposal](#planproposal) |
+| `privacy_plan` | `serial?`, `only?` (array of `telemetry` \| `ads` \| `extras` \| `casting` \| `smart-home` \| `voice` \| `streaming-apps`; narrows the choices' categories, default none), `allow_untested?` (default false) | `rusttv optimize apply privacy [--only ...] [--allow-untested] --dry-run --json` | [PlanProposal](#planproposal) |
 
 `serial` picks the device like the CLI's `--serial`: without it, the only
 connected device is used; with several connected, it is required
@@ -85,12 +85,20 @@ during a Home takeover, `NO_JOURNAL`, `INVALID_APK`, ...).
   --from-profile`. It still writes no journal; the CLI saves one when the
   person applies it.
 
-- `privacy_plan` plans the device's privacy profile from its bundled compat
-  profile (`PROFILE_NOT_TESTED` unless it is marked tested on this model;
-  `PACKAGE_PROTECTED` if it lists a package RustTV never disables). It takes
-  no package names: `only` is a closed list of categories, and anything else
-  is rejected before the device is contacted. `apply_command` is `rusttv
-  optimize apply privacy --serial <s>`, plus `--only <categories>` if given.
+- `optimize_analyze` and `privacy_plan` read the same compiled-in catalog
+  and compat profiles as the CLI, and the person's choices file
+  (`<config dir>/privacy.toml`, `RUSTTV_CONFIG_DIR`, CLI.md § Privacy
+  choices) on every call; they take no choices path (`INVALID_CHOICES` if
+  the file is broken). `privacy_plan` plans what the choices select
+  (`PROFILE_NOT_TESTED` if nothing tested is left and `allow_untested` isn't
+  set; with it, untested packages are planned and each note says "UNTESTED on
+  this model"; `PACKAGE_PROTECTED` if a chosen package is one RustTV never
+  disables). It takes no package names: `only` is a closed list of
+  categories that narrows the choices, never adds to them, and anything else
+  is rejected before the device is contacted. To change which packages are
+  chosen the person edits their choices file. `apply_command` is `rusttv
+  optimize apply privacy --serial <s>`, plus `--only <categories>` and
+  `--allow-untested` if given.
 
 ### PlanProposal
 
@@ -114,14 +122,14 @@ user, not run it: never give an agent a terminal running `rusttv`
 
 ## Results
 
-A tool result's `structuredContent` is the CLI's `rusttv.v4` envelope
+A tool result's `structuredContent` is the CLI's `rusttv.v5` envelope
 (CLI.md § Output), and its first text content item is the same JSON as a
 string (`launcher_restore_plan` may add warnings as further text items, see
 § Plan tools):
 
 ```json
-{"schema":"rusttv.v4","ok":true,"data":{}}
-{"schema":"rusttv.v4","ok":false,"error":{"code":"NO_DEVICE","message":"no devices found; connect one with `rusttv device connect <address>`"}}
+{"schema":"rusttv.v5","ok":true,"data":{}}
+{"schema":"rusttv.v5","ok":false,"error":{"code":"NO_DEVICE","message":"no devices found; connect one with `rusttv device connect <address>`"}}
 ```
 
 - Success: `isError` is `false` and `data` is exactly what the CLI prints.

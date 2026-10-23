@@ -2,8 +2,9 @@
 
 One TOML file per device model and firmware family in `devices/`, named
 `<manufacturer>-<codename>.toml`. Profiles record what a device is and what
-was tested on it; they will later also record which optimizations are known
-to be safe (Phase 4).
+was tested on it (Home takeover, privacy packages). `packages/` is the
+package catalog privacy profiles choose from; `protected.toml` is what RustTV
+never disables.
 
 ## Adding your TV
 
@@ -49,46 +50,85 @@ never marked tested.
 
 ## Privacy profiles
 
-`rusttv optimize apply privacy` disables (never uninstalls) the packages a
-profile lists, and is refused unless the profile matching the device's model
-and firmware family has `[privacy] tested = true` (OPTIMIZER.md § Privacy
-profiles). Add one entry per package, in the order they should be disabled,
-telemetry first, then ads, then extras:
+`rusttv optimize apply privacy` disables (never uninstalls) packages in three
+layers (OPTIMIZER.md § Generic design):
+
+1. **The package catalog**, `packages/*.toml`: what each package is, written
+   once for every device that has it.
+2. **Device profiles**, `devices/*.toml`: which catalog packages were tested
+   on that model and firmware family.
+3. **Your choices**, a local `privacy.toml` that is never in the repository
+   (CLI.md § Privacy choices).
+
+Only tested packages are planned unless the person passes `--allow-untested`.
+
+### Adding a catalog entry
+
+Add the package to the file of whoever ships it (`android.toml` for
+AOSP/Google packages, `tp-vision.toml` for `org.droidtv.*`, `sony.toml`,
+`streaming-apps.toml` for third-party apps, ...; a new vendor gets a new file,
+listed in `BUNDLED_CATALOG` in `crates/rusttv-core/src/catalog.rs`):
 
 ```toml
-[privacy]
-tested = false
-
-[[privacy.packages]]
-package = "org.droidtv.candeebug"
-category = "telemetry"          # telemetry | ads | extras
-what = "TP Vision service that collects analytics; ..."
-side_effects = "none expected"  # what stops working while it is disabled
-checked = ""                    # date it was disabled and lived with, once it was
+[[packages]]
+package = "tv.samba.ssm"
+category = "telemetry"
+what = "Samba TV: recognises what is on screen for ad targeting"
+side_effects = "reported to cause problems when disabled on some Sony TVs"
+sources = ["rusttv: seen on a Philips 65OLED818, 2026-10-23"]
 ```
 
-- Write `what` and `side_effects` from what you checked on the device
-  yourself (`rusttv apps list`, `dumpsys package <name>`), in your own words;
-  don't copy other projects' lists.
-- Never list a package that handles Home, is a keyboard or accessibility
-  service, or is on `compat/protected.toml`: the plan is refused
-  (`PACKAGE_PROTECTED`). A test fails if a bundled profile lists one from
-  `protected.toml`.
-- Set `tested = true` only after `rusttv optimize apply privacy` on that
-  model and firmware, a reboot, normal use (Home, HDMI inputs, apps, remote
-  buttons, Settings) and `rusttv optimize restore` all worked; then fill in
-  each `checked` date. Until then, testing needs a development build with
-  `tested = true` edited locally, as for takeover.
+- `category`: `telemetry`, `ads` or `extras` for things nobody needs (on by
+  default), `casting`, `smart-home`, `voice` or `streaming-apps` for features
+  some people use (planned only if chosen). When unsure, pick an opt-in
+  category, or leave the package out.
+- `what` and `side_effects` in plain words; `side_effects` says what stops
+  working ("the remote's mic button stops working"), or `none reported`.
+- `sources`: where the facts come from: a model you checked it on, or another
+  project (with its licence: data from cleanyourtv is MIT, and a file that
+  uses it carries the notice at the top, see `licenses/cleanyourtv/`).
+- Never add a package that is the Home screen, a TV input, tuner, HDMI,
+  remote-pairing, firmware-update or OTA package, a keyboard or accessibility
+  service, or anything on `protected.toml`; nothing whose known side effect
+  breaks HDMI, inputs, the remote, the network or updates. A test fails if a
+  catalog entry is on `protected.toml` or listed twice; the live checks
+  refuse the whole plan (`PACKAGE_PROTECTED`) if a chosen one handles Home or
+  is a keyboard or accessibility service on the device.
 
-`compat/protected.toml` is the static list of packages RustTV never disables
+### Adding your model's tested list
+
+1. Run `rusttv optimize analyze` and choose what to disable (your
+   `privacy.toml`; `keep` anything you use).
+2. `rusttv optimize apply privacy --allow-untested --dry-run`, read every
+   UNTESTED note, then run it without `--dry-run`.
+3. Use the TV for a while: Home, every HDMI input, apps, the remote's
+   buttons (including voice), Settings; reboot and check again.
+4. `rusttv optimize restore`, and check everything came back.
+5. In your device profile, list each package that passed:
+
+   ```toml
+   [[privacy.tested]]
+   package = "org.droidtv.candeebug"   # must be in the catalog
+   checked = "2026-10-23"              # date you tested it, YYYY-MM-DD
+   ```
+
+   Within a category, packages are disabled in this order. Add catalog entries
+   for packages you learned about (with `sources`) in the same pull request.
+
+Schema 3 profiles (a `[privacy]` section with `tested = true` and
+`[[privacy.packages]]` descriptions) still load: each package with a
+`checked` date counts as tested; move the descriptions to the catalog.
+
+`protected.toml` is the static list of packages RustTV never disables
 (SECURITY.md § Protected package policy, rule 3). It is compiled into
 `rusttv` too; add to it freely, and remove an entry only with a reason.
 
 ## Format
 
-The Rust types in `crates/rusttv-core/src/compat.rs` are the schema: unknown
-fields are rejected, and CI loads every profile in `devices/`. The format is
-versioned with `schema_version`.
+The Rust types in `crates/rusttv-core/src/compat.rs` (profiles) and
+`catalog.rs` (catalog) are the schema: unknown fields are rejected, and CI
+loads every file in `devices/` and `packages/`. Both formats are versioned
+with `schema_version`.
 
 ## Privacy
 

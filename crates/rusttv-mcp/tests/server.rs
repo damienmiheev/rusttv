@@ -14,12 +14,12 @@ use std::time::Duration;
 
 use rmcp::ServiceExt;
 use rusttv_core::{
-    Adb, AdbError, Check, ConnectOutcome, DeviceAddress, DeviceCommand, DeviceEntry, DeviceProfile,
-    DeviceState, FakeAdb, FileJournal, HOME_TAKEOVER, JOURNAL_SCHEMA_VERSION, Journal,
-    JournalStatus, JournalStep, JournalStore, PackageName, PrivacyCategory, RiskClass, StepStatus,
-    bundled_profiles, inspect, install_plan, launcher_status, list_apps, optimize_analyze,
-    parse_device_list, privacy_plan, snapshot, takeover_journal_from_profile,
-    takeover_restore_plan, uninstall_plan,
+    Adb, AdbError, Check, ConnectOutcome, DeviceAddress, DeviceCommand, DeviceEntry, DeviceState,
+    FakeAdb, FileJournal, HOME_TAKEOVER, JOURNAL_SCHEMA_VERSION, Journal, JournalStatus,
+    JournalStep, JournalStore, LoadedChoices, PackageName, PrivacyCategory, PrivacyChoices,
+    PrivacyData, RiskClass, StepStatus, bundled_profiles, inspect, install_plan, launcher_status,
+    list_apps, optimize_analyze, parse_device_list, privacy_plan, snapshot,
+    takeover_journal_from_profile, takeover_restore_plan, uninstall_plan,
 };
 use rusttv_mcp::RustTvServer;
 use serde_json::{Value, json};
@@ -190,16 +190,16 @@ impl Client {
     }
 }
 
-/// `data` of a successful `rusttv.v4` envelope.
+/// `data` of a successful `rusttv.v5` envelope.
 fn data(envelope: Value) -> Value {
-    assert_eq!(envelope["schema"], "rusttv.v4");
+    assert_eq!(envelope["schema"], "rusttv.v5");
     assert_eq!(envelope["ok"], true, "{envelope}");
     envelope["data"].clone()
 }
 
-/// `error.code` of a failed `rusttv.v4` envelope.
+/// `error.code` of a failed `rusttv.v5` envelope.
 fn error_code(envelope: &Value) -> &str {
-    assert_eq!(envelope["schema"], "rusttv.v4");
+    assert_eq!(envelope["schema"], "rusttv.v5");
     assert_eq!(envelope["ok"], false, "{envelope}");
     assert!(
         envelope["error"]["message"]
@@ -359,6 +359,10 @@ async fn invalid_arguments_and_unknown_tools_are_rejected() {
         ("privacy_plan", json!({"only": ["bloat"]})),
         ("privacy_plan", json!({"only": ["org.droidtv.candeebug"]})),
         ("privacy_plan", json!({"only": "ads"})),
+        ("privacy_plan", json!({"only": ["smart_home"]})),
+        ("privacy_plan", json!({"allow_untested": "yes"})),
+        ("privacy_plan", json!({"extra": ["com.example.app"]})),
+        ("privacy_plan", json!({"choices": "/tmp/privacy.toml"})),
         (
             "privacy_plan",
             json!({"packages": ["org.droidtv.candeebug"]}),
@@ -370,7 +374,7 @@ async fn invalid_arguments_and_unknown_tools_are_rejected() {
             .request("tools/call", json!({"name": tool, "arguments": arguments}))
             .await;
         // A JSON-RPC error, or (for arguments rmcp can't deserialize) a tool
-        // error without a `rusttv.v4` envelope: either way nothing ran.
+        // error without a `rusttv.v5` envelope: either way nothing ran.
         let rejected = response["error"]["code"].is_i64()
             || (response["result"]["isError"] == true
                 && response["result"]["structuredContent"].is_null());
@@ -974,27 +978,43 @@ fn philips_privacy() -> FakeAdb {
     adb
 }
 
-/// The bundled profiles with the Philips privacy profile marked tested.
-fn privacy_tested() -> Vec<DeviceProfile> {
-    let mut profiles = bundled_profiles();
-    for profile in &mut profiles {
-        if let Some(privacy) = &mut profile.privacy {
-            privacy.tested = true;
-        }
+/// Default choices, as if there were no choices file (tests never read the
+/// real config dir).
+fn no_choices() -> LoadedChoices {
+    LoadedChoices::default()
+}
+
+/// Choices that also opt in to casting.
+fn casting_choices() -> LoadedChoices {
+    let mut categories = PrivacyCategory::DEFAULT.to_vec();
+    categories.push(PrivacyCategory::Casting);
+    LoadedChoices {
+        path: None,
+        choices: PrivacyChoices {
+            categories,
+            ..PrivacyChoices::default()
+        },
     }
-    profiles
 }
 
 #[tokio::test]
 async fn optimize_analyze_returns_the_same_data_as_the_cli() {
     let adb = SharedAdb::new(philips_privacy());
-    let mut client = Client::serve(RustTvServer::new(adb.clone())).await;
+    let mut client = Client::serve(RustTvServer::new(adb.clone()).with_choices(no_choices())).await;
 
     let analysis = data(client.call("optimize_analyze", json!({}), false).await);
 
-    let expected = optimize_analyze(&philips_privacy(), SERIAL, &bundled_profiles()).unwrap();
+    let expected = optimize_analyze(
+        &philips_privacy(),
+        SERIAL,
+        &PrivacyData::bundled(no_choices()),
+    )
+    .unwrap();
     assert_eq!(analysis, serde_json::to_value(&expected).unwrap());
-    assert_eq!(analysis["privacy"]["packages"][1]["state"], "disabled");
+    assert_eq!(analysis["profile"], "tpv-ph1m-ww-9972.toml");
+    assert_eq!(analysis["packages"][1]["package"], "org.droidtv.gel");
+    assert_eq!(analysis["packages"][1]["state"], "disabled");
+    assert_eq!(analysis["packages"][1]["tested"], true);
     assert_eq!(adb.changes(), []);
 }
 
@@ -1005,7 +1025,7 @@ async fn privacy_plan_returns_the_cli_dry_run_and_the_command_to_apply_it() {
     let mut client = Client::serve(
         RustTvServer::new(adb.clone())
             .with_journals_dir(dir.journals())
-            .with_profiles(privacy_tested()),
+            .with_choices(no_choices()),
     )
     .await;
 
@@ -1018,8 +1038,9 @@ async fn privacy_plan_returns_the_cli_dry_run_and_the_command_to_apply_it() {
     let expected = privacy_plan(
         &philips_privacy(),
         SERIAL,
-        &privacy_tested(),
+        &PrivacyData::bundled(no_choices()),
         &[PrivacyCategory::Telemetry, PrivacyCategory::Ads],
+        false,
     )
     .unwrap()
     .dry_run();
@@ -1028,7 +1049,7 @@ async fn privacy_plan_returns_the_cli_dry_run_and_the_command_to_apply_it() {
         serde_json::to_value(&expected).unwrap()
     );
     assert_eq!(proposal["dry_run"]["plan"], "privacy");
-    // Five telemetry and three ads packages, less gel (already disabled).
+    // Five telemetry and three ads packages tested, less gel (already disabled).
     assert_eq!(proposal["dry_run"]["steps"].as_array().unwrap().len(), 7);
     assert_eq!(
         proposal["apply_command"],
@@ -1039,11 +1060,58 @@ async fn privacy_plan_returns_the_cli_dry_run_and_the_command_to_apply_it() {
 }
 
 #[tokio::test]
-async fn privacy_plan_from_the_bundled_tested_profile_changes_nothing() {
-    // The bundled Philips privacy profile is tested (2026-10-23): the tool
-    // plans it, and still only returns the dry run and the command.
+async fn privacy_plan_with_allow_untested_marks_them_and_adds_the_flag() {
     let adb = SharedAdb::new(philips_privacy());
-    let mut client = Client::serve(RustTvServer::new(adb.clone())).await;
+    let mut client =
+        Client::serve(RustTvServer::new(adb.clone()).with_choices(casting_choices())).await;
+
+    // Without the flag, the untested casting package is only named.
+    let refused = client
+        .call("privacy_plan", json!({"only": ["casting"]}), true)
+        .await;
+    assert_eq!(error_code(&refused), "PROFILE_NOT_TESTED", "{refused}");
+
+    let proposal = data(
+        client
+            .call(
+                "privacy_plan",
+                json!({"only": ["casting"], "allow_untested": true}),
+                false,
+            )
+            .await,
+    );
+    let steps = proposal["dry_run"]["steps"].as_array().unwrap();
+    assert_eq!(steps.len(), 1);
+    assert!(
+        steps[0]["command"]
+            .as_str()
+            .unwrap()
+            .ends_with("com.google.android.apps.mediashell")
+    );
+    assert!(
+        proposal["dry_run"]["notes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|note| note
+                .as_str()
+                .unwrap()
+                .contains("(casting): UNTESTED on this model")),
+        "{proposal}"
+    );
+    assert_eq!(
+        proposal["apply_command"],
+        format!("rusttv optimize apply privacy --serial {SERIAL} --only casting --allow-untested")
+    );
+    assert_eq!(adb.changes(), []);
+}
+
+#[tokio::test]
+async fn privacy_plan_from_the_bundled_tested_profile_changes_nothing() {
+    // The bundled Philips profile lists twelve tested packages: the tool
+    // plans them, and still only returns the dry run and the command.
+    let adb = SharedAdb::new(philips_privacy());
+    let mut client = Client::serve(RustTvServer::new(adb.clone()).with_choices(no_choices())).await;
 
     let proposal = data(client.call("privacy_plan", json!({}), false).await);
     assert!(

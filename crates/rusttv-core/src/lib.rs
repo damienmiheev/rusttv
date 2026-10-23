@@ -8,6 +8,7 @@
 mod adb;
 mod apps;
 mod bench;
+mod catalog;
 mod command;
 mod compat;
 mod device;
@@ -31,14 +32,18 @@ pub use bench::{
     AmStart, AppResult, BenchmarkDevice, BenchmarkError, BenchmarkOptions, BenchmarkReport,
     LaunchKind, LaunchRun, Stats, app_cpu_seconds, parse_am_start, parse_cpu_time, run_benchmark,
 };
+pub use catalog::{
+    CATALOG_SCHEMA_VERSION, CatalogEntry, LoadedChoices, PrivacyChoices, bundled_catalog,
+    config_dir, load_choices,
+};
 pub use command::{
     ApkPath, Component, DeviceCommand, InvalidApk, InvalidComponent, InvalidPackageName,
     PackageName, RiskClass,
 };
 pub use compat::{
     DeviceKind, DeviceProfile, InvalidPrivacyCategory, MissingField, PROFILE_SCHEMA_VERSION,
-    PrivacyCategory, PrivacyPackage, ProfileDevice, ProfileFirmware, ProfileHardware,
-    ProfileLauncher, ProfilePrivacy, ProfileTested, bundled_profiles, firmware_family,
+    PrivacyCategory, ProfileDevice, ProfileFirmware, ProfileHardware, ProfileLauncher,
+    ProfilePrivacy, ProfileTested, TestedPackage, bundled_profiles, firmware_family,
     profile_file_name, profile_from_info,
 };
 pub use device::{
@@ -66,7 +71,7 @@ pub use plan::{
     restore_plan,
 };
 pub use privacy::{
-    OptimizeAnalysis, PRIVACY, PackageState, PrivacyAnalysis, PrivacyPackageStatus,
+    OptimizeAnalysis, PRIVACY, PackageSource, PackageState, PrivacyData, PrivacyPackageStatus,
     optimize_analyze, privacy_plan, privacy_restore_plan, statically_protected,
 };
 pub use takeover::{

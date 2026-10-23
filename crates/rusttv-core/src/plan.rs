@@ -774,6 +774,8 @@ enum PlanErrorKind {
     ProfileNotTested(String),
     #[error("{0}")]
     Protected(String),
+    #[error("privacy choices: {0}")]
+    InvalidChoices(String),
     #[error(transparent)]
     InvalidApk(#[from] InvalidApk),
     #[error("{0}; every completed step was undone and verified")]
@@ -818,6 +820,7 @@ impl PlanError {
             PlanErrorKind::NotTested(_) => "TAKEOVER_NOT_TESTED",
             PlanErrorKind::ProfileNotTested(_) => "PROFILE_NOT_TESTED",
             PlanErrorKind::Protected(_) => "PACKAGE_PROTECTED",
+            PlanErrorKind::InvalidChoices(_) => "INVALID_CHOICES",
             PlanErrorKind::InvalidApk(_) => "INVALID_APK",
             PlanErrorKind::RolledBack(_) => "ROLLED_BACK",
             PlanErrorKind::RollbackFailed { .. } => "ROLLBACK_FAILED",
@@ -861,6 +864,11 @@ impl PlanError {
         PlanErrorKind::Protected(reason).into()
     }
 
+    /// The privacy choices file can't be read or doesn't fit the catalog.
+    pub(crate) fn invalid_choices(reason: impl Into<String>) -> Self {
+        PlanErrorKind::InvalidChoices(reason.into()).into()
+    }
+
     pub(crate) fn invalid_apk(reason: String) -> Self {
         PlanErrorKind::InvalidApk(InvalidApk::new(reason)).into()
     }
@@ -878,6 +886,7 @@ pub(crate) fn every_plan_error() -> Vec<PlanError> {
         PlanErrorKind::NotTested(String::new()).into(),
         PlanErrorKind::ProfileNotTested(String::new()).into(),
         PlanErrorKind::Protected(String::new()).into(),
+        PlanErrorKind::InvalidChoices(String::new()).into(),
         PlanErrorKind::InvalidApk(InvalidApk::new(String::new())).into(),
         PlanErrorKind::RolledBack(String::new()).into(),
         PlanErrorKind::RollbackFailed {
@@ -898,6 +907,7 @@ pub(crate) fn every_plan_error() -> Vec<PlanError> {
             | PlanErrorKind::NotTested(_)
             | PlanErrorKind::ProfileNotTested(_)
             | PlanErrorKind::Protected(_)
+            | PlanErrorKind::InvalidChoices(_)
             | PlanErrorKind::InvalidApk(_)
             | PlanErrorKind::RolledBack(_)
             | PlanErrorKind::RollbackFailed { .. }
