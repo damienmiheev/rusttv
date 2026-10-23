@@ -47,6 +47,43 @@ are compiled into `rusttv`, so add new ones to `BUNDLED_PROFILES` in
 `crates/rusttv-core/src/compat.rs` too (a test checks). Emulator profiles are
 never marked tested.
 
+## Privacy profiles
+
+`rusttv optimize apply privacy` disables (never uninstalls) the packages a
+profile lists, and is refused unless the profile matching the device's model
+and firmware family has `[privacy] tested = true` (OPTIMIZER.md § Privacy
+profiles). Add one entry per package, in the order they should be disabled,
+telemetry first, then ads, then extras:
+
+```toml
+[privacy]
+tested = false
+
+[[privacy.packages]]
+package = "org.droidtv.candeebug"
+category = "telemetry"          # telemetry | ads | extras
+what = "TP Vision service that collects analytics; ..."
+side_effects = "none expected"  # what stops working while it is disabled
+checked = ""                    # date it was disabled and lived with, once it was
+```
+
+- Write `what` and `side_effects` from what you checked on the device
+  yourself (`rusttv apps list`, `dumpsys package <name>`), in your own words;
+  don't copy other projects' lists.
+- Never list a package that handles Home, is a keyboard or accessibility
+  service, or is on `compat/protected.toml`: the plan is refused
+  (`PACKAGE_PROTECTED`). A test fails if a bundled profile lists one from
+  `protected.toml`.
+- Set `tested = true` only after `rusttv optimize apply privacy` on that
+  model and firmware, a reboot, normal use (Home, HDMI inputs, apps, remote
+  buttons, Settings) and `rusttv optimize restore` all worked; then fill in
+  each `checked` date. Until then, testing needs a development build with
+  `tested = true` edited locally, as for takeover.
+
+`compat/protected.toml` is the static list of packages RustTV never disables
+(SECURITY.md § Protected package policy, rule 3). It is compiled into
+`rusttv` too; add to it freely, and remove an entry only with a reason.
+
 ## Format
 
 The Rust types in `crates/rusttv-core/src/compat.rs` are the schema: unknown
