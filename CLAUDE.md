@@ -18,7 +18,7 @@ These rules apply to every change in this repo. Details live in the linked docs;
 3. **Surgical changes.** Touch only what the task needs. Don't reformat or "improve" unrelated code.
 4. **Goal-driven.** Define how the change will be verified (test, command, benchmark) before writing it.
 
-(Rules 1–4 adapted from the Karpathy-inspired guidelines by Forrest Chang.)
+(Rules 1–4 summarize the `karpathy-guidelines` project skill in `.claude/skills/`; use it when writing, reviewing, or refactoring code.)
 
 ## Rust standards
 
