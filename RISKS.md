@@ -4,9 +4,9 @@ Likelihood / Impact: H / M / L. "Validation" is how we will find out; "Remaining
 
 | # | Risk | L | I | Evidence | Mitigation | Validation | Remaining uncertainty |
 |---|---|---|---|---|---|---|---|
-| 1 | Slint renders incorrectly/slowly on TV GPUs | M | H | Slint Android uses Skia, documented for phones; no TV reports found | Test on emulator + Philips early; keep UI simple | Launcher spike on device | Fragmented low-end GPUs |
-| 2 | D-pad keys not delivered/mapped to Slint | M | H | No docs on DPAD keycodes in Slint/android-activity | Root `FocusScope` + own key mapping; fallback via Kotlin `dispatchKeyEvent` forwarding | Spike task #1 | Vendor remotes with odd keycodes |
-| 3 | Google TV blocks third-party HOME | M | H | Reports of Projectivy override breaking after Google TV updates | Never depend on disabling stock home; document manual "set as home"; launcher still usable as an app | Test on Philips Google TV | Future Google updates |
+| 1 | Slint renders incorrectly/slowly on TV GPUs | M | H | Spike renders correctly with FemtoVG on the Google TV emulator (host GPU); real TV GPUs untested | Test on emulator + Philips early; keep UI simple | Launcher spike on device | Fragmented low-end GPUs |
+| 2 | D-pad keys not delivered/mapped to Slint | **L** | H | Spike: arrows, OK and BACK all arrive (RESEARCH §8) | Root `FocusScope` + own key mapping; fallback via Kotlin `dispatchKeyEvent` forwarding | Spike task #1 | Vendor remotes with odd keycodes |
+| 3 | Google TV blocks third-party HOME | **H (confirmed)** | H | Spike (RESEARCH §8): stock launcher HOME priority 2 beats any third-party preference; role/preferred changes are ignored on the Google TV emulator | Owner decision (D12): opt-in Home takeover by disabling the stock launcher, with verify/auto-rollback and one-command restore (SECURITY.md) | Confirm on Philips Google TV; check classic Android TV | Future Google updates; behaviour of other vendors |
 | 4 | Limited ADB permissions on some vendors | M | M | CleanYourTV needed its own ADB client in some setups; vendor restrictions known | Probe capabilities; degrade gracefully; record in compat profiles | Compat profile per device | Unknown vendors |
 | 5 | Package visibility restrictions (API 30+) | L | M | Documented Android behavior | `<queries>` for launcher intents | Emulator API 34 test | — |
 | 6 | JNI integration complexity | M | M | Slint's documented path is NativeActivity without Java | Thin Kotlin shim, coarse calls, single JNI module, `FakePlatform` tests | Spike | GameActivity + Slint compatibility |
@@ -24,6 +24,7 @@ Likelihood / Impact: H / M / L. "Validation" is how we will find out; "Remaining
 | 18 | Maintenance burden | M | M | Ambitious ecosystem vision | MVP scope only; defer ecosystem apps | Roadmap gates | — |
 | 19 | Few contributors | M | M | Typical for new OSS | Easy compat/benchmark contributions; good-first-issues | Track contributions | — |
 | 20 | Scope creep | H | H | Vision lists 12+ future apps, AI, cloud, B2B | Phase gates with exit criteria (ROADMAP.md) | Review at each phase | — |
+| 22 | Launcher APK much larger than Java launchers | H | M | Spike APK 12.4 MB vs ~0.5 MB | Investigate what the 11.8 MB library contains (fonts, renderer); size budget after measurement | Size report in CI | Store/sideload friction, install time on slow TVs |
 | 21 | Many TVs use 32-bit userspace | H | M | Common on low-cost SoCs | Build `armeabi-v7a` too; CLI reports ABI list | Compat data | Rust/Skia on armv7 perf |
 
 ## Top 10 technical uncertainties

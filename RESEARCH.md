@@ -80,3 +80,19 @@ Official Rust SDK: [`rmcp`](https://github.com/modelcontextprotocol/rust-sdk) (t
 - The owner's Philips Google TV allows Developer options and network/Wi-Fi ADB.
 - Android TV emulator images (API 30–34) are adequate for functional testing but **not** for performance numbers.
 - Most target TVs run Android 9–14 on ARM (armv7 or arm64).
+
+## 8. Phase 1b spike results (2026-10-23)
+
+Prototype in `spikes/slint-launcher/` on the Google TV emulator (API 34, arm64). Details and raw numbers in its README.
+
+| Question | Answer |
+|---|---|
+| Slint renders on Android TV | **Yes** (FemtoVG; no Skia needed) |
+| D-pad reaches Slint | **Yes**: arrows map to `Key.*Arrow`, OK to `Key.Return`; BACK (U+F748) must be consumed |
+| Kotlin bridge in the same APK | **Yes**, via a Kotlin `NativeActivity` subclass (no GameActivity); load app classes through the activity's class loader |
+| List, show banners, launch | **Yes**, with `<queries>` and coarse JNI calls |
+| Memory / start-up (emulator, rough) | Idle PSS 43.9 MB vs 60.9 MB stock; cold start median 189 ms vs 318 ms stock. Not publishable; must be measured on the TV |
+| APK size | **12.4 MB** (11.8 MB native library), about 25x a minimal Java launcher. Not yet investigated |
+| Become Home on Google TV | **No, not by preference.** The stock launcher's HOME filter has priority 2; Android picks higher priority before preferred activities, and third-party apps are capped at 0. Role and preferred-activity changes succeed but are ignored |
+
+**Verdict: go for Rust + Slint as the UI technology.** All technical questions came back positive. The blocking issue is a product one: on Google TV, a third-party launcher can't take over the Home button without (a) disabling the stock launcher, which SECURITY.md forbids, (b) an accessibility-service Home override (Projectivy's approach; needs a sensitive permission, broke after a Google update), or (c) being an app the user opens or maps to a remote button. **Owner decision (2026-10-23): (a), as an opt-in "Home takeover" with strict safeguards (SECURITY.md, ARCHITECTURE D12).**

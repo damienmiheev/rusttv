@@ -1,5 +1,6 @@
 # Rust
 /target/
+spikes/*/target/
 **/*.rs.bk
 *.pdb
 # Cargo.lock is committed (the workspace ships binaries).
@@ -15,6 +16,8 @@ captures/
 *.aab
 *.ap_
 output-metadata.json
+# Native libraries copied in by cargo-ndk
+jniLibs/
 
 # Signing keys — never commit
 *.jks

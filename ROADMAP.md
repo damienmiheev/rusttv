@@ -6,7 +6,7 @@ Phases are gates, not dates. A phase starts only when the previous one meets its
 |---|---|---|
 | 0 Research | Feasibility, safety design, plan | These docs reviewed and accepted by the owner |
 | 1a CLI core (Milestone 1) | Read-only device inspection over ADB | See Milestone 1 below |
-| 1b Launcher spike | Answer uncertainties 1–4 (RISKS.md) on the Philips TV | Go/no-go note in RESEARCH.md with evidence |
+| 1b Launcher spike | Answer uncertainties 1–4 (RISKS.md) on the Philips TV | Go/no-go note in RESEARCH.md with evidence. **Done on the Google TV emulator (2026-10-23): go for Slint; Home-button takeover blocked on Google TV, needs an owner decision.** TV confirmation pending |
 | 1c Launcher PoC | MVP launcher (ARCHITECTURE.md § Launcher) | Launcher success criteria below |
 | 2 Benchmarks | Baseline + comparison per BENCHMARK_PLAN.md | Published raw data + report for Philips TV; budgets defined |
 | 3 Diagnostics & CLI | `performance`, `apps`, `launcher status/install` commands | All commands have `--json`, schema docs, fixture tests |
@@ -36,7 +36,7 @@ Small PRs, in order:
 Launcher:
 
 - Builds an APK in CI for `arm64-v8a`, `armeabi-v7a`, `x86_64`.
-- Installs alongside the stock launcher; stock launcher untouched.
+- Installs alongside the stock launcher, which stays untouched unless the user opts in to Home takeover (SECURITY.md); takeover and restore verified on the Philips TV before release.
 - Shows every app the stock launcher shows (LEANBACK_LAUNCHER), with banners/icons.
 - Every tile reachable by D-pad; DPAD_CENTER launches; Home returns to RustTV when it is the default.
 - Works offline; survives a 24 h soak with zero crashes/ANRs on the Philips TV.

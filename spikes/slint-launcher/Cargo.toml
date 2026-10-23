@@ -1,0 +1,28 @@
+[package]
+name = "rusttv-spike-launcher"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Throwaway Phase 1b spike: Slint launcher on Android TV. Not product code."
+
+# Not part of the main workspace: its Android-only dependencies must not
+# affect the core crates or their cargo-deny checks.
+[workspace]
+
+[lib]
+name = "rusttv_spike"
+crate-type = ["cdylib"]
+
+[dependencies]
+slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-android-activity-06", "renderer-femtovg"] }
+android-activity = { version = "0.6.1", features = ["native-activity"] }
+jni = "0.21.1"
+log = "0.4.34"
+android_logger = "0.15.1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+opt-level = "s"

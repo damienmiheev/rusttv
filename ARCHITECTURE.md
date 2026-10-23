@@ -83,7 +83,7 @@ There is intentionally no `shell(&str)`. Values that end up in `adb shell` argum
 ### Android bridge
 
 ```text
-LauncherActivity (Kotlin, extends GameActivity)
+LauncherActivity (Kotlin, extends NativeActivity; spike-proven, see D11)
    │ loads librusttv_launcher.so (android-activity + Slint)
    │
    ├─ PlatformBridge.kt  (static methods, called from Rust via `jni`)
@@ -140,3 +140,5 @@ Dev/CI tools: `cargo-deny` (covers RustSec advisories + licenses, so `cargo-audi
 | D8 | 2026-10-23 | No free-form shell in the API | Allow `shell(&str)` | Never for agent paths |
 | D9 | 2026-10-23 | Slint under Royalty-free 2.0 with attribution | GPL / commercial | Slint's terms change |
 | D10 | 2026-10-23 | Sync core, no tokio in M1 | tokio from day one | MCP or parallel device ops need it |
+| D11 | 2026-10-23 | Launcher activity: Kotlin subclass of `NativeActivity`, FemtoVG renderer (spike) | GameActivity; Skia | Text input/IME or rendering quality needs GameActivity or Skia |
+| D12 | 2026-10-23 | Home on Google TV: opt-in Home takeover that disables (never uninstalls) the stock launcher, with automatic rollback and `rusttv launcher restore` | App + remote-button mapping; accessibility-service Home override | Google allows third-party HOME priority, or takeover proves unreliable on tested firmware |
