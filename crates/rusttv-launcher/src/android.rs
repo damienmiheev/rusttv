@@ -196,6 +196,21 @@ impl Platform for AndroidPlatform {
             artwork(env, bridge, activity, id)
         })
     }
+
+    fn notices(&self) -> Result<String, PlatformError> {
+        self.with_bridge("load notices", |env, bridge, activity| {
+            let text = env
+                .call_static_method(
+                    bridge,
+                    "notices",
+                    "(Landroid/content/Context;)Ljava/lang/String;",
+                    &[JValue::Object(activity)],
+                )?
+                .l()?;
+            let text = JString::from(text);
+            Ok(env.get_string(&text)?.into())
+        })
+    }
 }
 
 /// The app's banner, else its icon, else nothing.
