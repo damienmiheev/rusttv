@@ -40,7 +40,7 @@ connect <address>`); the MCP server does not connect devices.
 | `performance_snapshot` | `serial?`, `sample_ms?` (100–60000, default 1000) | `rusttv performance snapshot --json` | [PerformanceSnapshot](CLI.md#performancesnapshot) |
 | `launcher_install_plan` | `serial?`, `apk?` | `rusttv launcher install --dry-run --json` | [PlanProposal](#planproposal) |
 | `launcher_uninstall_plan` | `serial?` | `rusttv launcher uninstall --dry-run --json` | [PlanProposal](#planproposal) |
-| `launcher_restore_plan` | `serial?` | `rusttv launcher restore --dry-run --json` | [PlanProposal](#planproposal) |
+| `launcher_restore_plan` | `serial?`, `from_profile?` (default false) | `rusttv launcher restore --dry-run --json` | [PlanProposal](#planproposal) |
 
 `serial` picks the device like the CLI's `--serial`: without it, the only
 connected device is used; with several connected, it is required
@@ -69,15 +69,27 @@ during a Home takeover, `NO_JOURNAL`, `INVALID_APK`, ...).
   the server's working directory (`INVALID_APK` if it isn't there).
 - `launcher_restore_plan` uses the newest takeover journal for the device's
   firmware in the CLI's state directory (`RUSTTV_STATE_DIR`, CLI.md
-  § Changing a device). It takes no journal path.
+  § Changing a device). It takes no journal path. `.toml` files there that
+  can't be read are not skipped silently: each is named, with the reason, in
+  an extra text content item after the envelope (one per file), or in the
+  `NO_JOURNAL` message when no readable journal is left. Any of them may be a
+  takeover that still needs restoring.
+- `launcher_restore_plan` with `from_profile: true` is the CLI's
+  `--from-profile`, for when the journal is lost: it reads no journal and
+  plans re-enabling what the device's compiled-in compatibility profile says a
+  takeover disables, of the packages disabled now. `PRECONDITION_FAILED` if
+  none are; `NO_JOURNAL` if no profile with a `[launcher]` section matches the
+  device. `apply_command` is then `rusttv launcher restore --serial <s>
+  --from-profile`. It still writes no journal; the CLI saves one when the
+  person applies it.
 
 ### PlanProposal
 
 `dry_run`: a [DryRun](CLI.md#dryrun), exactly what the CLI prints with
 `--dry-run --json`. `apply_command`: the `rusttv` command line that applies
 this plan, for a person to run at an interactive terminal, with
-`--serial` and the planned APK (`--apk`) or journal (`--journal`) spelled
-out so it plans the same change; arguments are quoted for a POSIX shell. For
+`--serial` and the planned APK (`--apk`) or journal (`--journal`), or
+`--from-profile`, spelled out so it plans the same change; arguments are quoted for a POSIX shell. For
 example:
 
 ```json
@@ -94,7 +106,9 @@ user, not run it: never give an agent a terminal running `rusttv`
 ## Results
 
 A tool result's `structuredContent` is the CLI's `rusttv.v2` envelope
-(CLI.md § Output), and its text content is the same JSON as a string:
+(CLI.md § Output), and its first text content item is the same JSON as a
+string (`launcher_restore_plan` may add warnings as further text items, see
+§ Plan tools):
 
 ```json
 {"schema":"rusttv.v2","ok":true,"data":{}}
@@ -121,7 +135,9 @@ Tool calls run one at a time.
 - Tests (`crates/rusttv-mcp/tests/server.rs`) drive the server over an
   in-memory pipe with raw JSON-RPC and `FakeAdb`, and check that each tool's
   `data` equals the core result the CLI prints, that plan tools issue no
-  command above R0 and leave the journal directory unchanged, and that
+  command above R0 and leave the journal directory unchanged (including
+  `launcher_restore_plan` with `from_profile`, against the Philips capture
+  and the bundled profile), that unreadable journal files are reported, and that
   invalid arguments and APK paths are rejected. No device or adb is needed.
 - Checked with a real MCP client on 2026-10-23: MCP Inspector 2.12.0 in CLI
   mode (`npx @modelcontextprotocol/inspector --cli target/debug/rusttv-mcp
