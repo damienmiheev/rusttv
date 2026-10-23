@@ -74,3 +74,26 @@ Decided "not for now"; raise again when the core launcher is done.
   - First step when picked up: a read-only count, on the Philips, of how many
     Watch Next and channel rows the installed apps publish (no titles), to see
     whether there would be any content to show.
+
+- **Customisable Home screen (themes) and later a theme market** — parked
+  2026-10-23. Idea: describe the Home screen in a file so anyone can make and
+  load their own look and behaviour. Discussion so far:
+  - Not HTML/CSS: rendering it needs a WebView (a browser engine, 100+ MB and
+    a slow start), which would undo RustTV's speed and memory advantage.
+  - Level 1 (most of the value): a versioned theme file (JSON or TOML,
+    `schema_version`) with typed, range-checked parameters and defaults —
+    colours, fonts, corner radius, spacing, tile size/shape, columns/rows,
+    hero on/off and size, glow strength, animation timings, sway, focus
+    scale, background image or colour. Today these are hard-coded in
+    `home.slint` and `ui.rs`, so this also cleans the code up.
+  - Level 2: a few polished layout presets (e.g. grid, single row + hero,
+    compact list) chosen by name in the theme.
+  - Level 3, only if needed: full custom UI as `.slint` files loaded at run
+    time with Slint's interpreter (no browser, but costs size and start time).
+  - Shared themes are untrusted input: data only, never code, with size and
+    decode limits on images, so a bad theme can at worst look ugly. Forks of
+    the repo are different: they are their own app.
+  - A market needs distribution, signing, moderation and trademark rules
+    (Phase 7+); a first step would be loading a theme from a file or URL and
+    seeing whether people share themes.
+  - The default theme stays the polished, Apple TV-like one.
