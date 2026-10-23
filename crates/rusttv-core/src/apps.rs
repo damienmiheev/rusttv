@@ -168,3 +168,63 @@ mod tests {
         assert_eq!(parsed, [("com.example", None)]);
     }
 }
+
+#[cfg(test)]
+mod odd_input {
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::test_support::{adb_output, line_ending};
+
+    proptest! {
+        #[test]
+        fn parser_never_panics(output in adb_output()) {
+            for (name, _) in parse_package_list(&output) {
+                prop_assert!(!name.is_empty());
+            }
+        }
+
+        #[test]
+        fn package_lines_parse_back_to_their_parts(
+            packages in prop::collection::vec(
+                ("[a-z][a-z0-9_]{0,10}(\\.[a-z][a-z0-9_]{0,10}){0,4}", prop::option::of("/data/app/[~A-Za-z0-9_=-]{0,30}/base\\.apk")),
+                0..20,
+            ),
+            ending in line_ending(),
+            trailing in " {0,3}",
+        ) {
+            let output: String = packages
+                .iter()
+                .map(|(name, path)| match path {
+                    Some(path) => format!("package:{path}={name}{trailing}{ending}"),
+                    None => format!("package:{name}{trailing}{ending}"),
+                })
+                .collect();
+            let parsed: Vec<(&str, Option<&str>)> = parse_package_list(&output).collect();
+            let expected: Vec<(&str, Option<&str>)> = packages
+                .iter()
+                .map(|(name, path)| (name.as_str(), path.as_deref()))
+                .collect();
+            prop_assert_eq!(parsed, expected);
+        }
+    }
+
+    #[test]
+    fn empty_output_has_no_packages() {
+        assert_eq!(parse_package_list("").count(), 0);
+        assert_eq!(parse_package_list("\r\n\n").count(), 0);
+    }
+
+    #[test]
+    fn crlf_trailing_spaces_and_a_truncated_last_line() {
+        let parsed: Vec<_> =
+            parse_package_list("package:com.a\r\npackage:com.b  \r\r\npackage:com.c").collect();
+        assert_eq!(parsed, [("com.a", None), ("com.b", None), ("com.c", None)]);
+    }
+
+    #[test]
+    fn error_output_lists_no_packages() {
+        let output = "Error: java.lang.SecurityException: Shell does not have permission\n";
+        assert_eq!(parse_package_list(output).count(), 0);
+    }
+}

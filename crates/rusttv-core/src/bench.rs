@@ -218,10 +218,21 @@ pub fn parse_am_start(output: &str) -> Result<AmStart, String> {
 }
 
 /// Parses toybox `TIME+` (`m:ss.cc`, or `h:mm:ss.cc` for long runners) into seconds.
+///
+/// Parts must be plain decimals: `f64::from_str` would also accept `inf`,
+/// `NaN`, `1e3` and `+5`.
 pub fn parse_cpu_time(text: &str) -> Option<f64> {
-    text.split(':').try_fold(0.0, |total, part| {
-        Some(total * 60.0 + part.parse::<f64>().ok().filter(|value| *value >= 0.0)?)
-    })
+    let is_decimal = |part: &str| {
+        !part.is_empty()
+            && part
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || byte == b'.')
+    };
+    text.split(':')
+        .try_fold(0.0, |total, part| {
+            Some(total * 60.0 + part.parse::<f64>().ok().filter(|_| is_decimal(part))?)
+        })
+        .filter(|seconds: &f64| seconds.is_finite())
 }
 
 /// Total CPU seconds of an app's processes (`package` and `package:*`) in
@@ -710,5 +721,112 @@ mod tests {
         let error =
             run_benchmark(&adb, "tv", &[component], options(), &no_sleep, &mut |_| {}).unwrap_err();
         assert_eq!(error.code(), "LAUNCH_FAILED");
+    }
+}
+
+#[cfg(test)]
+mod odd_input {
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::test_support::{adb_output, line_ending};
+
+    proptest! {
+        #[test]
+        fn parsers_never_panic(output in adb_output(), package in "[a-z.]{0,12}") {
+            let _ = parse_am_start(&output);
+            if let Some(seconds) = parse_cpu_time(&output) {
+                prop_assert!(seconds.is_finite() && seconds >= 0.0);
+            }
+            prop_assert!(app_cpu_seconds(&output, &package) >= 0.0);
+        }
+
+        #[test]
+        fn am_start_parses_back_to_its_fields(
+            state in "(COLD|WARM|HOT|UNKNOWN \\(0\\))",
+            total in any::<u32>(),
+            wait in any::<u32>(),
+            ending in line_ending(),
+        ) {
+            let output = format!(
+                "Starting: Intent {{ cmp=a.b/.C }}{ending}Status: ok{ending}LaunchState: {state}{ending}Activity: a.b/.C{ending}TotalTime: {total}{ending}WaitTime: {wait}{ending}Complete{ending}"
+            );
+            prop_assert_eq!(
+                parse_am_start(&output),
+                Ok(AmStart { launch_state: Some(state), total_time_ms: Some(total), wait_time_ms: Some(wait) })
+            );
+        }
+
+        #[test]
+        fn cpu_time_parses_back_to_seconds(hours in 0..1000_u32, minutes in 0..60_u32, centis in 0..6000_u32) {
+            let seconds = format!("{}.{:02}", centis / 100, centis % 100);
+            let with_hours = format!("{hours}:{minutes:02}:{seconds:0>5}");
+            let expected = f64::from(hours * 3600 + minutes * 60) + f64::from(centis) / 100.0;
+            let parsed = parse_cpu_time(&with_hours).unwrap();
+            prop_assert!((parsed - expected).abs() < 1e-6, "{with_hours}: {parsed} != {expected}");
+        }
+
+        #[test]
+        fn app_cpu_seconds_sums_only_the_apps_processes(
+            own in prop::collection::vec(0..100_000_u32, 0..5),
+            others in prop::collection::vec(0..100_000_u32, 0..5),
+            ending in line_ending(),
+        ) {
+            let row = |pid: usize, centis: &u32, name: &str| {
+                format!("{pid:>5} {}:{:02}.{:02} {name}{ending}", centis / 6000, centis / 100 % 60, centis % 100)
+            };
+            let output: String = std::iter::once(format!("  PID     TIME+ NAME{ending}"))
+                .chain(own.iter().enumerate().map(|(i, c)| row(i, c, if i % 2 == 0 { "a.b" } else { "a.b:remote" })))
+                .chain(others.iter().enumerate().map(|(i, c)| row(i, c, if i % 2 == 0 { "a.bc" } else { "x.a.b" })))
+                .collect();
+            let expected = f64::from(own.iter().sum::<u32>()) / 100.0;
+            prop_assert!((app_cpu_seconds(&output, "a.b") - expected).abs() < 1e-6);
+        }
+    }
+
+    #[test]
+    fn empty_output_is_an_error_or_nothing() {
+        assert!(parse_am_start("").is_err());
+        assert_eq!(parse_cpu_time(""), None);
+        assert!(app_cpu_seconds("", "a.b").abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn am_start_with_crlf_and_overflowing_times() {
+        let output =
+            "Status: ok\r\nLaunchState: COLD\r\nTotalTime: 4294967296\r\nWaitTime: 12 ms\r\n";
+        assert_eq!(
+            parse_am_start(output),
+            Ok(AmStart {
+                launch_state: Some("COLD".to_owned()),
+                total_time_ms: None,
+                wait_time_ms: None
+            })
+        );
+    }
+
+    #[test]
+    fn am_start_truncated_before_status_is_an_error() {
+        assert!(parse_am_start("Starting: Intent { cmp=a.b/.C }\nStat").is_err());
+        assert!(parse_am_start("Status: okay\n").is_err());
+    }
+
+    #[test]
+    fn cpu_time_rejects_non_decimal_numbers() {
+        // `f64::from_str` accepts these; toybox never prints them. `inf` made
+        // an app's CPU time infinite.
+        for text in [
+            "inf", "NaN", "1:inf", "1e3", "0:1e2", "+5", "1:-0.5", "", "1:", ":5",
+        ] {
+            assert_eq!(parse_cpu_time(text), None, "{text}");
+        }
+        // Digits too long for f64 overflow to infinity.
+        assert_eq!(parse_cpu_time(&"9".repeat(400)), None);
+    }
+
+    #[test]
+    fn ps_time_with_infinite_row_does_not_poison_the_sum() {
+        let output = "  PID     TIME+ NAME\n    1   0:01.50 a.b\n    2   inf a.b:x\n";
+        assert!((app_cpu_seconds(output, "a.b") - 1.5).abs() < 1e-9);
     }
 }

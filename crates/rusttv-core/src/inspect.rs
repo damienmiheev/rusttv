@@ -84,7 +84,13 @@ pub fn inspect(adb: &dyn Adb, serial: &str) -> Result<DeviceInfo, AdbError> {
         build_fingerprint: property("ro.build.fingerprint"),
         build_characteristics: property("ro.build.characteristics"),
         abis: property("ro.product.cpu.abilist")
-            .map(|list| list.split(',').map(str::to_owned).collect())
+            .map(|list| {
+                list.split(',')
+                    .map(str::trim)
+                    .filter(|abi| !abi.is_empty())
+                    .map(str::to_owned)
+                    .collect()
+            })
             .unwrap_or_default(),
         memory,
         data_storage,
@@ -93,12 +99,14 @@ pub fn inspect(adb: &dyn Adb, serial: &str) -> Result<DeviceInfo, AdbError> {
 
 /// Parses `getprop` output: one `[key]: [value]` per line.
 ///
-/// Lines that don't match (rare multi-line values) are skipped.
+/// Lines that don't match (rare multi-line values) are skipped. Whitespace
+/// around a line is ignored: a stray `\r` (from `\r\r\n` line endings) or
+/// trailing spaces would otherwise drop the property.
 pub fn parse_properties(output: &str) -> HashMap<String, String> {
     output
         .lines()
         .filter_map(|line| {
-            let (key, value) = line.split_once("]: [")?;
+            let (key, value) = line.trim().split_once("]: [")?;
             let key = key.strip_prefix('[')?;
             let value = value.strip_suffix(']')?;
             Some((key.to_owned(), value.to_owned()))
@@ -250,5 +258,186 @@ mod tests {
             None
         );
         assert_eq!(parse_df("df: /data: Permission denied\n"), None);
+    }
+}
+
+#[cfg(test)]
+mod odd_input {
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::adb::FakeAdb;
+    use crate::test_support::{adb_output, line_ending};
+
+    proptest! {
+        #[test]
+        fn parsers_never_panic(output in adb_output()) {
+            parse_properties(&output);
+            parse_meminfo(&output);
+            parse_df(&output);
+        }
+
+        #[test]
+        fn getprop_lines_parse_back_to_their_parts(
+            entries in prop::collection::hash_map("[a-z][a-z0-9._]{0,30}", "[^\r\n]{0,40}", 0..20),
+            ending in line_ending(),
+            trailing in " {0,3}",
+        ) {
+            let output: String = entries
+                .iter()
+                .map(|(key, value)| format!("[{key}]: [{value}]{trailing}{ending}"))
+                .collect();
+            prop_assert_eq!(parse_properties(&output), entries);
+        }
+
+        #[test]
+        fn meminfo_parses_back_to_its_values(
+            total in any::<u64>(),
+            available in any::<u64>(),
+            padding in " {1,12}",
+            ending in line_ending(),
+        ) {
+            let output = format!(
+                "MemTotal:{padding}{total} kB{ending}MemFree:{padding}1 kB{ending}MemAvailable:{padding}{available} kB{ending}"
+            );
+            prop_assert_eq!(
+                parse_meminfo(&output),
+                Some(MemoryInfo { total_kib: total, available_kib: Some(available) })
+            );
+        }
+
+        #[test]
+        fn df_parses_back_to_its_values(
+            total in any::<u64>(),
+            used in any::<u64>(),
+            available in any::<u64>(),
+            ending in line_ending(),
+        ) {
+            let output = format!(
+                "Filesystem 1K-blocks Used Available Use% Mounted on{ending}/dev/block/dm-39 {total} {used} {available} 19% /data{ending}"
+            );
+            prop_assert_eq!(
+                parse_df(&output),
+                Some(StorageInfo { total_kib: total, available_kib: available })
+            );
+        }
+    }
+
+    #[test]
+    fn empty_output_parses_to_nothing() {
+        assert!(parse_properties("").is_empty());
+        assert_eq!(parse_meminfo(""), None);
+        assert_eq!(parse_df(""), None);
+    }
+
+    #[test]
+    fn getprop_with_a_bare_carriage_return_keeps_the_property() {
+        // `\r\r\n` (both the device pty and the host converted) or a last
+        // line cut after its `\r`.
+        let properties =
+            parse_properties("[ro.product.model]: [TV]\r\r\n[ro.build.version.sdk]: [34]\r");
+        assert_eq!(
+            properties.get("ro.product.model").map(String::as_str),
+            Some("TV")
+        );
+        assert_eq!(
+            properties.get("ro.build.version.sdk").map(String::as_str),
+            Some("34")
+        );
+    }
+
+    #[test]
+    fn getprop_with_warnings_and_a_truncated_last_line() {
+        let properties =
+            parse_properties("WARNING: linker: libfoo.so has text relocations\n[a]: [1]\n[b]: [2");
+        assert_eq!(properties.len(), 1);
+        assert_eq!(properties.get("a").map(String::as_str), Some("1"));
+    }
+
+    #[test]
+    fn abi_list_with_spaces_or_a_trailing_comma_has_no_blank_entries() {
+        let adb = FakeAdb::new()
+            .respond(
+                DeviceCommand::GetProperties,
+                "[ro.product.cpu.abilist]: [arm64-v8a, armeabi-v7a,]\n",
+            )
+            .respond(DeviceCommand::MemInfo, "")
+            .respond(DeviceCommand::DataStorage, "");
+        let info = inspect(&adb, "tv").unwrap();
+        assert_eq!(info.abis, ["arm64-v8a", "armeabi-v7a"]);
+    }
+
+    #[test]
+    fn api_level_out_of_range_is_none() {
+        let adb = FakeAdb::new()
+            .respond(
+                DeviceCommand::GetProperties,
+                "[ro.build.version.sdk]: [99999999999]\n",
+            )
+            .respond(DeviceCommand::MemInfo, "")
+            .respond(DeviceCommand::DataStorage, "");
+        assert_eq!(inspect(&adb, "tv").unwrap().api_level, None);
+    }
+
+    #[test]
+    fn meminfo_with_crlf_and_overflowing_or_foreign_values() {
+        assert_eq!(
+            parse_meminfo("MemTotal:  2026264 kB\r\nMemAvailable:  1 kB\r\n"),
+            Some(MemoryInfo {
+                total_kib: 2_026_264,
+                available_kib: Some(1)
+            })
+        );
+        // 2^64 kB does not fit: no value rather than a wrapped one.
+        assert_eq!(parse_meminfo("MemTotal: 18446744073709551616 kB\n"), None);
+        // Another unit is not silently read as kB.
+        assert_eq!(parse_meminfo("MemTotal: 2026 MB\n"), None);
+        assert_eq!(
+            parse_meminfo("MemTotal: 10 kB\nMemAvailable: lots\n"),
+            Some(MemoryInfo {
+                total_kib: 10,
+                available_kib: None
+            })
+        );
+    }
+
+    #[test]
+    fn df_with_warnings_crlf_and_extra_lines() {
+        let output = "WARNING: something\r\nFilesystem 1K-blocks Used Available Use% Mounted on\r\n/dev/block/dm-39   6082144 1125980   4813952  19% /data   \r\n\r\n";
+        assert_eq!(
+            parse_df(output),
+            Some(StorageInfo {
+                total_kib: 6_082_144,
+                available_kib: 4_813_952
+            })
+        );
+    }
+
+    #[test]
+    fn df_truncated_row_or_overflow_is_none() {
+        let header = "Filesystem 1K-blocks Used Available Use% Mounted on\n";
+        assert_eq!(
+            parse_df(&format!("{header}/dev/block/dm-39 6082144 1125980 48")),
+            None
+        );
+        assert_eq!(
+            parse_df(&format!(
+                "{header}/dev/x 18446744073709551616 1 1 1% /data\n"
+            )),
+            None
+        );
+    }
+
+    #[test]
+    fn df_wrapped_filesystem_name_reads_the_value_line() {
+        // busybox puts a long filesystem name on its own line.
+        let output = "Filesystem 1K-blocks Used Available Use% Mounted on\n/dev/block/platform/soc/very-long-name\n  100 40 60 40% /data\n";
+        assert_eq!(
+            parse_df(output),
+            Some(StorageInfo {
+                total_kib: 100,
+                available_kib: 60
+            })
+        );
     }
 }

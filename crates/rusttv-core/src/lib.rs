@@ -18,6 +18,8 @@ mod launcher;
 mod perf;
 mod plan;
 mod takeover;
+#[cfg(test)]
+mod test_support;
 
 #[cfg(any(test, feature = "test-util"))]
 pub use adb::FakeAdb;

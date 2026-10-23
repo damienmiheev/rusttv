@@ -215,3 +215,103 @@ mod tests {
         assert!(parsed.is_empty());
     }
 }
+
+#[cfg(test)]
+mod odd_input {
+    use proptest::prelude::*;
+
+    use super::*;
+    use crate::test_support::{adb_output, line_ending};
+
+    const COMPONENT: &str =
+        "[a-z][a-z0-9_]{0,8}(\\.[a-z][a-z0-9_]{0,8}){0,3}/\\.?[A-Za-z][A-Za-z0-9_.]{0,20}";
+
+    proptest! {
+        #[test]
+        fn parsers_never_panic(output in adb_output()) {
+            let candidates = parse_home_candidates(&output);
+            prop_assert!(candidates.windows(2).all(|pair| pair[0].priority >= pair[1].priority));
+            for candidate in &candidates {
+                prop_assert!(candidate.component.contains('/'));
+                let _ = candidate.package();
+            }
+            parse_resumed_activity(&output);
+        }
+
+        #[test]
+        fn candidates_parse_back_sorted_by_priority(
+            blocks in prop::collection::vec((any::<i32>(), COMPONENT), 0..10),
+            ending in line_ending(),
+        ) {
+            let mut output = format!("{} activities found:{ending}", blocks.len());
+            for (index, (priority, component)) in blocks.iter().enumerate() {
+                output.push_str(&format!(
+                    "  Activity #{index}:{ending}    priority={priority} preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true{ending}    {component}{ending}"
+                ));
+            }
+            let mut expected: Vec<HomeCandidate> = blocks
+                .iter()
+                .map(|(priority, component)| HomeCandidate { component: component.clone(), priority: *priority })
+                .collect();
+            // Stable sort: ties keep Android's order.
+            expected.sort_by_key(|candidate| std::cmp::Reverse(candidate.priority));
+            prop_assert_eq!(parse_home_candidates(&output), expected);
+        }
+
+        #[test]
+        fn resumed_activity_parses_back(
+            component in COMPONENT,
+            label in "(  topResumedActivity=|    ResumedActivity: |  mResumedActivity: )",
+            ending in line_ending(),
+        ) {
+            let output = format!(
+                "ACTIVITY MANAGER ACTIVITIES{ending}{label}ActivityRecord{{1a2b3c u0 {component} t12}}{ending}"
+            );
+            prop_assert_eq!(parse_resumed_activity(&output), Some(component.as_str()));
+        }
+    }
+
+    #[test]
+    fn empty_output_has_no_candidates_or_resumed_activity() {
+        assert!(parse_home_candidates("").is_empty());
+        assert_eq!(parse_resumed_activity(""), None);
+    }
+
+    #[test]
+    fn candidates_with_crlf_and_a_truncated_last_block() {
+        let output = "2 activities found:\r\n  Activity #0:\r\n    priority=2 preferredOrder=0\r\n    com.a/.Home  \r\n  Activity #1:\r\n    priority=0 pre";
+        assert_eq!(
+            parse_home_candidates(output),
+            [HomeCandidate {
+                component: "com.a/.Home".to_owned(),
+                priority: 2
+            }]
+        );
+    }
+
+    #[test]
+    fn a_component_without_a_readable_priority_is_skipped() {
+        // Never invent a priority; it decides which launcher Android picks.
+        let output = "priority=99999999999 x\ncom.a/.Home\npriority=1\ncom.b/.Home\n";
+        assert_eq!(
+            parse_home_candidates(output),
+            [HomeCandidate {
+                component: "com.b/.Home".to_owned(),
+                priority: 1
+            }]
+        );
+    }
+
+    #[test]
+    fn resumed_activity_with_crlf_and_truncated_record() {
+        assert_eq!(
+            parse_resumed_activity("  topResumedActivity=ActivityRecord{1 u0 com.a/.B t3}\r\n"),
+            Some("com.a/.B")
+        );
+        assert_eq!(
+            parse_resumed_activity("  topResumedActivity=ActivityRecord{1 u0 com.a/.B"),
+            Some("com.a/.B")
+        );
+        assert_eq!(parse_resumed_activity("  topResumedActivity=null\n"), None);
+    }
+}
