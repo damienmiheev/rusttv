@@ -4,7 +4,8 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use rusttv_core::{
-    Adb, AdbError, ConnectOutcome, DeviceAddress, DeviceEntry, DeviceState, SystemAdb,
+    Adb, AdbError, ConnectOutcome, DeviceAddress, DeviceEntry, DeviceInfo, DeviceSelectionError,
+    DeviceState, SystemAdb,
 };
 use serde::Serialize;
 
@@ -36,11 +37,45 @@ enum DeviceAction {
         /// TV address: `host` or `host:port` (default port 5555).
         address: DeviceAddress,
     },
+    /// Show manufacturer, model, Android version, CPU, memory and storage. Read-only.
+    Inspect {
+        /// adb serial of the device (see `rusttv device list`); needed when several are connected.
+        #[arg(long)]
+        serial: Option<String>,
+    },
 }
 
 /// Exit codes documented in ARCHITECTURE.md; clap itself exits with 2 on usage errors.
 const EXIT_FAILURE: u8 = 1;
+const EXIT_USAGE: u8 = 2;
 const EXIT_DEVICE_UNREACHABLE: u8 = 3;
+
+/// Everything a command can fail with.
+#[derive(Debug, thiserror::Error)]
+enum CliError {
+    #[error(transparent)]
+    Adb(#[from] AdbError),
+    #[error(transparent)]
+    Selection(#[from] DeviceSelectionError),
+}
+
+impl CliError {
+    fn code(&self) -> &'static str {
+        match self {
+            Self::Adb(error) => error.code(),
+            Self::Selection(error) => error.code(),
+        }
+    }
+
+    fn exit_code(&self) -> u8 {
+        match self {
+            Self::Adb(error) if error.is_device_unreachable() => EXIT_DEVICE_UNREACHABLE,
+            Self::Adb(_) => EXIT_FAILURE,
+            Self::Selection(error) if error.is_ambiguous() => EXIT_USAGE,
+            Self::Selection(_) => EXIT_DEVICE_UNREACHABLE,
+        }
+    }
+}
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -50,22 +85,21 @@ fn main() -> ExitCode {
     let result = match &cli.command {
         Command::Device(DeviceAction::List) => list(&adb, cli.json),
         Command::Device(DeviceAction::Connect { address }) => connect(&adb, address, cli.json),
+        Command::Device(DeviceAction::Inspect { serial }) => {
+            inspect(&adb, serial.as_deref(), cli.json)
+        }
     };
 
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             output::print_error(cli.json, error.code(), &error);
-            if error.is_device_unreachable() {
-                ExitCode::from(EXIT_DEVICE_UNREACHABLE)
-            } else {
-                ExitCode::from(EXIT_FAILURE)
-            }
+            ExitCode::from(error.exit_code())
         }
     }
 }
 
-fn list(adb: &dyn Adb, json: bool) -> Result<(), AdbError> {
+fn list(adb: &dyn Adb, json: bool) -> Result<(), CliError> {
     let devices = adb.devices()?;
     if json {
         output::print_json(&devices);
@@ -101,7 +135,7 @@ struct ConnectReport {
     state: Option<DeviceState>,
 }
 
-fn connect(adb: &dyn Adb, address: &DeviceAddress, json: bool) -> Result<(), AdbError> {
+fn connect(adb: &dyn Adb, address: &DeviceAddress, json: bool) -> Result<(), CliError> {
     let outcome = adb.connect(address)?;
     let address = address.to_string();
     // Best effort: a failing `adb devices` shouldn't turn a successful connect into an error.
@@ -134,6 +168,80 @@ fn connect(adb: &dyn Adb, address: &DeviceAddress, json: bool) -> Result<(), Adb
         None => {}
     }
     Ok(())
+}
+
+fn inspect(adb: &dyn Adb, serial: Option<&str>, json: bool) -> Result<(), CliError> {
+    let devices = adb.devices()?;
+    let device = rusttv_core::select_device(&devices, serial)?;
+    let info = rusttv_core::inspect(adb, &device.serial)?;
+    if json {
+        output::print_json(&info);
+    } else {
+        print_device_info(&info);
+    }
+    Ok(())
+}
+
+fn print_device_info(info: &DeviceInfo) {
+    let or_unknown = |value: &Option<String>| value.clone().unwrap_or_else(|| "unknown".to_owned());
+    let model = match (&info.model, &info.device) {
+        (Some(model), Some(codename)) => format!("{model} ({codename})"),
+        (model, _) => or_unknown(model),
+    };
+    let mut android = or_unknown(&info.android_version);
+    if let Some(api) = info.api_level {
+        android.push_str(&format!(" (API {api})"));
+    }
+    if let Some(patch) = &info.security_patch {
+        android.push_str(&format!(", security patch {patch}"));
+    }
+    let memory = info.memory.map_or_else(
+        || "unknown".to_owned(),
+        |memory| match memory.available_kib {
+            Some(available) => format!(
+                "{} total, {} available",
+                gib(memory.total_kib),
+                gib(available)
+            ),
+            None => format!("{} total", gib(memory.total_kib)),
+        },
+    );
+    let storage = info.data_storage.map_or_else(
+        || "unknown".to_owned(),
+        |storage| {
+            format!(
+                "{} total, {} free",
+                gib(storage.total_kib),
+                gib(storage.available_kib)
+            )
+        },
+    );
+    let abis = if info.abis.is_empty() {
+        "unknown".to_owned()
+    } else {
+        info.abis.join(", ")
+    };
+
+    for (label, value) in [
+        ("Device", info.serial.clone()),
+        ("Manufacturer", or_unknown(&info.manufacturer)),
+        ("Brand", or_unknown(&info.brand)),
+        ("Model", model),
+        ("Android", android),
+        ("Build", or_unknown(&info.build_fingerprint)),
+        ("Characteristics", or_unknown(&info.build_characteristics)),
+        ("CPU ABIs", abis),
+        ("Memory", memory),
+        ("Storage (/data)", storage),
+    ] {
+        println!("{label:16} {value}");
+    }
+}
+
+/// Formats KiB as GiB with one decimal, e.g. `1.9 GiB`.
+fn gib(kib: u64) -> String {
+    // Display only; f64 is exact for any realistic device size.
+    format!("{:.1} GiB", kib as f64 / (1024.0 * 1024.0))
 }
 
 #[cfg(test)]

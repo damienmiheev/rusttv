@@ -56,7 +56,7 @@ Modules (initial):
 | `perf` | Snapshots (meminfo, cpu) and benchmark runners |
 | `error` | `thiserror` error enum with stable string codes (`ADB_NOT_FOUND`, `DEVICE_UNAUTHORIZED`, `PARSE_ERROR`, …) |
 
-Parsers are pure functions over `&str` → unit-tested with real captured output from emulator and Philips TV (fixtures in `crates/rusttv-core/tests/fixtures/`).
+Parsers are pure functions over `&str` → unit-tested with real captured output (fixtures in `crates/rusttv-core/src/fixtures/<device>/`, each with a README naming the commands and any redactions). Inspection fields are optional: missing vendor properties become `null`, never an error.
 
 ### Adb trait (sketch)
 
@@ -75,7 +75,8 @@ There is intentionally no `shell(&str)`. Values that end up in `adb shell` argum
 - `clap` derive. Commands map 1:1 to core functions; no logic in the CLI beyond formatting.
 - Default output: human text. `--json`: envelope `{"schema": "rusttv.v1", "ok": bool, "data": …, "error": {"code", "message"}}`.
 - Exit codes: 0 ok, 1 operation error, 2 usage error, 3 device not reachable/unauthorized.
-- Error codes so far: `ADB_NOT_FOUND`, `ADB_SPAWN_FAILED`, `DEVICE_NOT_FOUND`, `DEVICE_UNAUTHORIZED`, `DEVICE_OFFLINE`, `CONNECT_FAILED`, `COMMAND_FAILED`, `INVALID_OUTPUT`. With `--json`, errors are also a JSON envelope on stdout.
+- Error codes so far: `ADB_NOT_FOUND`, `ADB_SPAWN_FAILED`, `NO_DEVICE`, `MULTIPLE_DEVICES`, `DEVICE_NOT_FOUND`, `DEVICE_UNAUTHORIZED`, `DEVICE_OFFLINE`, `DEVICE_NOT_READY`, `CONNECT_FAILED`, `COMMAND_FAILED`, `INVALID_OUTPUT`.
+- Device-targeting commands pick the only connected device, or require `--serial` when there are several (exit code 2). With `--json`, errors are also a JSON envelope on stdout.
 - CLI tests run the real binary against `tests/fixtures/fake-adb` (selected with `RUSTTV_ADB`), so they need no device.
 - Logging via `tracing` to stderr (`-v`/`RUST_LOG`); stdout reserved for results.
 

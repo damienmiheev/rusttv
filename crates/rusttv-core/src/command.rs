@@ -43,6 +43,8 @@ pub enum DeviceCommand {
     ListPackages,
     /// System-wide memory counters (`cat /proc/meminfo`).
     MemInfo,
+    /// Size and free space of the user data partition (`df -k /data`).
+    DataStorage,
     /// Memory usage of one app process (`dumpsys meminfo <package>`).
     PackageMemInfo(PackageName),
 }
@@ -51,9 +53,11 @@ impl DeviceCommand {
     /// How risky this command is.
     pub fn risk(&self) -> RiskClass {
         match self {
-            Self::GetProperties | Self::ListPackages | Self::MemInfo | Self::PackageMemInfo(_) => {
-                RiskClass::Read
-            }
+            Self::GetProperties
+            | Self::ListPackages
+            | Self::MemInfo
+            | Self::DataStorage
+            | Self::PackageMemInfo(_) => RiskClass::Read,
         }
     }
 
@@ -63,6 +67,7 @@ impl DeviceCommand {
             Self::GetProperties => vec!["shell", "getprop"],
             Self::ListPackages => vec!["shell", "pm", "list", "packages", "-f"],
             Self::MemInfo => vec!["shell", "cat", "/proc/meminfo"],
+            Self::DataStorage => vec!["shell", "df", "-k", "/data"],
             Self::PackageMemInfo(package) => vec!["shell", "dumpsys", "meminfo", package.as_str()],
         }
     }
@@ -121,6 +126,7 @@ mod tests {
             DeviceCommand::GetProperties,
             DeviceCommand::ListPackages,
             DeviceCommand::MemInfo,
+            DeviceCommand::DataStorage,
             DeviceCommand::PackageMemInfo(PackageName::new("com.example.app").unwrap()),
         ];
         for command in &all {
@@ -128,6 +134,7 @@ mod tests {
                 DeviceCommand::GetProperties
                 | DeviceCommand::ListPackages
                 | DeviceCommand::MemInfo
+                | DeviceCommand::DataStorage
                 | DeviceCommand::PackageMemInfo(_) => {}
             }
         }

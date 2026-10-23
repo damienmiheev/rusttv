@@ -179,9 +179,161 @@ pub fn parse_connect_output(output: &str) -> Result<ConnectOutcome, String> {
     }
 }
 
+/// Picks the device a command should run on.
+///
+/// With `requested`, that serial must be listed and ready. Without it, there
+/// must be exactly one device, so commands never guess between several TVs.
+pub fn select_device<'a>(
+    devices: &'a [DeviceEntry],
+    requested: Option<&str>,
+) -> Result<&'a DeviceEntry, DeviceSelectionError> {
+    let device = match requested {
+        Some(serial) => devices
+            .iter()
+            .find(|device| device.serial == serial)
+            .ok_or_else(|| SelectionKind::NotFound(serial.to_owned()))?,
+        None => match devices {
+            [] => return Err(SelectionKind::NoDevices.into()),
+            [only] => only,
+            _ => {
+                let serials = devices.iter().map(|d| d.serial.clone()).collect();
+                return Err(SelectionKind::Ambiguous(serials).into());
+            }
+        },
+    };
+    if device.state == DeviceState::Device {
+        Ok(device)
+    } else {
+        Err(SelectionKind::NotReady {
+            serial: device.serial.clone(),
+            state: device.state.clone(),
+        }
+        .into())
+    }
+}
+
+/// No single ready device could be chosen. See [`select_device`].
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+pub struct DeviceSelectionError {
+    kind: SelectionKind,
+}
+
+#[derive(Debug, thiserror::Error)]
+enum SelectionKind {
+    #[error("no devices found; connect one with `rusttv device connect <address>`")]
+    NoDevices,
+    #[error("device `{0}` not found; see `rusttv device list`")]
+    NotFound(String),
+    #[error("several devices are connected ({}); choose one with `--serial`", .0.join(", "))]
+    Ambiguous(Vec<String>),
+    #[error("device `{serial}` is {state}{hint}", hint = state_hint(state))]
+    NotReady { serial: String, state: DeviceState },
+}
+
+fn state_hint(state: &DeviceState) -> &'static str {
+    match state {
+        DeviceState::Unauthorized => "; accept the debugging prompt on the TV",
+        DeviceState::Offline => "; reconnect it or restart network debugging on the TV",
+        _ => "",
+    }
+}
+
+impl From<SelectionKind> for DeviceSelectionError {
+    fn from(kind: SelectionKind) -> Self {
+        Self { kind }
+    }
+}
+
+impl DeviceSelectionError {
+    /// Stable machine-readable code; shared with [`crate::AdbError`] where the meaning is the same.
+    pub fn code(&self) -> &'static str {
+        match &self.kind {
+            SelectionKind::NoDevices => "NO_DEVICE",
+            SelectionKind::NotFound(_) => "DEVICE_NOT_FOUND",
+            SelectionKind::Ambiguous(_) => "MULTIPLE_DEVICES",
+            SelectionKind::NotReady { state, .. } => match state {
+                DeviceState::Unauthorized => "DEVICE_UNAUTHORIZED",
+                DeviceState::Offline => "DEVICE_OFFLINE",
+                _ => "DEVICE_NOT_READY",
+            },
+        }
+    }
+
+    /// Several devices matched and the user must pick one (a usage problem,
+    /// not an unreachable device).
+    pub fn is_ambiguous(&self) -> bool {
+        matches!(self.kind, SelectionKind::Ambiguous(_))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn entry(serial: &str, state: DeviceState) -> DeviceEntry {
+        DeviceEntry {
+            serial: serial.to_owned(),
+            state,
+            model: None,
+            product: None,
+            device: None,
+        }
+    }
+
+    #[test]
+    fn the_only_ready_device_is_selected_automatically() {
+        let devices = [entry("emulator-5554", DeviceState::Device)];
+        assert_eq!(
+            select_device(&devices, None).unwrap().serial,
+            "emulator-5554"
+        );
+    }
+
+    #[test]
+    fn several_devices_require_an_explicit_serial() {
+        let devices = [
+            entry("emulator-5554", DeviceState::Device),
+            entry("192.168.1.20:5555", DeviceState::Device),
+        ];
+        let error = select_device(&devices, None).unwrap_err();
+        assert_eq!(error.code(), "MULTIPLE_DEVICES");
+        assert!(error.is_ambiguous());
+        assert!(error.to_string().contains("192.168.1.20:5555"));
+
+        let chosen = select_device(&devices, Some("192.168.1.20:5555")).unwrap();
+        assert_eq!(chosen.serial, "192.168.1.20:5555");
+    }
+
+    #[test]
+    fn selection_errors_explain_what_to_do() {
+        assert_eq!(select_device(&[], None).unwrap_err().code(), "NO_DEVICE");
+
+        let devices = [entry("192.168.1.20:5555", DeviceState::Unauthorized)];
+        let error = select_device(&devices, None).unwrap_err();
+        assert_eq!(error.code(), "DEVICE_UNAUTHORIZED");
+        assert!(error.to_string().contains("accept the debugging prompt"));
+
+        let error = select_device(&devices, Some("10.0.0.9:5555")).unwrap_err();
+        assert_eq!(error.code(), "DEVICE_NOT_FOUND");
+    }
+
+    #[test]
+    fn real_emulator_device_line() {
+        let devices = parse_device_list(include_str!(
+            "fixtures/emulator-pixel3a-api34/devices-l.txt"
+        ));
+        assert_eq!(
+            devices,
+            [DeviceEntry {
+                serial: "emulator-5554".to_owned(),
+                state: DeviceState::Device,
+                model: Some("sdk_gphone64_arm64".to_owned()),
+                product: Some("sdk_gphone64_arm64".to_owned()),
+                device: Some("emu64a".to_owned()),
+            }]
+        );
+    }
 
     #[test]
     fn address_without_port_uses_the_adb_default() {

@@ -165,3 +165,62 @@ fn invalid_address_is_a_usage_error() {
 
     assert_eq!(output.status.code(), Some(2));
 }
+
+#[test]
+fn device_inspect_json_reads_the_only_device() {
+    let output = rusttv_with_fake_adb("emulator", &["device", "inspect", "--json"]);
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    assert_eq!(data["serial"], "emulator-5554");
+    assert_eq!(data["manufacturer"], "Google");
+    assert_eq!(data["api_level"], 34);
+    assert_eq!(data["abis"], serde_json::json!(["arm64-v8a"]));
+    assert_eq!(data["memory"]["total_kib"], 2_026_264);
+    assert_eq!(data["data_storage"]["available_kib"], 4_813_952);
+}
+
+#[test]
+fn device_inspect_text_is_a_readable_summary() {
+    let output = rusttv_with_fake_adb("emulator", &["device", "inspect"]);
+
+    assert_eq!(output.status.code(), Some(0));
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("14 (API 34), security patch 2023-09-05"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("1.9 GiB total"), "{stdout}");
+}
+
+#[test]
+fn device_inspect_with_several_devices_needs_a_serial() {
+    let output = rusttv_with_fake_adb("two-devices", &["device", "inspect", "--json"]);
+
+    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(json_stdout(&output)["error"]["code"], "MULTIPLE_DEVICES");
+}
+
+#[test]
+fn device_inspect_of_an_unauthorized_device_says_so() {
+    let output = rusttv_with_fake_adb(
+        "two-devices",
+        &[
+            "device",
+            "inspect",
+            "--serial",
+            "192.168.1.20:5555",
+            "--json",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(3));
+    let error = &json_stdout(&output)["error"];
+    assert_eq!(error["code"], "DEVICE_UNAUTHORIZED");
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("accept the debugging prompt")
+    );
+}
