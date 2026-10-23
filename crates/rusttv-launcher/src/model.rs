@@ -319,6 +319,18 @@ impl Home {
         changed
     }
 
+    /// Moves focus to `id` if it is shown; returns whether it was.
+    ///
+    /// For restoring focus on start-up, so it ignores input state and works in any mode.
+    pub fn focus_on(&mut self, id: &TileId) -> bool {
+        let Some(index) = self.tiles.iter().position(|tile| tile == id) else {
+            return false;
+        };
+        self.focus = index;
+        self.update_scroll();
+        true
+    }
+
     /// Tiles in display order.
     pub fn tiles(&self) -> &[TileId] {
         &self.tiles
@@ -809,6 +821,23 @@ mod tests {
         assert_eq!(home.focused(), Some(&TileId::About));
         assert_eq!(home.focus(), 3);
         assert_eq!(home.scroll(), Scroll::Shelf);
+    }
+
+    #[test]
+    fn focus_can_be_restored_by_identity_before_and_after_the_app_list() {
+        // Before the app list: the stored order already has the tile.
+        let order = Order::from_keys([(id("a"), 1000), (id("b"), 2000), (TileId::About, 3000)]);
+        let mut home = Home::new(order, false);
+        assert!(home.focus_on(&id("b")));
+        home.set_apps(&[app("a", "A"), app("b", "B")]);
+        assert_eq!(component(&home), "b");
+
+        let mut home = self::home(29);
+        assert!(home.focus_on(&id("a20")));
+        assert_eq!(home.focus(), 20);
+        assert_eq!(home.scroll(), Scroll::Grid { first_row: 1 });
+        assert!(!home.focus_on(&id("gone")));
+        assert_eq!(home.focus(), 20);
     }
 
     #[test]

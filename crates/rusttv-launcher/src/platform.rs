@@ -401,6 +401,12 @@ impl FakePlatform {
         self.apps_changed = true;
     }
 
+    /// Uninstalls `id` and reports the change, as Android would.
+    pub fn remove_app(&mut self, id: &str) {
+        self.apps.retain(|entry| entry.app.id != id);
+        self.apps_changed = true;
+    }
+
     /// Component names of successful launches, oldest first.
     pub fn launched(&self) -> &[String] {
         &self.launched

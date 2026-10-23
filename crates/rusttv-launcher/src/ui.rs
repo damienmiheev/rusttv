@@ -11,8 +11,7 @@ use std::time::{Duration, Instant};
 use slint::{ComponentHandle, Model, ModelRc, SharedPixelBuffer, Timer, TimerMode, VecModel};
 
 use crate::model::{
-    App, Effect, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT, Order, Scroll, State,
-    TileId,
+    App, Effect, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT, Scroll, State, TileId,
 };
 use crate::order_file;
 use crate::platform::{AppEntry, Artwork, Bitmap, Platform, PlatformError};
@@ -91,7 +90,7 @@ pub struct RunOptions {
     /// For the desktop dev mode, where nothing pauses the launcher. On a TV,
     /// leave it `None`: the activity lifecycle reports the pause.
     pub simulated_pause: Option<Duration>,
-    /// Where the tile order is kept; `None` starts
+    /// Where the tile order and the last focused tile are kept; `None` starts
     /// alphabetical every time and saves nothing.
     pub order_file: Option<PathBuf>,
     /// Lets the platform report that the launcher left or came back to the screen.
@@ -301,6 +300,8 @@ struct Controller {
     artwork_timer: Timer,
     /// The licence notices while the About page is open; read when it opens.
     notices: Option<Notices>,
+    /// The focused tile as last written to the order file.
+    saved_focus: Option<TileId>,
 }
 
 impl Controller {
@@ -314,19 +315,25 @@ impl Controller {
         window.set_tiles(ModelRc::from(tiles.clone()));
         window.set_version(env!("CARGO_PKG_VERSION").into());
 
-        let order = options
-            .order_file
-            .as_deref()
-            .map_or_else(Order::default, |path| {
-                let loaded = order_file::load(path);
-                if let Some(warning) = loaded.warning {
-                    log::warn!("{warning}");
-                }
-                loaded.order
-            });
+        let (order, saved_focus) =
+            options
+                .order_file
+                .as_deref()
+                .map_or_else(Default::default, |path| {
+                    let loaded = order_file::load(path);
+                    if let Some(warning) = loaded.warning {
+                        log::warn!("{warning}");
+                    }
+                    (loaded.order, loaded.focus)
+                });
+        // Focus is restored before the app list arrives, which keeps it by identity.
+        let mut home = Home::new(order, options.right_to_left);
+        if let Some(id) = &saved_focus {
+            home.focus_on(id);
+        }
         let controller = Rc::new_cyclic(|me| {
             RefCell::new(Self {
-                home: Home::new(order, options.right_to_left),
+                home,
                 platform,
                 options,
                 apps: HashMap::new(),
@@ -347,6 +354,7 @@ impl Controller {
                 pending_artwork: VecDeque::new(),
                 artwork_timer: Timer::default(),
                 notices: None,
+                saved_focus,
             })
         });
         *controller.borrow().options.lifecycle.0.borrow_mut() = Rc::downgrade(&controller);
@@ -487,6 +495,11 @@ impl Controller {
             Some(Effect::OpenAbout) => self.open_notices(),
             None => {}
         }
+        // Remember focus while the launcher is off screen, in case Android
+        // stops it there: back on Home, focus is on the app that was opened.
+        if input == Input::Paused && self.home.focused() != self.saved_focus.as_ref() {
+            self.save_order();
+        }
         if let Some(notices) = &mut self.notices {
             match input {
                 Input::Up => notices.scroll_up(),
@@ -507,16 +520,19 @@ impl Controller {
         self.notices = Some(Notices::new(text));
     }
 
-    /// Writes the order file. A failure only costs the order on the next start,
-    /// so it is logged rather than shown.
-    fn save_order(&self) {
-        if let Some(path) = &self.options.order_file
-            && let Err(error) = order_file::save(path, self.home.order())
-        {
-            log::warn!(
+    /// Writes the order file with the focused tile. A failure only costs the
+    /// order on the next start, so it is logged rather than shown.
+    fn save_order(&mut self) {
+        let Some(path) = &self.options.order_file else {
+            return;
+        };
+        let focus = self.home.focused();
+        match order_file::save(path, self.home.order(), focus) {
+            Ok(()) => self.saved_focus = focus.cloned(),
+            Err(error) => log::warn!(
                 "saving the tile order to {} failed: {error}",
                 path.display()
-            );
+            ),
         }
     }
 
@@ -987,6 +1003,84 @@ mod tests {
         fn launched(&self) -> Vec<String> {
             self.shared.platform.borrow().launched().to_vec()
         }
+
+        /// The label of the app the hero shows.
+        fn hero(&self) -> String {
+            let hero = if self.window.get_hero_a_front() {
+                self.window.get_hero_a()
+            } else {
+                self.window.get_hero_b()
+            };
+            hero.label.into()
+        }
+
+        /// Launches the focused app and lets it take the screen.
+        fn launch_and_leave(&self) {
+            self.tap(OK);
+            self.lifecycle.paused();
+            self.wait(1);
+        }
+
+        /// Comes back to Home and lets the hero settle.
+        fn come_back(&self) {
+            self.lifecycle.resumed();
+            self.wait(1);
+            self.wait(HERO_DELAY.as_millis() as u64 + 1);
+        }
+    }
+
+    /// A fresh, empty directory for an order file; removed by the caller.
+    fn temp_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("rusttv-ui-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn coming_back_from_an_app_keeps_focus_and_hero_on_it() {
+        let screen = screen(None);
+        screen.tap(RIGHT);
+        screen.launch_and_leave();
+        assert_eq!(screen.launched(), ["b/.Main"]);
+
+        // Also when the app list changed meanwhile and is read again.
+        screen.shared.platform.borrow_mut().mark_apps_changed();
+        screen.come_back();
+        assert_eq!(screen.window.get_focused_index(), 1);
+        assert_eq!(screen.hero(), "B");
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+    }
+
+    #[test]
+    fn focus_moves_to_the_next_tile_when_the_opened_app_was_removed() {
+        let screen = screen(None);
+        screen.tap(RIGHT);
+        screen.launch_and_leave();
+
+        screen.shared.platform.borrow_mut().remove_app("b/.Main");
+        screen.come_back();
+        assert_eq!(screen.window.get_focused_index(), 1);
+        assert_eq!(screen.hero(), "C");
+    }
+
+    #[test]
+    fn focus_is_restored_when_the_launcher_starts_again() {
+        let dir = temp_dir("focus");
+        let file = dir.join("order.toml");
+        {
+            let screen = screen(Some(file.clone()));
+            screen.tap(RIGHT);
+            screen.tap(RIGHT);
+            screen.launch_and_leave();
+            assert_eq!(screen.launched(), ["c/.Main"]);
+        }
+        // Android stopped the launcher while the app was open.
+        let screen = screen(Some(file.clone()));
+        assert_eq!(screen.window.get_focused_index(), 2);
+        screen.wait(HERO_DELAY.as_millis() as u64 + 1);
+        assert_eq!(screen.hero(), "C");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1021,9 +1115,7 @@ mod tests {
 
     #[test]
     fn holding_ok_moves_a_tile_and_the_order_is_saved() {
-        let dir = std::env::temp_dir().join(format!("rusttv-ui-move-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = temp_dir("move");
         let file = dir.join("order.toml");
         let screen = screen(Some(file.clone()));
 
