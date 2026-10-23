@@ -3872,7 +3872,7 @@ dependencies = [
 
 [[package]]
 name = "rusttv-cli"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "clap",
  "rusttv-core",
@@ -3884,7 +3884,7 @@ dependencies = [
 
 [[package]]
 name = "rusttv-core"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "proptest",
  "serde",
@@ -3894,7 +3894,7 @@ dependencies = [
 
 [[package]]
 name = "rusttv-launcher"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "android-activity 0.6.1",
  "android_logger",
@@ -3911,7 +3911,7 @@ dependencies = [
 
 [[package]]
 name = "rusttv-mcp"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "rmcp",
  "rusttv-core",

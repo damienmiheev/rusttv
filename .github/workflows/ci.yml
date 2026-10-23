@@ -63,27 +63,4 @@ jobs:
         run: scripts/licenses.sh "$RUNNER_TEMP/THIRD_PARTY_NOTICES.txt"
 
   android:
-    name: Android APK
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with:
-          distribution: temurin
-          java-version: "17"
-      - name: Install toolchain from rust-toolchain.toml and the Android targets
-        run: rustup toolchain install && rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          key: android
-      - name: Install NDK 30 and SDK platform 34
-        # `|| true`: yes dies of SIGPIPE when sdkmanager exits, which pipefail would report.
-        run: (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;30.0.16248370" "platforms;android-34" > /dev/null
-      - name: Install cargo-ndk
-        run: cargo install cargo-ndk --version 4.1.2 --locked
-      # build.sh writes the third-party notices that go into the APK.
-      - name: Install cargo-about
-        run: cargo install cargo-about --version 0.9.2 --locked --features cli
-      # build.sh checks each ABI's Skia binary against its pinned SHA-256 before using it.
-      - name: Build the launcher APK
-        run: android/build.sh
+    uses: ./.github/workflows/android-apk.yml

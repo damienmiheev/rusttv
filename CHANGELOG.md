@@ -1,0 +1,39 @@
+# Changelog
+
+All notable changes to RustTV. Versions follow [Semantic Versioning](https://semver.org);
+before 1.0.0 a minor version may break the CLI/JSON contract (the `schema`
+field in `--json` output says which contract you get, CLI.md).
+
+## 0.1.0 (unreleased)
+
+First public release (ROADMAP Phase 6).
+
+### CLI (`rusttv`)
+
+- `device list`, `device connect`, `device inspect`; `apps list`;
+  `performance snapshot` and `performance benchmark`; `compat profile`.
+- `launcher status`, `launcher install` / `uninstall`, and the opt-in Home
+  takeover / restore (SECURITY.md), all planned, shown as a dry run, approved,
+  journaled and verified by the safety engine.
+- Stable `--json` output, schema `rusttv.v3`, and documented error codes (CLI.md).
+
+### MCP server (`rusttv-mcp`)
+
+- Stdio MCP server with RustTV's read-only commands as tools, and plan tools
+  that return a dry run plus the CLI command to apply it (MCP.md).
+
+### Launcher (`ai.rusttv.launcher`)
+
+- Rust + Slint home screen for Android TV 8+: app grid with banners, D-pad
+  navigation, move mode, About page with the third-party licence notices.
+- One APK per ABI: arm64-v8a, armeabi-v7a, x86_64.
+
+### Compatibility and benchmarks
+
+- Device profiles: Google TV emulator (arm64) and Philips 65OLED818
+  (`compat/devices/`). Benchmark data from the Philips in `benchmarks/raw/`.
+
+### Licences
+
+- Third-party notices (Rust crates, Slint, Skia, LLVM runtimes, the Rust
+  standard library) ship in every APK and in every CLI archive.

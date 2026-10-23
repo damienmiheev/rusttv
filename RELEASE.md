@@ -1,0 +1,137 @@
+# Releasing RustTV
+
+How a release is built, signed and checked. Nothing here is automated past
+building: tags, GitHub releases and uploads are done by hand, by the owner.
+
+## What a release contains
+
+| File | Built by | Signed |
+|---|---|---|
+| `rusttv-<version>-<target>.tar.gz` for `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`: `rusttv`, `rusttv-mcp`, README.md, CLI.md, MCP.md, SECURITY.md, LICENSE-MIT, LICENSE-APACHE, THIRD_PARTY_NOTICES.txt | `.github/workflows/release-build.yml` | No (SHA-256 in `SHA256SUMS`) |
+| `rusttv-launcher-<version>-<abi>.apk` for `arm64-v8a`, `armeabi-v7a`, `x86_64` | `android/build.sh`, locally with the release key | Release key (below) |
+| `SHA256SUMS` covering all of the above | the workflow (CLI), `shasum -a 256` (APKs) | — |
+
+The macOS binaries are not notarized; Gatekeeper blocks them until the user
+runs `xattr -d com.apple.quarantine rusttv rusttv-mcp` (say so in the release
+notes).
+
+## Version
+
+One version for everything: `[workspace.package] version` in `Cargo.toml`.
+
+- The crates, `rusttv --version`, the MCP server's `serverInfo`, the
+  launcher's About page, `rusttv_version` in benchmark results and compat
+  profiles all read it (`rusttv_core::VERSION` / `CARGO_PKG_VERSION`).
+- The APK's `versionName` is the same string and its `versionCode` is
+  `major * 10000 + minor * 100 + patch` (0.1.0 → 100), both computed by
+  `android/app/build.gradle.kts`. Minor and patch must stay below 100.
+- All three ABI APKs share one `versionCode`; fine for sideloading, not for a
+  store that hosts several APKs of one app.
+
+Bump it in `Cargo.toml` only, then `cargo check` so `Cargo.lock` follows.
+
+## Signing
+
+The APK is signed with a project release key that never enters the repository
+or CI. Without it, `android/build.sh` signs release APKs with the local debug
+key, so builds keep working; those APKs are for testing, never for a release.
+CI has no key, so the APKs the workflow uploads are debug-signed too.
+
+### Create the key (once)
+
+On the owner's machine, outside the repository:
+
+```bash
+mkdir -p ~/.rusttv-release && chmod 700 ~/.rusttv-release
+keytool -genkeypair -v -keystore ~/.rusttv-release/rusttv-release.jks -storetype PKCS12 -alias rusttv -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=RustTV"
+```
+
+`keytool` comes with the JDK. It asks for the keystore password (PKCS12 uses
+the same password for the key). Android requires a key valid past 2033;
+10000 days is the usual choice.
+
+Back it up now: **if the key is lost, installed launchers cannot be updated**
+(Android refuses an update signed with a different key; users would have to
+uninstall first). Keep at least two copies of the `.jks` file in separate
+places (for example an encrypted USB drive and a password manager's file
+attachment), and the password in the password manager. Never put either in
+the repository, CI secrets, an issue or a chat.
+
+Record the certificate fingerprint for the release notes, so users can check
+an APK (`apksigner verify --print-certs`):
+
+```bash
+keytool -list -v -keystore ~/.rusttv-release/rusttv-release.jks -alias rusttv
+```
+
+### Use the key
+
+Either set four environment variables for the build:
+
+```bash
+export RUSTTV_KEYSTORE_FILE=~/.rusttv-release/rusttv-release.jks RUSTTV_KEY_ALIAS=rusttv
+read -rs RUSTTV_KEYSTORE_PASSWORD && export RUSTTV_KEYSTORE_PASSWORD RUSTTV_KEY_PASSWORD="$RUSTTV_KEYSTORE_PASSWORD"
+```
+
+or write `android/keystore.properties` (git-ignored, as are `*.jks` and
+`*.keystore`):
+
+```properties
+storeFile=/Users/you/.rusttv-release/rusttv-release.jks
+storePassword=...
+keyAlias=rusttv
+keyPassword=...
+```
+
+Environment variables win over the file, field by field. A relative
+`storeFile` is resolved against `android/`. If only some of the four values
+are set, the build fails instead of falling back to the debug key.
+
+Check the result:
+
+```bash
+"$ANDROID_HOME"/build-tools/34.0.0/apksigner verify --print-certs android/app/build/outputs/apk/release/app-arm64-v8a-release.apk
+```
+
+The certificate must be `CN=RustTV` with the recorded fingerprint, not
+`CN=Android Debug`.
+
+## Checklist
+
+Work on a release branch; tick each item in the release pull request.
+
+### Before the tag
+
+- [ ] `main` is green in CI (fmt, clippy, tests, cargo deny, licence notices, Android APK).
+- [ ] Version bumped in `Cargo.toml` and `Cargo.lock` (above).
+- [ ] `CHANGELOG.md`: the version's section is complete and dated; "unreleased" removed.
+- [ ] CLI.md, MCP.md and README.md match the commands and JSON schema shipped. A changed JSON field or error code has a schema version bump (CLAUDE.md).
+- [ ] Benchmarks current: the numbers quoted anywhere (README, release notes) come from a run of this version, made by BENCHMARK_PLAN.md, with raw data in `benchmarks/raw/`. No performance claim without it.
+- [ ] Compat data current: every device named as compatible has a profile in `compat/devices/` tested with this version (`tested.rusttv_version`). No compatibility claim without it.
+- [ ] Licence notices: `scripts/licenses.sh` passes; the APK has `assets/licenses/THIRD_PARTY_NOTICES.txt` and the About page shows it; every CLI archive has THIRD_PARTY_NOTICES.txt, LICENSE-MIT and LICENSE-APACHE. If Slint, Skia, the NDK or the Rust toolchain changed, the files under `licenses/` were updated.
+- [ ] `third_party/` patches still needed, and their upstream issues linked (third_party/README.md).
+- [ ] Trademark/name check done (ROADMAP Phase 6).
+
+### Build
+
+- [ ] Run the **Release build** workflow by hand (`workflow_dispatch`) on the release commit; all jobs pass. Download the `cli-*` and `SHA256SUMS` artifacts.
+- [ ] Build the APKs locally with the release key: `android/build.sh`. Check the signature (above).
+- [ ] Rename the APKs to `rusttv-launcher-<version>-<abi>.apk` and add their sums: `shasum -a 256 rusttv-launcher-*.apk >> SHA256SUMS`.
+- [ ] Smoke test: `rusttv --version` and `rusttv device list` on macOS and Linux; the signed APK installs (`rusttv launcher install`) and starts on the emulator and on at least one TV with a compat profile; About shows the version and the notices.
+
+### Tag and publish (owner only)
+
+- [ ] Signed tag on the release commit: `git tag -s v<version> -m "RustTV <version>"`, then push it. The tag must equal `v` + the Cargo version; the workflow fails otherwise. The tag push re-runs the Release build, whose artifacts must match the ones tested.
+- [ ] GitHub release from the tag with the CLI archives, the signed APKs and `SHA256SUMS`.
+- [ ] Release notes: the CHANGELOG section; supported devices (only those with a compat profile); how to install (CLI archive, `rusttv launcher install`); the APK signing certificate's SHA-256 fingerprint; the macOS quarantine note; known issues; the safety model in one paragraph with a link to SECURITY.md.
+
+## Never in a release
+
+- The keystore, its passwords, `android/keystore.properties`, or any `.env` file.
+- Debug-signed APKs (the CI artifacts are debug-signed).
+- Anything from `internal/`, `.rusttv/` (plans, journals, captures), or raw
+  device captures that identify a person, a home network or a serial number
+  beyond what `compat/` and `benchmarks/raw/` already publish.
+- Binaries built from a dirty tree or without `--locked`.
+- Performance or compatibility claims without the data above.
+- Spikes (`spikes/`) and the desktop dev launcher (`rusttv-launcher-desktop`).
