@@ -13,9 +13,8 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.0.0"
-        // The native library is built for arm64 only (build.sh); TVs with a
-        // 32-bit userspace need armeabi-v7a later (ROADMAP Phase 6).
-        ndk { abiFilters += listOf("arm64-v8a") }
+        // Must match the ABIs build.sh builds.
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
     buildTypes {
