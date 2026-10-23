@@ -32,5 +32,7 @@ native heap +18.5 MB over 10 cycles before; no growth over 20 cycles after
 (31.1 → 31.3 MB native heap, 66.8 → 67.1 MB PSS), and the launcher draws
 normally after each return.
 
-**Removing it.** Report upstream; once a Slint release fixes the leak, delete
+**Upstream:** reported as https://github.com/slint-ui/slint/issues/14397 (2026-10-23).
+
+**Removing it.** Once a Slint release fixes the leak, delete
 this directory and the `[patch.crates-io]` section, and re-measure.
