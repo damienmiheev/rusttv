@@ -166,7 +166,8 @@ impl Order {
     /// Drops apps that are gone and appends new ones; returns whether anything changed.
     ///
     /// New apps are appended sorted by label, and About is added last if missing,
-    /// so a first run gives an alphabetical grid ending with About.
+    /// so a first run gives an alphabetical grid ending with About. If About was
+    /// last, it stays last; if the user moved it, it stays where it is.
     fn reconcile(&mut self, apps: &[App]) -> bool {
         let before = self.keys.len();
         self.keys.retain(|(id, _)| match id {
@@ -174,6 +175,8 @@ impl Order {
             TileId::About => true,
         });
         let mut changed = self.keys.len() != before;
+        // About stays last unless the user moved it, so new apps go before it.
+        let about_was_last = self.keys.last().is_some_and(|(id, _)| *id == TileId::About);
 
         let mut new: Vec<&App> = apps
             .iter()
@@ -198,6 +201,14 @@ impl Order {
                 .map_or(KEY_STEP, |&(_, last)| last + KEY_STEP);
             self.keys.push((id, key));
             changed = true;
+        }
+        if about_was_last && self.keys.last().is_some_and(|(id, _)| *id != TileId::About) {
+            self.keys.retain(|(id, _)| *id != TileId::About);
+            let key = self
+                .keys
+                .last()
+                .map_or(KEY_STEP, |&(_, last)| last + KEY_STEP);
+            self.keys.push((TileId::About, key));
         }
         changed
     }
@@ -825,6 +836,15 @@ mod tests {
 
         assert!(order.reconcile(&[app("a", "A")]));
         assert_eq!(order.ids(), [TileId::About, id("a")]);
+    }
+
+    #[test]
+    fn new_apps_go_before_about_when_it_is_last() {
+        let mut order = Order::from_keys([(id("a"), 1000), (TileId::About, 2000)]);
+        assert!(order.reconcile(&[app("a", "A"), app("c", "C"), app("b", "B")]));
+        assert_eq!(order.ids(), [id("a"), id("b"), id("c"), TileId::About]);
+        let keys: Vec<i64> = order.keys().iter().map(|&(_, key)| key).collect();
+        assert!(keys.windows(2).all(|pair| pair[0] < pair[1]));
     }
 
     #[test]
