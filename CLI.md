@@ -2,9 +2,10 @@
 
 The contract for scripts and AI agents. All commands are **read-only** except
 `performance benchmark`, which stops and starts the apps it measures (risk
-class R1, transient), and `launcher takeover` / `launcher restore`, which
-disable or re-enable the stock launcher (R3) only after a person approves the
-plan at a terminal (see [Changing a device](#changing-a-device)). Run
+class R1, transient), `launcher takeover` / `launcher restore`, which
+disable or re-enable the stock launcher, and `launcher install` /
+`launcher uninstall`, which install or remove the RustTV launcher (all R3),
+only after a person approves the plan at a terminal (see [Changing a device](#changing-a-device)). Run
 `rusttv <command> --help` for every option.
 
 ## Commands
@@ -19,6 +20,8 @@ plan at a terminal (see [Changing a device](#changing-a-device)). Run
 | `performance benchmark --app <package/.Activity>...` | Repeated, interleaved cold start, resume, idle memory and CPU per app (BENCHMARK_PLAN.md); progress on stderr. **Stops and starts the apps.** Resume needs two or more apps | [BenchmarkReport](#benchmarkreport) |
 | `launcher status` | Which activity the Home button opens, every Home candidate with its priority, whether the RustTV launcher is installed / is Home. Read-only | [LauncherStatus](#launcherstatus) |
 | `launcher takeover [--dry-run]` | Make RustTV the Home screen by **disabling** (never uninstalling) the stock launcher (SECURITY.md § Home takeover). Only on devices whose bundled compat profile records a tested takeover (`TAKEOVER_NOT_TESTED` otherwise, even with `--dry-run`). Shows the plan, asks for typed confirmation, verifies Home opens RustTV, presses HOME and waits up to 10 s for RustTV to be in front and running, rolls back otherwise. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
+| `launcher install [--apk <file>] [--dry-run]` | Install the RustTV launcher (`ai.rusttv.launcher`) with `adb install --pkg ai.rusttv.launcher`, which makes Android refuse an APK of any other package. The APK is `android/app/build/outputs/apk/release/app-<abi>-release.apk` (from `android/build.sh`, relative to the current directory, so run from the repository root) for the device's primary ABI, the first of `ro.product.cpu.abilist` (`arm64-v8a`, `armeabi-v7a` or `x86_64`; `INVALID_APK` otherwise), or `--apk <file>` (any directory; file name of ASCII letters, digits, `.`, `_`, `-` ending in `.apk`). Checks RustTV is installed and can handle Home; a fresh install is uninstalled again otherwise. If RustTV is already installed it is an **upgrade** (`adb install -r`, keeps its data) that can't be undone: the plan says so, and it is refused while Home depends on RustTV (as for `uninstall`). Typed confirmation. Doesn't change which app Home opens. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
+| `launcher uninstall [--dry-run]` | Uninstall the RustTV launcher and its data (`pm uninstall ai.rusttv.launcher`; it can remove no other package). Refused (`PRECONDITION_FAILED`) while a Home takeover is active: a takeover journal for this firmware that isn't restored, or no system launcher other than RustTV handling Home. Run `launcher restore` first, so the TV is never left with only Android's fallback Home. Then checks RustTV is gone and Home opens the launcher it opened before (or the system launcher, if it opened RustTV). Can't be undone; reinstall with `launcher install`. Typed confirmation. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `launcher restore [--journal <file>] [--dry-run]` | Undo `launcher takeover`: re-enable the stock launcher from the takeover's journal (by default the newest one for the device's firmware). Typed confirmation. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `compat profile` | Compatibility profile for `compat/devices/` (TOML on stdout; `--json` wraps it) | `{"path": string, "profile": object}` |
 
@@ -35,7 +38,8 @@ lifecycle:
    what is checked after, and how each step is undone. `--dry-run` stops here
    and prints it (`--json`: a [DryRun](#dryrun)).
 2. **Approve**: the plan is applied only after a person types its
-   `confirmation` word (`takeover`, `restore`) at an interactive terminal.
+   `confirmation` word (`takeover`, `restore`, `install`, `uninstall`) at an
+   interactive terminal.
    There is no `--yes` flag. Without a terminal on stdin (scripts, agents,
    MCP) the command fails with `NOT_APPROVED` before contacting the device.
    This proves a terminal, not a person: never run `rusttv` for an agent in
@@ -45,14 +49,19 @@ lifecycle:
    journal, and each step is journaled before it runs and verified after.
    If a step or a check fails, every step that ran is undone in reverse
    (`ROLLED_BACK`, or `ROLLBACK_FAILED` with the commands to run by hand).
-   Transient steps (pressing HOME) need no undo.
+   Transient steps (pressing HOME) need no undo. Upgrading and uninstalling
+   the RustTV launcher can't be undone (putting the old version back needs
+   its APK): such a step is always a plan's last, its `undo` is null, the
+   plan's notes say so, and a failed check after it is `ROLLBACK_FAILED`.
 4. **Restore** later from the journal (`launcher restore`). Restoring is never
    rolled back; a failed step is reported with its manual command. If the
    firmware changed since the journal was written, the plan warns and restore
    still runs.
 
 Journals are TOML files in `<state dir>/journals/`, named
-`<unix ms>-<plan>.toml`. The state directory is `RUSTTV_STATE_DIR` if set,
+`<unix ms>-<plan>.toml`. `launcher restore` only restores takeover
+journals; install and uninstall journals are a record (undo an install with
+`launcher uninstall`). The state directory is `RUSTTV_STATE_DIR` if set,
 otherwise `~/Library/Application Support/rusttv` on macOS and
 `$XDG_STATE_HOME/rusttv` (default `~/.local/state/rusttv`) on Linux.
 Recovery is never guaranteed.
@@ -106,6 +115,7 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
 | `NOT_APPROVED` | 1 | No interactive terminal, or the confirmation wasn't typed; nothing changed |
 | `JOURNAL_FAILED` | 1 | A journal couldn't be read or written; if a change had started, it was rolled back |
 | `TAKEOVER_NOT_TESTED` | 1 | No bundled compat profile matches this device's model and firmware family, or it doesn't record a tested takeover of the stock launcher Home opens; nothing changed |
+| `INVALID_APK` | 1 | `launcher install` found no APK to install: no APK is built for the device's primary ABI, the file is missing or not a file, or its path isn't absolute UTF-8 with a plain `.apk` file name; nothing changed |
 | `NO_JOURNAL` | 1 | `restore` found no journal to restore for this device; pass `--journal <file>` |
 | `ROLLED_BACK` | 1 | A step or its check failed; every step that ran was undone and verified |
 | `ROLLBACK_FAILED` | 1 | A step failed **and** undoing failed; the message has the commands to run by hand |
@@ -174,7 +184,8 @@ Google TV the stock launcher's priority 2 beats every other launcher's 0);
 
 ### DryRun
 
-`plan` (e.g. `home-takeover`, `home-takeover-restore`); `serial`;
+`plan` (e.g. `home-takeover`, `home-takeover-restore`, `launcher-install`,
+`launcher-uninstall`); `serial`;
 `fingerprint` (`ro.build.fingerprint` the plan is for); `max_risk` (`R0` to
 `R3`); `confirmation` (the word to type); `steps`: in order, each with
 `risk`, `command` (exact adb command line), `records` (original state checked

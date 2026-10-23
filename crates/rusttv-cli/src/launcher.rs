@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusttv_core::{
-    Adb, Approval, FileJournal, HOME_TAKEOVER, JournalStatus, LauncherStatus, Plan, PlanError,
-    journal_file_name,
+    Adb, Approval, FileJournal, HOME_TAKEOVER, JournalStatus, LAUNCHER_INSTALL, LAUNCHER_UNINSTALL,
+    LauncherStatus, Plan, PlanError, journal_file_name,
 };
 use serde::Serialize;
 
@@ -56,7 +56,7 @@ fn print_status(status: &LauncherStatus) {
     }
 }
 
-/// Result of `launcher takeover` / `launcher restore` in `--json` output.
+/// Result of `launcher takeover` / `install` / `uninstall` / `restore` in `--json` output.
 #[derive(Debug, Serialize)]
 struct ChangeReport {
     /// The journal file recording the change.
@@ -75,23 +75,85 @@ pub fn takeover(adb: &dyn Adb, target: &Target, dry_run: bool, json: bool) -> Re
     if dry_run {
         return Ok(());
     }
-    let approval = confirm(&plan)?;
+    let path = approve_and_apply(adb, &plan, HOME_TAKEOVER, json)?;
+    if !json {
+        println!("\nDone: Home now opens the RustTV launcher.");
+        println!("Journal: {}", path.display());
+        println!("Undo with `rusttv launcher restore`.");
+    }
+    Ok(())
+}
 
-    let path = journals_dir()?.join(journal_file_name(now_unix_ms(), HOME_TAKEOVER));
+/// `rusttv launcher install`.
+pub fn install(
+    adb: &dyn Adb,
+    target: &Target,
+    apk: Option<&Path>,
+    dry_run: bool,
+    json: bool,
+) -> Result<(), CliError> {
+    if !dry_run {
+        require_terminal()?;
+    }
+    let serial = target.resolve(adb)?;
+    let plan = rusttv_core::install_plan(adb, &serial, apk, &journals_dir()?)?;
+    show_plan(&plan, dry_run, json);
+    if dry_run {
+        return Ok(());
+    }
+    let path = approve_and_apply(adb, &plan, LAUNCHER_INSTALL, json)?;
+    if !json {
+        println!("\nDone: the RustTV launcher is installed.");
+        println!("Journal: {}", path.display());
+        println!("Remove it with `rusttv launcher uninstall`.");
+    }
+    Ok(())
+}
+
+/// `rusttv launcher uninstall`.
+pub fn uninstall(
+    adb: &dyn Adb,
+    target: &Target,
+    dry_run: bool,
+    json: bool,
+) -> Result<(), CliError> {
+    if !dry_run {
+        require_terminal()?;
+    }
+    let serial = target.resolve(adb)?;
+    let plan = rusttv_core::uninstall_plan(adb, &serial, &journals_dir()?)?;
+    show_plan(&plan, dry_run, json);
+    if dry_run {
+        return Ok(());
+    }
+    let path = approve_and_apply(adb, &plan, LAUNCHER_UNINSTALL, json)?;
+    if !json {
+        println!("\nDone: the RustTV launcher is uninstalled.");
+        println!("Journal: {}", path.display());
+    }
+    Ok(())
+}
+
+/// Asks for the typed confirmation, then applies `plan` with a new journal
+/// named after `name`. With `--json`, prints the [`ChangeReport`].
+fn approve_and_apply(
+    adb: &dyn Adb,
+    plan: &Plan,
+    name: &str,
+    json: bool,
+) -> Result<PathBuf, CliError> {
+    let approval = confirm(plan)?;
+    let path = journals_dir()?.join(journal_file_name(now_unix_ms(), name));
     let mut store = FileJournal::new(&path);
-    let journal = rusttv_core::apply(adb, &plan, &approval, &mut store, &std::thread::sleep)
+    let journal = rusttv_core::apply(adb, plan, &approval, &mut store, &std::thread::sleep)
         .inspect_err(|_| note_journal(&path))?;
     if json {
         output::print_json(&ChangeReport {
             journal: path.display().to_string(),
             status: journal.status,
         });
-    } else {
-        println!("\nDone: Home now opens the RustTV launcher.");
-        println!("Journal: {}", path.display());
-        println!("Undo with `rusttv launcher restore`.");
     }
-    Ok(())
+    Ok(path)
 }
 
 /// `rusttv launcher restore`.

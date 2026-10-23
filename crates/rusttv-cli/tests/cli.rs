@@ -601,3 +601,209 @@ fn launcher_restore_without_a_journal_says_so() {
     assert_eq!(json["error"]["code"], "NO_JOURNAL");
     std::fs::remove_dir_all(state).unwrap();
 }
+
+/// Like [`rusttv_with_state`], run in `dir` (where the default APK path is looked up).
+fn rusttv_in(dir: &std::path::Path, scenario: &str, args: &[&str]) -> Output {
+    let fake_adb = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/fake-adb");
+    rusttv()
+        .args(args)
+        .current_dir(dir)
+        .env("RUSTTV_ADB", fake_adb)
+        .env("FAKE_ADB_SCENARIO", scenario)
+        .env("RUSTTV_STATE_DIR", dir)
+        .output()
+        .unwrap()
+}
+
+/// Writes a stand-in APK (not a real one) at `dir/relative`.
+fn fake_apk(dir: &std::path::Path, relative: &str) -> std::path::PathBuf {
+    let path = dir.join(relative);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, b"synthetic").unwrap();
+    path
+}
+
+#[test]
+fn launcher_install_dry_run_picks_the_apk_for_the_primary_abi() {
+    let dir = state_dir("install-default-apk");
+    fake_apk(
+        &dir,
+        "android/app/build/outputs/apk/release/app-arm64-v8a-release.apk",
+    );
+    let output = rusttv_in(
+        &dir,
+        "tv-fresh",
+        &["launcher", "install", "--dry-run", "--json"],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let json = json_stdout(&output);
+    assert_eq!(json["data"]["plan"], "launcher-install");
+    assert_eq!(json["data"]["confirmation"], "install");
+    assert_eq!(json["data"]["max_risk"], "R3");
+    let step = &json["data"]["steps"][0];
+    let command = step["command"].as_str().unwrap();
+    assert!(
+        command.starts_with("adb -s emulator-5554 install --pkg ai.rusttv.launcher /"),
+        "{command}"
+    );
+    assert!(
+        command.ends_with("/android/app/build/outputs/apk/release/app-arm64-v8a-release.apk"),
+        "{command}"
+    );
+    assert_eq!(step["records"], "ai.rusttv.launcher is not installed");
+    assert_eq!(
+        step["undo"],
+        "adb -s emulator-5554 shell pm uninstall ai.rusttv.launcher"
+    );
+    assert_eq!(
+        std::fs::read_dir(dir.join("journals")).unwrap().count(),
+        0,
+        "a dry run writes no journal"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn launcher_install_without_a_built_apk_says_how_to_get_one() {
+    let dir = state_dir("install-no-apk");
+    let output = rusttv_in(
+        &dir,
+        "tv-fresh",
+        &["launcher", "install", "--dry-run", "--json"],
+    );
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let json = json_stdout(&output);
+    assert_eq!(json["error"]["code"], "INVALID_APK");
+    let message = json["error"]["message"].as_str().unwrap();
+    assert!(message.contains("app-arm64-v8a-release.apk"), "{message}");
+    assert!(message.contains("--apk"), "{message}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn launcher_install_rejects_an_apk_name_with_shell_syntax() {
+    let dir = state_dir("install-bad-apk");
+    let apk = fake_apk(&dir, "app;reboot.apk");
+    let output = rusttv_in(
+        &dir,
+        "tv-fresh",
+        &[
+            "launcher",
+            "install",
+            "--apk",
+            apk.to_str().unwrap(),
+            "--dry-run",
+            "--json",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    assert_eq!(json_stdout(&output)["error"]["code"], "INVALID_APK");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn launcher_install_over_an_installed_launcher_is_shown_as_an_upgrade() {
+    let dir = state_dir("install-upgrade");
+    let apk = fake_apk(&dir, "builds/app-x86_64-release.apk");
+    let output = rusttv_in(
+        &dir,
+        "tv",
+        &[
+            "launcher",
+            "install",
+            "--apk",
+            apk.to_str().unwrap(),
+            "--dry-run",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("install -r --pkg ai.rusttv.launcher"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("this is an upgrade"), "{stdout}");
+    assert!(stdout.contains("can't be undone"), "{stdout}");
+    assert!(!stdout.contains("undo:"), "{stdout}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn launcher_uninstall_dry_run_checks_home_opens_the_stock_launcher() {
+    let dir = state_dir("uninstall-dry-run");
+    let output = rusttv_in(
+        &dir,
+        "tv",
+        &["launcher", "uninstall", "--dry-run", "--json"],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let json = json_stdout(&output);
+    assert_eq!(json["data"]["plan"], "launcher-uninstall");
+    assert_eq!(json["data"]["confirmation"], "uninstall");
+    let step = &json["data"]["steps"][0];
+    assert_eq!(
+        step["command"],
+        "adb -s emulator-5554 shell pm uninstall ai.rusttv.launcher"
+    );
+    assert_eq!(
+        step["verify"][1],
+        "Home opens com.google.android.apps.tv.launcherx"
+    );
+    assert_eq!(step["undo"], Value::Null);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn launcher_uninstall_is_refused_while_a_takeover_is_active() {
+    let dir = state_dir("uninstall-takeover");
+    // Synthetic journal of an applied takeover, for the synthetic getprop's firmware.
+    let journal = r#"schema_version = 1
+plan = "home-takeover"
+serial = "emulator-5554"
+fingerprint = "google/sdk_google_atv64_arm64/emu64a:14/UTT3.240625.001.K5/12345678:userdebug/dev-keys"
+started_at_unix_ms = 1761220000000
+status = "applied"
+
+[[steps]]
+adb = "adb -s emulator-5554 shell pm disable-user --user 0 com.google.android.apps.tv.launcherx"
+command = { kind = "disable_package", arg = "com.google.android.apps.tv.launcherx" }
+original_state = { kind = "package_enabled", arg = "com.google.android.apps.tv.launcherx" }
+status = "done"
+"#;
+    std::fs::write(
+        dir.join("journals/1761220000000-home-takeover.toml"),
+        journal,
+    )
+    .unwrap();
+
+    let output = rusttv_in(
+        &dir,
+        "tv",
+        &["launcher", "uninstall", "--dry-run", "--json"],
+    );
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let json = json_stdout(&output);
+    assert_eq!(json["error"]["code"], "PRECONDITION_FAILED");
+    let message = json["error"]["message"].as_str().unwrap();
+    assert!(message.contains("rusttv launcher restore"), "{message}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn launcher_install_and_uninstall_without_a_terminal_are_refused_before_touching_a_device() {
+    for command in ["install", "uninstall"] {
+        let output = rusttv_with_fake_adb("no-devices", &["launcher", command, "--json"]);
+        assert_eq!(output.status.code(), Some(1), "{command}");
+        assert_eq!(
+            json_stdout(&output)["error"]["code"],
+            "NOT_APPROVED",
+            "{command}"
+        );
+    }
+}
