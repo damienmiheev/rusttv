@@ -3,13 +3,16 @@
 //! Exposes the core's read-only functions as MCP tools. Every tool result is
 //! the CLI's `rusttv.v1` JSON envelope (CLI.md § Output), so `data` is exactly
 //! what `rusttv <command> --json` prints and errors carry the same stable
-//! codes. There is deliberately no tool that changes a device, and none that
-//! can approve a plan (SECURITY.md § AI agents). See MCP.md.
+//! codes. The `*_plan` tools build a change plan and return its dry run with
+//! the `rusttv` command a person runs to apply it. There is deliberately no
+//! tool that changes a device, and none that can approve a plan (SECURITY.md
+//! § AI agents). See MCP.md.
 //!
 //! The core is synchronous (ARCHITECTURE.md D10): each tool call runs it on
 //! tokio's blocking pool, one call at a time.
 
 use std::error::Error;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
@@ -17,7 +20,10 @@ use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ErrorData, Implementation, ServerCapabilities, ServerConfig};
 use rmcp::{ServerHandler, schemars, tool, tool_handler, tool_router};
-use rusttv_core::{Adb, AdbError, DeviceSelectionError};
+use rusttv_core::{
+    Adb, AdbError, ApkPath, DeviceCommand, DeviceSelectionError, DryRun, HOME_TAKEOVER, Plan,
+    PlanError,
+};
 use serde::{Deserialize, Serialize};
 
 /// Version of the JSON output contract; the same as the CLI's `--json`.
@@ -32,7 +38,10 @@ Results are the `rusttv.v1` envelope of the `rusttv` CLI: on success `data` is t
 same as `rusttv <command> --json`; on failure `error.code` is a stable code from \
 CLI.md. Device-targeting tools take an optional `serial`; it is required when several \
 devices are connected (`MULTIPLE_DEVICES`). Nothing here changes a device or approves \
-a change: changes are planned and approved by a person with the `rusttv` CLI.";
+a change. The `*_plan` tools only plan one: they return the dry run (`data.dry_run`) \
+and the `rusttv` command (`data.apply_command`) that a person must run at an \
+interactive terminal, where they read the plan and type its confirmation word. Show \
+both to the user; do not run the command yourself.";
 
 /// Arguments of tools that target one device.
 #[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
@@ -58,6 +67,28 @@ pub struct SnapshotParams {
     pub sample_ms: Option<u64>,
 }
 
+/// Arguments of `launcher_install_plan`.
+#[derive(Debug, Default, Deserialize, schemars::JsonSchema)]
+#[schemars(crate = "rmcp::schemars")]
+#[serde(deny_unknown_fields)]
+pub struct InstallPlanParams {
+    /// adb serial of the device (see `device_list`); needed when several are connected.
+    #[serde(default)]
+    pub serial: Option<String>,
+    /// Absolute path of the launcher APK on this computer, file name of ASCII letters, digits, `.`, `_`, `-` ending in `.apk`. Default: the APK `android/build.sh` builds for the device's primary ABI, relative to the server's working directory.
+    #[serde(default)]
+    pub apk: Option<String>,
+}
+
+/// `data` of the `*_plan` tools: the plan's dry run and how a person applies it.
+#[derive(Debug, Serialize)]
+struct PlanProposal {
+    /// Same as `rusttv launcher <command> --dry-run --json`.
+    dry_run: DryRun,
+    /// The `rusttv` command line a person runs at a terminal to apply this plan.
+    apply_command: String,
+}
+
 /// Everything a tool can fail with; codes are the CLI's (CLI.md § Error codes).
 #[derive(Debug, thiserror::Error)]
 enum ToolError {
@@ -65,6 +96,8 @@ enum ToolError {
     Adb(#[from] AdbError),
     #[error(transparent)]
     Selection(#[from] DeviceSelectionError),
+    #[error(transparent)]
+    Plan(#[from] PlanError),
 }
 
 impl ToolError {
@@ -72,6 +105,7 @@ impl ToolError {
         match self {
             Self::Adb(error) => error.code(),
             Self::Selection(error) => error.code(),
+            Self::Plan(error) => error.code(),
         }
     }
 }
@@ -102,6 +136,8 @@ pub struct RustTvServer<A> {
     /// Locked for the whole tool call: calls run one at a time, and `A` need
     /// not be `Sync` (`FakeAdb` isn't).
     adb: Arc<Mutex<A>>,
+    /// Journal directory the plan tools read; `None`: the CLI's, [`rusttv_core::journals_dir`].
+    journals: Option<PathBuf>,
     tool_router: ToolRouter<Self>,
 }
 
@@ -111,8 +147,16 @@ impl<A: Adb + Send + 'static> RustTvServer<A> {
     pub fn new(adb: A) -> Self {
         Self {
             adb: Arc::new(Mutex::new(adb)),
+            journals: None,
             tool_router: Self::tool_router(),
         }
+    }
+
+    /// Reads journals from `dir` instead of the CLI's state directory (for tests).
+    #[must_use]
+    pub fn with_journals_dir(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.journals = Some(dir.into());
+        self
     }
 
     #[tool(
@@ -198,6 +242,100 @@ impl<A: Adb + Send + 'static> RustTvServer<A> {
         .await
     }
 
+    #[tool(
+        description = "Plan installing (or upgrading) the RustTV launcher, ai.rusttv.launcher. Changes nothing: returns the plan's dry run (`data.dry_run`, same as `rusttv launcher install --dry-run --json`) and the command a person runs at a terminal to apply it (`data.apply_command`). Show both to the user; you cannot apply or approve it.",
+        annotations(read_only_hint = true)
+    )]
+    async fn launcher_install_plan(
+        &self,
+        Parameters(params): Parameters<InstallPlanParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let journals = self.journals.clone();
+        self.run(move |adb| {
+            // Shape first (absolute, plain `.apk` file name), so an agent can't
+            // probe arbitrary files; the core then checks the file itself.
+            let apk = params
+                .apk
+                .as_deref()
+                .map(ApkPath::new)
+                .transpose()
+                .map_err(PlanError::from)?;
+            let serial = resolve(adb, params.serial.as_deref())?;
+            let plan = rusttv_core::install_plan(
+                adb,
+                &serial,
+                apk.as_ref().map(|apk| Path::new(apk.as_str())),
+                &journals_dir(journals)?,
+            )?;
+            // The APK the plan resolved, so the person applies this same file.
+            let planned_apk = plan.steps().iter().find_map(|step| match step.command() {
+                DeviceCommand::InstallLauncher(apk) | DeviceCommand::UpgradeLauncher(apk) => {
+                    Some(apk.as_str())
+                }
+                _ => None,
+            });
+            let mut args = vec!["launcher", "install", "--serial", plan.serial()];
+            if let Some(apk) = planned_apk {
+                args.extend(["--apk", apk]);
+            }
+            let apply_command = command_line(&args);
+            Ok(proposal(&plan, apply_command))
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Plan uninstalling the RustTV launcher, ai.rusttv.launcher (no other package). Changes nothing: returns the plan's dry run (`data.dry_run`, same as `rusttv launcher uninstall --dry-run --json`) and the command a person runs at a terminal to apply it (`data.apply_command`). Show both to the user; you cannot apply or approve it.",
+        annotations(read_only_hint = true)
+    )]
+    async fn launcher_uninstall_plan(
+        &self,
+        Parameters(params): Parameters<TargetParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let journals = self.journals.clone();
+        self.run(move |adb| {
+            let serial = resolve(adb, params.serial.as_deref())?;
+            let plan = rusttv_core::uninstall_plan(adb, &serial, &journals_dir(journals)?)?;
+            let apply_command = command_line(&["launcher", "uninstall", "--serial", plan.serial()]);
+            Ok(proposal(&plan, apply_command))
+        })
+        .await
+    }
+
+    #[tool(
+        description = "Plan undoing a Home takeover (re-enabling the stock launcher) from the newest takeover journal for the device's firmware. Changes nothing: returns the plan's dry run (`data.dry_run`, same as `rusttv launcher restore --dry-run --json`) and the command a person runs at a terminal to apply it (`data.apply_command`). Show both to the user; you cannot apply or approve it.",
+        annotations(read_only_hint = true)
+    )]
+    async fn launcher_restore_plan(
+        &self,
+        Parameters(params): Parameters<TargetParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let journals = self.journals.clone();
+        self.run(move |adb| {
+            let serial = resolve(adb, params.serial.as_deref())?;
+            let fingerprint = rusttv_core::device_fingerprint(adb, &serial)?;
+            let (path, journal) = rusttv_core::find_restorable_journal(
+                &journals_dir(journals)?,
+                HOME_TAKEOVER,
+                &fingerprint,
+            )?;
+            let plan = rusttv_core::takeover_restore_plan(adb, &serial, &journal)?;
+            let journal = path.to_str().ok_or_else(|| {
+                PlanError::journal(format!("{} is not valid UTF-8", path.display()))
+            })?;
+            let apply_command = command_line(&[
+                "launcher",
+                "restore",
+                "--serial",
+                plan.serial(),
+                "--journal",
+                journal,
+            ]);
+            Ok(proposal(&plan, apply_command))
+        })
+        .await
+    }
+
     /// Runs a blocking core call and wraps its outcome in the `rusttv.v1` envelope.
     ///
     /// Core failures are tool results with `isError` (the agent sees the code);
@@ -250,6 +388,39 @@ fn resolve(adb: &dyn Adb, serial: Option<&str>) -> Result<String, ToolError> {
     Ok(device.serial.clone())
 }
 
+/// The journal directory: the one the server was given, else the CLI's.
+fn journals_dir(dir: Option<PathBuf>) -> Result<PathBuf, PlanError> {
+    dir.map_or_else(rusttv_core::journals_dir, Ok)
+}
+
+fn proposal(plan: &Plan, apply_command: String) -> PlanProposal {
+    PlanProposal {
+        dry_run: plan.dry_run(),
+        apply_command,
+    }
+}
+
+/// `rusttv <args>` as a POSIX shell command line, each argument quoted when
+/// needed: the person may paste it, and paths can contain spaces or `$`.
+fn command_line(args: &[&str]) -> String {
+    let mut line = String::from("rusttv");
+    for arg in args {
+        line.push(' ');
+        let plain = !arg.is_empty()
+            && arg
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "-_./:@%+=,".contains(c));
+        if plain {
+            line.push_str(arg);
+        } else {
+            line.push('\'');
+            line.push_str(&arg.replace('\'', r"'\''"));
+            line.push('\'');
+        }
+    }
+    line
+}
+
 fn failure_value(error: &ToolError) -> serde_json::Value {
     let failure = Failure {
         schema: SCHEMA,
@@ -273,4 +444,22 @@ fn message_with_causes(error: &dyn Error) -> String {
         source = cause.source();
     }
     message
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_lines_quote_arguments_a_shell_would_interpret() {
+        assert_eq!(
+            command_line(&["launcher", "uninstall", "--serial", "192.168.1.20:5555"]),
+            "rusttv launcher uninstall --serial 192.168.1.20:5555"
+        );
+        assert_eq!(
+            command_line(&["--apk", "/Users/me/My APKs/$(rm -rf ~)/it's.apk"]),
+            r"rusttv --apk '/Users/me/My APKs/$(rm -rf ~)/it'\''s.apk'"
+        );
+        assert_eq!(command_line(&[""]), "rusttv ''");
+    }
 }

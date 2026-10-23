@@ -1,9 +1,10 @@
 //! Journals: the host-side record of a change, written before every step.
 //!
-//! One TOML file per applied plan, in `<state dir>/journals/` (the CLI picks
-//! the state directory; SECURITY.md § Change lifecycle). Plain text, so a
+//! One TOML file per applied plan, in [`journals_dir`] (SECURITY.md § Change
+//! lifecycle). Plain text, so a
 //! person can read what was changed and how to undo it by hand.
 
+use std::env;
 use std::fmt;
 use std::fs;
 use std::io::{self, Write};
@@ -148,6 +149,31 @@ impl JournalStore for FileJournal {
         file.sync_all()?;
         fs::rename(&partial, &self.path)
     }
+}
+
+/// `<state dir>/journals`, where the CLI writes journals and plans look for
+/// an active Home takeover. The state dir is `RUSTTV_STATE_DIR` if set, else
+/// `~/Library/Application Support/rusttv` on macOS and
+/// `$XDG_STATE_HOME/rusttv` (default `~/.local/state/rusttv`) elsewhere.
+pub fn journals_dir() -> Result<PathBuf, PlanError> {
+    let state = if let Some(dir) = env::var_os("RUSTTV_STATE_DIR") {
+        PathBuf::from(dir)
+    } else {
+        let home = env::var_os("HOME")
+            .map(PathBuf::from)
+            .filter(|home| home.is_absolute())
+            .ok_or_else(|| PlanError::journal("HOME is not set; set RUSTTV_STATE_DIR"))?;
+        if cfg!(target_os = "macos") {
+            home.join("Library/Application Support/rusttv")
+        } else {
+            env::var_os("XDG_STATE_HOME")
+                .map(PathBuf::from)
+                .filter(|dir| dir.is_absolute())
+                .unwrap_or_else(|| home.join(".local/state"))
+                .join("rusttv")
+        }
+    };
+    Ok(state.join("journals"))
 }
 
 /// Reads a journal file.

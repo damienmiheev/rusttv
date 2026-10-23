@@ -52,7 +52,7 @@ pub use install::{
 };
 pub use journal::{
     FileJournal, JOURNAL_SCHEMA_VERSION, Journal, JournalStatus, JournalStep, JournalStore,
-    StepStatus, find_restorable_journal, journal_file_name, load_journal,
+    StepStatus, find_restorable_journal, journal_file_name, journals_dir, load_journal,
 };
 pub use launcher::{
     HomeCandidate, LauncherStatus, RUSTTV_LAUNCHER, launcher_status, parse_home_candidates,

@@ -83,7 +83,7 @@ Residual risk: firmware updates may re-enable the stock launcher or change its p
 
 - Agent output is untrusted input. MCP tools validate arguments against schemas and the protected-package policy, exactly like CLI input.
 - No MCP tool accepts commands, shell strings, or arbitrary package lists for R3.
-- MCP can read, analyze, and propose plans; approval is a separate human CLI step.
+- MCP can read, analyze, and propose plans; approval is a separate human CLI step. *As built:* the MCP plan tools (`launcher_install_plan`, `launcher_uninstall_plan`, `launcher_restore_plan`) return the dry run and the `rusttv` command a person runs at a terminal; they run only R0 commands and write no journal. There is no MCP tool to plan a Home takeover, or to approve or apply anything (MCP.md).
 - Typed confirmation proves only an interactive terminal. Never give an agent or MCP server a pseudo-terminal that runs `rusttv` (see Change lifecycle, step 4).
 
 ## ADB hygiene (user guidance)

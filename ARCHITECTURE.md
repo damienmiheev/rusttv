@@ -125,12 +125,12 @@ Rust: trait Platform { list_apps(), launch(), take_apps_changed() }
 
 ## MCP (Phase 5)
 
-`rusttv-mcp` exposes the core's read-only functions as MCP tools over local stdio: `device_list`, `device_inspect`, `apps_list`, `launcher_status`, `performance_snapshot` (contract in [MCP.md](MCP.md)).
+`rusttv-mcp` exposes the core's read-only functions as MCP tools over local stdio: `device_list`, `device_inspect`, `apps_list`, `launcher_status`, `performance_snapshot`, and the plan tools `launcher_install_plan`, `launcher_uninstall_plan`, `launcher_restore_plan` (contract in [MCP.md](MCP.md)).
 
 - Built on the official Rust SDK `rmcp` (D13). `RustTvServer<A: Adb>` is generic so tests use `FakeAdb`; the binary uses `SystemAdb`.
 - The core stays sync (D10): each tool call runs the core function on tokio's blocking pool, holding a mutex around the `Adb`, so calls run one at a time and `Adb` need not be `Sync`.
 - Results are the CLI's `rusttv.v1` envelope as `structuredContent`; core errors are tool errors (`isError`) with the CLI's error codes, bad arguments are rejected before any device access.
-- No tool runs above R0 and none approves anything. Plan tools, if added, only return a dry run (SECURITY.md § AI agents).
+- No tool runs above R0 and none approves anything. Plan tools only return a dry run and the `rusttv` command a person runs to apply it; they read journals from the CLI's state directory (`rusttv_core::journals_dir`) and write none (SECURITY.md § AI agents).
 
 ## Initial dependencies (Milestone 1)
 
