@@ -110,3 +110,23 @@ Decided "not for now"; raise again when the core launcher is done.
   - Open question: how strongly Ambilight reacts to dark colours. First step
     when picked up: a test build with 2–3 brightness levels, judged by eye on
     the TV (screencap is blocked on the Philips).
+
+- **Privacy menu: choose packages by category, on the Mac and on the TV** —
+  parked 2026-10-23. A normal app (RustTV included, even as Home) can't
+  disable other apps; only the adb shell or system apps can. Options discussed:
+  - A. Interactive menu in the CLI: tick packages by category, saved to the
+    choices file, then the usual dry run, typed confirmation and journal.
+    Small–medium effort; the engine already does the work.
+  - B. Privacy page in RustTV: catalog packages by category with state,
+    description and tested flag (read-only); pressing one opens Android's own
+    app info page and its Disable/Enable button (often greyed out for system
+    apps, and outside our journal). Also shows if a firmware update re-enabled
+    something. Medium effort.
+  - C. Real toggles on the TV via the TV's own wireless debugging (shell
+    rights), restarted after each reboot with `WRITE_SECURE_SETTINGS`, plus a
+    "Reboot TV" item. Possible (Shizuku does this on Android 13–14), but large
+    effort and a big attack surface: the always-running Home would hold
+    shell-level power. If ever done: through Shizuku and a separate tools app,
+    never inside Home, with a written safety review and remote-confirmed
+    approvals designed so nothing confirms by accident.
+  - Leaning when picked up: A + B first; C only as its own decision.
