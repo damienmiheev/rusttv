@@ -27,7 +27,7 @@ Every `DeviceCommand` declares one:
 | R3 Package state | Enable/disable an app for user 0 | `pm disable-user --user 0` | Only via an approved plan, Phase 4+, known-device profile only |
 | R4 Forbidden | Not implementable | uninstall, stock-launcher changes outside Home takeover, system partition writes | Nobody |
 
-So far only R0 commands exist, plus two R1 commands for benchmarking (`am force-stop`, `am start`); a unit test fails if anything else appears. R2/R3 wait for the plan/approve/journal engine.
+So far: R0 commands, two R1 commands for benchmarking (`am force-stop`, `am start`), and two R3 commands used only by Home takeover (`pm disable-user --user 0`, `pm enable --user 0`), run only through the safety engine (`rusttv-core` `plan` module). A unit test fails if anything else above R0 appears, and every R2/R3 command must have an inverse.
 
 ## Protected package policy
 
@@ -43,14 +43,14 @@ Rules 1–2 are computed live on the device each time, not cached. Unknown devic
 ## Change lifecycle (R2–R3)
 
 1. **Analyze** (read-only): collect device info and current state.
-2. **Plan**: write a plan file (TOML) with device fingerprint (`ro.build.fingerprint`), steps, risk class per step, and the original value for each step.
+2. **Plan**: device fingerprint (`ro.build.fingerprint`), steps, risk class per step, and the original value for each step. The plan is stored inside its journal: one TOML file per change, no separate plan file.
 3. **Dry-run**: render the plan as human-readable text with exact commands.
-4. **Approve**: a human confirms in the CLI (typed confirmation for R3). MCP tools can create plans but not approve them.
+4. **Approve**: a human confirms in the CLI (typed confirmation for R3). MCP tools can create plans but not approve them. The CLI accepts the confirmation only when stdin is an interactive terminal, and has no `--yes` flag. That proves a terminal, not a person: an agent driving a pseudo-terminal could type the word. Agents and MCP servers must therefore never be given a pseudo-terminal running `rusttv` (RISKS.md #15).
 5. **Apply**: precondition check (same fingerprint, device reachable, protected-package check re-run). Write a journal entry *before* each step; run one step; verify its effect; stop on the first failure.
 6. **Verify**: re-read state; confirm HOME still resolves to a launchable activity.
-7. **Restore**: `rusttv optimize restore` replays recorded originals from the journal in reverse order.
+7. **Restore**: one journal-based restore for every kind of change. It undoes, last first, every step the journal says may have run (started or done), verifies each undo, and keeps going past a failure, printing the manual command for it. A restore is never rolled back. If the device's fingerprint changed since the journal was written, restore warns and still runs: undoing is the safe direction, and a firmware update is a likely reason to restore. The command is `rusttv launcher restore` for now (Home takeover is the only kind of change); when optimization profiles land, the same engine backs a general `rusttv restore [--journal <file>]`, and `rusttv launcher restore` stays as a shortcut for takeover journals.
 
-Plans and journals live in a local state directory (`~/.local/state/rusttv/` on Linux, the platform equivalent on macOS) and are plain text for auditability.
+Plans and journals live in a local state directory (`~/.local/state/rusttv/` on Linux, `~/Library/Application Support/rusttv/` on macOS, `RUSTTV_STATE_DIR` to override) and are plain text for auditability. The journal (TOML, `journals/<unix ms>-<plan>.toml`) holds the plan's steps, the original state checked before any step, and each step's progress. It is written atomically before the first step, when each step starts and ends, and at the end; if it can't be written, the change is rolled back. A journal is untrusted input when restoring: Home takeover restore refuses any step other than re-enabling a package.
 
 ## Recovery scenarios
 
@@ -68,12 +68,14 @@ Plans and journals live in a local state directory (`~/.local/state/rusttv/` on 
 *Owner decision 2026-10-23 (ARCHITECTURE D12).* On Google TV the stock launcher declares a higher HOME priority than any third-party app can (RESEARCH §8), so RustTV can only become the Home screen if the stock launcher is disabled. This is the **only** permitted change to the stock launcher, and it is R3 with these extra rules:
 
 1. **Opt-in only.** Never part of an optimization profile, never suggested by default; a separate command (`rusttv launcher takeover`) with typed confirmation. MCP cannot request it.
-2. **Known devices only.** Offered only when the device's compat profile names its stock launcher package and records a successful takeover and restore on that firmware family.
-3. **Preconditions.** RustTV launcher installed, launchable, and verified drawing frames; ADB connected; the stock launcher package is the current HOME resolver.
+2. **Known devices only.** Offered only when the device's compat profile names its stock launcher package and records a successful takeover and restore on that firmware family. *As built:* profiles from `compat/devices/` are compiled into the binary (so dropping a file somewhere can't satisfy the gate); one must match manufacturer, model and codename, and the firmware family (fingerprint without build ID and incremental: same Android version and build type), and its `[launcher]` section must name the package Home opens and set `takeover_tested = true`. Otherwise `TAKEOVER_NOT_TESTED`. Emulator profiles are never marked tested. The first takeover on a new device therefore needs a development build with that profile edited locally; commit `takeover_tested = true` only after takeover **and** restore succeeded on it.
+3. **Preconditions.** RustTV launcher installed, launchable, and verified drawing frames; ADB connected; the stock launcher package is the current HOME resolver. *As built:* before the change, RustTV must be a HOME candidate and the HOME resolver must be a system app that outranks RustTV's priority. "Launchable and drawing frames" is checked after the change, as part of rule 5 (resumed activity with a live process); frame drawing itself isn't measured.
 4. **Disable, never uninstall.** `pm disable-user --user 0 <stock launcher>` only; original state recorded in the journal first.
-5. **Verify or roll back automatically.** After disabling, HOME must resolve to RustTV and RustTV must come to the foreground on a HOME key event within a timeout; otherwise re-enable the stock launcher immediately.
+5. **Verify or roll back automatically.** After disabling, HOME must resolve to RustTV and RustTV must come to the foreground on a HOME key event within a timeout; otherwise re-enable the stock launcher immediately. *As built:* `input keyevent KEYCODE_HOME` (R1), then for up to 10 s the resumed activity (`dumpsys activity activities`) must be `ai.rusttv.launcher` and its process must be in `ps`.
 6. **Restore is one command.** `rusttv launcher restore` re-enables the stock launcher; `rusttv launcher uninstall` restores *before* removing RustTV, so the TV is never left with only Android's fallback Home.
 7. **Documented manual recovery** in the user docs, for when ADB is unavailable (Settings → Apps → show system apps → enable).
+
+**Open** (not built yet; ROADMAP.md): `rusttv launcher uninstall` (rule 6), and restore without a journal (journal lost, or the takeover ran from another computer). Until then the takeover plan shows the undo command (`adb shell pm enable --user 0 <package>`) and the Settings path, and a failed undo prints its command again.
 
 Residual risk: firmware updates may re-enable the stock launcher or change its package; `optimize analyze` must detect and report this. Recovery is never guaranteed.
 
@@ -82,6 +84,7 @@ Residual risk: firmware updates may re-enable the stock launcher or change its p
 - Agent output is untrusted input. MCP tools validate arguments against schemas and the protected-package policy, exactly like CLI input.
 - No MCP tool accepts commands, shell strings, or arbitrary package lists for R3.
 - MCP can read, analyze, and propose plans; approval is a separate human CLI step.
+- Typed confirmation proves only an interactive terminal. Never give an agent or MCP server a pseudo-terminal that runs `rusttv` (see Change lifecycle, step 4).
 
 ## ADB hygiene (user guidance)
 

@@ -486,3 +486,118 @@ fn performance_benchmark_rejects_unsafe_components() {
 
     assert_eq!(output.status.code(), Some(2));
 }
+
+/// A fresh, empty state directory for one test (`RUSTTV_STATE_DIR`).
+fn state_dir(test: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("rusttv-cli-{}-{test}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("journals")).unwrap();
+    dir
+}
+
+fn rusttv_with_state(scenario: &str, state: &std::path::Path, args: &[&str]) -> Output {
+    let fake_adb = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/fake-adb");
+    rusttv()
+        .args(args)
+        .env("RUSTTV_ADB", fake_adb)
+        .env("FAKE_ADB_SCENARIO", scenario)
+        .env("RUSTTV_STATE_DIR", state)
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn launcher_takeover_is_refused_on_a_device_without_a_tested_profile() {
+    // No bundled profile records a tested takeover, so even a dry run stops
+    // here. The plan itself is tested in rusttv-core with a test profile.
+    let state = state_dir("takeover-untested");
+    let output = rusttv_with_state(
+        "tv",
+        &state,
+        &["launcher", "takeover", "--dry-run", "--json"],
+    );
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let json = json_stdout(&output);
+    assert_eq!(json["error"]["code"], "TAKEOVER_NOT_TESTED");
+    let message = json["error"]["message"].as_str().unwrap();
+    assert!(message.contains("sdk_google_atv64_arm64"), "{message}");
+    assert_eq!(
+        std::fs::read_dir(state.join("journals")).unwrap().count(),
+        0
+    );
+    std::fs::remove_dir_all(state).unwrap();
+}
+
+#[test]
+fn launcher_takeover_without_a_terminal_is_refused_before_touching_a_device() {
+    // Test processes get no terminal on stdin, like an agent or a script.
+    // `no-devices` would fail with NO_DEVICE if the device were looked up.
+    let output = rusttv_with_fake_adb("no-devices", &["launcher", "takeover", "--json"]);
+
+    assert_eq!(output.status.code(), Some(1));
+    let json = json_stdout(&output);
+    assert_eq!(json["error"]["code"], "NOT_APPROVED");
+    let message = json["error"]["message"].as_str().unwrap();
+    assert!(message.contains("interactive terminal"), "{message}");
+
+    let output = rusttv_with_fake_adb("no-devices", &["launcher", "restore", "--json"]);
+    assert_eq!(json_stdout(&output)["error"]["code"], "NOT_APPROVED");
+}
+
+#[test]
+fn launcher_restore_dry_run_finds_the_takeover_journal() {
+    let state = state_dir("restore-dry-run");
+    // Fingerprint of the synthetic getprop fixture.
+    let journal = r#"schema_version = 1
+plan = "home-takeover"
+serial = "emulator-5554"
+fingerprint = "google/sdk_google_atv64_arm64/emu64a:14/UTT3.240625.001.K5/12345678:userdebug/dev-keys"
+started_at_unix_ms = 1761220000000
+status = "applied"
+
+[[steps]]
+adb = "adb -s emulator-5554 shell pm disable-user --user 0 com.google.android.apps.tv.launcherx"
+command = { kind = "disable_package", arg = "com.google.android.apps.tv.launcherx" }
+original_state = { kind = "package_enabled", arg = "com.google.android.apps.tv.launcherx" }
+status = "done"
+"#;
+    std::fs::write(
+        state.join("journals/1761220000000-home-takeover.toml"),
+        journal,
+    )
+    .unwrap();
+
+    let output = rusttv_with_state(
+        "tv",
+        &state,
+        &["launcher", "restore", "--dry-run", "--json"],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let json = json_stdout(&output);
+    assert_eq!(json["data"]["plan"], "home-takeover-restore");
+    assert_eq!(json["data"]["confirmation"], "restore");
+    let steps = json["data"]["steps"].as_array().unwrap();
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["command"],
+        "adb -s emulator-5554 shell pm enable --user 0 com.google.android.apps.tv.launcherx"
+    );
+    std::fs::remove_dir_all(state).unwrap();
+}
+
+#[test]
+fn launcher_restore_without_a_journal_says_so() {
+    let state = state_dir("restore-none");
+    let output = rusttv_with_state(
+        "tv",
+        &state,
+        &["launcher", "restore", "--dry-run", "--json"],
+    );
+
+    assert_eq!(output.status.code(), Some(1));
+    let json = json_stdout(&output);
+    assert_eq!(json["error"]["code"], "NO_JOURNAL");
+    std::fs::remove_dir_all(state).unwrap();
+}
