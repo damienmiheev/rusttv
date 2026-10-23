@@ -42,5 +42,8 @@ Thumbs.db
 # Local RustTV state (plans, journals, device captures not meant for the repo)
 /.rusttv/
 
+# Internal design notes and session handoffs; never published
+/internal/
+
 # Claude Code local settings
 .claude/settings.local.json

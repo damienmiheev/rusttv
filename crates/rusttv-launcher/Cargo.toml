@@ -1,0 +1,59 @@
+[package]
+name = "rusttv-launcher"
+description = "RustTV home screen: app grid model, Slint UI, Android bridge"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# `lib` for the desktop binary and tests; `cdylib` is the native library the
+# Android app loads (android/, `android.app.lib_name`).
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[features]
+# Test doubles such as FakePlatform (M-TEST-UTIL). Never enable in release builds.
+test-util = []
+
+[dependencies]
+slint.workspace = true
+thiserror.workspace = true
+log.workspace = true
+material-colors.workspace = true
+serde.workspace = true
+toml.workspace = true
+
+# Desktop dev mode: window via winit, CPU rendering (no Skia download).
+[target.'cfg(not(target_os = "android"))'.dependencies]
+slint = { workspace = true, features = ["backend-winit", "renderer-software"] }
+
+# On the TV: the Android backend (always renders with Skia) and the JNI bridge.
+[target.'cfg(target_os = "android")'.dependencies]
+slint = { workspace = true, features = ["backend-android-activity-06"] }
+android-activity.workspace = true
+android_logger.workspace = true
+jni.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true
+
+[[bin]]
+name = "rusttv-launcher-desktop"
+path = "src/bin/desktop.rs"
+required-features = ["test-util"]
+
+# Same as [workspace.lints], except `unsafe_code` is "deny" instead of "forbid", so that
+# Slint's generated code (src/ui.rs) and later the JNI bridge module can opt out per module.
+# Keep in sync with the workspace list.
+[lints.rust]
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+dbg_macro = "warn"
+print_stderr = "warn"
+todo = "warn"

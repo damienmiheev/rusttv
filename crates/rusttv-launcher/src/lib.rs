@@ -1,0 +1,24 @@
+//! RustTV home screen (ARCHITECTURE.md § Launcher).
+//!
+//! [`Home`] holds the screen state: tile order, D-pad focus, scrolling, move
+//! mode and launches. It has no UI or platform code; the caller feeds it
+//! [`Input`]s and carries out the returned [`Effect`]s. A [`Platform`] lists
+//! and launches apps, and [`run`] shows the Slint home screen.
+
+#[cfg(target_os = "android")]
+mod android;
+mod model;
+mod order_file;
+mod platform;
+mod ui;
+
+pub use model::{
+    App, Effect, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT, Order, Scroll, State,
+    TileId,
+};
+#[cfg(any(test, feature = "test-util"))]
+pub use platform::FakePlatform;
+pub use platform::{AppEntry, Artwork, Bitmap, Platform, PlatformError};
+#[cfg(any(test, feature = "test-util"))]
+pub use ui::{DemoStep, run_demo};
+pub use ui::{Lifecycle, RunOptions, run};

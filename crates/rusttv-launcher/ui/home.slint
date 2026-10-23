@@ -1,0 +1,361 @@
+// RustTV home screen: layout and motion. Rust owns state (src/ui.rs).
+// All sizes are reference pixels on a 1920×1080 canvas, multiplied by `u`.
+// Rust owns all state (focus, scroll, mode, timers); this file only draws it
+// and forwards keys.
+
+import { AboutSlint } from "std-widgets.slint";
+
+export struct TileData {
+    label: string,
+    image: image,
+    // 0 banner, 1 icon only, 2 no artwork, 3 the built-in About tile.
+    kind: int,
+}
+
+global Theme {
+    out property <color> bg: #0E1014;
+    out property <color> surface: #1C1F26;
+    out property <color> text: #F2F3F5;
+    out property <color> text-dim: #A4A9B4;
+    out property <color> accent: #F5A524;
+}
+
+// Mode values, kept in sync with `mode_value` in ui.rs.
+global Mode {
+    out property <int> browse: 0;
+    out property <int> moving: 1;
+    out property <int> launching: 2;
+    out property <int> about: 3;
+}
+
+// Picture or placeholder for one app, filling its parent.
+component Artwork inherits Rectangle {
+    in property <TileData> data;
+    in property <length> u;
+    background: Theme.surface;
+
+    if data.kind == 0: Image {
+        width: parent.width;
+        height: parent.height;
+        source: data.image;
+        image-fit: cover;
+    }
+    if data.kind == 1: Image {
+        y: parent.height * 0.15;
+        width: 72 * u;
+        height: 72 * u;
+        x: (parent.width - self.width) / 2;
+        source: data.image;
+        image-fit: contain;
+    }
+    if data.kind != 0: Text {
+        y: data.kind == 1 ? parent.height * 0.15 + 80 * u : 0;
+        width: parent.width;
+        height: data.kind == 1 ? 32 * u : parent.height;
+        text: data.kind == 3 ? "About RustTV" : data.label;
+        font-size: 23 * u;
+        color: Theme.text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+component Tile inherits Rectangle {
+    in property <TileData> data;
+    in property <length> u;
+    in property <int> index;
+    in property <bool> focused;
+    in property <int> mode;
+    in property <bool> pressed;
+    // 0 active, 1 swaying, 2 settled.
+    in property <int> idle-phase;
+
+    property <bool> browsing: mode == Mode.browse;
+    property <bool> sway: focused && browsing && idle-phase == 1;
+    property <bool> jiggle: mode == Mode.moving;
+    property <bool> launching: focused && mode == Mode.launching;
+    property <float> scale: launching ? 1.6
+        : !focused ? 1.0
+        : pressed && browsing ? 1.075
+        : browsing && idle-phase == 2 ? 1.11
+        : 1.15;
+    // Phase in turns; evaluated only while it is used, so a still screen does not redraw.
+    property <float> sway-turns: sway ? animation-tick() / 4s : 0;
+    property <float> jiggle-turns: jiggle ? animation-tick() / 325ms + index * 0.37 : 0;
+
+    width: 250 * u;
+    height: 141 * u;
+    z: focused ? 1 : 0;
+
+    // Focus scale is done by resizing around the centre rather than with
+    // transform-scale: Slint's software renderer (desktop dev mode) ignores
+    // transforms. Rotation and shadows show only with Skia (the TV).
+    card := Rectangle {
+        width: parent.width * scale;
+        height: parent.height * scale;
+        x: (parent.width - self.width) / 2 + (sway ? 3 * u * sin(sway-turns * 360deg + 90deg)
+            : jiggle ? 1 * u * sin(jiggle-turns * 360deg + 90deg) : 0);
+        y: (parent.height - self.height) / 2 + (sway ? 3 * u * sin(sway-turns * 360deg)
+            : jiggle ? 1.5 * u * sin(jiggle-turns * 720deg) : 0);
+        transform-origin: { x: self.width / 2, y: self.height / 2 };
+        transform-rotation: sway ? 1.5deg * sin(sway-turns * 360deg)
+            : jiggle ? 1.6deg * sin(jiggle-turns * 360deg) : 0deg;
+        opacity: launching ? 0 : 1;
+        border-radius: 12 * u;
+        drop-shadow-color: focused ? #00000080 : #00000040;
+        drop-shadow-blur: focused ? 40 * u : 8 * u;
+        drop-shadow-offset-y: (sway ? -3 * u * sin(sway-turns * 360deg) : 0) + (focused ? 20 * u : 4 * u);
+
+        animate width, height {
+            duration: launching ? 500ms : focused ? 150ms : 250ms;
+            easing: launching ? cubic-bezier(0.25, 0.1, 0.25, 1) : focused ? ease-out : ease-in-out;
+        }
+        animate opacity { duration: 500ms; easing: cubic-bezier(0.25, 0.1, 0.25, 1); }
+        animate drop-shadow-blur, drop-shadow-color { duration: focused ? 150ms : 250ms; }
+
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            border-radius: parent.border-radius;
+            clip: true;
+
+            Artwork {
+                width: parent.width;
+                height: parent.height;
+                data: root.data;
+                u: root.u;
+            }
+
+            // Sheen: a faint light band sliding across while the tile sways.
+            if sway: Rectangle {
+                width: parent.width * 0.6;
+                height: parent.height;
+                x: parent.width * (0.2 + 0.45 * sin(sway-turns * 360deg));
+                background: @linear-gradient(90deg, #ffffff00 0%, #ffffff1f 50%, #ffffff00 100%);
+            }
+        }
+
+        // Move mode: outline on the picked-up tile.
+        if jiggle && focused: Rectangle {
+            width: parent.width;
+            height: parent.height;
+            border-radius: parent.border-radius;
+            border-width: 3 * u;
+            border-color: Theme.accent;
+        }
+    }
+
+    // Name under the focused tile only. Slint has no text shadow, so a dark copy
+    // offset by (0, 2) stands in for a soft label shadow.
+    label-shadow := Text {
+        x: 0;
+        y: parent.height + 24 * u + 2 * u;
+        width: parent.width;
+        text: data.kind == 3 ? "About" : data.label;
+        font-size: 25 * u;
+        font-weight: 500;
+        color: #00000066;
+        horizontal-alignment: center;
+        overflow: elide;
+        opacity: focused && !launching ? 1 : 0;
+        animate opacity { duration: 150ms; }
+    }
+    Text {
+        x: 0;
+        y: parent.height + 24 * u;
+        width: parent.width;
+        text: label-shadow.text;
+        font-size: 25 * u;
+        font-weight: 500;
+        color: Theme.text;
+        horizontal-alignment: center;
+        overflow: elide;
+        opacity: label-shadow.opacity;
+    }
+}
+
+// The focused app's picture above the grid. Two of these cross-fade.
+component HeroLayer inherits Rectangle {
+    in property <TileData> data;
+    in property <image> backdrop;
+    in property <length> u;
+
+    // Blurred and darkened in Rust (ui.rs `backdrop`); smooth scaling hides the small size.
+    Image {
+        width: parent.width;
+        height: parent.height;
+        source: backdrop;
+        image-fit: cover;
+        image-rendering: smooth;
+    }
+    // Scrim on the text side, so the backdrop can keep its colour on the right.
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: 780 * u;
+        background: @linear-gradient(90deg, #0E1014D9 0%, #0E101466 40%, #0E101400 70%);
+    }
+    Rectangle {
+        y: 400 * u;
+        height: 380 * u;
+        background: @linear-gradient(180deg, #0E101400 0%, Theme.bg 100%);
+    }
+    Rectangle {
+        y: 780 * u;
+        height: parent.height - self.y;
+        background: Theme.bg;
+    }
+    Rectangle {
+        x: 90 * u;
+        y: 360 * u;
+        width: 448 * u;
+        height: 252 * u;
+        border-radius: 16 * u;
+        clip: true;
+        Artwork {
+            width: parent.width;
+            height: parent.height;
+            data: root.data;
+            u: root.u;
+        }
+    }
+    Text {
+        x: 90 * u;
+        y: 640 * u;
+        width: 1740 * u;
+        text: data.kind == 3 ? "RustTV" : data.label;
+        font-size: 57 * u;
+        font-weight: 500;
+        color: Theme.text;
+        overflow: elide;
+    }
+}
+
+export component HomeWindow inherits Window {
+    in property <[TileData]> tiles;
+    in property <int> focused-index;
+    in property <bool> shelf: true;
+    in property <int> first-row;
+    in property <int> mode;
+    in property <bool> pressed;
+    in property <int> idle-phase;
+    in property <TileData> hero-a;
+    in property <image> hero-a-backdrop;
+    in property <TileData> hero-b;
+    in property <image> hero-b-backdrop;
+    in property <bool> hero-a-front: true;
+    in property <string> toast;
+    in property <string> version;
+    // Key text, pressed (false = released), repeat. Returns whether it was used.
+    callback key(string, bool, bool) -> bool;
+
+    property <length> u: self.width / 1920;
+
+    title: "RustTV";
+    forward-focus: keys;
+    preferred-width: 1280px;
+    preferred-height: 720px;
+    background: Theme.bg;
+
+    keys := FocusScope {
+        key-pressed(event) => {
+            root.key(event.text, true, event.repeat) ? accept : reject
+        }
+        key-released(event) => {
+            root.key(event.text, false, false) ? accept : reject
+        }
+    }
+
+    Rectangle {
+        opacity: shelf ? 1 : 0;
+        animate opacity { duration: 250ms; }
+
+        HeroLayer {
+            data: hero-a;
+            backdrop: hero-a-backdrop;
+            u: root.u;
+            opacity: hero-a-front ? 1 : 0;
+            animate opacity { duration: 250ms; }
+        }
+        HeroLayer {
+            data: hero-b;
+            backdrop: hero-b-backdrop;
+            u: root.u;
+            opacity: hero-a-front ? 0 : 1;
+            animate opacity { duration: 250ms; }
+        }
+    }
+
+    // All rows; the whole grid moves to scroll (§3 "Two scroll states").
+    Rectangle {
+        y: shelf ? 800 * u : (90 - first-row * 251) * u;
+        height: 0;
+        animate y { duration: 250ms; easing: ease-out; }
+
+        for tile[i] in tiles: Tile {
+            x: (90 + mod(i, 6) * 298) * u;
+            y: floor(i / 6) * 251 * u;
+            data: tile;
+            u: root.u;
+            index: i;
+            focused: i == focused-index;
+            mode: root.mode;
+            pressed: root.pressed;
+            idle-phase: root.idle-phase;
+        }
+    }
+
+    if toast != "": Rectangle {
+        x: 90 * u;
+        y: (1020 - 64) * u;
+        width: toast-text.preferred-width + 48 * u;
+        height: 64 * u;
+        border-radius: 12 * u;
+        background: Theme.surface;
+        toast-text := Text {
+            x: 24 * u;
+            text: toast;
+            font-size: 29 * u;
+            color: Theme.text;
+            vertical-alignment: center;
+        }
+    }
+
+    if mode == Mode.about: Rectangle {
+        background: Theme.bg;
+        VerticalLayout {
+            padding-left: 90 * u;
+            padding-right: 90 * u;
+            padding-top: 120 * u;
+            padding-bottom: 60 * u;
+            spacing: 24 * u;
+            alignment: start;
+            Text {
+                text: "RustTV";
+                font-size: 76 * u;
+                font-weight: 500;
+                color: Theme.text;
+            }
+            Text {
+                text: "Version " + version + " · MIT OR Apache-2.0";
+                font-size: 29 * u;
+                color: Theme.text-dim;
+            }
+            Text {
+                text: "Built with Slint under the Slint Royalty-free License 2.0.";
+                font-size: 29 * u;
+                color: Theme.text-dim;
+            }
+            AboutSlint {
+                height: 300 * u;
+            }
+            Text {
+                text: "Press Back to return.";
+                font-size: 25 * u;
+                color: Theme.text-dim;
+            }
+        }
+    }
+}

@@ -91,7 +91,7 @@ Residual risk: firmware updates may re-enable the stock launcher or change its p
 
 ## Supply chain
 
-- `cargo deny check` in CI: RustSec advisories, license allowlist (permissive + MPL), banned/duplicate crates.
+- `cargo deny check` in CI: RustSec advisories, license allowlist (permissive + MPL + Slint's royalty-free license, D9), banned/duplicate crates. Ignored advisories need a reason in `deny.toml`; so far only unmaintained crates used by the desktop dev mode, never by the APK.
 - `Cargo.lock` committed; dependencies pinned; Slint pinned with `=`.
 - Release APKs signed with a project key kept offline; checksums published with each release. Reproducible builds investigated in Phase 6.
 - No running of unvetted third-party tools (see RESEARCH.md §4).

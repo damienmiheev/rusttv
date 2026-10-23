@@ -6,17 +6,28 @@ all-features = true
 
 [advisories]
 # RustSec advisories; vulnerable, unmaintained and yanked crates fail the check.
-ignore = []
+# Ignored only with a reason; recheck every entry on each Slint upgrade.
+ignore = [
+    # Unmaintained, reached only through Slint's desktop backend (winit) on Linux: zbus
+    # (accessibility over D-Bus) and window decorations. Desktop dev mode only, not in the APK.
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser via winit's sctk-adwaita; Linux desktop dev mode only" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant via zbus in i-slint-backend-winit; Linux desktop dev mode only" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names via zbus in i-slint-backend-winit; Linux desktop dev mode only" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive via zbus in i-slint-backend-winit; Linux desktop dev mode only" },
+]
 
 [licenses]
-# Permissive licenses + MPL-2.0 (SECURITY.md § Supply chain).
-# Slint's license is added when the launcher crate lands (ARCHITECTURE.md D9).
+# Permissive licenses + MPL-2.0, plus Slint's royalty-free license (SECURITY.md § Supply chain,
+# ARCHITECTURE.md D9: requires attribution, shown on the launcher's About page).
 allow = [
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
     "BSD-2-Clause",
     "BSD-3-Clause",
+    # Boost: permissive; clipboard-win / error-code via Slint's winit backend (Windows desktop only).
+    "BSL-1.0",
     "ISC",
+    "LicenseRef-Slint-Royalty-free-2.0",
     "MIT",
     "MPL-2.0",
     "Unicode-3.0",
