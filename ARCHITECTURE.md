@@ -32,8 +32,8 @@ rusttv/
 │   ├── rusttv-core/        # device model, Adb trait, typed commands, inspect, perf, (later) safety engine
 │   ├── rusttv-cli/         # binary `rusttv`: clap, output formatting
 │   ├── rusttv-mcp/         # Phase 5
-│   └── rusttv-launcher/    # Phase 1b: cdylib for Android + desktop dev mode
-├── android/                # Phase 1b: Gradle project, Kotlin shim, manifest
+│   └── rusttv-launcher/    # home screen: model, Slint UI, JNI bridge; cdylib + desktop dev mode
+├── android/                # Gradle app ai.rusttv.launcher: Kotlin shim, manifest, build.sh
 ├── compat/
 │   ├── README.md           # how to contribute a profile
 │   ├── protected.toml      # Phase 4: static protected-package deny-list (SECURITY.md)
@@ -41,7 +41,7 @@ rusttv/
 └── *.md
 ```
 
-Only `rusttv-core` and `rusttv-cli` exist in Milestone 1. Other directories are created when their phase starts.
+`rusttv-mcp` and `compat/protected.toml` do not exist yet; they are created when their phase starts.
 
 ## rusttv-core
 
@@ -78,36 +78,49 @@ There is intentionally no `shell(&str)`. Values that end up in `adb shell` argum
 - CLI tests run the real binary against `tests/fixtures/fake-adb` (selected with `RUSTTV_ADB`), so they need no device.
 - Logging via `tracing` to stderr (`-v`/`RUST_LOG`); stdout reserved for results.
 
-## Launcher (Phase 1b)
+## Launcher
+
+### Crate `rusttv-launcher`
+
+| Module | Role |
+|---|---|
+| `model.rs` | Pure state machine `Home`: tile order, D-pad focus, shelf/grid scroll, move mode, launch in flight. Time is passed in; returns `Effect`s. No Slint, no platform. |
+| `order_file.rs` | Tile order in `order.toml` (app files dir): atomic write, unreadable file kept as `.bak`. |
+| `platform.rs` | `Platform` trait (`list_apps`, `launch`), `PlatformError`, `Bitmap` (shrink, blur, hero backdrop glow), `FakePlatform` (feature `test-util`). |
+| `ui.rs` + `ui/home.slint` | Rust owns state and timers and pushes properties; Slint draws, animates and forwards keys. `Lifecycle` reports pause/resume. |
+| `android.rs` | `android_main` + `AndroidPlatform` over JNI. The only module with `unsafe` (crate lint `unsafe_code = "deny"`, module `allow`, a `SAFETY:` comment per block). |
+| `bin/desktop.rs` | Desktop dev mode with `FakePlatform` (Slint winit backend + software renderer, no Skia); `--order <file>`, `--demo <dir>` snapshots. |
+
+Targets: on Android Slint's `backend-android-activity-06` (Skia, D11); elsewhere `backend-winit` + `renderer-software`. `crate-type = ["lib", "cdylib"]`; the APK's library is built with the size-tuned `android-release` profile.
 
 ### Android bridge
 
 ```text
-LauncherActivity (Kotlin, extends NativeActivity; spike-proven, see D11)
+LauncherActivity (Kotlin, extends NativeActivity, D11)
    │ loads librusttv_launcher.so (android-activity + Slint)
    │
-   ├─ PlatformBridge.kt  (static methods, called from Rust via `jni`)
-   │     listLaunchables(): Array<AppEntry>   label, package, activity, banner/icon as RGBA + w/h
-   │     launch(package, activity): Boolean
-   │     registerPackageListener()            → calls native onPackagesChanged()
+   ├─ Bridge.kt  (object with @JvmStatic methods, called from Rust via `jni`)
+   │     listApps(context): Array<String>          "component\nlabel", LEANBACK_LAUNCHER, without itself
+   │     banner/icon(context, component, w, h): IntArray?   ARGB pixels, null if none
+   │     launch(context, component): Boolean       false if the activity is gone
    │
-Rust: trait Platform { list_apps(), launch(), … }
-   ├─ AndroidPlatform  — only module with JNI/unsafe; one coarse call per operation; checks Java exceptions
-   └─ FakePlatform     — desktop dev mode + tests (fake app list, icons from PNGs)
+Rust: trait Platform { list_apps(), launch() }
+   ├─ AndroidPlatform  — class loaded once via the activity's class loader; JNI calls in local
+   │                     frames; Java exceptions cleared and returned as PlatformError
+   └─ FakePlatform     — desktop dev mode + tests (generated banners)
 ```
 
-- Banner (320×180, Leanback) preferred; fall back to icon.
-- Manifest: intent filters `MAIN`+`HOME`+`DEFAULT` and `MAIN`+`LEANBACK_LAUNCHER`; `<queries>` for `LEANBACK_LAUNCHER` and `LAUNCHER` intents (no `QUERY_ALL_PACKAGES`); `leanback` and `touchscreen` features `required="false"`.
-- ABIs: `arm64-v8a` **and** `armeabi-v7a` (many TVs run 32-bit userspace on 64-bit SoCs), plus `x86_64` for the emulator.
+- Apps are identified by component name (`package/activity`). Banner (320×180, Leanback) preferred; icon (96×96) as fallback.
+- Manifest: `MAIN`+`LEANBACK_LAUNCHER` and `MAIN`+`HOME`+`DEFAULT`; `<queries>` for `LEANBACK_LAUNCHER` (no `QUERY_ALL_PACKAGES`); `leanback` and `touchscreen` features `required="false"`; `allowBackup="false"`.
+- Lifecycle: Slint's Android event listener forwards `Pause`/`Resume` to `Lifecycle`; resume re-reads the app list. A package-change listener (refresh only when flagged) is a later step.
+- ABIs: only `arm64-v8a` so far. `armeabi-v7a` (32-bit userspace TVs) and `x86_64` (emulator) are needed for the MVP criteria (ROADMAP).
+- Build: `android/build.sh` (cargo-ndk, then Gradle). Skia is a prebuilt binary fetched by `build.sh` and checked against a pinned SHA-256 (SECURITY.md § Supply chain). Release builds are signed with the debug key until release signing exists (Phase 6).
 
-### Minimal proof-of-concept design
+### Still open
 
-- One screen: horizontal-scrolling grid of app tiles, clock, nothing else.
-- Selection index lives in a Rust model; a root `FocusScope` maps D-pad keys → index arithmetic; DPAD_CENTER/Enter → `launch()`. Back is consumed at home.
-- On `onResume`: refresh list if the package listener flagged changes. No polling, no services.
-- Icons decoded once and cached in memory; disk cache only if measurements justify it.
-- About screen with Slint attribution (license requirement).
-- Must run on desktop with `FakePlatform` so UI work does not need a TV.
+- About page with Slint attribution exists; app details and settings do not.
+- Banner cache is in memory only; a disk cache only if measurements justify it.
+- Device checks on the Philips TV (focus timings, backdrop look, label readability at 3 m) and benchmarks per BENCHMARK_PLAN.md.
 
 ## MCP (Phase 5)
 
@@ -124,7 +137,7 @@ Rust: trait Platform { list_apps(), launch(), … }
 | `tracing`, `tracing-subscriber` | Structured logs | Standard |
 | `toml` | Compat profiles | Chosen format |
 
-Dev/CI tools: `cargo-deny` (covers RustSec advisories + licenses, so `cargo-audit` is redundant), `cargo-nextest` optional. Added later only when needed: `proptest` (parsers), `criterion` (host-side micro-benchmarks), `tokio` + `rmcp` (MCP), `slint` + `jni` + `android-activity` (launcher).
+Dev/CI tools: `cargo-deny` (covers RustSec advisories + licenses, so `cargo-audit` is redundant), `cargo-nextest` optional. Added later only when needed: `proptest` (parsers), `criterion` (host-side micro-benchmarks), `tokio` + `rmcp` (MCP). Launcher (Phase 1c): `slint`/`slint-build` (=1.18.1), `log`, `material-colors` (backdrop colour), and on Android `android-activity`, `jni`, `android_logger`.
 
 ## Decision log
 

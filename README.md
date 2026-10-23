@@ -4,7 +4,7 @@
 
 RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + Slint launcher, a safe ADB-based optimizer, and CLI/MCP tools for humans and AI agents. Local-first, no telemetry, and every performance claim backed by published benchmarks.
 
-> **Status: Milestone 1 in progress.** The CLI works: list, connect and inspect devices, list apps, take performance snapshots and run launcher benchmarks. See [ROADMAP.md](ROADMAP.md) for what comes next.
+> **Status: early development.** The CLI works: list, connect and inspect devices, list apps, take performance snapshots and run launcher benchmarks. The launcher (Phase 1c) runs on the Google TV emulator but has not been tested on a real TV yet. See [ROADMAP.md](ROADMAP.md) for what comes next.
 
 ## What it will be
 
@@ -52,6 +52,14 @@ cargo run -p rusttv-cli -- performance benchmark --app <package/.Activity> --app
 cargo run -p rusttv-cli -- device list --json          # machine-readable output
 ```
 
+Launcher, without a TV (desktop dev mode with made-up apps; arrows move, Return is OK, hold it to move a tile, Escape is Back):
+
+```bash
+cargo run -p rusttv-launcher --features test-util --bin rusttv-launcher-desktop
+```
+
+Launcher APK (arm64): `android/build.sh`. Needs the Android SDK (platform 34), NDK 30, JDK 17 and `cargo install cargo-ndk`.
+
 To connect over the network, first enable Developer options and network/wireless debugging on the TV. The first connection shows a prompt on the TV asking you to allow this computer. If `adb` is not on your `PATH`, set `RUSTTV_ADB=/path/to/adb`.
 
 Before sending a change, run the same checks as CI:
@@ -69,7 +77,8 @@ The project is at an early stage. The most useful contributions right now are fe
 
 ## Acknowledgements
 
-- [CleanYourTV / tv-vibehack](https://github.com/Gathin23/tv-vibehack) (MIT) — inspiration for the safety and recovery design.
+- [CleanYourTV / tv-vibehack](https://github.com/Gathin23/tv-vibehack) (MIT) — inspiration for the safety and recovery design and the launcher's hero backdrop.
+- [material-color-utilities](https://github.com/material-foundation/material-color-utilities) via the Rust port [material-colors](https://crates.io/crates/material-colors) — backdrop colour extraction.
 - [Slint](https://slint.dev) — UI toolkit for the launcher.
 
 ## License
