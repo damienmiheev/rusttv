@@ -22,6 +22,8 @@ These rules apply to every change in this repo. Details live in the linked docs;
 
 ## Rust standards
 
+Use the `rust-guidelines` project skill (Microsoft's Pragmatic Rust Guidelines) when writing or reviewing Rust. The rules below take precedence over it.
+
 - Idiomatic ownership; avoid needless `clone()`/allocations.
 - `thiserror` for library errors in `rusttv-core`; `anyhow` only in binaries.
 - No `unwrap()`/`expect()` outside tests unless the invariant is documented in a comment.
