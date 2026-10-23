@@ -62,9 +62,11 @@ SKIA_BINARIES_URL="file://$SKIA_DIR/skia-binaries-{key}.tar.gz" \
 # skia-bindings passes clang the unversioned `--target=armv7-linux-androideabi`,
 # which NDK 30's headers reject; a later versioned --target wins. The dashed
 # BINDGEN_EXTRA_CLANG_ARGS/CXXFLAGS names avoid the underscore ones cargo-ndk sets
-# (they need `env`, as sh can't name them).
+# (they need `env`, as sh can't name them). bindgen uses the NDK's own libclang,
+# since an older system one fails on NDK 30's libc++ headers.
 V7_TARGET="--target=armv7a-linux-androideabi26"
 env ANDROID_NDK="$ANDROID_NDK_HOME" SKIA_SOURCE_DIR="$SKIA_SRC" \
+    LIBCLANG_PATH="$(echo "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/lib)" \
     SKIA_NINJA_COMMAND="$SKIA_SRC/third_party/ninja/ninja" \
     SKIA_GN_ARGS="extra_cflags_c=[\"$V7_TARGET\"] extra_cflags_cc=[\"$V7_TARGET\"]" \
     "BINDGEN_EXTRA_CLANG_ARGS_armv7-linux-androideabi=$V7_TARGET" \
