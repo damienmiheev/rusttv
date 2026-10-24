@@ -19,8 +19,25 @@ export struct TileData {
     label: string,
     image: image,
     // 0 banner, 1 icon only, 2 no artwork, 3 the built-in About tile, 4 loading,
-    // 5 the Hidden apps tile.
+    // 5 the Hidden apps tile, 6 the Settings tile.
     kind: int,
+}
+
+// One row of a Settings panel (ui.rs `settings_rows`).
+export struct SettingsRow {
+    title: string,
+    // A second, dim line; empty for one-line rows.
+    detail: string,
+    // The current choice: an accent dot.
+    current: bool,
+    // Shown dim (e.g. animations without the grant).
+    dim: bool,
+}
+
+// One line of the review screen; `header` lines name a group.
+export struct ReviewLine {
+    text: string,
+    header: bool,
 }
 
 // Texts that Rust puts together (ui.rs), translated here like the rest
@@ -53,6 +70,107 @@ export global Strings {
     public pure function couldnt-load-notices(error: string) -> string {
         return @tr("Couldn't load the licence notices: {}", error);
     }
+    // Settings and history (HISTORY.md § 8). Values match ui.rs.
+    public pure function section-name(section: int) -> string {
+        if section == 1 { return @tr("Updates"); }
+        if section == 2 { return @tr("History"); }
+        if section == 3 { return @tr("Waiting for your computer"); }
+        return @tr("Animations");
+    }
+    public pure function animation-choice(choice: int) -> string {
+        if choice == 1 { return @tr("Faster (0.5×)"); }
+        if choice == 2 { return @tr("Off"); }
+        return @tr("Normal");
+    }
+    public pure function on-off(on: bool) -> string {
+        return on ? @tr("On") : @tr("Off");
+    }
+    // SETTING_KEYS order: animator, transition, window.
+    public pure function setting-name(key: int) -> string {
+        if key == 1 { return @tr("Transition animations"); }
+        if key == 2 { return @tr("Window animations"); }
+        return @tr("App animations");
+    }
+    // 0 enabled, 1 disabled, 2 not seen.
+    public pure function package-state(state: int) -> string {
+        if state == 1 { return @tr("off"); }
+        if state == 2 { return @tr("not seen"); }
+        return @tr("on");
+    }
+    public pure function unset-value() -> string {
+        return @tr("default");
+    }
+    // 0 this TV, 1 the computer, 2 outside RustTV, 3 put back from the computer.
+    public pure function who(author: int) -> string {
+        if author == 1 { return @tr("Your computer"); }
+        if author == 2 { return @tr("Changed outside RustTV"); }
+        if author == 3 { return @tr("Restored from your computer"); }
+        return @tr("This TV");
+    }
+    public pure function time-unknown() -> string {
+        return @tr("time unknown");
+    }
+    // ui.rs `change_line`: 0 reordered, 1 hid, 2 showed, 3 update check,
+    // 4 setting, 5 package, 6 firmware, 7 Home takeover, 8 nothing.
+    public pure function change-line(kind: int, name: string, old: string, new: string) -> string {
+        if kind == 0 { return @tr("Apps reordered"); }
+        if kind == 1 { return @tr("Hid {}", name); }
+        if kind == 2 { return @tr("Showed {}", name); }
+        if kind == 3 { return @tr("Check for updates: {}", new); }
+        if kind == 4 || kind == 5 { return @tr("{}: {} → {}", name, old, new); }
+        if kind == 6 { return @tr("Firmware updated"); }
+        if kind == 7 { return @tr("Home takeover: {}", new); }
+        return @tr("No change");
+    }
+    // 0 changed on the TV now, 1 applied by the computer later.
+    public pure function review-group(group: int) -> string {
+        if group == 1 { return @tr("Your computer applies these: run rusttv history apply-pending within 2 hours"); }
+        return @tr("This TV changes now");
+    }
+    public pure function grant-hint() -> string {
+        return @tr("To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it.");
+    }
+    public pure function off-note() -> string {
+        return @tr("Some apps may look odd without animations.");
+    }
+    public pure function history-empty() -> string {
+        return @tr("No changes yet. Changes made here or from your computer appear here.");
+    }
+    public pure function and-more(line: string, more: int) -> string {
+        return @tr("{} (+{} more)", line, more);
+    }
+    public pure function restore-this() -> string {
+        return @tr("Restore this state");
+    }
+    public pure function update-check-title() -> string {
+        return @tr("Check for updates automatically");
+    }
+    public pure function duration(hours: int, minutes: int) -> string {
+        if hours == 0 { return @tr("{} min", minutes); }
+        return @tr("{} h {} min", hours, minutes);
+    }
+    public pure function run-apply-pending(time: string) -> string {
+        return @tr("On your computer, run rusttv history apply-pending within {}.", time);
+    }
+    // ui.rs `settings_status`: 0 none, 1 applied, 2 saved for the computer,
+    // 3 nothing changed (detail), 4 wrong code, 5 locked (detail: time),
+    // 6 test build, 7 busy, 8 rollback failed (detail), 9 nothing to restore,
+    // 10 newer format, 11 reading, 12 history unreadable (detail).
+    public pure function settings-status(kind: int, detail: string) -> string {
+        if kind == 1 { return @tr("Applied."); }
+        if kind == 2 { return @tr("Saved for your computer. {}", detail); }
+        if kind == 3 { return @tr("Nothing changed: {}", detail); }
+        if kind == 4 { return @tr("Nothing changed: wrong code."); }
+        if kind == 5 { return @tr("Too many wrong codes. Approvals are locked for {}.", detail); }
+        if kind == 6 { return @tr("Approvals are off in test builds."); }
+        if kind == 7 { return @tr("Busy — try again in a moment."); }
+        if kind == 8 { return @tr("Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings.", detail); }
+        if kind == 9 { return @tr("This is the state now: nothing to restore."); }
+        if kind == 10 { return @tr("Your computer has a newer RustTV. Update RustTV on this TV."); }
+        if kind == 11 { return @tr("Reading history…"); }
+        if kind == 12 { return @tr("History couldn't be read: {}. Your computer's copy can put it back.", detail); }
+        return "";
+    }
 }
 
 // Layout direction (set from ui.rs). For Arabic and Hebrew the layout is
@@ -83,6 +201,8 @@ global Mode {
     out property <int> about: 3;
     out property <int> menu: 4;
     out property <int> hidden: 5;
+    out property <int> settings: 6;
+    out property <int> review: 7;
 }
 
 // Picture or placeholder for one app, filling its parent.
@@ -111,11 +231,11 @@ component Artwork inherits Rectangle {
         opacity: data.kind == 1 ? 1 : 0;
         animate opacity { duration: 300ms; easing: ease-out; }
     }
-    if data.kind == 1 || data.kind == 2 || data.kind == 3 || data.kind == 5: Text {
+    if data.kind == 1 || data.kind == 2 || data.kind == 3 || data.kind == 5 || data.kind == 6: Text {
         y: data.kind == 1 ? parent.height * 0.15 + 80 * u : 0;
         width: parent.width;
         height: data.kind == 1 ? 32 * u : parent.height;
-        text: data.kind == 3 ? @tr("About RustTV") : data.kind == 5 ? @tr("Hidden apps") : data.label;
+        text: data.kind == 3 ? @tr("About RustTV") : data.kind == 5 ? @tr("Hidden apps") : data.kind == 6 ? @tr("Settings") : data.label;
         font-size: 23 * u;
         color: Theme.text;
         horizontal-alignment: center;
@@ -236,7 +356,7 @@ component Tile inherits Rectangle {
         x: 0;
         y: parent.height + 24 * u + 2 * u;
         width: parent.width;
-        text: data.kind == 3 ? @tr("About") : data.kind == 5 ? @tr("Hidden apps") : data.label;
+        text: data.kind == 3 ? @tr("About") : data.kind == 5 ? @tr("Hidden apps") : data.kind == 6 ? @tr("Settings") : data.label;
         font-size: 25 * u;
         font-weight: 500;
         color: #00000066;
@@ -320,11 +440,63 @@ component HeroLayer inherits Rectangle {
         y: 640 * u;
         width: 1740 * u;
         horizontal-alignment: Dir.start;
-        text: data.kind == 3 ? "RustTV" : data.kind == 5 ? @tr("Hidden apps") : data.label;
+        text: data.kind == 3 ? "RustTV" : data.kind == 5 ? @tr("Hidden apps") : data.kind == 6 ? @tr("Settings") : data.label;
         font-size: 57 * u;
         font-weight: 500;
         color: Theme.text;
         overflow: elide;
+    }
+}
+
+// A row in the long-press menu's style: a light pill with dark text when
+// selected, the update dot's accent dot for the current choice.
+component MenuRow inherits Rectangle {
+    in property <length> u;
+    in property <string> text;
+    in property <string> detail;
+    in property <bool> selected;
+    // Selected while focus is elsewhere (the section whose panel is open).
+    in property <bool> marked;
+    in property <bool> current;
+    in property <bool> dim;
+    height: (detail == "" ? 64 : 96) * u;
+    border-radius: 10 * u;
+    background: selected ? Theme.text : marked ? Theme.surface : Theme.text.with-alpha(0);
+    animate background { duration: 120ms; }
+    if current: Rectangle {
+        x: Dir.x(18 * u, self.width, parent.width);
+        y: (detail == "" ? (parent.height - self.height) / 2 : 28 * u);
+        width: 10 * u;
+        height: 10 * u;
+        border-radius: self.width / 2;
+        background: Theme.accent;
+    }
+    Text {
+        x: Dir.x(44 * u, self.width, parent.width);
+        y: detail == "" ? 0 : 12 * u;
+        width: parent.width - 68 * u;
+        height: detail == "" ? parent.height : 34 * u;
+        text: root.text;
+        font-size: 27 * u;
+        font-weight: 500;
+        color: selected ? Theme.bg : dim ? Theme.text-dim : Theme.text;
+        horizontal-alignment: Dir.start;
+        vertical-alignment: center;
+        overflow: elide;
+        animate color { duration: 120ms; }
+    }
+    if detail != "": Text {
+        x: Dir.x(44 * u, self.width, parent.width);
+        y: 50 * u;
+        width: parent.width - 68 * u;
+        height: 32 * u;
+        text: root.detail;
+        font-size: 25 * u;
+        color: selected ? Theme.bg.with-alpha(0.7) : Theme.text-dim;
+        horizontal-alignment: Dir.start;
+        vertical-alignment: center;
+        overflow: elide;
+        animate color { duration: 120ms; }
     }
 }
 
@@ -363,6 +535,29 @@ export component HomeWindow inherits Window {
     // The hidden apps page.
     in property <[TileData]> hidden-tiles;
     in property <int> hidden-focus;
+    // The Settings page (ui.rs `render_settings`): sections on the left, the
+    // selected one's panel on the right. `settings-row` is the focused panel
+    // row, -1 while the section list has focus.
+    in property <[string]> settings-sections;
+    in property <int> settings-section;
+    in property <int> settings-row: -1;
+    in property <string> settings-panel-title;
+    in property <string> settings-note;
+    in property <[SettingsRow]> settings-rows;
+    // The first row shown (long lists scroll by rows).
+    in property <int> settings-first-row;
+    in property <string> settings-status;
+    // The review screen (ui.rs `render_review`). Phase 0: reading, the row
+    // after the last line is Approve; 1: the code; 2: hold OK.
+    in property <[ReviewLine]> review-lines;
+    in property <int> review-row;
+    in property <int> review-first-line;
+    in property <int> review-phase;
+    // The code's four arrows (0 up, 1 down, 2 left, 3 right) and how many
+    // were pressed; `review-holding` while OK is held.
+    in property <[int]> review-code;
+    in property <int> review-entered;
+    in property <bool> review-holding;
     // Key text, pressed (false = released), repeat. Returns whether it was used.
     callback key(string, bool, bool) -> bool;
 
@@ -701,6 +896,208 @@ export component HomeWindow inherits Window {
                     border-radius: parent.border-radius;
                     background: #FFFFFF66;
                     animate y { duration: 120ms; easing: ease-out; }
+                }
+            }
+        }
+    }
+    // Settings (HISTORY.md § 8): the Hidden apps header; the sections as menu
+    // rows on the left, the selected one's panel (About's surface) on the
+    // right. Appears at once, like About: D-pad actions don't animate.
+    if mode == Mode.settings: Rectangle {
+        background: Theme.bg;
+
+        Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 90 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: @tr("Settings");
+            font-size: 57 * u;
+            font-weight: 500;
+            color: Theme.text;
+        }
+        Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 176 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: settings-status != "" ? settings-status : @tr("Up and Down choose, OK opens. Back returns.");
+            font-size: 25 * u;
+            color: settings-status != "" ? Theme.text : Theme.text-dim;
+            overflow: elide;
+        }
+        for name[i] in settings-sections: MenuRow {
+            x: Dir.x(90 * u, self.width, root.width);
+            y: (260 + i * 72) * u;
+            width: 480 * u;
+            u: root.u;
+            text: name;
+            selected: i == settings-section && settings-row < 0;
+            marked: i == settings-section && settings-row >= 0;
+        }
+        Rectangle {
+            x: Dir.x(720 * u, self.width, root.width);
+            y: 260 * u;
+            width: 1110 * u;
+            height: 760 * u;
+            border-radius: 16 * u;
+            background: Theme.surface;
+            clip: true;
+
+            Text {
+                x: Dir.x(48 * u, self.width, parent.width);
+                y: 36 * u;
+                width: parent.width - 96 * u;
+                horizontal-alignment: Dir.start;
+                text: settings-panel-title;
+                font-size: 29 * u;
+                font-weight: 500;
+                color: Theme.text;
+                overflow: elide;
+            }
+            note := Text {
+                x: Dir.x(48 * u, self.width, parent.width);
+                y: 88 * u;
+                width: parent.width - 96 * u;
+                horizontal-alignment: Dir.start;
+                text: settings-note;
+                font-size: 25 * u;
+                color: Theme.text-dim;
+                wrap: word-wrap;
+            }
+            Rectangle {
+                y: (settings-note == "" ? 96 : 120) * u + (settings-note == "" ? 0px : note.preferred-height);
+                height: parent.height - self.y - 24 * u;
+                clip: true;
+                property <length> pitch: (settings-rows.length > 0 && settings-rows[0].detail != "" ? 104 : 72) * u;
+                for row[i] in settings-rows: MenuRow {
+                    x: 24 * u;
+                    y: (i - settings-first-row) * parent.pitch;
+                    width: parent.width - 48 * u;
+                    u: root.u;
+                    text: row.title;
+                    detail: row.detail;
+                    current: row.current;
+                    dim: row.dim;
+                    selected: i == settings-row;
+                    visible: i >= settings-first-row;
+                }
+            }
+        }
+    }
+
+    // Review and confirm (HISTORY.md § 6.2, § 8.5). Up and Down read the
+    // changes; Approve shows the code, pressed with the arrow keys, then OK
+    // is held. The window is FLAG_SECURE while this is open (ui.rs), so adb
+    // screen captures show black.
+    if mode == Mode.review: Rectangle {
+        background: Theme.bg;
+
+        Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 90 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: @tr("Review changes");
+            font-size: 57 * u;
+            font-weight: 500;
+            color: Theme.text;
+        }
+        Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 176 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: settings-status != "" ? settings-status
+                : review-phase == 0 ? @tr("Up and Down read the changes. Choose Approve to go on. Back cancels.")
+                : @tr("Nothing changes until you hold OK. Back cancels.");
+            font-size: 25 * u;
+            color: settings-status != "" ? Theme.text : Theme.text-dim;
+            overflow: elide;
+        }
+        Rectangle {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 260 * u;
+            width: 1740 * u;
+            height: 520 * u;
+            clip: true;
+            for line[i] in review-lines: Rectangle {
+                y: (i - review-first-line) * 64 * u;
+                height: 64 * u;
+                visible: i >= review-first-line;
+                if line.header: Text {
+                    x: Dir.x(0, self.width, parent.width);
+                    width: parent.width;
+                    height: parent.height;
+                    horizontal-alignment: Dir.start;
+                    vertical-alignment: center;
+                    text: line.text;
+                    font-size: 25 * u;
+                    color: Theme.text-dim;
+                    overflow: elide;
+                }
+                if !line.header: MenuRow {
+                    width: parent.width;
+                    u: root.u;
+                    text: line.text;
+                    selected: review-phase == 0 && i == review-row;
+                }
+            }
+            MenuRow {
+                y: (review-lines.length - review-first-line) * 64 * u;
+                width: 480 * u;
+                x: Dir.x(0, self.width, parent.width);
+                u: root.u;
+                text: @tr("Approve");
+                selected: review-phase == 0 && review-row == review-lines.length;
+                marked: review-phase > 0;
+            }
+        }
+        if review-phase >= 1: Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 812 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: review-phase == 1 ? @tr("Press these arrows on the remote:") : @tr("Now hold OK to apply.");
+            font-size: 27 * u;
+            color: Theme.text;
+        }
+        // The code: always left to right, in every language (the arrow keys
+        // keep their physical meaning).
+        if review-phase >= 1: Rectangle {
+            x: 90 * u;
+            y: 860 * u;
+            width: 4 * 88 * u;
+            height: 76 * u;
+            for arrow[k] in review-code: Text {
+                x: k * 88 * u;
+                width: 76 * u;
+                height: 76 * u;
+                text: arrow == 0 ? "↑" : arrow == 1 ? "↓" : arrow == 2 ? "←" : "→";
+                font-size: 57 * u;
+                font-weight: 500;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                color: k < review-entered ? Theme.accent : Theme.text;
+            }
+        }
+        // The hold: fills over 2 s while OK is held, snaps back fast when it
+        // is let go (slow where the person decides, fast where it answers).
+        if review-phase == 2: Rectangle {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 980 * u;
+            width: 600 * u;
+            height: 4 * u;
+            border-radius: 2 * u;
+            background: Theme.surface;
+            Rectangle {
+                x: Dir.x(0, self.width, parent.width);
+                width: review-holding ? parent.width : 0;
+                border-radius: parent.border-radius;
+                background: Theme.accent;
+                animate width {
+                    duration: review-holding ? 2000ms : 200ms;
+                    easing: review-holding ? linear : ease-out;
                 }
             }
         }

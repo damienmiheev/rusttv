@@ -54,6 +54,30 @@ pub trait Platform {
     /// Starts downloading, verifying and installing the newer launcher in the
     /// background; Android asks the user to confirm the install.
     fn install_update(&mut self) -> Result<(), PlatformError>;
+
+    /// Marks the window secure while the review screen is open (Android
+    /// `FLAG_SECURE` and hidden overlays, HISTORY.md § 6.2): screen captures
+    /// over adb then show black. Nothing to do where there is no adb.
+    fn set_secure(&mut self, _on: bool) {}
+
+    /// Four random numbers from the OS random source, for the review code.
+    /// The default is for development builds only (Android overrides it).
+    fn random_code(&mut self) -> [u32; 4] {
+        use std::hash::{BuildHasher, Hasher};
+        let mut code = [0; 4];
+        for (index, value) in code.iter_mut().enumerate() {
+            let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+            hasher.write_usize(index);
+            *value = u32::try_from(hasher.finish() & 0xffff_ffff).unwrap_or(0);
+        }
+        code
+    }
+
+    /// The local time zone's offset from UTC now, in seconds, for history
+    /// times.
+    fn utc_offset_secs(&self) -> i32 {
+        0
+    }
 }
 
 /// What the launcher's updater is doing (SECURITY.md § Launcher updates).
@@ -589,6 +613,11 @@ impl Platform for FakePlatform {
         }
         Ok(())
     }
+
+    /// A fixed code (← ↑ → ↓), so tests and the desktop demo know it.
+    fn random_code(&mut self) -> [u32; 4] {
+        [2, 0, 3, 1]
+    }
 }
 
 #[cfg(any(test, feature = "test-util"))]
@@ -935,8 +964,8 @@ mod tests {
         let mut home = Home::new(Order::default(), Default::default(), false);
         home.set_apps(&apps);
 
-        // 14 apps + About: three rows, the last one short.
-        assert_eq!(home.tiles().len(), 15);
+        // 14 apps + About + Settings: three rows, the last one short.
+        assert_eq!(home.tiles().len(), 16);
         for entry in &entries {
             assert!(home.tiles().contains(&TileId::App(entry.app.id.clone())));
             platform.launch(&entry.app.id).unwrap();

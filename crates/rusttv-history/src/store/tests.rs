@@ -364,3 +364,10 @@ fn packing_stops_when_interrupted_and_leaves_the_history_intact() {
     assert_eq!(store.log(usize::MAX).unwrap().len(), n);
     assert!(store.pack(&AtomicBool::new(false)).unwrap().is_some());
 }
+
+#[test]
+fn random_ids_are_valid_version_4_uuids() {
+    let id = HistoryId::from_random([0xff; 16]);
+    assert_eq!(id.as_str(), "ffffffff-ffff-4fff-bfff-ffffffffffff");
+    assert_eq!(HistoryId::parse(id.as_str()).unwrap(), id);
+}

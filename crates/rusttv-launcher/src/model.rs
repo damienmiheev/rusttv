@@ -42,7 +42,7 @@ pub const MOVE_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 ///
 /// Sparse keys let a moved tile take a key between its neighbours without
 /// renumbering the rest. Persisted in the order file.
-const KEY_STEP: i64 = 1000;
+pub(crate) const KEY_STEP: i64 = 1000;
 
 /// One tile on the home screen.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -51,6 +51,8 @@ pub enum TileId {
     App(String),
     /// The built-in About tile.
     About,
+    /// The built-in Settings tile (HISTORY.md § 8).
+    Settings,
     /// Opens the hidden apps. Shown last, and only while an installed app is hidden;
     /// never part of the [`Order`].
     Hidden,
@@ -110,6 +112,10 @@ pub enum Effect {
     Update,
     /// Show the hidden apps page.
     OpenHidden,
+    /// Show the Settings page.
+    OpenSettings,
+    /// A key while Settings is open: the Settings page handles it.
+    Settings(Input),
     /// Persist [`Home::order`] and [`Home::hidden`].
     SaveOrder,
     /// Tell the user this app (component name) could not be opened.
@@ -143,6 +149,8 @@ pub enum State {
     Menu,
     /// The hidden apps page is open.
     Hidden,
+    /// The Settings page (or its review screen) is open.
+    Settings,
 }
 
 /// User-defined tile order as sparse integer keys.
@@ -186,23 +194,35 @@ impl Order {
 
     /// Drops apps that are gone and appends new ones; returns whether anything changed.
     ///
-    /// New apps are appended sorted by label, and About is added last if missing,
-    /// so a first run gives an alphabetical grid ending with About. If About was
-    /// last, it stays last; if the user moved it, it stays where it is.
+    /// New apps are appended sorted by label, before the built-in tiles
+    /// (About, then Settings) while those are at the end, so a first run
+    /// gives an alphabetical grid ending with About and Settings. A
+    /// built-in tile the user moved elsewhere stays where it is; a missing
+    /// one is added to the end block.
     fn reconcile(&mut self, apps: &[App]) -> bool {
-        let before = self.keys.len();
+        let before = self.keys.clone();
         self.keys.retain(|(id, _)| match id {
             TileId::App(component) => apps.iter().any(|app| app.id == *component),
-            TileId::About => true,
+            TileId::About | TileId::Settings => true,
             TileId::Hidden => false,
         });
-        let mut changed = self.keys.len() != before;
-        // About stays last unless the user moved it, so new apps go before it.
-        let about_was_last = self.keys.last().is_some_and(|(id, _)| *id == TileId::About);
+        // The built-in tiles at the end stay at the end, in their order.
+        let tail = self
+            .keys
+            .iter()
+            .rev()
+            .take_while(|(id, _)| matches!(id, TileId::About | TileId::Settings))
+            .count();
+        let tail: Vec<(TileId, i64)> = self.keys.split_off(self.keys.len() - tail);
 
         let mut new: Vec<&App> = apps
             .iter()
             .filter(|app| !self.contains(&TileId::App(app.id.clone())))
+            .filter(|app| {
+                !tail
+                    .iter()
+                    .any(|(id, _)| *id == TileId::App(app.id.clone()))
+            })
             .collect();
         new.sort_by(|a, b| {
             a.label
@@ -212,27 +232,32 @@ impl Order {
         });
         new.dedup_by(|a, b| a.id == b.id);
 
-        let new_ids = new
-            .into_iter()
-            .map(|app| TileId::App(app.id.clone()))
-            .chain((!self.contains(&TileId::About)).then_some(TileId::About));
-        for id in new_ids {
-            let key = self
-                .keys
-                .last()
-                .map_or(KEY_STEP, |&(_, last)| last + KEY_STEP);
+        let mut ids: Vec<TileId> = self.keys.iter().map(|(id, _)| id.clone()).collect();
+        ids.extend(new.into_iter().map(|app| TileId::App(app.id.clone())));
+        ids.extend(tail.iter().map(|(id, _)| id.clone()));
+        for builtin in [TileId::About, TileId::Settings] {
+            if !ids.contains(&builtin) {
+                ids.push(builtin);
+            }
+        }
+        // Keep each tile's key while it still sorts; give later ones the next step.
+        let old: Vec<(TileId, i64)> = self.keys.drain(..).chain(tail).collect();
+        let mut last = None;
+        for id in ids {
+            let kept = old
+                .iter()
+                .find(|(old_id, _)| *old_id == id)
+                .map(|&(_, key)| key);
+            let key = match (kept, last) {
+                (Some(key), Some(last)) if key > last => key,
+                (Some(key), None) => key,
+                (_, Some(last)) => last + KEY_STEP,
+                (None, None) => KEY_STEP,
+            };
             self.keys.push((id, key));
-            changed = true;
+            last = Some(key);
         }
-        if about_was_last && self.keys.last().is_some_and(|(id, _)| *id != TileId::About) {
-            self.keys.retain(|(id, _)| *id != TileId::About);
-            let key = self
-                .keys
-                .last()
-                .map_or(KEY_STEP, |&(_, last)| last + KEY_STEP);
-            self.keys.push((TileId::About, key));
-        }
-        changed
+        self.keys != before
     }
 
     /// Gives `tiles[index]` a key between its neighbours in `tiles`.
@@ -293,6 +318,7 @@ enum Mode {
         since: Duration,
     },
     About,
+    Settings,
     /// `selected` indexes [`menu_items`] of the focused tile.
     Menu {
         selected: usize,
@@ -307,7 +333,7 @@ enum Mode {
 fn menu_items(tile: Option<&TileId>) -> &'static [MenuItem] {
     match tile {
         Some(TileId::App(_)) => &[MenuItem::Move, MenuItem::Hide],
-        Some(TileId::About) => &[MenuItem::Move],
+        Some(TileId::About | TileId::Settings) => &[MenuItem::Move],
         Some(TileId::Hidden) | None => &[],
     }
 }
@@ -468,6 +494,21 @@ impl Home {
         }
     }
 
+    /// Replaces the order and hidden apps (the history rewrote them),
+    /// keeping focus on the same tile where it still exists.
+    pub fn replace_order(&mut self, order: Order, hidden: BTreeSet<String>) {
+        self.order = order;
+        self.hidden = hidden;
+        self.refresh();
+    }
+
+    /// Leaves the Settings page (it decides when: Back on its section list).
+    pub fn close_settings(&mut self) {
+        if matches!(self.mode, Mode::Settings) {
+            self.mode = Mode::Browse;
+        }
+    }
+
     /// Current state.
     pub fn state(&self) -> State {
         match self.mode {
@@ -475,6 +516,7 @@ impl Home {
             Mode::Moving { .. } => State::Moving,
             Mode::Launching { .. } => State::Launching,
             Mode::About => State::About,
+            Mode::Settings => State::Settings,
             Mode::Menu { .. } => State::Menu,
             Mode::Hidden { .. } => State::Hidden,
         }
@@ -497,6 +539,7 @@ impl Home {
             (
                 Mode::Moving { .. }
                 | Mode::About
+                | Mode::Settings
                 | Mode::Launching { .. }
                 | Mode::Menu { .. }
                 | Mode::Hidden { .. },
@@ -526,6 +569,7 @@ impl Home {
                 None
             }
             (Mode::About, Input::OkPressed) => Some(Effect::Update),
+            (Mode::Settings, input) => Some(Effect::Settings(input)),
             (Mode::Moving { .. }, _) => self.handle_moving(input, now),
             (Mode::Menu { .. }, _) => self.handle_menu(input, now),
             (Mode::Hidden { .. }, _) => self.handle_hidden(input),
@@ -706,6 +750,10 @@ impl Home {
             TileId::About => {
                 self.mode = Mode::About;
                 Some(Effect::OpenAbout)
+            }
+            TileId::Settings => {
+                self.mode = Mode::Settings;
+                Some(Effect::OpenSettings)
             }
             TileId::Hidden => {
                 self.mode = Mode::Hidden { focus: 0 };
@@ -1016,8 +1064,8 @@ mod tests {
         press(&mut home, &[Input::Down, Input::Right, Input::Right]);
         assert_eq!(home.focus(), 8);
         home.set_apps(&apps(3));
-        assert_eq!(home.focused(), Some(&TileId::About));
-        assert_eq!(home.focus(), 3);
+        assert_eq!(home.focused(), Some(&TileId::Settings));
+        assert_eq!(home.focus(), 4);
         assert_eq!(home.scroll(), Scroll::Shelf);
     }
 
@@ -1050,7 +1098,10 @@ mod tests {
     fn first_run_sorts_by_label_ignoring_case_with_about_last() {
         let mut order = Order::default();
         order.reconcile(&[app("c", "cinema"), app("a", "Bravo"), app("b", "alpha")]);
-        assert_eq!(order.ids(), [id("b"), id("a"), id("c"), TileId::About]);
+        assert_eq!(
+            order.ids(),
+            [id("b"), id("a"), id("c"), TileId::About, TileId::Settings]
+        );
         let keys: Vec<i64> = order.keys().iter().map(|&(_, key)| key).collect();
         assert!(keys.windows(2).all(|pair| pair[1] - pair[0] == KEY_STEP));
     }
@@ -1059,17 +1110,23 @@ mod tests {
     fn new_apps_go_after_the_last_tile_and_removed_apps_are_dropped() {
         let mut order = Order::from_keys([(TileId::About, 500), (id("b"), 1000)]);
         assert!(order.reconcile(&[app("b", "B"), app("a", "A")]));
-        assert_eq!(order.ids(), [TileId::About, id("b"), id("a")]);
+        assert_eq!(
+            order.ids(),
+            [TileId::About, id("b"), id("a"), TileId::Settings]
+        );
 
         assert!(order.reconcile(&[app("a", "A")]));
-        assert_eq!(order.ids(), [TileId::About, id("a")]);
+        assert_eq!(order.ids(), [TileId::About, id("a"), TileId::Settings]);
     }
 
     #[test]
     fn new_apps_go_before_about_when_it_is_last() {
         let mut order = Order::from_keys([(id("a"), 1000), (TileId::About, 2000)]);
         assert!(order.reconcile(&[app("a", "A"), app("c", "C"), app("b", "B")]));
-        assert_eq!(order.ids(), [id("a"), id("b"), id("c"), TileId::About]);
+        assert_eq!(
+            order.ids(),
+            [id("a"), id("b"), id("c"), TileId::About, TileId::Settings]
+        );
         let keys: Vec<i64> = order.keys().iter().map(|&(_, key)| key).collect();
         assert!(keys.windows(2).all(|pair| pair[0] < pair[1]));
     }
@@ -1078,7 +1135,7 @@ mod tests {
     fn duplicate_apps_from_the_platform_appear_once() {
         let mut order = Order::default();
         order.reconcile(&[app("a", "A"), app("a", "A")]);
-        assert_eq!(order.ids(), [id("a"), TileId::About]);
+        assert_eq!(order.ids(), [id("a"), TileId::About, TileId::Settings]);
     }
 
     #[test]
@@ -1352,8 +1409,8 @@ mod tests {
         press(&mut home, &[Input::Left, Input::Up, Input::Down]);
         assert_eq!(home.focus(), 0);
         press(&mut home, &[Input::Right; 10]);
-        assert_eq!(home.focus(), 4);
-        assert_eq!(home.tiles().len(), 5);
+        assert_eq!(home.focus(), 5);
+        assert_eq!(home.tiles().len(), 6);
     }
 
     // --- menu and hidden apps ---------------------------------------------
@@ -1411,7 +1468,13 @@ mod tests {
         assert_eq!(home.state(), State::Browse);
         assert_eq!(
             home.tiles(),
-            [id("a00"), id("a02"), TileId::About, TileId::Hidden]
+            [
+                id("a00"),
+                id("a02"),
+                TileId::About,
+                TileId::Settings,
+                TileId::Hidden
+            ]
         );
         assert_eq!(component(&home), "a02");
         assert!(home.hidden().contains("a01"));
@@ -1445,11 +1508,17 @@ mod tests {
         assert!(home.set_apps(&apps(3)));
         assert_eq!(
             home.tiles(),
-            [id("a00"), id("a02"), TileId::About, TileId::Hidden]
+            [
+                id("a00"),
+                id("a02"),
+                TileId::About,
+                TileId::Settings,
+                TileId::Hidden
+            ]
         );
         // An uninstalled hidden app is not listed, and the tile goes with the last one.
         home.set_apps(&[app("a00", "App 00")]);
-        assert_eq!(home.tiles(), [id("a00"), TileId::About]);
+        assert_eq!(home.tiles(), [id("a00"), TileId::About, TileId::Settings]);
         assert!(home.hidden().contains("a01"));
     }
 
@@ -1457,27 +1526,42 @@ mod tests {
     fn the_hidden_apps_tile_cannot_be_moved_or_passed_by_a_moving_tile() {
         let mut home = home(3);
         hide(&mut home);
-        // a01, a02, About, Hidden apps.
-        press(&mut home, &[Input::Right, Input::Right, Input::Right]);
+        // a01, a02, About, Settings, Hidden apps.
+        press(
+            &mut home,
+            &[Input::Right, Input::Right, Input::Right, Input::Right],
+        );
         assert_eq!(home.focused(), Some(&TileId::Hidden));
         home.handle(Input::OkPressed, ms(0));
         home.handle(Input::Tick, LONG_PRESS);
         assert_eq!(home.state(), State::Browse);
         home.handle(Input::OkReleased, LONG_PRESS);
 
-        press(&mut home, &[Input::Left, Input::Left, Input::Left]);
+        press(
+            &mut home,
+            &[Input::Left, Input::Left, Input::Left, Input::Left],
+        );
         pick_up(&mut home);
         press(&mut home, &[Input::Right; 5]);
-        assert_eq!(home.focus(), 2);
+        assert_eq!(home.focus(), 3);
         assert_eq!(
             press(&mut home, &[Input::OkPressed]),
             Some(Effect::SaveOrder)
         );
         assert_eq!(
             home.tiles(),
-            [id("a02"), TileId::About, id("a01"), TileId::Hidden]
+            [
+                id("a02"),
+                TileId::About,
+                TileId::Settings,
+                id("a01"),
+                TileId::Hidden
+            ]
         );
-        assert_eq!(home.order().ids(), [id("a02"), TileId::About, id("a01")]);
+        assert_eq!(
+            home.order().ids(),
+            [id("a02"), TileId::About, TileId::Settings, id("a01")]
+        );
     }
 
     #[test]
@@ -1489,7 +1573,7 @@ mod tests {
         assert_eq!(hidden_page(&home), ["a00", "a02"]);
 
         // Open the page from the last tile.
-        press(&mut home, &[Input::Right, Input::Right]);
+        press(&mut home, &[Input::Right, Input::Right, Input::Right]);
         assert_eq!(home.focused(), Some(&TileId::Hidden));
         assert_eq!(
             press(&mut home, &[Input::OkPressed, Input::OkReleased]),
@@ -1514,6 +1598,7 @@ mod tests {
                 id("a03"),
                 id("a02"),
                 TileId::About,
+                TileId::Settings,
                 TileId::Hidden
             ]
         );
@@ -1528,7 +1613,14 @@ mod tests {
         assert!(home.hidden().is_empty());
         assert_eq!(
             home.tiles(),
-            [id("a01"), id("a03"), id("a02"), id("a00"), TileId::About]
+            [
+                id("a01"),
+                id("a03"),
+                id("a02"),
+                id("a00"),
+                TileId::About,
+                TileId::Settings
+            ]
         );
         assert_eq!(component(&home), "a00");
     }
@@ -1541,7 +1633,10 @@ mod tests {
         assert_eq!(home.state(), State::Browse);
 
         hide(&mut home);
-        press(&mut home, &[Input::Right, Input::Right, Input::Right]);
+        press(
+            &mut home,
+            &[Input::Right, Input::Right, Input::Right, Input::Right],
+        );
         press(&mut home, &[Input::OkPressed, Input::OkReleased]);
         assert_eq!(home.state(), State::Hidden);
         press(&mut home, &[Input::Back]);

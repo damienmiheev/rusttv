@@ -80,6 +80,21 @@ impl HistoryId {
         }
     }
 
+    /// A version-4 UUID from 16 random bytes.
+    pub fn from_random(mut bytes: [u8; 16]) -> Self {
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+        Self(format!(
+            "{}-{}-{}-{}-{}",
+            &hex[0..8],
+            &hex[8..12],
+            &hex[12..16],
+            &hex[16..20],
+            &hex[20..32]
+        ))
+    }
+
     /// The UUID text.
     pub fn as_str(&self) -> &str {
         &self.0

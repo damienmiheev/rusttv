@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::model::{Order, TileId};
+use crate::model::{KEY_STEP, Order, TileId};
 
 /// Name used for the About tile in the file. Component names always contain
 /// a `/`, so this cannot clash with an app.
@@ -19,6 +19,9 @@ const ABOUT: &str = "about";
 
 /// Name used for the Hidden apps tile in the file (only as `focus`).
 const HIDDEN: &str = "hidden-apps";
+
+/// Name used for the Settings tile in the file.
+const SETTINGS: &str = "settings";
 
 /// File contents. Fields added later are optional, so older files still load.
 #[derive(Debug, Deserialize)]
@@ -84,6 +87,7 @@ pub(crate) fn load(path: &Path) -> Loaded {
 fn tile_for_name(name: String) -> TileId {
     match name.as_str() {
         ABOUT => TileId::About,
+        SETTINGS => TileId::Settings,
         HIDDEN => TileId::Hidden,
         _ => TileId::App(name),
     }
@@ -93,6 +97,7 @@ fn name_of(id: &TileId) -> &str {
     match id {
         TileId::App(component) => component,
         TileId::About => ABOUT,
+        TileId::Settings => SETTINGS,
         TileId::Hidden => HIDDEN,
     }
 }
@@ -148,6 +153,52 @@ pub(crate) fn save(
     file.write_all(text.as_bytes())?;
     file.sync_all()?;
     fs::rename(&temporary, path)
+}
+
+/// The file whose presence turns the launcher's own update check off
+/// (HISTORY.md § 8.3). One flag file, read by Rust and by Kotlin's
+/// `Updater`, so both see the same switch from the first resume.
+pub(crate) const UPDATE_CHECK_OFF: &str = "update-check-off";
+
+/// The launcher's own state as history records it: tiles in order, hidden
+/// apps and the update switch. `dir` holds `order.toml` and the flag file.
+pub(crate) fn launcher_state(dir: &Path) -> rusttv_history::Launcher {
+    let loaded = load(&dir.join("order.toml"));
+    rusttv_history::Launcher {
+        order: loaded
+            .order
+            .keys()
+            .iter()
+            .map(|(id, _)| name_of(id).to_owned())
+            .collect(),
+        hidden: loaded.hidden,
+        update_check: !dir.join(UPDATE_CHECK_OFF).exists(),
+    }
+}
+
+/// Writes the launcher's state from history: `order.toml` (one atomic
+/// rename, keeping the saved focus) and the update flag file.
+pub(crate) fn write_launcher_state(dir: &Path, state: &rusttv_history::Launcher) -> io::Result<()> {
+    let path = dir.join("order.toml");
+    let focus = load(&path).focus;
+    let order = Order::from_keys(
+        state
+            .order
+            .iter()
+            .zip(1..)
+            .map(|(name, index)| (tile_for_name(name.clone()), index * KEY_STEP)),
+    );
+    save(&path, &order, &state.hidden, focus.as_ref())?;
+    let flag = dir.join(UPDATE_CHECK_OFF);
+    if state.update_check {
+        match fs::remove_file(&flag) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+            _ => {}
+        }
+    } else {
+        fs::write(&flag, b"")?;
+    }
+    Ok(())
 }
 
 fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
