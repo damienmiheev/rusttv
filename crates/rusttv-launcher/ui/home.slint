@@ -485,6 +485,23 @@ export component HomeWindow inherits Window {
                     overflow: elide;
                     animate color { duration: 120ms; }
                 }
+                // Soft edges instead of a hard cut: where the text goes on
+                // past an edge, that edge fades into the item's colour.
+                property <length> fade: 32 * u;
+                if self.sliding: Rectangle {
+                    // The end, while more text is to come.
+                    x: Dir.x(parent.width - parent.fade, parent.fade, parent.width);
+                    width: parent.fade;
+                    opacity: min(1, (parent.overflow - parent.shift) / parent.fade);
+                    background: @linear-gradient(Dir.rtl ? 270deg : 90deg, Theme.text.with-alpha(0) 0%, Theme.text 100%);
+                }
+                if self.sliding: Rectangle {
+                    // The start, once the text has slid.
+                    x: Dir.x(0px, parent.fade, parent.width);
+                    width: parent.fade;
+                    opacity: min(1, parent.shift / parent.fade);
+                    background: @linear-gradient(Dir.rtl ? 90deg : 270deg, Theme.text.with-alpha(0) 0%, Theme.text 100%);
+                }
             }
         }
     }

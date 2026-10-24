@@ -249,19 +249,35 @@ object Updater {
             val code = connection.responseCode
             if (code in 300..399) {
                 val location = connection.getHeaderField("Location")
-                connection.disconnect()
+                discard(connection)
                 location ?: throw UpdateException("GitHub redirected nowhere")
                 target = URL(URL(target), location).toString()
                 return@repeat
             }
             if (code != HttpsURLConnection.HTTP_OK) {
-                connection.disconnect()
+                discard(connection)
                 if (code == HttpsURLConnection.HTTP_NOT_FOUND && url == FEED) throw NoRelease()
                 throw UpdateException("GitHub answered $code")
             }
             return connection
         }
         throw UpdateException("too many redirects")
+    }
+
+    /**
+     * Closes a response we don't read. Its body (often gzip-compressed) must
+     * be closed too: `disconnect` alone leaves the decompressor to the
+     * garbage collector ("A resource failed to call end", seen on the TV).
+     */
+    private fun discard(connection: HttpsURLConnection) {
+        try {
+            // Android serves a body of 400+ only as errorStream, others as inputStream.
+            val body = if (connection.responseCode >= 400) connection.errorStream else connection.inputStream
+            body?.close()
+        } catch (e: IOException) {
+            // Closing anyway; nothing to report.
+        }
+        connection.disconnect()
     }
 
     private fun hostOf(url: String): String = try {
