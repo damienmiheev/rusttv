@@ -371,3 +371,24 @@ fn random_ids_are_valid_version_4_uuids() {
     assert_eq!(id.as_str(), "ffffffff-ffff-4fff-bfff-ffffffffffff");
     assert_eq!(HistoryId::parse(id.as_str()).unwrap(), id);
 }
+
+#[test]
+fn a_long_history_goes_back_whole_in_one_pack() {
+    let dir = TempDir::new();
+    let mut mac = dir.store("mac.git");
+    let total = EXPORT_PART_COMMITS + 5;
+    for n in 0..total {
+        mac.record(&state(n), &tv(), n as i64).unwrap();
+    }
+    let export = mac.export_whole().unwrap();
+    assert!(!export.more);
+    let mut tv_store = dir.store("tv.git");
+    tv_store
+        .import(
+            &export.pack,
+            export.head.as_ref().unwrap(),
+            Limits::default(),
+        )
+        .unwrap();
+    assert_eq!(tv_store.log(usize::MAX).unwrap().len(), total);
+}

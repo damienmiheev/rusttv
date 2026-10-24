@@ -403,6 +403,30 @@ impl Store {
         })
     }
 
+    /// The whole history as one pack, for putting it back on a TV
+    /// (HISTORY.md § 4.5): the TV takes an import only whole, within
+    /// [`Limits`] (~0.7 MB per 1,000 entries, measured).
+    pub fn export_whole(&self) -> Result<Export, HistoryError> {
+        let Some(head) = self.head()? else {
+            return Ok(Export {
+                head: None,
+                pack: Vec::new(),
+                more: false,
+            });
+        };
+        let commits = self.commits_after(&head, None)?;
+        let pack = self.write_pack(
+            commits,
+            output::count::objects::ObjectExpansion::TreeContents,
+            &AtomicBool::new(false),
+        )?;
+        Ok(Export {
+            head: Some(head),
+            pack,
+            more: false,
+        })
+    }
+
     /// A pack of `ids`, expanded as `expansion` says: whole objects, no deltas.
     fn write_pack(
         &self,

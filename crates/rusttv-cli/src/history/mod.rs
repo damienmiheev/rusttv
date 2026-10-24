@@ -834,14 +834,8 @@ fn restore_tv(
         )
         .into());
     }
-    let export = store.export(None).map_err(Failure::from)?;
-    if export.more {
-        return Err(Failure::invalid(format!(
-            "history {id} has more than {} entries, more than the TV takes back in one import",
-            rusttv_history::EXPORT_PART_COMMITS
-        ))
-        .into());
-    }
+    // Whole, in one pack: the TV takes an import only whole.
+    let export = store.export_whole().map_err(Failure::from)?;
     let entries = store.log(usize::MAX).map_err(Failure::from)?.len();
     let mut bytes = ExportHeader {
         history: Some(id.clone()),
