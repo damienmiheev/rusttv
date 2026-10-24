@@ -1595,6 +1595,8 @@ mod tests {
             fingerprint: "x".to_owned(),
             started_at_unix_ms: 0,
             status: JournalStatus::Applied,
+            approved_by: None,
+            restore_approved_by: None,
             steps,
         }
     }

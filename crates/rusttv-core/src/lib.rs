@@ -15,6 +15,7 @@ mod compat;
 mod device;
 mod download;
 mod error;
+mod grant;
 mod inspect;
 mod install;
 mod journal;
@@ -64,6 +65,10 @@ pub use device::{
 };
 pub use download::{Curl, LocalRelease, ReleaseSource, download_verified, latest_release};
 pub use error::{AdbError, ERROR_CODES};
+pub use grant::{
+    GRANT_SCHEMA_VERSION, Grant, GrantScope, InvalidGrantScope, MAX_GRANT_DURATION, grant_path,
+    load_grant, revoke_grant, save_grant,
+};
 pub use inspect::{
     DeviceInfo, MemoryInfo, StorageInfo, inspect, parse_df, parse_meminfo, parse_properties,
 };
@@ -72,10 +77,10 @@ pub use install::{
     uninstall_plan,
 };
 pub use journal::{
-    FileJournal, JOURNAL_SCHEMA_VERSION, Journal, JournalSearch, JournalStatus, JournalStep,
-    JournalStore, RestorableJournals, StepStatus, UnreadableJournal, find_restorable_journal,
-    find_restorable_journal_where, journal_file_name, journals_dir, load_journal,
-    restorable_journals, state_dir,
+    ApprovedBy, FileJournal, JOURNAL_SCHEMA_VERSION, Journal, JournalSearch, JournalStatus,
+    JournalStep, JournalStore, RestorableJournals, StepStatus, UnreadableJournal,
+    find_restorable_journal, find_restorable_journal_where, journal_file_name, journals_dir,
+    load_journal, restorable_journals, state_dir,
 };
 pub use launcher::{
     HomeCandidate, LauncherStatus, RUSTTV_LAUNCHER, launcher_status, parse_home_candidates,

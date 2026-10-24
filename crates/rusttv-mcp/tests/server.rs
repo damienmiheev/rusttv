@@ -497,6 +497,8 @@ impl Dir {
                 fingerprint: TV_FINGERPRINT.to_owned(),
                 started_at_unix_ms: 1,
                 status: JournalStatus::Applied,
+                approved_by: None,
+                restore_approved_by: None,
                 steps: vec![JournalStep {
                     adb: String::new(),
                     command: DeviceCommand::DisablePackage(stock.clone()),
@@ -1180,6 +1182,8 @@ async fn optimize_restore_plan_names_the_journal_and_leaves_it_untouched() {
             fingerprint,
             started_at_unix_ms: 2,
             status: JournalStatus::Applied,
+            approved_by: None,
+            restore_approved_by: None,
             steps: vec![
                 done(set(
                     SettingKey::WindowAnimationScale,

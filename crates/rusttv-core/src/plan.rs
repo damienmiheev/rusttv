@@ -22,8 +22,9 @@ use crate::command::{
     Component, DeviceCommand, InvalidApk, PackageName, RiskClass, SettingKey, SettingState,
 };
 use crate::error::AdbError;
+use crate::grant::Grant;
 use crate::inspect::parse_properties;
-use crate::journal::{Journal, JournalStatus, JournalStep, JournalStore, StepStatus};
+use crate::journal::{ApprovedBy, Journal, JournalStatus, JournalStep, JournalStore, StepStatus};
 use crate::launcher::{parse_home_candidates, parse_resumed_activity};
 use crate::perf::{parse_home_activity, parse_process_list};
 use crate::privacy::parse_bound_tv_input_services;
@@ -446,7 +447,10 @@ impl Plan {
     /// may build and show plans, not approve them.
     pub fn approve(&self, typed: &str) -> Result<Approval, PlanError> {
         if typed.trim() == self.confirmation {
-            Ok(Approval { plan: self.clone() })
+            Ok(Approval {
+                plan: self.clone(),
+                by: ApprovedBy::Terminal,
+            })
         } else {
             Err(PlanError::not_approved(&format!(
                 "the confirmation `{}` was not typed; nothing changed",
@@ -454,13 +458,51 @@ impl Plan {
             )))
         }
     }
+
+    /// Approves this plan by a time-limited delegation (SECURITY.md §
+    /// Delegated approval), if `grant` is valid at `now_unix_ms` and is for
+    /// this plan's device (serial), firmware (`ro.build.fingerprint`, which
+    /// [`apply`] checks again on the live device) and kind of plan.
+    ///
+    /// Only the CLI calls this, and only with a grant a person created with
+    /// `rusttv approve` at an interactive terminal (or [`Grant::for_this_run`]
+    /// after typing `upgrade`). Agents and MCP tools must never call it, nor
+    /// create or edit the grant file.
+    pub fn approve_by_grant(&self, grant: &Grant, now_unix_ms: u64) -> Result<Approval, PlanError> {
+        match grant.refuses(&self.name, &self.serial, &self.fingerprint, now_unix_ms) {
+            None => Ok(Approval {
+                plan: self.clone(),
+                by: grant.approved_by(),
+            }),
+            Some(reason) => Err(PlanError::not_approved(&format!(
+                "the delegation doesn't approve this plan: {reason}; nothing changed"
+            ))),
+        }
+    }
+
+    /// The same plan with another confirmation word (e.g. `upgrade` for an
+    /// install plan run by `rusttv launcher upgrade`).
+    pub fn with_confirmation(mut self, confirmation: &str) -> Result<Self, PlanError> {
+        if confirmation.trim().is_empty() {
+            return Err(PlanErrorKind::InvalidPlan("empty confirmation phrase".to_owned()).into());
+        }
+        confirmation.trim().clone_into(&mut self.confirmation);
+        Ok(self)
+    }
+
+    /// `ro.build.fingerprint` of the device the plan was made for.
+    pub fn fingerprint(&self) -> &str {
+        &self.fingerprint
+    }
 }
 
-/// Proof that a human approved one specific [`Plan`]. Only [`Plan::approve`]
-/// creates it, and it is valid for that plan only.
+/// Proof that a human approved one specific [`Plan`], directly or by a
+/// delegation. Only [`Plan::approve`] and [`Plan::approve_by_grant`] create
+/// it, and it is valid for that plan only.
 #[derive(Debug)]
 pub struct Approval {
     plan: Plan,
+    by: ApprovedBy,
 }
 
 impl Approval {
@@ -584,6 +626,8 @@ pub fn apply(
         fingerprint: plan.fingerprint.clone(),
         started_at_unix_ms: now_unix_ms(),
         status: JournalStatus::Applying,
+        approved_by: Some(approval.by),
+        restore_approved_by: None,
         steps: plan
             .steps
             .iter()
@@ -703,6 +747,7 @@ pub fn restore(
         )
         .into());
     }
+    journal.restore_approved_by = Some(approval.by);
     let (mut problems, left_as_is) = undo_steps(adb, &plan.serial, journal, store, true);
     journal.status = if problems.is_empty() {
         JournalStatus::Restored
@@ -1176,6 +1221,81 @@ mod tests {
     }
 
     #[test]
+    fn a_grant_approves_only_a_plan_it_covers_and_the_journal_says_so() {
+        use crate::grant::GrantScope;
+
+        let fingerprint = "google/tv/x:14/A/1:user/release-keys";
+        let now = 1_761_300_000_000;
+        let launcher_plan = |name: &str, serial: &str| {
+            Plan::new(
+                name,
+                serial,
+                fingerprint,
+                "takeover",
+                vec![disable("a.b")],
+                Vec::new(),
+            )
+            .unwrap()
+        };
+        let grant = Grant::new(
+            SERIAL,
+            fingerprint,
+            GrantScope::Launcher,
+            now,
+            Duration::from_secs(1800),
+        )
+        .unwrap();
+
+        // Expired, another device, another kind of plan: refused.
+        let takeover = launcher_plan("home-takeover", SERIAL);
+        let expired = takeover.approve_by_grant(&grant, now + 1_800_000);
+        assert_eq!(expired.unwrap_err().code(), "NOT_APPROVED");
+        let other = launcher_plan("home-takeover", "other-tv").approve_by_grant(&grant, now);
+        assert_eq!(other.unwrap_err().code(), "NOT_APPROVED");
+        let uninstall = launcher_plan("launcher-uninstall", SERIAL).approve_by_grant(&grant, now);
+        assert_eq!(uninstall.unwrap_err().code(), "NOT_APPROVED");
+        let wrong_firmware = plan(vec![disable("a.b")]);
+        let other_firmware = Grant::new(
+            SERIAL,
+            "other",
+            GrantScope::Launcher,
+            now,
+            Duration::from_secs(60),
+        )
+        .unwrap();
+        let refused = launcher_plan("home-takeover", SERIAL).approve_by_grant(&other_firmware, now);
+        assert!(refused.unwrap_err().to_string().contains("firmware"));
+
+        // Valid: approves that plan only, and the journal records the grant.
+        let approval = takeover.approve_by_grant(&grant, now + 1).unwrap();
+        let adb = FakeAdb::new();
+        let error = apply(
+            &adb,
+            &wrong_firmware,
+            &approval,
+            &mut MemoryJournal::default(),
+            &|_| {},
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), "NOT_APPROVED");
+        let adb = FakeAdb::new()
+            .respond(DeviceCommand::GetProperties, GETPROP)
+            .respond_sequence(
+                DeviceCommand::ListDisabledPackages,
+                [disabled(&[]), disabled(&["a.b"])],
+            )
+            .respond(DeviceCommand::DisablePackage(package("a.b")), "");
+        let mut store = MemoryJournal::default();
+        apply(&adb, &takeover, &approval, &mut store, &|_| {}).unwrap();
+        assert_eq!(
+            store.last().approved_by,
+            Some(ApprovedBy::Delegation {
+                granted_at_unix_ms: now
+            })
+        );
+    }
+
+    #[test]
     fn dry_run_lists_risk_command_record_check_and_undo() {
         let text = plan(vec![disable("a.b")]).dry_run().to_string();
         for expected in [
@@ -1413,6 +1533,8 @@ mod tests {
             fingerprint: "old".to_owned(),
             started_at_unix_ms: 0,
             status: JournalStatus::Applying,
+            approved_by: None,
+            restore_approved_by: None,
             steps: vec![
                 JournalStep {
                     adb: String::new(),
@@ -1465,6 +1587,8 @@ mod tests {
             fingerprint: "f".to_owned(),
             started_at_unix_ms: 0,
             status: JournalStatus::Applied,
+            approved_by: None,
+            restore_approved_by: None,
             steps: vec![journal_step],
         };
         let plan = restore_plan(&journal, SERIAL, "f").unwrap();

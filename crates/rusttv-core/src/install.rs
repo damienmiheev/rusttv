@@ -405,6 +405,8 @@ mod tests {
                 fingerprint: fingerprint.to_owned(),
                 started_at_unix_ms: 1,
                 status,
+                approved_by: None,
+                restore_approved_by: None,
                 steps: vec![JournalStep {
                     adb: String::new(),
                     command: DeviceCommand::DisablePackage(stock.clone()),

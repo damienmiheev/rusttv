@@ -271,6 +271,8 @@ pub fn takeover_journal_from_profile(
             .unwrap_or_default(),
         started_at_unix_ms: 0,
         status: JournalStatus::Applied,
+        approved_by: None,
+        restore_approved_by: None,
         steps,
     })
 }
@@ -1061,6 +1063,8 @@ mod tests {
             fingerprint: "x".to_owned(),
             started_at_unix_ms: 0,
             status: JournalStatus::Applied,
+            approved_by: None,
+            restore_approved_by: None,
             steps: vec![crate::journal::JournalStep {
                 adb: String::new(),
                 command: DeviceCommand::EnablePackage(settings),

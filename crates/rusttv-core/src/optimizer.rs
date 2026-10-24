@@ -860,6 +860,8 @@ mod tests {
             fingerprint: fingerprint.to_owned(),
             started_at_unix_ms: 1,
             status: JournalStatus::Applied,
+            approved_by: None,
+            restore_approved_by: None,
             steps,
         }
     }

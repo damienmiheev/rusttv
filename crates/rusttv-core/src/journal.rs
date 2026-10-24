@@ -34,8 +34,37 @@ pub struct Journal {
     pub started_at_unix_ms: u64,
     /// Where the change stands.
     pub status: JournalStatus,
+    /// How the plan was approved; `None` in journals written before this
+    /// was recorded, and in journals rebuilt from a profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_by: Option<ApprovedBy>,
+    /// How the restore of this journal was approved, once one ran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restore_approved_by: Option<ApprovedBy>,
     /// Every step of the plan, in order.
     pub steps: Vec<JournalStep>,
+}
+
+/// How a plan was approved (SECURITY.md § Delegated approval).
+///
+/// Serialized as `{ by = "terminal" }`, `{ by = "delegation",
+/// granted_at_unix_ms = ... }` or `{ by = "upgrade", confirmed_at_unix_ms = ... }`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "by", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ApprovedBy {
+    /// A person typed the plan's confirmation at an interactive terminal.
+    Terminal,
+    /// The grant `rusttv approve` made at `granted_at_unix_ms` approved it.
+    Delegation {
+        /// When the grant was made (host clock).
+        granted_at_unix_ms: u64,
+    },
+    /// A person typed `upgrade` for `rusttv launcher upgrade` at
+    /// `confirmed_at_unix_ms`, which approved each of its stages.
+    Upgrade {
+        /// When `upgrade` was typed (host clock).
+        confirmed_at_unix_ms: u64,
+    },
 }
 
 /// One step of a [`Journal`].
@@ -356,6 +385,8 @@ pub(crate) mod tests {
             fingerprint: "google/tv/x:14/A/1:user/release-keys".to_owned(),
             started_at_unix_ms,
             status,
+            approved_by: None,
+            restore_approved_by: None,
             steps: vec![JournalStep {
                 adb: "adb -s 192.168.1.20:5555 shell pm disable-user --user 0 com.example.launcher"
                     .to_owned(),
@@ -388,6 +419,31 @@ pub(crate) mod tests {
         assert!(text.contains("disable_package"), "{text}");
         assert_eq!(load_journal(&path).unwrap(), original);
         assert!(!path.with_extension("toml.partial").exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn how_a_plan_was_approved_round_trips_and_old_journals_still_load() {
+        let dir = temp_dir("approved-by");
+        let path = dir.join(journal_file_name(42, "home-takeover"));
+        let old = journal(JournalStatus::Restored, 42);
+        let mut new = old.clone();
+        new.approved_by = Some(ApprovedBy::Delegation {
+            granted_at_unix_ms: 41,
+        });
+        new.restore_approved_by = Some(ApprovedBy::Terminal);
+
+        FileJournal::new(&path).save(&new).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(text.contains("by = \"delegation\""), "{text}");
+        assert!(text.contains("granted_at_unix_ms = 41"), "{text}");
+        assert_eq!(load_journal(&path).unwrap(), new);
+
+        // As written before `approved_by` existed.
+        FileJournal::new(&path).save(&old).unwrap();
+        let text = fs::read_to_string(&path).unwrap();
+        assert!(!text.contains("approved_by"), "{text}");
+        assert_eq!(load_journal(&path).unwrap(), old);
         fs::remove_dir_all(dir).unwrap();
     }
 
