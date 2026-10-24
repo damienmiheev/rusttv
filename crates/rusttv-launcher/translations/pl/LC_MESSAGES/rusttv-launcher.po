@@ -256,3 +256,15 @@ msgstr "Naciśnij te strzałki na pilocie:"
 
 msgid "Now hold OK to apply."
 msgstr "Teraz przytrzymaj OK, aby zastosować."
+
+msgid "Fastest (0.25×)"
+msgstr "Najszybsze (0,25×)"
+
+msgid "Fast (0.75×)"
+msgstr "Szybkie (0,75×)"
+
+msgid "Slower (1.5×)"
+msgstr "Wolniejsze (1,5×)"
+
+msgid "Slowest (2×)"
+msgstr "Najwolniejsze (2×)"

@@ -256,3 +256,15 @@ msgstr "Pulsa estas flechas en el mando:"
 
 msgid "Now hold OK to apply."
 msgstr "Ahora mantén pulsado OK para aplicar."
+
+msgid "Fastest (0.25×)"
+msgstr "La más rápida (0,25×)"
+
+msgid "Fast (0.75×)"
+msgstr "Rápida (0,75×)"
+
+msgid "Slower (1.5×)"
+msgstr "Más lenta (1,5×)"
+
+msgid "Slowest (2×)"
+msgstr "La más lenta (2×)"

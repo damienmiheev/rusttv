@@ -54,8 +54,12 @@ pub(crate) enum Section {
     Waiting,
 }
 
-/// The three animation choices: every scale set to this value.
-pub(crate) const ANIMATION_CHOICES: [&str; 3] = ["1", "0.5", "0"];
+/// The animation choices, from off to slowest: every scale set to this
+/// value (Android's developer options offer the same range).
+pub(crate) const ANIMATION_CHOICES: [&str; 7] = ["0", "0.25", "0.5", "0.75", "1", "1.5", "2"];
+
+/// The choice that is Android's default.
+pub(crate) const NORMAL_ANIMATIONS: usize = 4;
 
 /// Something ui.rs must do.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,6 +197,15 @@ impl SettingsPage {
         })
     }
 
+    /// Where focus lands in the panel: on the current choice, else the top.
+    fn entry_row(&self) -> usize {
+        match self.section() {
+            Section::Animations => self.animation_choice().unwrap_or(NORMAL_ANIMATIONS),
+            Section::Updates => usize::from(!self.overview.launcher.update_check),
+            Section::History | Section::Waiting => 0,
+        }
+    }
+
     fn rows(&self) -> usize {
         match self.section() {
             Section::Animations => ANIMATION_CHOICES.len(),
@@ -214,8 +227,10 @@ impl SettingsPage {
             Focus::List => match input {
                 Input::Up => self.section = self.section.saturating_sub(1),
                 Input::Down => self.section = (self.section + 1).min(self.sections().len() - 1),
-                Input::OkReleased if self.rows() > 0 => self.focus = Focus::Panel(0),
-                input if input == toward_panel && self.rows() > 0 => self.focus = Focus::Panel(0),
+                Input::OkReleased if self.rows() > 0 => self.focus = Focus::Panel(self.entry_row()),
+                input if input == toward_panel && self.rows() > 0 => {
+                    self.focus = Focus::Panel(self.entry_row());
+                }
                 Input::Back => return Some(Action::Close),
                 _ => {}
             },
@@ -308,10 +323,16 @@ mod tests {
     #[test]
     fn choosing_faster_animations_reviews_all_three_scales() {
         let mut page = page();
-        assert_eq!(page.animation_choice(), Some(0));
+        assert_eq!(page.animation_choice(), Some(NORMAL_ANIMATIONS));
         assert_eq!(page.handle(Input::Right), None);
+        assert_eq!(
+            page.panel_row(),
+            Some(NORMAL_ANIMATIONS),
+            "focus starts on the current choice"
+        );
         assert_eq!(page.handle(Input::OkReleased), None, "Normal is already on");
-        page.handle(Input::Down);
+        page.handle(Input::Up);
+        page.handle(Input::Up);
         let Some(Action::Review(draft)) = page.handle(Input::OkReleased) else {
             panic!("expected a review");
         };
@@ -360,7 +381,7 @@ mod tests {
         assert_eq!(page.handle(Input::Right), None);
         assert_eq!(page.panel_row(), None);
         page.handle(Input::Left);
-        assert_eq!(page.panel_row(), Some(0));
+        assert_eq!(page.panel_row(), Some(NORMAL_ANIMATIONS));
         page.handle(Input::Back);
         assert_eq!(page.panel_row(), None);
         assert_eq!(page.handle(Input::Back), Some(Action::Close));

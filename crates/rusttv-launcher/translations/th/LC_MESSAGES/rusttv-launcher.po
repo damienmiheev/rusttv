@@ -256,3 +256,15 @@ msgstr "กดลูกศรเหล่านี้บนรีโมต:"
 
 msgid "Now hold OK to apply."
 msgstr "กด OK ค้างไว้เพื่อใช้การเปลี่ยนแปลง"
+
+msgid "Fastest (0.25×)"
+msgstr "เร็วที่สุด (0.25×)"
+
+msgid "Fast (0.75×)"
+msgstr "เร็ว (0.75×)"
+
+msgid "Slower (1.5×)"
+msgstr "ช้าลง (1.5×)"
+
+msgid "Slowest (2×)"
+msgstr "ช้าที่สุด (2×)"

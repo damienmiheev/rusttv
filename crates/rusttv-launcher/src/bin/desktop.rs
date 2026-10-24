@@ -136,7 +136,8 @@ fn demo_script() -> Vec<DemoStep> {
         Tap(UP),
         Tap(UP),
         Tap(RIGHT),
-        Tap(DOWN),
+        Tap(UP),
+        Tap(UP),
         Tap(OK),
         ms(400),
         Snapshot("19-review"),
@@ -187,7 +188,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             let file = PathBuf::from(file);
             // History next to the order file, like the launcher's files dir.
             let parent = file.parent().map_or_else(PathBuf::new, Path::to_path_buf);
-            start_desktop_history(if parent.as_os_str().is_empty() { ".".into() } else { parent });
+            start_desktop_history(if parent.as_os_str().is_empty() {
+                ".".into()
+            } else {
+                parent
+            });
             options.order_file = Some(file);
             return Ok(run(FakePlatform::sample(), options)?);
         }

@@ -493,14 +493,14 @@ impl Controller {
                         if !overview.can_write_settings {
                             note.push(strings.invoke_grant_hint().to_string());
                         }
-                        if page.animation_choice() == Some(2) {
+                        if page.animation_choice() == Some(0) {
                             note.push(strings.invoke_off_note().to_string());
                         }
-                        (0..3)
+                        (0..crate::settings::ANIMATION_CHOICES.len())
                             .map(|choice| SettingsRow {
-                                title: strings.invoke_animation_choice(choice),
+                                title: strings.invoke_animation_choice(to_i32(choice)),
                                 detail: "".into(),
-                                current: page.animation_choice() == usize::try_from(choice).ok(),
+                                current: page.animation_choice() == Some(choice),
                                 dim: !overview.can_write_settings,
                             })
                             .collect()

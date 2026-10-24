@@ -256,3 +256,15 @@ msgstr "Diese Pfeile auf der Fernbedienung drücken:"
 
 msgid "Now hold OK to apply."
 msgstr "Jetzt OK halten, um zu übernehmen."
+
+msgid "Fastest (0.25×)"
+msgstr "Am schnellsten (0,25×)"
+
+msgid "Fast (0.75×)"
+msgstr "Schnell (0,75×)"
+
+msgid "Slower (1.5×)"
+msgstr "Langsamer (1,5×)"
+
+msgid "Slowest (2×)"
+msgstr "Am langsamsten (2×)"

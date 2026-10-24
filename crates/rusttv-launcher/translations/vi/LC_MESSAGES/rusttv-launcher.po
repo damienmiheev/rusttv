@@ -256,3 +256,15 @@ msgstr "Nhấn các mũi tên này trên điều khiển:"
 
 msgid "Now hold OK to apply."
 msgstr "Giờ hãy giữ OK để áp dụng."
+
+msgid "Fastest (0.25×)"
+msgstr "Nhanh nhất (0,25×)"
+
+msgid "Fast (0.75×)"
+msgstr "Nhanh (0,75×)"
+
+msgid "Slower (1.5×)"
+msgstr "Chậm hơn (1,5×)"
+
+msgid "Slowest (2×)"
+msgstr "Chậm nhất (2×)"

@@ -77,9 +77,14 @@ export global Strings {
         if section == 3 { return @tr("Waiting for your computer"); }
         return @tr("Animations");
     }
+    // settings.rs ANIMATION_CHOICES: off to slowest.
     public pure function animation-choice(choice: int) -> string {
-        if choice == 1 { return @tr("Faster (0.5×)"); }
-        if choice == 2 { return @tr("Off"); }
+        if choice == 0 { return @tr("Off"); }
+        if choice == 1 { return @tr("Fastest (0.25×)"); }
+        if choice == 2 { return @tr("Faster (0.5×)"); }
+        if choice == 3 { return @tr("Fast (0.75×)"); }
+        if choice == 5 { return @tr("Slower (1.5×)"); }
+        if choice == 6 { return @tr("Slowest (2×)"); }
         return @tr("Normal");
     }
     public pure function on-off(on: bool) -> string {

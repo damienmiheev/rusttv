@@ -249,3 +249,15 @@ msgstr ""
 
 msgid "Now hold OK to apply."
 msgstr ""
+
+msgid "Fastest (0.25×)"
+msgstr ""
+
+msgid "Fast (0.75×)"
+msgstr ""
+
+msgid "Slower (1.5×)"
+msgstr ""
+
+msgid "Slowest (2×)"
+msgstr ""

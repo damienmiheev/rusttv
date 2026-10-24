@@ -256,3 +256,15 @@ msgstr "Premi queste frecce sul telecomando:"
 
 msgid "Now hold OK to apply."
 msgstr "Ora tieni premuto OK per applicare."
+
+msgid "Fastest (0.25×)"
+msgstr "Velocissima (0,25×)"
+
+msgid "Fast (0.75×)"
+msgstr "Veloce (0,75×)"
+
+msgid "Slower (1.5×)"
+msgstr "Più lenta (1,5×)"
+
+msgid "Slowest (2×)"
+msgstr "Lentissima (2×)"

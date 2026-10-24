@@ -256,3 +256,15 @@ msgstr "在遙控器上按下列方向鍵："
 
 msgid "Now hold OK to apply."
 msgstr "現在按住 OK 鍵即可套用。"
+
+msgid "Fastest (0.25×)"
+msgstr "最快 (0.25×)"
+
+msgid "Fast (0.75×)"
+msgstr "快 (0.75×)"
+
+msgid "Slower (1.5×)"
+msgstr "較慢 (1.5×)"
+
+msgid "Slowest (2×)"
+msgstr "最慢 (2×)"

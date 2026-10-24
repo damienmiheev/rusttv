@@ -2026,8 +2026,11 @@ mod tests {
         assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
         settle(&screen);
         assert_eq!(screen.window.get_settings_sections().row_count(), 3);
-        screen.tap(RIGHT);
-        screen.tap(DOWN);
+        assert_eq!(screen.window.get_settings_rows().row_count(), 7);
+        screen.tap(RIGHT); // focus on Normal, the current choice
+        assert_eq!(screen.window.get_settings_row(), 4);
+        screen.tap(UP);
+        screen.tap(UP);
         screen.tap(OK); // Faster
         assert_eq!(screen.window.get_mode(), 7, "the review screen opens");
         // A header and the three scales, then Approve.
@@ -2075,7 +2078,8 @@ mod tests {
         screen.tap(OK);
         settle(&screen);
         screen.tap(RIGHT);
-        screen.tap(DOWN);
+        screen.tap(UP);
+        screen.tap(UP);
         screen.tap(OK);
         for _ in 0..4 {
             screen.tap(DOWN);

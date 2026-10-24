@@ -256,3 +256,15 @@ msgstr "Appuyez sur ces flèches de la télécommande :"
 
 msgid "Now hold OK to apply."
 msgstr "Maintenez OK pour appliquer."
+
+msgid "Fastest (0.25×)"
+msgstr "Très rapide (0,25×)"
+
+msgid "Fast (0.75×)"
+msgstr "Rapide (0,75×)"
+
+msgid "Slower (1.5×)"
+msgstr "Plus lente (1,5×)"
+
+msgid "Slowest (2×)"
+msgstr "Très lente (2×)"

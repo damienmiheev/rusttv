@@ -256,3 +256,15 @@ msgstr "Tekan panah ini di remote:"
 
 msgid "Now hold OK to apply."
 msgstr "Sekarang tahan OK untuk menerapkan."
+
+msgid "Fastest (0.25×)"
+msgstr "Tercepat (0,25×)"
+
+msgid "Fast (0.75×)"
+msgstr "Cepat (0,75×)"
+
+msgid "Slower (1.5×)"
+msgstr "Lebih lambat (1,5×)"
+
+msgid "Slowest (2×)"
+msgstr "Paling lambat (2×)"

@@ -256,3 +256,15 @@ msgstr "रिमोट पर ये तीर दबाएं:"
 
 msgid "Now hold OK to apply."
 msgstr "अब लागू करने के लिए OK दबाकर रखें।"
+
+msgid "Fastest (0.25×)"
+msgstr "सबसे तेज़ (0.25×)"
+
+msgid "Fast (0.75×)"
+msgstr "तेज़ (0.75×)"
+
+msgid "Slower (1.5×)"
+msgstr "धीमा (1.5×)"
+
+msgid "Slowest (2×)"
+msgstr "सबसे धीमा (2×)"

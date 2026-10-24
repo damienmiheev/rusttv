@@ -256,3 +256,15 @@ msgstr "리모컨에서 이 화살표를 누르세요:"
 
 msgid "Now hold OK to apply."
 msgstr "이제 OK를 길게 눌러 적용하세요."
+
+msgid "Fastest (0.25×)"
+msgstr "가장 빠르게 (0.25×)"
+
+msgid "Fast (0.75×)"
+msgstr "빠르게 (0.75×)"
+
+msgid "Slower (1.5×)"
+msgstr "느리게 (1.5×)"
+
+msgid "Slowest (2×)"
+msgstr "가장 느리게 (2×)"

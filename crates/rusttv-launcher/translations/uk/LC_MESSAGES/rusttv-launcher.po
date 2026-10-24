@@ -93,7 +93,7 @@ msgid "Animations"
 msgstr "Анімація"
 
 msgid "Faster (0.5×)"
-msgstr "Швидше (0,5×)"
+msgstr "Швидша (0,5×)"
 
 msgid "Off"
 msgstr "Вимкнено"
@@ -256,3 +256,15 @@ msgstr "Натисніть ці стрілки на пульті:"
 
 msgid "Now hold OK to apply."
 msgstr "Тепер утримуйте OK, щоб застосувати."
+
+msgid "Fastest (0.25×)"
+msgstr "Найшвидша (0,25×)"
+
+msgid "Fast (0.75×)"
+msgstr "Трохи швидша (0,75×)"
+
+msgid "Slower (1.5×)"
+msgstr "Повільніша (1,5×)"
+
+msgid "Slowest (2×)"
+msgstr "Найповільніша (2×)"

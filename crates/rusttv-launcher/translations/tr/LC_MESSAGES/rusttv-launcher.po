@@ -256,3 +256,15 @@ msgstr "Kumandada şu oklara basın:"
 
 msgid "Now hold OK to apply."
 msgstr "Şimdi uygulamak için OK’u basılı tutun."
+
+msgid "Fastest (0.25×)"
+msgstr "En hızlı (0,25×)"
+
+msgid "Fast (0.75×)"
+msgstr "Hızlı (0,75×)"
+
+msgid "Slower (1.5×)"
+msgstr "Daha yavaş (1,5×)"
+
+msgid "Slowest (2×)"
+msgstr "En yavaş (2×)"

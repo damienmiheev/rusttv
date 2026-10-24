@@ -256,3 +256,15 @@ msgstr "Druk op deze pijlen op de afstandsbediening:"
 
 msgid "Now hold OK to apply."
 msgstr "Houd nu OK ingedrukt om toe te passen."
+
+msgid "Fastest (0.25×)"
+msgstr "Snelst (0,25×)"
+
+msgid "Fast (0.75×)"
+msgstr "Snel (0,75×)"
+
+msgid "Slower (1.5×)"
+msgstr "Langzamer (1,5×)"
+
+msgid "Slowest (2×)"
+msgstr "Langzaamst (2×)"

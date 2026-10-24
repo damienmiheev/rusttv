@@ -256,3 +256,15 @@ msgstr "Pressione estas setas no controle remoto:"
 
 msgid "Now hold OK to apply."
 msgstr "Agora mantenha OK pressionado para aplicar."
+
+msgid "Fastest (0.25×)"
+msgstr "Mais rápida (0,25×)"
+
+msgid "Fast (0.75×)"
+msgstr "Rápida (0,75×)"
+
+msgid "Slower (1.5×)"
+msgstr "Mais lenta (1,5×)"
+
+msgid "Slowest (2×)"
+msgstr "A mais lenta (2×)"

@@ -256,3 +256,15 @@ msgstr "リモコンでこの矢印を押してください："
 
 msgid "Now hold OK to apply."
 msgstr "OK を長押しして適用してください。"
+
+msgid "Fastest (0.25×)"
+msgstr "最速 (0.25×)"
+
+msgid "Fast (0.75×)"
+msgstr "速い (0.75×)"
+
+msgid "Slower (1.5×)"
+msgstr "遅め (1.5×)"
+
+msgid "Slowest (2×)"
+msgstr "最も遅い (2×)"
