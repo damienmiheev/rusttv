@@ -1,7 +1,6 @@
 //! `rusttv approve`: grant, show or revoke a time-limited delegation of
 //! approval (SECURITY.md § Delegated approval).
 
-use std::io::{self, IsTerminal};
 use std::time::Duration;
 
 use clap::Args;
@@ -139,7 +138,7 @@ fn grant(
     duration: Duration,
     json: bool,
 ) -> Result<(), CliError> {
-    if !io::stdin().is_terminal() {
+    if !rusttv_core::stdin_is_terminal() {
         return Err(PlanError::not_approved(
             "granting a delegation needs a person at an interactive terminal; agents must never \
              create or edit the delegation file; nothing changed",

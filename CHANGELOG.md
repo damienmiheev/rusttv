@@ -45,7 +45,29 @@ First public release (ROADMAP Phase 6).
   plans for one device and firmware be applied without a terminal (e.g. by
   an agent). Journals record how each plan was approved (`approved_by`)
   (owner decision 2026-10-24, SECURITY.md § Delegated approval).
-- Stable `--json` output, schema `rusttv.v7`, and documented error codes (CLI.md).
+- `history sync | log | show | diff`: a full copy of each TV's history on
+  this computer (`<state dir>/history/<id>.git`, plain git), fetched in
+  verified parts and linked to the TV's `ro.serialno`; `sync` lists the
+  approvals waiting on the TV and warns about sensitive settings changed
+  since the last sync (accessibility services, keyboard, wireless debugging,
+  unknown sources, Play Protect, proxy, private DNS, the launcher's grant).
+- `history restore <entry>` (and `--journal` to undo it): put the animation
+  settings and catalog packages back as an entry recorded them, through a
+  `history-restore` plan with the privacy rules; refused while an optimizer
+  or privacy change holds the same keys or packages, and the other way
+  round.
+- `history restore-tv`: put this computer's copy back on the TV after a
+  reinstall, only into an empty history. `launcher uninstall` copies the
+  history here first.
+- `history apply-pending`: apply what a person approved on the TV, at a
+  terminal, after claiming the approval through the door; nothing to type
+  when the plan is exactly what was approved. Refused for test builds of
+  the launcher.
+- `history allow-tv-settings` / `revoke-tv-settings`: let the launcher
+  change its animation settings itself (`WRITE_SECURE_SETTINGS`).
+- Plan-applying commands record an observation before and a note after each
+  plan in the TV's history (risk class RL, launcher-private; warnings only).
+- Stable `--json` output, schema `rusttv.v8`, and documented error codes (CLI.md).
 
 ### MCP server (`rusttv-mcp`)
 

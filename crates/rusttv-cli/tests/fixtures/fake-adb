@@ -18,6 +18,48 @@ privacy="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-privacy"
 optimizer="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-optimizer"
 update="$(dirname "$0")/../../../rusttv-core/src/fixtures/synthetic-update"
 
+# The Philips with state: what `adb shell` changes, and the history door,
+# answered by rusttv-fake-tv (FAKE_TV) over FAKE_TV_DIR with the real TV
+# code of rusttv-history. Fixed output comes from the captures.
+if [ "$FAKE_ADB_SCENARIO" = history ]; then
+    case "$*" in
+    devices\ -l)
+        cat "$captures/devices-l.txt"
+        ;;
+    shell\ getprop)
+        cat "$philips/getprop.txt"
+        ;;
+    shell\ cmd\ package\ resolve-activity\ *)
+        cat "$philips/home-activity.txt"
+        ;;
+    shell\ cmd\ package\ query-activities\ *)
+        cat "$philips/home-candidates-rusttv-installed.txt"
+        ;;
+    shell\ ime\ list\ -a\ -s)
+        cat "$privacy/ime-list.txt"
+        ;;
+    shell\ dumpsys\ tv_input)
+        cat "$privacy/tv-input.txt"
+        ;;
+    shell\ pm\ list\ packages\ -3)
+        if grep -q '^launcher_installed = true' "$FAKE_TV_DIR/device.toml"; then
+            echo "package:ai.rusttv.launcher"
+        fi
+        ;;
+    shell\ pm\ list\ packages\ -f)
+        if grep -q '^launcher_installed = true' "$FAKE_TV_DIR/device.toml"; then
+            cat "$privacy/packages-f.txt"
+        else
+            grep -v '=ai.rusttv.launcher$' "$privacy/packages-f.txt"
+        fi
+        ;;
+    *)
+        exec "$FAKE_TV" "$FAKE_TV_DIR" "$@"
+        ;;
+    esac
+    exit $?
+fi
+
 case "$FAKE_ADB_SCENARIO:$*" in
 tv:devices\ -l)
     cat "$captures/devices-l.txt"

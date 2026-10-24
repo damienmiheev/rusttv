@@ -48,8 +48,9 @@ pub struct Journal {
 /// How a plan was approved (SECURITY.md § Delegated approval).
 ///
 /// Serialized as `{ by = "terminal" }`, `{ by = "delegation",
-/// granted_at_unix_ms = ... }` or `{ by = "upgrade", confirmed_at_unix_ms = ... }`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// granted_at_unix_ms = ... }`, `{ by = "upgrade", confirmed_at_unix_ms = ... }`
+/// or `{ by = "tv", approval = "<sha256>" }`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "by", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ApprovedBy {
     /// A person typed the plan's confirmation at an interactive terminal.
@@ -64,6 +65,13 @@ pub enum ApprovedBy {
     Upgrade {
         /// When `upgrade` was typed (host clock).
         confirmed_at_unix_ms: u64,
+    },
+    /// A person approved exactly these changes on the TV (code + hold OK,
+    /// HISTORY.md § 6), and `rusttv history apply-pending` consumed that
+    /// pending approval through the door before applying it.
+    Tv {
+        /// The approval's SHA-256 (64 lowercase hex).
+        approval: String,
     },
 }
 

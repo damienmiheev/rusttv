@@ -5,7 +5,7 @@
 //! `FakeAdb` from the `test-util` feature.
 
 use std::ffi::OsString;
-use std::io;
+use std::io::{self, Write};
 use std::process::{Command, Output, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -20,6 +20,17 @@ use crate::error::AdbError;
 pub trait Adb {
     /// Runs `command` on the device with the given `adb` serial and returns its stdout.
     fn run(&self, serial: &str, command: &DeviceCommand) -> Result<String, AdbError>;
+
+    /// Runs `command` with `stdin` as its input and returns its stdout as
+    /// bytes, for the commands that move bytes rather than text
+    /// ([`DeviceCommand::is_binary`]: the history door's `exec-out` and
+    /// `exec-in`). The argument list is still the command's fixed one.
+    fn run_binary(
+        &self,
+        serial: &str,
+        command: &DeviceCommand,
+        stdin: &[u8],
+    ) -> Result<Vec<u8>, AdbError>;
 
     /// Lists devices known to the local `adb` server (`adb devices -l`).
     fn devices(&self) -> Result<Vec<DeviceEntry>, AdbError>;
@@ -53,6 +64,15 @@ impl SystemAdb {
     /// Runs `command` on the device with the given `adb` serial and returns its stdout.
     pub fn run(&self, serial: &str, command: &DeviceCommand) -> Result<String, AdbError> {
         let args = command.adb_args();
+        if command.stdin().is_none_or(|stdin| !stdin.is_empty()) {
+            // Its input would be lost: such commands go through `run_binary`.
+            return Err(AdbError::from_failure(
+                serial,
+                &args,
+                "not run".to_owned(),
+                "this command reads its input on stdin; RustTV runs it with run_binary",
+            ));
+        }
         let mut adb = Command::new(&self.program);
         adb.args(["-s", serial].iter().chain(&args));
         let output = match command.timeout() {
@@ -79,6 +99,55 @@ impl SystemAdb {
             ));
         }
         String::from_utf8(output.stdout).map_err(|_| AdbError::invalid_output(&args))
+    }
+
+    /// Runs `command` with `stdin` as its input and returns its stdout as
+    /// bytes (`adb -s <serial> exec-out …` / `exec-in …`, a fixed argument
+    /// list; no shell on this computer).
+    pub fn run_binary(
+        &self,
+        serial: &str,
+        command: &DeviceCommand,
+        stdin: &[u8],
+    ) -> Result<Vec<u8>, AdbError> {
+        let args = command.adb_args();
+        let mut child = Command::new(&self.program)
+            .args(["-s", serial].iter().chain(&args))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(AdbError::spawn)?;
+        // Written from another thread while stdout is read here, so neither
+        // side can block the other on a full pipe.
+        let writer = child.stdin.take().map(|mut pipe| {
+            let input = stdin.to_vec();
+            thread::spawn(move || pipe.write_all(&input))
+        });
+        let output = child.wait_with_output().map_err(AdbError::spawn)?;
+        let written = writer.map_or(Ok(()), |writer| {
+            writer
+                .join()
+                .unwrap_or_else(|_| Err(io::Error::other("the stdin writer stopped")))
+        });
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AdbError::from_failure(
+                serial,
+                &args,
+                output.status.to_string(),
+                &stderr,
+            ));
+        }
+        if let Err(error) = written {
+            return Err(AdbError::from_failure(
+                serial,
+                &args,
+                "stdin not written".to_owned(),
+                &error.to_string(),
+            ));
+        }
+        Ok(output.stdout)
     }
 
     /// Lists devices known to the local `adb` server (`adb devices -l`).
@@ -153,6 +222,15 @@ impl Adb for SystemAdb {
         Self::run(self, serial, command)
     }
 
+    fn run_binary(
+        &self,
+        serial: &str,
+        command: &DeviceCommand,
+        stdin: &[u8],
+    ) -> Result<Vec<u8>, AdbError> {
+        Self::run_binary(self, serial, command, stdin)
+    }
+
     fn devices(&self) -> Result<Vec<DeviceEntry>, AdbError> {
         Self::devices(self)
     }
@@ -160,6 +238,28 @@ impl Adb for SystemAdb {
     fn connect(&self, address: &DeviceAddress) -> Result<ConnectOutcome, AdbError> {
         Self::connect(self, address)
     }
+}
+
+/// Runs `command` the way it needs: binary commands with their stdin through
+/// [`Adb::run_binary`] (stdout discarded), the rest through [`Adb::run`].
+/// Used by the plan engine, whose steps only need to know they ran.
+pub(crate) fn run_step(
+    adb: &dyn Adb,
+    serial: &str,
+    command: &DeviceCommand,
+) -> Result<(), AdbError> {
+    if !command.is_binary() {
+        return adb.run(serial, command).map(drop);
+    }
+    let stdin = command.stdin().ok_or_else(|| {
+        AdbError::from_failure(
+            serial,
+            &command.adb_args(),
+            "not run".to_owned(),
+            "the payload was read back from a journal, which keeps only its digest",
+        )
+    })?;
+    adb.run_binary(serial, command, stdin).map(drop)
 }
 
 #[cfg(any(test, feature = "test-util"))]
@@ -187,6 +287,11 @@ mod fake {
         calls: RefCell<HashMap<DeviceCommand, usize>>,
         /// Every command run, in order, including ones without a response.
         log: RefCell<Vec<DeviceCommand>>,
+        /// Binary responses per command ([`Adb::run_binary`]), served like
+        /// `responses`.
+        binary: HashMap<DeviceCommand, Vec<Vec<u8>>>,
+        /// What each `run_binary` call got on stdin, in order.
+        inputs: RefCell<Vec<Vec<u8>>>,
         devices: Vec<DeviceEntry>,
     }
 
@@ -220,9 +325,53 @@ mod fake {
             self
         }
 
+        /// Makes successive `run_binary` calls of `command` return these
+        /// outputs in order; after the last one, it keeps returning the last.
+        pub fn respond_binary(
+            mut self,
+            command: DeviceCommand,
+            outputs: impl IntoIterator<Item = Vec<u8>>,
+        ) -> Self {
+            self.binary.insert(command, outputs.into_iter().collect());
+            self
+        }
+
         /// Every command run so far, in order.
         pub fn calls(&self) -> Vec<DeviceCommand> {
             self.log.borrow().clone()
+        }
+
+        /// What each `run_binary` call got on stdin, in order.
+        pub fn inputs(&self) -> Vec<Vec<u8>> {
+            self.inputs.borrow().clone()
+        }
+
+        /// Returns the canned binary stdout for `command`.
+        pub fn run_binary(
+            &self,
+            serial: &str,
+            command: &DeviceCommand,
+            stdin: &[u8],
+        ) -> Result<Vec<u8>, AdbError> {
+            self.log.borrow_mut().push(command.clone());
+            self.inputs.borrow_mut().push(stdin.to_vec());
+            let Some(outputs) = self
+                .binary
+                .get(command)
+                .filter(|outputs| !outputs.is_empty())
+            else {
+                return Err(AdbError::from_failure(
+                    serial,
+                    &command.adb_args(),
+                    "no canned response".to_owned(),
+                    "FakeAdb has no binary response for this command",
+                ));
+            };
+            let mut calls = self.calls.borrow_mut();
+            let call = calls.entry(command.clone()).or_default();
+            let output = outputs[(*call).min(outputs.len() - 1)].clone();
+            *call += 1;
+            Ok(output)
         }
 
         /// Returns the canned stdout for `command`.
@@ -271,6 +420,15 @@ mod fake {
             Self::run(self, serial, command)
         }
 
+        fn run_binary(
+            &self,
+            serial: &str,
+            command: &DeviceCommand,
+            stdin: &[u8],
+        ) -> Result<Vec<u8>, AdbError> {
+            Self::run_binary(self, serial, command, stdin)
+        }
+
         fn devices(&self) -> Result<Vec<DeviceEntry>, AdbError> {
             Self::devices(self)
         }
@@ -300,6 +458,33 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(String::from_utf8_lossy(&output.stdout), "Status: ok\n");
+    }
+
+    #[test]
+    fn binary_commands_get_their_stdin_and_return_raw_stdout() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("rusttv-adb-binary-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let program = dir.join("adb");
+        // Echoes stdin, then its arguments, like a device answering.
+        std::fs::write(&program, "#!/bin/sh\ncat\nprintf '%s|' \"$@\"\n").unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let adb = SystemAdb::with_program(&program);
+        let inbox = DeviceCommand::HistoryInbox {
+            nonce: crate::command::HistoryNonce::new("0123456789abcdef").unwrap(),
+            payload: crate::command::InboxPayload::new(vec![0, 255, 10]),
+        };
+        let out = adb
+            .run_binary("tv", &inbox, inbox.stdin().unwrap())
+            .unwrap();
+        assert_eq!(&out[..3], &[0, 255, 10]);
+        assert_eq!(
+            String::from_utf8_lossy(&out[3..]),
+            "-s|tv|exec-in|content|write|--uri|content://ai.rusttv.launcher.history/inbox/0123456789abcdef|"
+        );
+        // Its input would be lost through `run`, so `run` refuses it.
+        assert!(adb.run("tv", &inbox).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

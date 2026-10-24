@@ -1,6 +1,7 @@
 mod approve;
 mod apps;
 mod compat;
+mod history;
 mod launcher;
 mod optimize;
 mod output;
@@ -58,6 +59,11 @@ enum Command {
     /// device (e.g. by an agent): a time-limited delegation you grant here,
     /// at a terminal. Also shows or revokes it.
     Approve(approve::ApproveArgs),
+    /// The history of what RustTV manages on a TV (settings, catalog
+    /// packages, the launcher's own state): copy it here, read it, restore a
+    /// snapshot, put it back on the TV, and apply what was approved on the TV.
+    #[command(subcommand)]
+    History(history::HistoryAction),
 }
 
 #[derive(Debug, Subcommand)]
@@ -361,6 +367,8 @@ enum CliError {
     Update(#[from] UpdateError),
     /// A stage of `launcher upgrade` failed; `context` says what state the
     /// TV is in and how to continue.
+    #[error(transparent)]
+    History(#[from] history::Failure),
     #[error("{}. {context}", output::message_with_causes(error.as_ref()))]
     Stage {
         error: Box<CliError>,
@@ -386,6 +394,7 @@ impl CliError {
             Self::Benchmark(error) => error.code(),
             Self::Plan(error) => error.code(),
             Self::Update(error) => error.code(),
+            Self::History(error) => error.code(),
         }
     }
 
@@ -403,6 +412,8 @@ impl CliError {
             Self::Plan(_) => EXIT_FAILURE,
             Self::Update(error) if error.is_device_unreachable() => EXIT_DEVICE_UNREACHABLE,
             Self::Update(_) => EXIT_FAILURE,
+            Self::History(error) if error.code() == "HISTORY_AMBIGUOUS" => EXIT_USAGE,
+            Self::History(_) => EXIT_FAILURE,
         }
     }
 }
@@ -523,6 +534,7 @@ fn main() -> ExitCode {
             update::launcher(&adb, target, *dry_run, cli.json)
         }
         Command::Update(UpdateAction::Cli { dry_run }) => update::cli(*dry_run, cli.json),
+        Command::History(action) => history::run(&adb, action, cli.json),
     };
 
     match result {

@@ -10,6 +10,10 @@ packages your privacy choices select (all R3), and `optimize apply
 reduced-animations` / `optimize restore`, which change three global
 animation settings and put them back (R2), and `update launcher`,
 which installs or upgrades the RustTV launcher from a verified release (R3),
+and `history restore` / `restore-tv` / `apply-pending` / `allow-tv-settings` /
+`revoke-tv-settings` ([History](#history)), which put settings and catalog
+packages back as the TV's history recorded them (R2/R3), put the history back
+on the TV (RL), or grant and revoke the launcher's settings permission (R2),
 only after a person approves the plan at a terminal, or, for launcher plans,
 by a time-limited delegation a person granted there with `rusttv approve`
 (see [Changing a device](#changing-a-device)).
@@ -45,6 +49,16 @@ commands, and the `--dry-run` of `launcher install` / `uninstall` / `restore`,
 | `approve --for <duration> --only launcher` | Grant a [delegation](#delegated-approval): for `<duration>` (`<n>m` or `<n>h`, more than 0 and at most `2h`; default `30m`), launcher plans for this device and firmware are applied without a terminal. Shows the device (serial, model, `ro.build.fingerprint`), the scope and the expiry, then asks for the typed confirmation `delegate`; needs an interactive terminal (`NOT_APPROVED` otherwise). Replaces any earlier delegation. Changes only `<state dir>/approval-grant.toml` on this computer | [GrantStatus](#grantstatus) |
 | `approve --status` | The delegation, if any, and whether it is valid now. Read-only; no device needed | [GrantStatus](#grantstatus) |
 | `approve --revoke` | Delete the delegation; no terminal or device needed | `{"path": string, "revoked": boolean}` (`revoked` false when there was none) |
+| `history sync [--history <id>]` | Copy the TV's new [history](#history) entries to this computer: the export after this computer's newest entry (all of it for a history it doesn't have yet), in parts until the TV says there are no more, each part verified on import (every object id recomputed, the chain checked, one `state.toml` per entry). Links the TV's `ro.serialno` to the history in `<state dir>/history/devices.toml`. Lists the approvals made on the TV that wait for this computer, with the time left. Reads the sensitive-settings watchlist and warns (stderr) about each value changed since the last sync. When the TV's history is empty and this computer holds one for it, says so (`restore_tv` true) and offers `history restore-tv`. Read-only on the TV (R0) | [HistorySync](#historysync) |
+| `history log [--history <id>] [--limit N]` | Entries of this computer's copy, newest first (default 20): id, time (the TV's clock; "time unknown" before 2024), who (this TV, your computer, changed outside RustTV, restored from your computer), summary. Without `--history`, the newest history linked to the device's `ro.serialno`. Doesn't change anything | array of [HistoryEntry](#historyentry) |
+| `history show <entry> [--history <id>]` | One entry (id or a unique prefix of 4+ hex digits): who, when, its journal, what changed since the entry before, and its whole `state.toml` | `{"entry": HistoryEntry, "changes": [HistoryChange], "state": object}` |
+| `history diff <a> [<b>] [--history <id>]` | What changed from entry `a` to entry `b` (default: the newest) | `{"from": string, "to": string, "changes": [HistoryChange]}` |
+| `history restore <entry> [--allow-untested] [--dry-run]` | Put the device's three animation settings and catalog packages back as `<entry>` recorded them: a `history-restore` plan of `settings put/delete global` and `pm enable` / `pm disable-user` steps. Settings already at their value (unset ≡ 1) and packages already in their state, not installed, outside the catalog, or changed by a Home takeover (only `launcher takeover` / `restore` change those) are skipped and named. Disabling follows the protected-package policy: rules 1–3 checked live now and right before each step (`PACKAGE_PROTECTED`), rule 4 leaves untested packages out unless `--allow-untested` (`PROFILE_NOT_TESTED` when nothing else is left). The launcher's own state (order, hidden apps, the update switch) is restored only on the TV. Refused (`PRECONDITION_FAILED`) while a restorable optimizer or privacy journal touches the same keys or packages (and `optimize apply` refuses while a restorable `history-restore` journal does), or a journal file can't be read. After the last step Home must still open the same activity. Typed confirmation `restore`. Journal `<ms>-history-restore.toml`. R3 (R2 with settings only) | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
+| `history restore --journal <file> [--dry-run]` | Undo a `history restore` from its journal. Only `settings put/delete` of the allowlisted keys and enabling / disabling catalog packages a takeover doesn't change; anything else refuses the journal. A setting or package already back is skipped; one changed since is left as is and named; a package the undo would disable must pass rules 1–3 now. Nothing left: `PRECONDITION_FAILED` and the journal is marked `restored`. Typed confirmation `restore` | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
+| `history restore-tv [--history <id>] [--dry-run]` | Put this computer's copy of a history back on the TV, e.g. after reinstalling the launcher: a `history-restore-tv` plan with two launcher-private (RL) steps, the whole history written to the door's inbox, then imported; afterwards the TV must hold this copy's newest entry. Only while the TV's history is empty (`HISTORY_NOT_EMPTY` otherwise; the old history stays readable here). `--history` is needed when this computer holds several histories for the TV's serial. The journal records the export's SHA-256 and size, not its bytes. Typed confirmation `history` | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
+| `history apply-pending` | Apply the changes a person approved on the TV that wait for this computer (packages; settings while the launcher lacks the grant), each valid for 2 h of TV uptime. Interactive terminal only (`NOT_APPROVED` otherwise; nothing is consumed). Refused (`PENDING_REFUSED`) when the installed launcher is debuggable or profileable. For each approval: first claims it through the door (the TV allows that once), then plans `history-restore` live (never `--allow-untested`) and applies it with nothing to type if its steps are exactly the approved changes with the same old values; otherwise prints both and asks for the typed confirmation `restore`. The journal records `approved_by = { by = "tv", approval = "<sha256>" }` (or `terminal`). Stops at the first approval that fails | array of [PendingReport](#pendingreport) |
+| `history allow-tv-settings [--dry-run]` | Let the launcher change its three animation settings itself after a person approves each change on the TV: a plan with one R2 step, `pm grant ai.rusttv.launcher android.permission.WRITE_SECURE_SETTINGS` (undone by `pm revoke`), verified with `dumpsys package ai.rusttv.launcher`. Android drops it when the launcher is uninstalled (`history sync` warns). Typed confirmation `allow`. R2 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
+| `history revoke-tv-settings [--dry-run]` | Take that permission back (`pm revoke …`). Typed confirmation `revoke`. R2 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `compat profile` | Compatibility profile for `compat/devices/` (TOML on stdout; `--json` wraps it) | `{"path": string, "profile": object}` |
 
 Commands that target a device take `--serial <serial>`. Without it, the only
@@ -60,7 +74,7 @@ lifecycle:
    what is checked after, and how each step is undone. `--dry-run` stops here
    and prints it (`--json`: a [DryRun](#dryrun)).
 2. **Approve**: the plan is applied only after a person types its
-   `confirmation` word (`takeover`, `privacy`, `optimize`, `restore`, `install`, `uninstall`, `upgrade`; `update` for `update cli`; `delegate` for `approve`) at an
+   `confirmation` word (`takeover`, `privacy`, `optimize`, `restore`, `install`, `uninstall`, `upgrade`, `history`, `allow`, `revoke`; `update` for `update cli`; `delegate` for `approve`) at an
    interactive terminal.
    There is no `--yes` flag. Without a terminal on stdin (scripts, agents,
    MCP) the command fails with `NOT_APPROVED` before contacting the device,
@@ -100,6 +114,10 @@ with `PRECONDITION_FAILED` until it is moved out of the directory. The state dir
 otherwise `~/Library/Application Support/rusttv` on macOS and
 `$XDG_STATE_HOME/rusttv` (default `~/.local/state/rusttv`) on Linux.
 Recovery is never guaranteed.
+
+A plan approved on the TV (`history apply-pending`) records `{ by = "tv",
+approval = "<sha256>" }`; builds before `rusttv.v8` list such journals as
+unreadable.
 
 Each journal records how its plan was approved in `approved_by` (and a
 restored journal how its restore was, in `restore_approved_by`): `{ by =
@@ -183,6 +201,33 @@ refused (`INVALID_CHOICES`). `casting`, `smart-home`, `voice` and
 `streaming-apps` are features some people use, so they are planned only if
 the file chooses them (or names a package in `also`).
 
+## History
+
+*HISTORY.md.* The launcher keeps a history of what RustTV manages on the TV
+(its tile order, hidden apps and update switch, the three animation
+settings, the catalog packages' states, the firmware and whether Home is
+taken over) as git commits in its private storage; this computer keeps a
+full copy of each, `<state dir>/history/<history id>.git` (a normal bare
+repository: `git log` works on it). They meet only through the launcher's
+door, a content provider only the adb shell can call: `adb exec-out content
+read …/export/<entry|all>` and `…/pending` (R0), and `adb exec-in content
+write …/inbox/<nonce>` followed by `adb shell content call … --method commit
+--arg <message|import>:<nonce>` (RL, launcher-private).
+
+Every command that applies a plan on a TV with the launcher installed
+(`launcher install|upgrade|takeover|restore|uninstall`, `optimize
+apply|restore`, `update launcher`, and the `history` plans) syncs and
+mentions the approvals waiting on the TV, sends an observation (settings,
+catalog packages, firmware, takeover; never the launcher's own state) before
+the plan, and a note (plan, journal file, how it was approved, how it ended,
+the device now) after it, then syncs again. These door writes need no
+approval of their own (SECURITY.md § Risk classes, RL); if they fail, stderr
+warns and the command's result is unchanged. Never from `device inspect`,
+`history sync`, `performance` or MCP. While the TV's history is empty and
+this computer holds one for the TV, nothing is sent (it would start a new
+history) and stderr offers `history restore-tv`. `launcher uninstall` syncs
+before its plan; if that fails, it asks for `continue` before going on.
+
 ## Output
 
 Without `--json`: human-readable text on stdout, errors and hints on stderr.
@@ -194,8 +239,23 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
 {"schema":"rusttv.v7","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
 ```
 
-- `schema` identifies the contract version. Within `rusttv.v7`, fields are only
+- `schema` identifies the contract version. Within `rusttv.v8`, fields are only
   added, never renamed, removed or changed in meaning; anything else bumps it.
+  - `rusttv.v8`: new commands `history sync | log | show | diff | restore |
+    restore-tv | apply-pending | allow-tv-settings | revoke-tv-settings`
+    ([HistorySync](#historysync), [HistoryEntry](#historyentry),
+    [HistoryChange](#historychange), [PendingReport](#pendingreport)); new
+    [DryRun](#dryrun) plan names `history-restore`, `history-restore-restore`,
+    `history-restore-tv`, `history-allow-tv-settings`,
+    `history-revoke-tv-settings`; a new risk class `RL` in `max_risk` and
+    `steps[].risk`; new confirmation words `history`, `allow`, `revoke`; new
+    error codes `HISTORY_NOT_FOUND`, `HISTORY_AMBIGUOUS`, `HISTORY_INVALID`,
+    `HISTORY_FORMAT_NEWER`, `HISTORY_REFUSED`, `HISTORY_NOT_EMPTY`,
+    `HISTORY_STORAGE`, `PENDING_REFUSED`; `optimize apply` may now refuse with
+    `PRECONDITION_FAILED` while a `history-restore` journal holds the same
+    keys or packages; journals may record `approved_by = { by = "tv", … }`.
+    Plan-applying commands also print history notes and warnings on stderr.
+    Everything else is unchanged.
   - `rusttv.v7`: new commands `update check`, `update launcher` and `update
     cli` ([UpdateCheck](#updatecheck), [CliUpdate](#cliupdate); `update
     launcher` reuses the `launcher-install` [DryRun](#dryrun)); new error
@@ -281,6 +341,14 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
 | `UPDATE_CHECK_FAILED` | 1 | `update`: the release couldn't be fetched or read (curl or `RUSTTV_UPDATE_DIR` failed, a draft or pre-release, a tag that isn't `v<major>.<minor>.<patch>`, a download URL off GitHub or not HTTPS, a file missing from the release, e.g. no APK for the device's ABI or no archive for this computer), or the archive couldn't be unpacked; nothing changed |
 | `UPDATE_VERIFY_FAILED` | 1 | `update launcher` / `update cli`: this build has no release signing key, `SHA256SUMS` isn't signed by it (another key, a bad or legacy signature), a file isn't listed in `SHA256SUMS`, or its size or SHA-256 doesn't match; nothing was installed or replaced |
 | `INTERNAL` | 1 | Output couldn't be serialized (a bug; please report it) |
+| `HISTORY_NOT_FOUND` | 1 | `history`: this computer has no copy of the history asked for (none linked to the TV's `ro.serialno` yet: run `history sync`; or the TV reports no serial: pass `--history`), no such entry, or not a history id; nothing changed |
+| `HISTORY_AMBIGUOUS` | 2 | `history restore-tv`: this computer holds several histories for the TV; pass `--history <id>` |
+| `HISTORY_INVALID` | 1 | What the TV sent (an export, a pending list, a result) or this computer's copy breaks the history format or its limits, or a fetched part doesn't continue the history; nothing was imported |
+| `HISTORY_FORMAT_NEWER` | 1 | The history was written by a newer RustTV: run `rusttv update cli` (on the TV: update RustTV) |
+| `HISTORY_REFUSED` | 1 | The TV's door refused a read or write; the message has the TV's code (`TV_BUSY`: a change on the TV is in progress; `HISTORY_RATE_LIMITED`: more than 30 door entries this hour; `PENDING_INVALID`: the approval was used or expired; …) |
+| `HISTORY_NOT_EMPTY` | 1 | `history restore-tv`: the TV already has a history; a history goes back only into an empty one (the old one stays readable here) |
+| `HISTORY_STORAGE` | 1 | This computer's copy (`<state dir>/history/`) can't be read or written |
+| `PENDING_REFUSED` | 1 | `history apply-pending`: the installed launcher is a test build (debuggable or profileable), whose approvals aren't trusted; nothing was applied |
 
 ## Environment
 
@@ -446,6 +514,45 @@ be read; else `schema_version`, `serial`, `fingerprint`, `scope`
 (`launcher`), `granted_at_unix_ms`, `expires_at_unix_ms`); `valid` (boolean:
 it approves plans now, within its scope, device and firmware); `reason` (why
 not, or null).
+
+### HistorySync
+
+`serial`; `serialno` (the TV's `ro.serialno`, or null when it reports none
+usable: then nothing is linked and the other commands need `--history`);
+`history` (the TV's history id, a UUID, or null while it is empty); `head`
+(the newest entry this computer has, 40 hex, or null); `new_entries`
+(fetched now); `restore_tv` (boolean: the TV's history is empty while this
+computer holds one for it); `pending`: each `{approval, seconds_left,
+changes}` (`changes` as text, e.g. `org.example: enabled → disabled`);
+`watchlist`: each `{key, before, now}` changed since the last sync (`key`
+is `<namespace> <name>` or `write_secure_settings`; null = unset). The
+watchlist is `secure enabled_accessibility_services`, `secure
+default_input_method`, `global adb_wifi_enabled`, `secure
+install_non_market_apps`, `global package_verifier_enable`, `global
+http_proxy`, `global private_dns_specifier` and the launcher's grant; its
+baseline is `<state dir>/history/<history id>.watchlist.toml`, never read
+back from the TV.
+
+### HistoryEntry
+
+`id`, `parent` (40 hex, or null for the first), `time_unix` (the recording
+device's clock, or null before 2024), `author` (`tv` \| `mac` \| `drift`
+\| `import`), `summary` (one English line), `journal` (the journal file of a
+`mac` entry, or null), `approved_by` (`tv-code <sha256>` \| `terminal` \|
+`delegation` \| `upgrade`, or null).
+
+### HistoryChange
+
+`kind` and its fields: `reordered` (`moved`: tiles), `hidden` (`tile`,
+`hidden`), `update_check` (`on`), `setting` (`key`, `old`, `new`; null =
+unset), `package` (`package`, `old`, `new`: `enabled` \| `disabled`, null =
+not observed), `firmware` (`old`, `new`), `takeover` (`active`).
+
+### PendingReport
+
+`approval` (its SHA-256), `approved_on_tv` (boolean: the plan was exactly
+what was approved on the TV; false when a person typed `restore` here),
+`journal`, `status` (as in [ChangeReport](#changereport)).
 
 ### Stats
 

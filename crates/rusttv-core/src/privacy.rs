@@ -93,9 +93,9 @@ pub fn statically_protected(package: &str) -> Option<String> {
 /// What the device says now about protected packages (SECURITY.md rules
 /// 1–2). Read fresh for every plan, never cached.
 #[derive(Debug)]
-struct LiveState {
+pub(crate) struct LiveState {
     /// `package/activity` the Home button opens.
-    home: Option<String>,
+    pub(crate) home: Option<String>,
     candidates: Vec<HomeCandidate>,
     input_methods: HashSet<String>,
     accessibility_services: HashSet<String>,
@@ -105,7 +105,7 @@ impl LiveState {
     /// Reads Home, Home candidates, input methods and enabled accessibility
     /// services. R0 only. Output that can't be read fails the read: a
     /// protected-package check must never pass on a misread.
-    fn read(adb: &dyn Adb, serial: &str) -> Result<Self, PlanError> {
+    pub(crate) fn read(adb: &dyn Adb, serial: &str) -> Result<Self, PlanError> {
         let status = launcher_status(adb, serial)?;
         let input_methods = parse_input_methods(&adb.run(serial, &DeviceCommand::InputMethods)?)
             .map_err(|line| {
@@ -132,7 +132,7 @@ impl LiveState {
     }
 
     /// Why `package` must not be disabled, if it must not (rules 1–3).
-    fn protection(&self, package: &str) -> Option<String> {
+    pub(crate) fn protection(&self, package: &str) -> Option<String> {
         let home_package = self
             .home
             .as_deref()
@@ -349,13 +349,13 @@ fn matching_profile<'a>(
 }
 
 /// Installed and disabled packages now.
-struct PackageStates {
+pub(crate) struct PackageStates {
     installed: HashSet<String>,
     disabled: HashSet<String>,
 }
 
 impl PackageStates {
-    fn read(adb: &dyn Adb, serial: &str) -> Result<Self, PlanError> {
+    pub(crate) fn read(adb: &dyn Adb, serial: &str) -> Result<Self, PlanError> {
         let installed = adb.run(serial, &DeviceCommand::ListPackages)?;
         let disabled = adb.run(serial, &DeviceCommand::ListDisabledPackages)?;
         let owned = |names: HashSet<&str>| names.into_iter().map(str::to_owned).collect();
@@ -365,7 +365,7 @@ impl PackageStates {
         })
     }
 
-    fn of(&self, package: &str) -> PackageState {
+    pub(crate) fn of(&self, package: &str) -> PackageState {
         if !self.installed.contains(package) {
             PackageState::Absent
         } else if self.disabled.contains(package) {

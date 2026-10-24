@@ -20,6 +20,10 @@ use crate::launcher::RUSTTV_LAUNCHER;
 pub enum RiskClass {
     /// R0: reads state, changes nothing.
     Read,
+    /// RL: launcher-private. Appends to RustTV's own history on the TV
+    /// through the launcher's door (HISTORY.md § 5); changes no device state
+    /// and needs no inverse. Above R0, so MCP never runs it.
+    LauncherPrivate,
     /// R1: changes runtime state only; an app restart or reboot undoes it.
     Transient,
     /// R2: persistent but trivially reversible setting.
@@ -29,10 +33,11 @@ pub enum RiskClass {
 }
 
 impl RiskClass {
-    /// Short code used in SECURITY.md and JSON output: `R0` to `R3`.
+    /// Short code used in SECURITY.md and JSON output: `R0` to `R3`, or `RL`.
     pub fn code(self) -> &'static str {
         match self {
             Self::Read => "R0",
+            Self::LauncherPrivate => "RL",
             Self::Transient => "R1",
             Self::Setting => "R2",
             Self::PackageState => "R3",
@@ -44,6 +49,7 @@ impl fmt::Display for RiskClass {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             Self::Read => "R0 (read-only)",
+            Self::LauncherPrivate => "RL (launcher-private)",
             Self::Transient => "R1 (transient)",
             Self::Setting => "R2 (setting)",
             Self::PackageState => "R3 (package state)",
@@ -143,6 +149,48 @@ pub enum DeviceCommand {
     /// ai.rusttv.launcher`). Takes no package: it can remove nothing else.
     /// Package state; can't be undone (see [`DeviceCommand::is_irreversible`]).
     UninstallLauncher,
+    /// The device's serial number (`getprop ro.serialno`), which names its
+    /// history on this computer (HISTORY.md § 4.4).
+    SerialNo,
+    /// One setting on the sensitive-settings watchlist (`settings get
+    /// <namespace> <key>`, HISTORY.md § 7); prints `null` when unset.
+    WatchedSetting(WatchKey),
+    /// The TV history's entries after an entry, or all of them, as a git
+    /// pack after one header line (`adb exec-out content read --uri
+    /// content://ai.rusttv.launcher.history/export/<40 hex | all>`).
+    /// Binary output: run it with [`crate::Adb::run_binary`].
+    HistoryExport(HistorySince),
+    /// The TV's valid pending approvals, TOML (`adb exec-out content read
+    /// --uri content://ai.rusttv.launcher.history/pending`).
+    HistoryPending,
+    /// Writes a message or an import for the history to the launcher's
+    /// inbox (`adb exec-in content write --uri
+    /// content://ai.rusttv.launcher.history/inbox/<16 hex>`, the payload on
+    /// stdin). Launcher-private (RL); [`DeviceCommand::HistoryCommit`]
+    /// processes it.
+    HistoryInbox {
+        /// Names the inbox file.
+        nonce: HistoryNonce,
+        /// What is written.
+        payload: InboxPayload,
+    },
+    /// Has the launcher process an inbox file (`adb shell content call --uri
+    /// content://ai.rusttv.launcher.history --method commit --arg
+    /// <kind>:<16 hex>`); prints a result bundle. Launcher-private (RL).
+    HistoryCommit {
+        /// What the inbox file holds.
+        kind: DoorKind,
+        /// The inbox file.
+        nonce: HistoryNonce,
+    },
+    /// Lets the RustTV launcher write its allowlisted settings (`pm grant
+    /// ai.rusttv.launcher android.permission.WRITE_SECURE_SETTINGS`,
+    /// HISTORY.md § 7). Setting (R2); undone by
+    /// [`DeviceCommand::RevokeSecureSettings`].
+    GrantSecureSettings,
+    /// Takes that permission back (`pm revoke ai.rusttv.launcher
+    /// android.permission.WRITE_SECURE_SETTINGS`). Setting (R2).
+    RevokeSecureSettings,
 }
 
 impl DeviceCommand {
@@ -167,11 +215,18 @@ impl DeviceCommand {
             | Self::InputMethods
             | Self::EnabledAccessibilityServices
             | Self::TvInputs
-            | Self::GetSetting(_) => RiskClass::Read,
+            | Self::GetSetting(_)
+            | Self::SerialNo
+            | Self::WatchedSetting(_)
+            | Self::HistoryExport(_)
+            | Self::HistoryPending => RiskClass::Read,
+            Self::HistoryInbox { .. } | Self::HistoryCommit { .. } => RiskClass::LauncherPrivate,
             Self::ForceStop(_) | Self::StartActivity(_) | Self::PressHome | Self::WakeUp => {
                 RiskClass::Transient
             }
-            Self::SetSetting { .. } => RiskClass::Setting,
+            Self::SetSetting { .. } | Self::GrantSecureSettings | Self::RevokeSecureSettings => {
+                RiskClass::Setting
+            }
             Self::DisablePackage(_)
             | Self::EnablePackage(_)
             | Self::InstallLauncher(_)
@@ -197,6 +252,8 @@ impl DeviceCommand {
             Self::DisablePackage(package) => Some(Self::EnablePackage(package.clone())),
             Self::EnablePackage(package) => Some(Self::DisablePackage(package.clone())),
             Self::InstallLauncher(_) => Some(Self::UninstallLauncher),
+            Self::GrantSecureSettings => Some(Self::RevokeSecureSettings),
+            Self::RevokeSecureSettings => Some(Self::GrantSecureSettings),
             Self::SetSetting { key, to, from } => Some(Self::SetSetting {
                 key: *key,
                 to: from.clone(),
@@ -218,10 +275,31 @@ impl DeviceCommand {
         }
     }
 
+    /// What the command reads on stdin: the payload of
+    /// [`DeviceCommand::HistoryInbox`] (`None` for one read back from a
+    /// journal, which keeps only its digest); empty for every other command.
+    pub fn stdin(&self) -> Option<&[u8]> {
+        match self {
+            Self::HistoryInbox { payload, .. } => payload.bytes(),
+            _ => Some(&[]),
+        }
+    }
+
+    /// Whether the command moves bytes rather than text (`adb exec-out` /
+    /// `exec-in`): run it with [`crate::Adb::run_binary`].
+    pub fn is_binary(&self) -> bool {
+        matches!(
+            self,
+            Self::HistoryExport(_) | Self::HistoryPending | Self::HistoryInbox { .. }
+        )
+    }
+
     /// Arguments passed to `adb` after the `-s <serial>` device selector.
     ///
     /// All start with `shell` except the launcher installs, which run
-    /// `adb install` on this computer with a validated [`ApkPath`].
+    /// `adb install` on this computer with a validated [`ApkPath`], and the
+    /// history door's reads and writes, `exec-out` and `exec-in` (the same
+    /// device shell, with binary-safe stdout and stdin).
     pub fn adb_args(&self) -> Vec<&str> {
         match self {
             Self::GetProperties => vec!["shell", "getprop"],
@@ -311,7 +389,352 @@ impl DeviceCommand {
                 vec!["install", "-r", "--pkg", RUSTTV_LAUNCHER, apk.as_str()]
             }
             Self::UninstallLauncher => vec!["shell", "pm", "uninstall", RUSTTV_LAUNCHER],
+            Self::SerialNo => vec!["shell", "getprop", "ro.serialno"],
+            Self::WatchedSetting(key) => {
+                vec!["shell", "settings", "get", key.namespace(), key.as_str()]
+            }
+            Self::HistoryExport(since) => {
+                vec!["exec-out", "content", "read", "--uri", since.uri.as_str()]
+            }
+            Self::HistoryPending => vec!["exec-out", "content", "read", "--uri", PENDING_URI],
+            Self::HistoryInbox { nonce, .. } => vec![
+                "exec-in",
+                "content",
+                "write",
+                "--uri",
+                nonce.inbox_uri.as_str(),
+            ],
+            Self::HistoryCommit { kind, nonce } => vec![
+                "shell",
+                "content",
+                "call",
+                "--uri",
+                HISTORY_URI,
+                "--method",
+                "commit",
+                "--arg",
+                match kind {
+                    DoorKind::Message => nonce.message_arg.as_str(),
+                    DoorKind::Import => nonce.import_arg.as_str(),
+                },
+            ],
+            Self::GrantSecureSettings => vec![
+                "shell",
+                "pm",
+                "grant",
+                RUSTTV_LAUNCHER,
+                WRITE_SECURE_SETTINGS,
+            ],
+            Self::RevokeSecureSettings => vec![
+                "shell",
+                "pm",
+                "revoke",
+                RUSTTV_LAUNCHER,
+                WRITE_SECURE_SETTINGS,
+            ],
         }
+    }
+}
+
+/// The history door's provider (HISTORY.md § 5).
+const HISTORY_URI: &str = "content://ai.rusttv.launcher.history";
+
+/// Its list of valid pending approvals.
+const PENDING_URI: &str = "content://ai.rusttv.launcher.history/pending";
+
+/// The permission that lets the launcher write its allowlisted settings.
+pub const WRITE_SECURE_SETTINGS: &str = "android.permission.WRITE_SECURE_SETTINGS";
+
+/// Where a history export starts: after one entry (40 lowercase hex), or
+/// `all`. Serialized as that text.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct HistorySince {
+    /// The entry, or `None` for all.
+    entry: Option<String>,
+    /// The export URI, kept whole so it can be borrowed as one argument.
+    uri: String,
+}
+
+impl HistorySince {
+    /// Every entry.
+    pub fn all() -> Self {
+        Self {
+            entry: None,
+            uri: format!("{HISTORY_URI}/export/all"),
+        }
+    }
+
+    /// The entries after `entry`, a 40-hex entry id.
+    pub fn entry(entry: &str) -> Result<Self, InvalidHistoryValue> {
+        if entry.len() == 40 && is_lower_hex(entry) {
+            Ok(Self {
+                entry: Some(entry.to_owned()),
+                uri: format!("{HISTORY_URI}/export/{entry}"),
+            })
+        } else {
+            Err(InvalidHistoryValue(entry.to_owned()))
+        }
+    }
+
+    /// The entry, or `None` for all.
+    pub fn as_entry(&self) -> Option<&str> {
+        self.entry.as_deref()
+    }
+}
+
+impl TryFrom<String> for HistorySince {
+    type Error = InvalidHistoryValue;
+
+    fn try_from(text: String) -> Result<Self, Self::Error> {
+        if text == "all" {
+            Ok(Self::all())
+        } else {
+            Self::entry(&text)
+        }
+    }
+}
+
+impl From<HistorySince> for String {
+    fn from(since: HistorySince) -> Self {
+        since.entry.unwrap_or_else(|| "all".to_owned())
+    }
+}
+
+impl fmt::Display for HistorySince {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.entry.as_deref().unwrap_or("all"))
+    }
+}
+
+/// Names one inbox file of the history door: 16 lowercase hex. Not a
+/// secret, only unique per write (the CLI makes them from the OS random
+/// source). Serialized as the hex.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct HistoryNonce {
+    nonce: String,
+    /// The inbox URI and both commit arguments, kept whole so each can be
+    /// borrowed as one argument.
+    inbox_uri: String,
+    message_arg: String,
+    import_arg: String,
+}
+
+impl HistoryNonce {
+    /// Validates `nonce`: exactly 16 lowercase hex digits.
+    pub fn new(nonce: &str) -> Result<Self, InvalidHistoryValue> {
+        if nonce.len() == 16 && is_lower_hex(nonce) {
+            Ok(Self {
+                nonce: nonce.to_owned(),
+                inbox_uri: format!("{HISTORY_URI}/inbox/{nonce}"),
+                message_arg: format!("message:{nonce}"),
+                import_arg: format!("import:{nonce}"),
+            })
+        } else {
+            Err(InvalidHistoryValue(nonce.to_owned()))
+        }
+    }
+
+    /// The nonce of a random `value`: its 16 lowercase hex digits.
+    pub fn from_u64(value: u64) -> Self {
+        let nonce = format!("{value:016x}");
+        Self {
+            inbox_uri: format!("{HISTORY_URI}/inbox/{nonce}"),
+            message_arg: format!("message:{nonce}"),
+            import_arg: format!("import:{nonce}"),
+            nonce,
+        }
+    }
+
+    /// The hex.
+    pub fn as_str(&self) -> &str {
+        &self.nonce
+    }
+}
+
+impl TryFrom<String> for HistoryNonce {
+    type Error = InvalidHistoryValue;
+
+    fn try_from(text: String) -> Result<Self, Self::Error> {
+        Self::new(&text)
+    }
+}
+
+impl From<HistoryNonce> for String {
+    fn from(nonce: HistoryNonce) -> Self {
+        nonce.nonce
+    }
+}
+
+fn is_lower_hex(text: &str) -> bool {
+    text.bytes()
+        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+/// Returned for a history entry id or nonce that isn't lowercase hex of the
+/// right length.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("`{0}` is not a valid history entry id or nonce")]
+pub struct InvalidHistoryValue(String);
+
+/// What an inbox file holds, which says how `commit` processes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DoorKind {
+    /// An observation, a note, or claiming a pending approval.
+    Message,
+    /// A whole history from this computer, into the TV's empty history.
+    Import,
+}
+
+/// The bytes [`DeviceCommand::HistoryInbox`] writes. Compared, hashed and
+/// serialized by their SHA-256 and size only, so a journal records which
+/// bytes were sent without holding them (an import is a whole history); a
+/// payload read back from a journal has no bytes and can't be sent again.
+#[derive(Debug, Clone)]
+pub struct InboxPayload {
+    bytes: Option<Vec<u8>>,
+    digest: PayloadDigest,
+}
+
+/// Serialized form of an [`InboxPayload`].
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PayloadDigest {
+    sha256: String,
+    bytes: u64,
+}
+
+impl InboxPayload {
+    /// A payload to send.
+    pub fn new(bytes: Vec<u8>) -> Self {
+        let digest = PayloadDigest {
+            sha256: crate::update::sha256(&bytes)
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect(),
+            bytes: u64::try_from(bytes.len()).unwrap_or(u64::MAX),
+        };
+        Self {
+            bytes: Some(bytes),
+            digest,
+        }
+    }
+
+    /// The bytes; `None` when read back from a journal.
+    pub fn bytes(&self) -> Option<&[u8]> {
+        self.bytes.as_deref()
+    }
+
+    /// Its size in bytes.
+    pub fn len(&self) -> u64 {
+        self.digest.bytes
+    }
+
+    /// Whether it is empty.
+    pub fn is_empty(&self) -> bool {
+        self.digest.bytes == 0
+    }
+}
+
+impl PartialEq for InboxPayload {
+    fn eq(&self, other: &Self) -> bool {
+        self.digest == other.digest
+    }
+}
+
+impl Eq for InboxPayload {}
+
+impl std::hash::Hash for InboxPayload {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.digest.hash(state);
+    }
+}
+
+impl Serialize for InboxPayload {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.digest.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for InboxPayload {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let digest = PayloadDigest::deserialize(deserializer)?;
+        if digest.sha256.len() != 64 || !is_lower_hex(&digest.sha256) {
+            return Err(serde::de::Error::custom("invalid payload digest"));
+        }
+        Ok(Self {
+            bytes: None,
+            digest,
+        })
+    }
+}
+
+/// A setting on the sensitive-settings watchlist (HISTORY.md § 7), read on
+/// every `history sync` and compared with the sync before. A fixed enum: no
+/// free-form key or namespace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WatchKey {
+    /// `secure enabled_accessibility_services`: services that see and press everything.
+    EnabledAccessibilityServices,
+    /// `secure default_input_method`: the keyboard, which sees what is typed.
+    DefaultInputMethod,
+    /// `global adb_wifi_enabled`: wireless debugging.
+    AdbWifiEnabled,
+    /// `secure install_non_market_apps`: installing from unknown sources.
+    InstallNonMarketApps,
+    /// `global package_verifier_enable`: Play Protect's install checks.
+    PackageVerifierEnable,
+    /// `global http_proxy`: a proxy for the TV's traffic.
+    HttpProxy,
+    /// `global private_dns_specifier`: the private DNS server.
+    PrivateDnsSpecifier,
+}
+
+impl WatchKey {
+    /// Every key, in the order `history sync` reads them.
+    pub const ALL: [Self; 7] = [
+        Self::EnabledAccessibilityServices,
+        Self::DefaultInputMethod,
+        Self::AdbWifiEnabled,
+        Self::InstallNonMarketApps,
+        Self::PackageVerifierEnable,
+        Self::HttpProxy,
+        Self::PrivateDnsSpecifier,
+    ];
+
+    /// The key's name, e.g. `http_proxy`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::EnabledAccessibilityServices => "enabled_accessibility_services",
+            Self::DefaultInputMethod => "default_input_method",
+            Self::AdbWifiEnabled => "adb_wifi_enabled",
+            Self::InstallNonMarketApps => "install_non_market_apps",
+            Self::PackageVerifierEnable => "package_verifier_enable",
+            Self::HttpProxy => "http_proxy",
+            Self::PrivateDnsSpecifier => "private_dns_specifier",
+        }
+    }
+
+    /// Its namespace, `secure` or `global`.
+    pub fn namespace(self) -> &'static str {
+        match self {
+            Self::EnabledAccessibilityServices
+            | Self::DefaultInputMethod
+            | Self::InstallNonMarketApps => "secure",
+            Self::AdbWifiEnabled
+            | Self::PackageVerifierEnable
+            | Self::HttpProxy
+            | Self::PrivateDnsSpecifier => "global",
+        }
+    }
+}
+
+impl fmt::Display for WatchKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.namespace(), self.as_str())
     }
 }
 
@@ -719,7 +1142,27 @@ mod tests {
             DeviceCommand::InstallLauncher(apk()),
             DeviceCommand::UpgradeLauncher(apk()),
             DeviceCommand::UninstallLauncher,
+            DeviceCommand::SerialNo,
+            DeviceCommand::HistoryExport(HistorySince::all()),
+            DeviceCommand::HistoryExport(HistorySince::entry(&"ab".repeat(20)).unwrap()),
+            DeviceCommand::HistoryPending,
+            DeviceCommand::HistoryInbox {
+                nonce: nonce(),
+                payload: InboxPayload::new(b"kind = \"consume\"".to_vec()),
+            },
+            DeviceCommand::HistoryCommit {
+                kind: DoorKind::Message,
+                nonce: nonce(),
+            },
+            DeviceCommand::HistoryCommit {
+                kind: DoorKind::Import,
+                nonce: nonce(),
+            },
+            DeviceCommand::GrantSecureSettings,
+            DeviceCommand::RevokeSecureSettings,
         ];
+        let mut all = all;
+        all.extend(WatchKey::ALL.map(DeviceCommand::WatchedSetting));
         for command in &all {
             match command {
                 DeviceCommand::GetProperties
@@ -750,10 +1193,22 @@ mod tests {
                 | DeviceCommand::EnablePackage(_)
                 | DeviceCommand::InstallLauncher(_)
                 | DeviceCommand::UpgradeLauncher(_)
-                | DeviceCommand::UninstallLauncher => {}
+                | DeviceCommand::UninstallLauncher
+                | DeviceCommand::SerialNo
+                | DeviceCommand::WatchedSetting(_)
+                | DeviceCommand::HistoryExport(_)
+                | DeviceCommand::HistoryPending
+                | DeviceCommand::HistoryInbox { .. }
+                | DeviceCommand::HistoryCommit { .. }
+                | DeviceCommand::GrantSecureSettings
+                | DeviceCommand::RevokeSecureSettings => {}
             }
         }
         all
+    }
+
+    fn nonce() -> HistoryNonce {
+        HistoryNonce::new("0123456789abcdef").unwrap()
     }
 
     fn apk() -> ApkPath {
@@ -772,14 +1227,22 @@ mod tests {
         // profiles need two R3 commands and `launcher install`/`uninstall`
         // three more, limited to RustTV's own package. Anything else above R1 must be added here on purpose.
         // The optimizer (OPTIMIZER.md § 4) adds the only R2 command,
-        // `SetSetting`, limited to the allowlisted keys.
+        // `SetSetting`, limited to the allowlisted keys. History (HISTORY.md
+        // § 5, § 7) adds the two launcher-private door writes, which only
+        // append to RustTV's own history, and granting / revoking the
+        // launcher's WRITE_SECURE_SETTINGS (R2).
         for command in every_command() {
             let expected = match command {
+                DeviceCommand::HistoryInbox { .. } | DeviceCommand::HistoryCommit { .. } => {
+                    RiskClass::LauncherPrivate
+                }
                 DeviceCommand::ForceStop(_)
                 | DeviceCommand::StartActivity(_)
                 | DeviceCommand::PressHome
                 | DeviceCommand::WakeUp => RiskClass::Transient,
-                DeviceCommand::SetSetting { .. } => RiskClass::Setting,
+                DeviceCommand::SetSetting { .. }
+                | DeviceCommand::GrantSecureSettings
+                | DeviceCommand::RevokeSecureSettings => RiskClass::Setting,
                 DeviceCommand::DisablePackage(_)
                 | DeviceCommand::EnablePackage(_)
                 | DeviceCommand::InstallLauncher(_)
@@ -981,7 +1444,16 @@ mod tests {
                 assert!(path.ends_with("/app-arm64-v8a-release.apk"), "{path}");
                 args.push(path.rsplit('/').next().unwrap());
             } else {
-                assert_eq!(args.first(), Some(&"shell"), "{command:?}");
+                // `exec-out` / `exec-in` run in the device shell like `shell`.
+                assert!(
+                    matches!(args.first(), Some(&("shell" | "exec-out" | "exec-in"))),
+                    "{command:?}"
+                );
+                assert_eq!(
+                    command.is_binary(),
+                    args.first() != Some(&"shell"),
+                    "{command:?}"
+                );
             }
             for arg in args {
                 assert!(!arg.contains(SHELL_SYNTAX), "{command:?}: {arg:?}");
@@ -1079,6 +1551,9 @@ mod tests {
 
     #[test]
     fn risk_classes_are_ordered_by_severity() {
+        assert!(RiskClass::Read < RiskClass::LauncherPrivate);
+        assert!(RiskClass::LauncherPrivate < RiskClass::Transient);
+        assert_eq!(RiskClass::LauncherPrivate.code(), "RL");
         assert!(RiskClass::Read < RiskClass::Transient);
         assert!(RiskClass::Transient < RiskClass::Setting);
         assert!(RiskClass::Setting < RiskClass::PackageState);

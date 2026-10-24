@@ -8,7 +8,8 @@ use rusttv_core::{
 };
 
 use crate::launcher::{
-    Approver, ChangeReport, approve_and_apply, confirm, note_journal, require_terminal, show_plan,
+    Approver, ChangeReport, approve_and_apply, confirm, require_terminal, restore_journal,
+    show_plan,
 };
 use crate::{CliError, Target, output};
 
@@ -156,6 +157,7 @@ pub fn apply_privacy(
     let serial = target.resolve(adb)?;
     let plan =
         rusttv_core::privacy_plan(adb, &serial, &data, options.only, options.allow_untested)?;
+    rusttv_core::refuse_overlapping_journals(&plan, &rusttv_core::journals_dir()?)?;
     show_plan(&plan, dry_run, json);
     if dry_run {
         return Ok(());
@@ -190,6 +192,7 @@ pub fn apply_reduced_animations(
         &rusttv_core::journals_dir()?,
         allow_untested,
     )?;
+    rusttv_core::refuse_overlapping_journals(&plan, &rusttv_core::journals_dir()?)?;
     show_plan(&plan, dry_run, json);
     if dry_run {
         return Ok(());
@@ -272,9 +275,7 @@ pub fn restore(
     }
     let approval = confirm(&plan)?;
 
-    let mut store = FileJournal::new(&path);
-    let left_as_is = rusttv_core::restore(adb, &plan, &approval, &mut journal, &mut store)
-        .inspect_err(|_| note_journal(&path))?;
+    let left_as_is = restore_journal(adb, &plan, &approval, &path, &mut journal)?;
     for note in &left_as_is {
         output::print_note(note);
     }

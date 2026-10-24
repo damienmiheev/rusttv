@@ -19,7 +19,8 @@ use crate::adb::Adb;
 use crate::apps::{PackageListError, package_names};
 use crate::bench::{Sleep, parse_wakefulness};
 use crate::command::{
-    Component, DeviceCommand, InvalidApk, PackageName, RiskClass, SettingKey, SettingState,
+    Component, DeviceCommand, HistorySince, InvalidApk, PackageName, RiskClass, SettingKey,
+    SettingState,
 };
 use crate::error::AdbError;
 use crate::grant::Grant;
@@ -82,6 +83,15 @@ pub enum Check {
     /// `dumpsys power`). Output without the field (another Android) counts
     /// as awake.
     Awake,
+    /// The RustTV launcher holds `WRITE_SECURE_SETTINGS` (`true`) or doesn't
+    /// (`false`), as `dumpsys package ai.rusttv.launcher` says
+    /// (`android.permission.WRITE_SECURE_SETTINGS: granted=true`). Output
+    /// without the launcher's package never matches.
+    SecureSettingsGranted(bool),
+    /// The TV's history exports the entries after this one, i.e. it holds
+    /// the entry (`content read …/export/<entry>` prints an export, not a
+    /// refusal). For `all`: the history isn't empty.
+    HistoryContinues(HistorySince),
 }
 
 impl Check {
@@ -100,6 +110,8 @@ impl Check {
             DeviceCommand::UninstallLauncher => {
                 Some(Self::PackageNotInstalled(PackageName::rusttv_launcher()))
             }
+            DeviceCommand::GrantSecureSettings => Some(Self::SecureSettingsGranted(true)),
+            DeviceCommand::RevokeSecureSettings => Some(Self::SecureSettingsGranted(false)),
             _ => None,
         }
     }
@@ -178,6 +190,18 @@ impl Check {
                 let output = adb.run(serial, &DeviceCommand::GetSetting(*key))?;
                 Ok(SettingState::from_output(&output).is_ok_and(|now| now == *state))
             }
+            Self::SecureSettingsGranted(granted) => {
+                let output = adb.run(
+                    serial,
+                    &DeviceCommand::PackageInfo(PackageName::rusttv_launcher()),
+                )?;
+                Ok(crate::history::launcher_grant(&output) == Some(*granted))
+            }
+            Self::HistoryContinues(since) => {
+                let output =
+                    adb.run_binary(serial, &DeviceCommand::HistoryExport(since.clone()), &[])?;
+                Ok(crate::history::is_export(&output))
+            }
         }
     }
 }
@@ -210,6 +234,16 @@ impl fmt::Display for Check {
             }
             Self::SettingIs { key, state } => write!(f, "{key} is {state}"),
             Self::Awake => f.write_str("the screen is on, without a screensaver"),
+            Self::SecureSettingsGranted(true) => {
+                f.write_str("the RustTV launcher holds WRITE_SECURE_SETTINGS")
+            }
+            Self::SecureSettingsGranted(false) => {
+                f.write_str("the RustTV launcher doesn't hold WRITE_SECURE_SETTINGS")
+            }
+            Self::HistoryContinues(since) => match since.as_entry() {
+                Some(entry) => write!(f, "the TV's history holds entry {entry}"),
+                None => f.write_str("the TV's history isn't empty"),
+            },
         }
     }
 }
@@ -354,7 +388,7 @@ impl Plan {
     }
 
     /// The plan with `notes` added after its own.
-    pub(crate) fn with_notes(mut self, notes: impl IntoIterator<Item = String>) -> Self {
+    pub fn with_notes(mut self, notes: impl IntoIterator<Item = String>) -> Self {
         self.notes.extend(notes);
         self
     }
@@ -455,6 +489,15 @@ impl Plan {
             Some(reason) => Err(PlanError::not_approved(&format!(
                 "the delegation doesn't approve this plan: {reason}; nothing changed"
             ))),
+        }
+    }
+
+    /// An approval of this plan by `by`, for [`crate::approve_by_tv`] after
+    /// it checked the plan is exactly what was approved on the TV.
+    pub(crate) fn approval_by(&self, by: ApprovedBy) -> Approval {
+        Approval {
+            plan: self.clone(),
+            by,
         }
     }
 
@@ -604,7 +647,7 @@ pub fn apply(
         fingerprint: plan.fingerprint.clone(),
         started_at_unix_ms: now_unix_ms(),
         status: JournalStatus::Applying,
-        approved_by: Some(approval.by),
+        approved_by: Some(approval.by.clone()),
         restore_approved_by: None,
         steps: plan
             .steps
@@ -725,7 +768,7 @@ pub fn restore(
         )
         .into());
     }
-    journal.restore_approved_by = Some(approval.by);
+    journal.restore_approved_by = Some(approval.by.clone());
     let (mut problems, left_as_is) = undo_steps(adb, &plan.serial, journal, store, true);
     journal.status = if problems.is_empty() {
         JournalStatus::Restored
@@ -745,7 +788,7 @@ pub fn restore(
 /// Runs a step and its checks, re-checking polled steps; returns why it
 /// failed, if it did.
 fn run_and_verify(adb: &dyn Adb, serial: &str, step: &Step, sleep: Sleep<'_>) -> Option<String> {
-    if let Err(error) = adb.run(serial, step.command()) {
+    if let Err(error) = crate::adb::run_step(adb, serial, step.command()) {
         return Some(format!(
             "`{}` failed: {error}",
             adb_command(serial, step.command())
@@ -1009,7 +1052,8 @@ impl PlanError {
         PlanErrorKind::Journal(error.to_string()).into()
     }
 
-    pub(crate) fn precondition(reason: String) -> Self {
+    /// The device isn't in the state a plan needs (`PRECONDITION_FAILED`).
+    pub fn precondition(reason: String) -> Self {
         PlanErrorKind::Precondition(reason).into()
     }
 

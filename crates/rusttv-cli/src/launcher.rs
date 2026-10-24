@@ -1,6 +1,6 @@
 //! `rusttv launcher ...` commands.
 
-use std::io::{self, IsTerminal};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -11,6 +11,7 @@ use rusttv_core::{
 };
 use serde::Serialize;
 
+use crate::history::Recorder;
 use crate::{CliError, Target, output};
 
 /// `rusttv launcher status`.
@@ -127,6 +128,8 @@ pub fn uninstall(
     if dry_run {
         return Ok(());
     }
+    // Uninstalling deletes the TV's history: copy it here first.
+    crate::history::sync_before_removal(adb, &serial)?;
     let path = approve_and_apply(adb, &plan, &Approver::Terminal, LAUNCHER_UNINSTALL, json)?;
     if !json {
         println!("\nDone: the RustTV launcher is uninstalled.");
@@ -163,11 +166,26 @@ fn apply_with_journal(
     approval: &Approval,
     name: &str,
 ) -> Result<(PathBuf, Journal), CliError> {
+    apply_recorded(adb, plan, approval, name, None)
+}
+
+/// Applies the approved `plan` with a new journal named after `name`,
+/// telling the TV's history before and after (HISTORY.md § 4.2; warnings
+/// only). `consumed` is the TV approval `history apply-pending` used.
+pub(crate) fn apply_recorded(
+    adb: &dyn Adb,
+    plan: &Plan,
+    approval: &Approval,
+    name: &str,
+    consumed: Option<&str>,
+) -> Result<(PathBuf, Journal), CliError> {
     let path = rusttv_core::journals_dir()?.join(journal_file_name(now_unix_ms(), name));
+    let recorder = Recorder::start(adb, plan.serial());
     let mut store = FileJournal::new(&path);
-    let journal = rusttv_core::apply(adb, plan, approval, &mut store, &std::thread::sleep)
-        .inspect_err(|_| note_journal(&path))?;
-    Ok((path, journal))
+    let result = rusttv_core::apply(adb, plan, approval, &mut store, &std::thread::sleep)
+        .inspect_err(|_| note_journal(&path));
+    recorder.finish(plan.name(), &path, false, consumed);
+    Ok((path, result?))
 }
 
 /// `rusttv launcher restore`.
@@ -251,18 +269,22 @@ pub fn restore(
     Ok(())
 }
 
-/// Restores `journal` (at `path`) with the approved restore `plan`.
-fn restore_journal(
+/// Restores `journal` (at `path`) with the approved restore `plan`,
+/// telling the TV's history before and after. Returns the notes about
+/// values left as they are.
+pub(crate) fn restore_journal(
     adb: &dyn Adb,
     plan: &Plan,
     approval: &Approval,
     path: &Path,
     journal: &mut Journal,
-) -> Result<(), CliError> {
+) -> Result<Vec<String>, CliError> {
+    let recorder = Recorder::start(adb, plan.serial());
     let mut store = FileJournal::new(path);
-    rusttv_core::restore(adb, plan, approval, journal, &mut store)
-        .inspect_err(|_| note_journal(path))?;
-    Ok(())
+    let result = rusttv_core::restore(adb, plan, approval, journal, &mut store)
+        .inspect_err(|_| note_journal(path));
+    recorder.finish(plan.name(), path, true, None);
+    Ok(result?)
 }
 
 /// What `launcher upgrade` will do, in `--dry-run --json` output.
@@ -533,7 +555,7 @@ pub(crate) fn show_plan(plan: &Plan, dry_run: bool, json: bool) {
 /// Approval comes only from a person typing at a terminal (SECURITY.md):
 /// there is deliberately no `--yes` flag.
 pub(crate) fn require_terminal() -> Result<(), CliError> {
-    if io::stdin().is_terminal() {
+    if rusttv_core::stdin_is_terminal() {
         Ok(())
     } else {
         Err(PlanError::not_approved(
@@ -599,7 +621,7 @@ impl Approver {
 /// for `scope` may (checked again against each plan). Otherwise
 /// `NOT_APPROVED` before contacting the device.
 pub(crate) fn approver(scope: GrantScope) -> Result<Approver, CliError> {
-    if io::stdin().is_terminal() {
+    if rusttv_core::stdin_is_terminal() {
         return Ok(Approver::Terminal);
     }
     let path = rusttv_core::grant_path()?;

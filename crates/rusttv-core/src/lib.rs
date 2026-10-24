@@ -15,6 +15,7 @@ mod device;
 mod download;
 mod error;
 mod grant;
+mod history;
 mod inspect;
 mod install;
 mod journal;
@@ -24,6 +25,7 @@ mod perf;
 mod plan;
 mod privacy;
 mod takeover;
+mod terminal;
 #[cfg(any(test, feature = "test-util"))]
 pub mod test_release;
 #[cfg(test)]
@@ -43,8 +45,10 @@ pub use catalog::{
     config_dir, load_choices,
 };
 pub use command::{
-    ApkPath, Component, DeviceCommand, InvalidApk, InvalidComponent, InvalidPackageName,
-    InvalidSettingValue, PackageName, RiskClass, SettingKey, SettingState, SettingValue,
+    ApkPath, Component, DeviceCommand, DoorKind, HistoryNonce, HistorySince, InboxPayload,
+    InvalidApk, InvalidComponent, InvalidHistoryValue, InvalidPackageName, InvalidSettingValue,
+    PackageName, RiskClass, SettingKey, SettingState, SettingValue, WRITE_SECURE_SETTINGS,
+    WatchKey,
 };
 pub use compat::{
     DeviceKind, DeviceProfile, InvalidPrivacyCategory, MissingField, PROFILE_SCHEMA_VERSION,
@@ -61,6 +65,12 @@ pub use error::{AdbError, ERROR_CODES};
 pub use grant::{
     GRANT_SCHEMA_VERSION, Grant, GrantScope, InvalidGrantScope, MAX_GRANT_DURATION, grant_path,
     load_grant, revoke_grant, save_grant,
+};
+pub use history::{
+    HISTORY_ALLOW_TV_SETTINGS, HISTORY_RESTORE, HISTORY_RESTORE_TV, HISTORY_REVOKE_TV_SETTINGS,
+    RestoreTarget, TvChange, approve_by_tv, history_restore_plan, history_restore_undo_plan,
+    is_export, launcher_grant, launcher_test_build, refuse_overlapping_journals, restore_tv_plan,
+    same_scale, tv_settings_plan,
 };
 pub use inspect::{
     DeviceInfo, MemoryInfo, StorageInfo, inspect, parse_df, parse_meminfo, parse_properties,
@@ -97,6 +107,9 @@ pub use privacy::{
 pub use takeover::{
     HOME_TAKEOVER, takeover_journal_from_profile, takeover_plan, takeover_restore_plan,
 };
+#[cfg(all(feature = "test-util", debug_assertions))]
+pub use terminal::TEST_TERMINAL_ENV;
+pub use terminal::stdin_is_terminal;
 
 #[cfg(all(feature = "test-util", debug_assertions))]
 pub use update::TEST_SIGNING_KEY_ENV;

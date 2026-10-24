@@ -41,7 +41,7 @@ fn rusttv_with_fake_adb(scenario: &str, args: &[&str]) -> Output {
 
 fn json_stdout(output: &Output) -> Value {
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["schema"], "rusttv.v7");
+    assert_eq!(value["schema"], "rusttv.v8");
     value
 }
 
@@ -385,7 +385,18 @@ fn performance_snapshot_rejects_tiny_sample_intervals() {
 #[test]
 fn every_error_code_is_documented_in_cli_md() {
     let docs = include_str!("../../../CLI.md");
-    let cli_only = ["INCOMPLETE_PROFILE", "INTERNAL"];
+    let cli_only = [
+        "INCOMPLETE_PROFILE",
+        "INTERNAL",
+        "HISTORY_NOT_FOUND",
+        "HISTORY_AMBIGUOUS",
+        "HISTORY_INVALID",
+        "HISTORY_FORMAT_NEWER",
+        "HISTORY_REFUSED",
+        "HISTORY_NOT_EMPTY",
+        "HISTORY_STORAGE",
+        "PENDING_REFUSED",
+    ];
     for code in rusttv_core::ERROR_CODES.iter().chain(&cli_only) {
         assert!(
             docs.contains(&format!("| `{code}` |")),
