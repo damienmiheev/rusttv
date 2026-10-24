@@ -531,7 +531,10 @@ export component HomeWindow inherits Window {
     // slides to its end while this is true and back while false. How long one
     // slide takes for it; 0 when it fits.
     in property <bool> menu-marquee-end;
-    out property <duration> menu-marquee-time: max(0px, menu-measure.preferred-width - (380 - 16 - 48) * u) / (60 * u) * 1s;
+    // Measured at the 1920-wide size (27px, not 27 * u): text width scales
+    // with font size, so `u` cancels out, and the measure doesn't depend on
+    // the window's size (which would be a binding loop).
+    out property <duration> menu-marquee-time: max(0px, menu-measure.preferred-width - (380 - 16 - 48) * 1px) / 60px * 1s;
     // The hidden apps page.
     in property <[TileData]> hidden-tiles;
     in property <int> hidden-focus;
@@ -573,7 +576,7 @@ export component HomeWindow inherits Window {
     menu-measure := Text {
         visible: false;
         text: menu-items[menu-selected];
-        font-size: 27 * u;
+        font-size: 27px;
         font-weight: 500;
     }
 

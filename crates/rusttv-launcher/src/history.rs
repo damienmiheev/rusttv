@@ -696,11 +696,20 @@ mod containment {
         let mut offenders = Vec::new();
         while let Some(path) = files.pop() {
             if path.is_dir() {
-                files.extend(std::fs::read_dir(&path).unwrap().map(|entry| entry.unwrap().path()));
+                files.extend(
+                    std::fs::read_dir(&path)
+                        .unwrap()
+                        .map(|entry| entry.unwrap().path()),
+                );
                 continue;
             }
             let text = std::fs::read_to_string(&path).unwrap();
-            for needle in ["android/provider/Settings", "content://settings", "putString", "Settings$"] {
+            for needle in [
+                "android/provider/Settings",
+                "content://settings",
+                "putString",
+                "Settings$",
+            ] {
                 // This test names them itself.
                 if text.contains(needle) && path != this_file {
                     offenders.push(format!("{}: {needle}", path.display()));

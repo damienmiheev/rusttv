@@ -47,9 +47,16 @@ impl Jni {
     fn files_dir(&self) -> Result<PathBuf, HistoryError> {
         self.call(|env, class, context| {
             let dir = env
-                .call_static_method(class, "filesDir", "(Landroid/content/Context;)Ljava/lang/String;", &[JValue::Object(context)])?
+                .call_static_method(
+                    class,
+                    "filesDir",
+                    "(Landroid/content/Context;)Ljava/lang/String;",
+                    &[JValue::Object(context)],
+                )?
                 .l()?;
-            Ok(PathBuf::from(String::from(env.get_string(&JString::from(dir))?)))
+            Ok(PathBuf::from(String::from(
+                env.get_string(&JString::from(dir))?,
+            )))
         })
     }
 }
@@ -74,7 +81,8 @@ impl TvDevice for Device {
     }
 
     fn write_launcher(&mut self, launcher: &Launcher) -> Result<(), HistoryError> {
-        order_file::write_launcher_state(&self.files, launcher).map_err(|error| HistoryError::Storage(error.to_string()))
+        order_file::write_launcher_state(&self.files, launcher)
+            .map_err(|error| HistoryError::Storage(error.to_string()))
     }
 
     fn setting(&self, key: &str) -> Result<Option<String>, HistoryError> {
@@ -98,8 +106,13 @@ impl TvDevice for Device {
     fn can_write_settings(&self) -> bool {
         self.jni
             .call(|env, class, context| {
-                env.call_static_method(class, "canWriteSettings", "(Landroid/content/Context;)Z", &[JValue::Object(context)])?
-                    .z()
+                env.call_static_method(
+                    class,
+                    "canWriteSettings",
+                    "(Landroid/content/Context;)Z",
+                    &[JValue::Object(context)],
+                )?
+                .z()
             })
             .unwrap_or(false)
     }
@@ -112,14 +125,20 @@ impl TvDevice for Device {
                 class,
                 "putSetting",
                 "(Landroid/content/Context;ILjava/lang/String;)Z",
-                &[JValue::Object(context), JValue::Int(index), JValue::Object(&value)],
+                &[
+                    JValue::Object(context),
+                    JValue::Int(index),
+                    JValue::Object(&value),
+                ],
             )?
             .z()
         })?;
         if written {
             Ok(())
         } else {
-            Err(HistoryError::Storage(format!("Android refused to set {key}")))
+            Err(HistoryError::Storage(format!(
+                "Android refused to set {key}"
+            )))
         }
     }
 }
@@ -138,8 +157,13 @@ impl TvClock for Clock {
     fn boot_count(&self) -> u64 {
         self.jni
             .call(|env, class, context| {
-                env.call_static_method(class, "bootCount", "(Landroid/content/Context;)J", &[JValue::Object(context)])?
-                    .j()
+                env.call_static_method(
+                    class,
+                    "bootCount",
+                    "(Landroid/content/Context;)J",
+                    &[JValue::Object(context)],
+                )?
+                .j()
             })
             .map_or(0, |count| u64::try_from(count).unwrap_or(0))
     }
@@ -147,7 +171,9 @@ impl TvClock for Clock {
     fn now_unix(&self) -> i64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_or(0, |since| i64::try_from(since.as_secs()).unwrap_or(i64::MAX))
+            .map_or(0, |since| {
+                i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
+            })
     }
 }
 
@@ -170,7 +196,9 @@ impl HistoryPlatform for Platform {
         let bytes = self
             .jni
             .call(|env, class, _| {
-                let array = env.call_static_method(class, "randomBytes", "(I)[B", &[JValue::Int(16)])?.l()?;
+                let array = env
+                    .call_static_method(class, "randomBytes", "(I)[B", &[JValue::Int(16)])?
+                    .l()?;
                 env.convert_byte_array(JByteArray::from(array))
             })
             .unwrap_or_default();
@@ -185,28 +213,42 @@ impl HistoryPlatform for Platform {
         // Unknown counts as a test build: approvals stay off.
         self.jni
             .call(|env, class, context| {
-                env.call_static_method(class, "testBuild", "(Landroid/content/Context;)Z", &[JValue::Object(context)])?
-                    .z()
+                env.call_static_method(
+                    class,
+                    "testBuild",
+                    "(Landroid/content/Context;)Z",
+                    &[JValue::Object(context)],
+                )?
+                .z()
             })
             .unwrap_or(true)
     }
 
     fn lower_priority(&self) {
-        if let Err(error) = self
-            .jni
-            .call(|env, class, _| env.call_static_method(class, "lowerPriority", "()V", &[]).map(|_| ()))
-        {
+        if let Err(error) = self.jni.call(|env, class, _| {
+            env.call_static_method(class, "lowerPriority", "()V", &[])
+                .map(|_| ())
+        }) {
             log::warn!("history: lowering its priority failed: {error}");
         }
     }
 }
 
 /// Builds the platform from a JNI env, the `History` class and a context.
-fn platform(env: &mut JNIEnv<'_>, class: &JClass<'_>, context: &JObject<'_>) -> Result<Platform, HistoryError> {
+fn platform(
+    env: &mut JNIEnv<'_>,
+    class: &JClass<'_>,
+    context: &JObject<'_>,
+) -> Result<Platform, HistoryError> {
     let storage = |error: jni::errors::Error| HistoryError::Storage(error.to_string());
     let vm = env.get_java_vm().map_err(storage)?;
     let app = env
-        .call_method(context, "getApplicationContext", "()Landroid/content/Context;", &[])
+        .call_method(
+            context,
+            "getApplicationContext",
+            "()Landroid/content/Context;",
+            &[],
+        )
         .and_then(|value| value.l())
         .map_err(storage)?;
     let jni = Arc::new(Jni {
@@ -220,7 +262,9 @@ fn platform(env: &mut JNIEnv<'_>, class: &JClass<'_>, context: &JObject<'_>) -> 
             jni: Arc::clone(&jni),
             files,
         },
-        clock: Clock { jni: Arc::clone(&jni) },
+        clock: Clock {
+            jni: Arc::clone(&jni),
+        },
         jni,
     })
 }
@@ -245,7 +289,11 @@ pub(super) fn start_from_activity(vm: &JavaVM, activity: &JObject<'_>) {
 }
 
 /// The history thread for a door call; starts it if the door started the process.
-fn history_for(env: &mut JNIEnv<'_>, class: &JClass<'_>, context: &JObject<'_>) -> Option<&'static History> {
+fn history_for(
+    env: &mut JNIEnv<'_>,
+    class: &JClass<'_>,
+    context: &JObject<'_>,
+) -> Option<&'static History> {
     if let Some(history) = History::get() {
         return Some(history);
     }
@@ -277,7 +325,9 @@ pub extern "system" fn Java_ai_rusttv_launcher_History_nativeExport<'local>(
         env.get_string(&since).ok().map(String::from)
     };
     let answer = match history_for(&mut env, &class, &context) {
-        Some(history) => history.export(since).unwrap_or_else(|refused| door::read_error(refused.code)),
+        Some(history) => history
+            .export(since)
+            .unwrap_or_else(|refused| door::read_error(refused.code)),
         None => door::read_error("HISTORY_STORAGE"),
     };
     byte_array(&mut env, &answer)

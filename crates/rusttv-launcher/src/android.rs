@@ -285,7 +285,10 @@ impl Platform for AndroidPlatform {
 
     fn random_code(&mut self) -> [u32; 4] {
         let code = self.with_bridge("random code", |env, bridge, _activity| {
-            let array = JIntArray::from(env.call_static_method(bridge, "randomCode", "()[I", &[])?.l()?);
+            let array = JIntArray::from(
+                env.call_static_method(bridge, "randomCode", "()[I", &[])?
+                    .l()?,
+            );
             let mut values = [0_i32; 4];
             env.get_int_array_region(&array, 0, &mut values)?;
             Ok(values.map(|value| u32::try_from(value).unwrap_or(0)))
@@ -300,7 +303,8 @@ impl Platform for AndroidPlatform {
 
     fn utc_offset_secs(&self) -> i32 {
         self.with_bridge("time zone", |env, bridge, _activity| {
-            env.call_static_method(bridge, "utcOffsetSecs", "()I", &[])?.i()
+            env.call_static_method(bridge, "utcOffsetSecs", "()I", &[])?
+                .i()
         })
         .unwrap_or(0)
     }
