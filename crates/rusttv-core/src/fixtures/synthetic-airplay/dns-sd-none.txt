@@ -1,4 +1,0 @@
-Browsing for _airplay._tcp.local.
-DATE: ---Fri 23 Oct 2026---
-12:10:05.000  ...STARTING...
-Timestamp     A/R    Flags  if Domain               Service Type         Instance Name

@@ -78,9 +78,6 @@ pub enum Check {
         /// Its expected state.
         state: SettingState,
     },
-    /// The activity manager runs this service (`dumpsys activity services
-    /// <package>`).
-    ServiceRunning(Component),
     /// The screen is on with no screensaver (`mWakefulness=Awake` in
     /// `dumpsys power`). Output without the field (another Android) counts
     /// as awake.
@@ -181,10 +178,6 @@ impl Check {
                 let output = adb.run(serial, &DeviceCommand::GetSetting(*key))?;
                 Ok(SettingState::from_output(&output).is_ok_and(|now| now == *state))
             }
-            Self::ServiceRunning(service) => {
-                let output = adb.run(serial, &DeviceCommand::RunningServices(service.package()))?;
-                Ok(crate::airplay::running_services(&output).contains(&service.full_name()))
-            }
         }
     }
 }
@@ -216,7 +209,6 @@ impl fmt::Display for Check {
                 )
             }
             Self::SettingIs { key, state } => write!(f, "{key} is {state}"),
-            Self::ServiceRunning(service) => write!(f, "{service} is running"),
             Self::Awake => f.write_str("the screen is on, without a screensaver"),
         }
     }
@@ -319,9 +311,8 @@ pub struct Plan {
 impl Plan {
     /// Builds a plan for the device with `serial` and build `fingerprint`
     /// (`ro.build.fingerprint`). `confirmation` is what a human must type to
-    /// approve it. Fails if there are no steps, a setting step writes or
-    /// records a state its key doesn't accept ([`SettingKey::accepts`]), or
-    /// a step above R1 has no inverse, unless it is [irreversible by design](DeviceCommand::is_irreversible)
+    /// approve it. Fails if there are no steps, or a step above R1 has no
+    /// inverse, unless it is [irreversible by design](DeviceCommand::is_irreversible)
     /// and the last step: then nothing after it can fail and need it undone.
     pub fn new(
         name: &str,
@@ -338,19 +329,6 @@ impl Plan {
         }
         if confirmation.trim().is_empty() {
             return Err(PlanErrorKind::InvalidPlan("empty confirmation phrase".to_owned()).into());
-        }
-        // Also checked for journals: a restore plan is built here too.
-        if let Some((key, state)) = steps.iter().find_map(|step| match step.command() {
-            DeviceCommand::SetSetting { key, to, from } => [to, from]
-                .into_iter()
-                .find(|state| !key.accepts(state))
-                .map(|state| (*key, state)),
-            _ => None,
-        }) {
-            return Err(PlanErrorKind::InvalidPlan(format!(
-                "{key} doesn't take the value {state}"
-            ))
-            .into());
         }
         let last = steps.len() - 1;
         if let Some((_, step)) = steps.iter().enumerate().find(|(index, step)| {
@@ -961,8 +939,6 @@ enum PlanErrorKind {
     OptimizeNotTested(String),
     #[error("{0}")]
     Protected(String),
-    #[error("{0}")]
-    NotSupported(String),
     #[error("privacy choices: {0}")]
     InvalidChoices(String),
     #[error(transparent)]
@@ -1010,7 +986,6 @@ impl PlanError {
             PlanErrorKind::ProfileNotTested(_) => "PROFILE_NOT_TESTED",
             PlanErrorKind::OptimizeNotTested(_) => "OPTIMIZE_NOT_TESTED",
             PlanErrorKind::Protected(_) => "PACKAGE_PROTECTED",
-            PlanErrorKind::NotSupported(_) => "FEATURE_NOT_SUPPORTED",
             PlanErrorKind::InvalidChoices(_) => "INVALID_CHOICES",
             PlanErrorKind::InvalidApk(_) => "INVALID_APK",
             PlanErrorKind::RolledBack(_) => "ROLLED_BACK",
@@ -1063,11 +1038,6 @@ impl PlanError {
         PlanErrorKind::Protected(reason).into()
     }
 
-    /// An experimental tool doesn't run on this device (TOOLS.md).
-    pub(crate) fn not_supported(reason: String) -> Self {
-        PlanErrorKind::NotSupported(reason).into()
-    }
-
     /// The adb error inside, if this is one; otherwise this error back.
     pub(crate) fn into_adb(self) -> Result<AdbError, Self> {
         match self.kind {
@@ -1099,7 +1069,6 @@ pub(crate) fn every_plan_error() -> Vec<PlanError> {
         PlanErrorKind::ProfileNotTested(String::new()).into(),
         PlanErrorKind::OptimizeNotTested(String::new()).into(),
         PlanErrorKind::Protected(String::new()).into(),
-        PlanErrorKind::NotSupported(String::new()).into(),
         PlanErrorKind::InvalidChoices(String::new()).into(),
         PlanErrorKind::InvalidApk(InvalidApk::new(String::new())).into(),
         PlanErrorKind::RolledBack(String::new()).into(),
@@ -1122,7 +1091,6 @@ pub(crate) fn every_plan_error() -> Vec<PlanError> {
             | PlanErrorKind::ProfileNotTested(_)
             | PlanErrorKind::OptimizeNotTested(_)
             | PlanErrorKind::Protected(_)
-            | PlanErrorKind::NotSupported(_)
             | PlanErrorKind::InvalidChoices(_)
             | PlanErrorKind::InvalidApk(_)
             | PlanErrorKind::RolledBack(_)

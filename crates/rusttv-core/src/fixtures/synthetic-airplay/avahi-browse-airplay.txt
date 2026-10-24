@@ -1,1 +1,0 @@
-+;wlan0;IPv4;Example TV;_airplay._tcp;local
