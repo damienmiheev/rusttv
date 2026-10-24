@@ -59,6 +59,11 @@ android {
         targetSdk = 34
         versionCode = cargoVersionCode
         versionName = cargoVersion
+        // Shell profiling (Perfetto, simpleperf) only in measurement builds:
+        // `./gradlew -Prusttv.profileable=true …` (BENCHMARK_PLAN.md). Such builds
+        // can't approve changes on the TV (HISTORY.md § 6.2).
+        manifestPlaceholders["profileable"] =
+            (project.findProperty("rusttv.profileable") == "true").toString()
     }
 
     signingConfigs {

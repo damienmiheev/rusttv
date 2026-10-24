@@ -9,6 +9,8 @@ use android_activity::{AndroidApp, MainEvent, PollEvent};
 use jni::objects::{GlobalRef, JClass, JIntArray, JObject, JObjectArray, JString, JValue};
 use jni::{JNIEnv, JavaVM};
 
+mod history;
+
 use crate::model::App;
 use crate::platform::{AppEntry, Artwork, Bitmap, Platform, PlatformError, UpdateStatus};
 use crate::ui::{Lifecycle, RunOptions, run};
@@ -47,6 +49,7 @@ fn android_main(app: AndroidApp) {
             return;
         }
     };
+    history::start_from_activity(&platform.vm, &activity(&app));
     let language = platform.language();
     let options = RunOptions {
         language,
@@ -84,26 +87,8 @@ impl AndroidPlatform {
             .attach_current_thread_permanently()
             .map_err(|error| PlatformError::call("attach thread", error.to_string()))?;
         let activity = activity(app);
-        // `FindClass` on a native thread only sees system classes, so the app's
-        // own class is loaded through the activity's class loader.
         let bridge = java("load bridge", &mut env, |env| {
-            let loader = env
-                .call_method(
-                    &activity,
-                    "getClassLoader",
-                    "()Ljava/lang/ClassLoader;",
-                    &[],
-                )?
-                .l()?;
-            let name = env.new_string(BRIDGE_CLASS)?;
-            let class = env
-                .call_method(
-                    &loader,
-                    "loadClass",
-                    "(Ljava/lang/String;)Ljava/lang/Class;",
-                    &[JValue::Object(&name)],
-                )?
-                .l()?;
+            let class = load_class(env, &activity, BRIDGE_CLASS)?;
             env.new_global_ref(class)
         })?;
         Ok(Self {
@@ -282,6 +267,43 @@ impl Platform for AndroidPlatform {
     fn install_update(&mut self) -> Result<(), PlatformError> {
         self.call_with_context("install update", "installUpdate")
     }
+
+    fn set_secure(&mut self, on: bool) {
+        let set = self.with_bridge("secure window", |env, bridge, activity| {
+            env.call_static_method(
+                bridge,
+                "setSecure",
+                "(Landroid/app/Activity;Z)V",
+                &[JValue::Object(activity), JValue::Bool(u8::from(on))],
+            )?;
+            Ok(())
+        });
+        if let Err(error) = set {
+            log::warn!("{error}");
+        }
+    }
+
+    fn random_code(&mut self) -> [u32; 4] {
+        let code = self.with_bridge("random code", |env, bridge, _activity| {
+            let array = JIntArray::from(env.call_static_method(bridge, "randomCode", "()[I", &[])?.l()?);
+            let mut values = [0_i32; 4];
+            env.get_int_array_region(&array, 0, &mut values)?;
+            Ok(values.map(|value| u32::try_from(value).unwrap_or(0)))
+        });
+        // Without the OS source there is no safe code: an all-up code is still
+        // valid input, and the failure is logged.
+        code.unwrap_or_else(|error| {
+            log::warn!("{error}");
+            [0; 4]
+        })
+    }
+
+    fn utc_offset_secs(&self) -> i32 {
+        self.with_bridge("time zone", |env, bridge, _activity| {
+            env.call_static_method(bridge, "utcOffsetSecs", "()I", &[])?.i()
+        })
+        .unwrap_or(0)
+    }
 }
 
 /// The app's banner, else its icon, else nothing.
@@ -347,6 +369,26 @@ fn pixels(
         })
         .collect();
     Ok(Bitmap::new(width as u32, height as u32, rgba))
+}
+
+/// Loads one of the app's own classes. `FindClass` on a native thread only
+/// sees system classes, so it goes through the activity's class loader.
+fn load_class<'local>(
+    env: &mut JNIEnv<'local>,
+    activity: &JObject<'_>,
+    name: &str,
+) -> jni::errors::Result<JObject<'local>> {
+    let loader = env
+        .call_method(activity, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?
+        .l()?;
+    let name = env.new_string(name)?;
+    env.call_method(
+        &loader,
+        "loadClass",
+        "(Ljava/lang/String;)Ljava/lang/Class;",
+        &[JValue::Object(&name)],
+    )?
+    .l()
 }
 
 /// The activity, usable as an Android `Context`.

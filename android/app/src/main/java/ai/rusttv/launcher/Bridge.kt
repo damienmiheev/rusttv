@@ -16,6 +16,35 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Apps are identified by their flattened component name, "package/activity".
  */
 object Bridge {
+    /**
+     * Marks the window secure while the review screen is open (HISTORY.md
+     * § 6.2): `FLAG_SECURE` makes adb screen captures show black, and other
+     * apps' overlays are hidden (Android 12+).
+     */
+    @JvmStatic
+    fun setSecure(activity: android.app.Activity, on: Boolean) {
+        activity.runOnUiThread {
+            val window = activity.window
+            if (on) {
+                window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            } else {
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                window.setHideOverlayWindows(on)
+            }
+        }
+    }
+
+    /** Four random numbers from the OS source, for the review code. */
+    @JvmStatic
+    fun randomCode(): IntArray = IntArray(4) { java.security.SecureRandom().nextInt(4) }
+
+    /** The local time zone's offset from UTC now, in seconds. */
+    @JvmStatic
+    fun utcOffsetSecs(): Int =
+        java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000
+
     /** Set when an app was installed, updated or removed; cleared by [takeAppsChanged]. */
     private val appsChanged = AtomicBoolean(false)
 

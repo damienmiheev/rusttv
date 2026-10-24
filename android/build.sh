@@ -54,6 +54,10 @@ cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 -o app/src/main/jn
 # assets/licenses/THIRD_PARTY_NOTICES.txt and fails if they are missing.
 ../scripts/licenses.sh
 ./gradlew -q assembleRelease
+# Only SecureSettings may write a system setting (HISTORY.md § 7).
+for abi in arm64-v8a armeabi-v7a x86_64; do
+    ./check-dex.sh "app/build/outputs/apk/release/app-$abi-release.apk"
+done
 ls -la app/build/outputs/apk/release/app-arm64-v8a-release.apk \
     app/build/outputs/apk/release/app-armeabi-v7a-release.apk \
     app/build/outputs/apk/release/app-x86_64-release.apk

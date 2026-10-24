@@ -682,3 +682,31 @@ pub(crate) mod desktop {
         });
     }
 }
+
+#[cfg(test)]
+mod containment {
+    /// Rust reaches system settings only through `SecureSettings` (the one
+    /// JNI call by index in android/history.rs); no other code names the
+    /// settings provider or its classes (HISTORY.md § 7).
+    #[test]
+    fn no_rust_code_writes_system_settings() {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let this_file = src.join("history.rs");
+        let mut files = vec![src];
+        let mut offenders = Vec::new();
+        while let Some(path) = files.pop() {
+            if path.is_dir() {
+                files.extend(std::fs::read_dir(&path).unwrap().map(|entry| entry.unwrap().path()));
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            for needle in ["android/provider/Settings", "content://settings", "putString", "Settings$"] {
+                // This test names them itself.
+                if text.contains(needle) && path != this_file {
+                    offenders.push(format!("{}: {needle}", path.display()));
+                }
+            }
+        }
+        assert!(offenders.is_empty(), "{offenders:?}");
+    }
+}

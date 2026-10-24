@@ -85,6 +85,8 @@ object Updater {
 
     /** Called on every resume: checks if the last successful check is a day old. */
     fun checkIfDue(context: Context) {
+        // Settings > Updates (HISTORY.md § 8.3): one flag file, also read by Rust.
+        if (java.io.File(context.filesDir, "update-check-off").exists()) return
         val last = prefs(context).getLong(KEY_LAST_CHECK, 0)
         // A clock set back counts as due.
         if (System.currentTimeMillis() - last in 0 until CHECK_INTERVAL_MS) return
