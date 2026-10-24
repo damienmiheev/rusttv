@@ -487,9 +487,14 @@ export component HomeWindow inherits Window {
                 }
                 // Soft edges instead of a hard cut: where the text goes on
                 // past an edge, that edge fades into the item's colour.
+                // Kept off the item's top and bottom: covering its anti-aliased
+                // edge there would draw a sharper, higher edge (the text never
+                // reaches that far).
                 property <length> fade: 32 * u;
                 if self.sliding: Rectangle {
                     // The end, while more text is to come.
+                    y: 8 * u;
+                    height: parent.height - 16 * u;
                     x: Dir.x(parent.width - parent.fade, parent.fade, parent.width);
                     width: parent.fade;
                     opacity: min(1, (parent.overflow - parent.shift) / parent.fade);
@@ -497,6 +502,8 @@ export component HomeWindow inherits Window {
                 }
                 if self.sliding: Rectangle {
                     // The start, once the text has slid.
+                    y: 8 * u;
+                    height: parent.height - 16 * u;
                     x: Dir.x(0px, parent.fade, parent.width);
                     width: parent.fade;
                     opacity: min(1, parent.shift / parent.fade);
