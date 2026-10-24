@@ -4,14 +4,14 @@
 
 RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + Slint launcher, a safe ADB-based optimizer, and CLI/MCP tools for humans and AI agents. Local-first, no telemetry, and every performance claim backed by published benchmarks.
 
-> **Status: early development.** The CLI works: list, connect and inspect devices, list apps, see which launcher is Home, take performance snapshots and run launcher benchmarks. The launcher (Phase 1c) runs on the Google TV emulator but has not been tested on a real TV yet. See [ROADMAP.md](ROADMAP.md) for what comes next.
+> **Status: 0.1.0, the first public release.** Tested on one real TV, the Philips 65OLED818 (Google TV, Android 14); [compat/devices/](compat/devices/) lists what was tested there. The launcher is also developed on the Google TV emulator. Other TVs are untested: RustTV refuses changes a device's profile doesn't record as tested unless you pass `--allow-untested`. See [CHANGELOG.md](CHANGELOG.md) for what 0.1.0 does and [ROADMAP.md](ROADMAP.md) for what comes next.
 
-## What it will be
+## What it is
 
 | Component | What it does | Runs on |
 |---|---|---|
-| `rusttv` CLI | Inspect devices, take performance snapshots, run benchmarks, and (later) apply safe, reversible optimizations over ADB | Your computer (macOS, Linux) |
-| RustTV Launcher | Minimal, fast home screen built with Rust + Slint: app grid, D-pad navigation, app launching | The TV (Android 8+) |
+| `rusttv` CLI | Inspect devices, run benchmarks, install the launcher and make it your Home screen, disable telemetry and ads packages, reduce animations, sync and restore the TV's history, update RustTV: every change planned, approved and reversible | Your computer (macOS, Linux) |
+| RustTV Launcher | Minimal, fast home screen built with Rust + Slint: app row, D-pad navigation, move and hide apps, Settings with a history of changes approved on the TV, English and 20 other languages | The TV (Android 8+) |
 | RustTV MCP | The CLI's capabilities as structured tools for AI agents | Your computer |
 | Compatibility data | Community-maintained, versioned device profiles | This repo |
 
@@ -62,7 +62,7 @@ Launcher, without a TV (desktop dev mode with made-up apps; arrows move, Return 
 cargo run -p rusttv-launcher --features test-util --bin rusttv-launcher-desktop
 ```
 
-Launcher APK (arm64): `android/build.sh`. Needs the Android SDK (platform 34), NDK 30, JDK 17, `cargo install cargo-ndk` and `cargo install cargo-about --version 0.9.2 --locked --features cli` (for the third-party notices packed into the APK).
+Launcher APKs (arm64-v8a, armeabi-v7a, x86_64): `android/build.sh`. Needs the Android SDK (platform 34), NDK 30, JDK 17, `cargo install cargo-ndk` and `cargo install cargo-about --version 0.9.2 --locked --features cli` (for the third-party notices packed into the APK).
 
 To connect over the network, first enable Developer options and network/wireless debugging on the TV. The first connection shows a prompt on the TV asking you to allow this computer. If `adb` is not on your `PATH`, set `RUSTTV_ADB=/path/to/adb`.
 
@@ -89,4 +89,4 @@ The project is at an early stage. The most useful contributions right now are fe
 
 Dual-licensed under either of [Apache License 2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT), at your option.
 
-"RustTV" is a working name and may change before the first public release. RustTV is not affiliated with the Rust Foundation or the Rust project.
+RustTV is an independent project. It is not affiliated with or endorsed by the Rust Foundation, the Rust Project or Google. Rust is a trademark of the Rust Foundation; Android TV and Google TV are trademarks of Google LLC.

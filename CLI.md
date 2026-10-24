@@ -124,7 +124,7 @@ restored journal how its restore was, in `restore_approved_by`): `{ by =
 "terminal" }`, `{ by = "delegation", granted_at_unix_ms = <ms> }` or `{ by =
 "upgrade", confirmed_at_unix_ms = <ms> }` (a `launcher upgrade` stage).
 Journals without them (written before, or rebuilt by `--from-profile`) still
-load. Builds before this field (earlier `rusttv.v7` builds and older) refuse
+load. Builds before this field (earlier `rusttv.v8` builds and older) refuse
 unknown journal fields, so they list such journals as unreadable, like
 optimizer journals before `rusttv.v6` (and so refuse `launcher install`
 (upgrade) / `uninstall` until they are moved).
@@ -235,8 +235,8 @@ Without `--json`: human-readable text on stdout, errors and hints on stderr.
 With `--json`, stdout carries exactly one JSON object, success or failure:
 
 ```json
-{"schema":"rusttv.v7","ok":true,"data":{}}
-{"schema":"rusttv.v7","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
+{"schema":"rusttv.v8","ok":true,"data":{}}
+{"schema":"rusttv.v8","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
 ```
 
 - `schema` identifies the contract version. Within `rusttv.v8`, fields are only
@@ -256,11 +256,11 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
     keys or packages; journals may record `approved_by = { by = "tv", … }`.
     Plan-applying commands also print history notes and warnings on stderr.
     Everything else is unchanged.
-  - `rusttv.v7`: new commands `update check`, `update launcher` and `update
+  - `rusttv.v8`: new commands `update check`, `update launcher` and `update
     cli` ([UpdateCheck](#updatecheck), [CliUpdate](#cliupdate); `update
     launcher` reuses the `launcher-install` [DryRun](#dryrun)); new error
     codes `UPDATE_CHECK_FAILED` and `UPDATE_VERIFY_FAILED`; new confirmation
-    word `update`. Also new in `rusttv.v7` (before its release): the
+    word `update`. Also new in `rusttv.v8` (before its release): the
     commands `launcher upgrade` ([LauncherUpgrade](#launcherupgrade),
     [StageReport](#stagereport)) and `approve` ([GrantStatus](#grantstatus);
     [delegated approval](#delegated-approval)), the confirmation words

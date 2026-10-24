@@ -179,7 +179,8 @@ Work on a release branch; tick each item in the release pull request.
 
 ### Build
 
-- [ ] Run the **Release build** workflow by hand (`workflow_dispatch`) on the release commit; all jobs pass. Download the `cli-*` and `SHA256SUMS` artifacts.
+- [ ] Run the **Release build** workflow by hand (`workflow_dispatch`) on the release commit; all jobs pass.
+- [ ] `scripts/release-sign.sh <run-id>` on that commit does the next four items in one go, asking for the keystore password once and minisign's password once, into `target/release-<version>/`: it downloads the CLI archives and `SHA256SUMS` from the run and checks them, builds the APKs with the release key, checks their certificate, renames them and adds their sums, and signs and checks `SHA256SUMS`. Or do them by hand: download the `cli-*` and `SHA256SUMS` artifacts.
 - [ ] Build the APKs locally with the release key: `android/build.sh`. Check the signature (above).
 - [ ] Rename the APKs to `rusttv-launcher-<version>-<abi>.apk` and add their sums, in the directory holding the downloaded CLI archives and `SHA256SUMS`:
 
