@@ -12,8 +12,19 @@ publish.workspace = true
 name = "rusttv"
 path = "src/main.rs"
 
+[[bin]]
+# The TV's side of the history door for the integration tests: answers the
+# fake adb's `content` calls with the real rusttv-history TV code over a
+# directory. Built with the CLI but never packaged or released (only
+# `rusttv` and `rusttv-mcp` are, RELEASE.md); it touches no device.
+name = "rusttv-fake-tv"
+path = "tests/fixtures/fake_tv.rs"
+test = false
+doc = false
+
 [dependencies]
 rusttv-core.workspace = true
+rusttv-history.workspace = true
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true

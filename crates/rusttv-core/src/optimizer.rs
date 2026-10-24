@@ -1203,6 +1203,15 @@ mod tests {
             }
         }
 
+        fn run_binary(
+            &self,
+            serial: &str,
+            command: &DeviceCommand,
+            _stdin: &[u8],
+        ) -> Result<Vec<u8>, AdbError> {
+            self.run(serial, command).map(String::into_bytes)
+        }
+
         fn devices(&self) -> Result<Vec<crate::device::DeviceEntry>, AdbError> {
             Ok(Vec::new())
         }

@@ -441,6 +441,15 @@ impl Adb for SharedAdb {
         self.0.lock().unwrap().run(serial, command)
     }
 
+    fn run_binary(
+        &self,
+        serial: &str,
+        command: &DeviceCommand,
+        stdin: &[u8],
+    ) -> Result<Vec<u8>, AdbError> {
+        self.0.lock().unwrap().run_binary(serial, command, stdin)
+    }
+
     fn devices(&self) -> Result<Vec<DeviceEntry>, AdbError> {
         self.0.lock().unwrap().devices()
     }
