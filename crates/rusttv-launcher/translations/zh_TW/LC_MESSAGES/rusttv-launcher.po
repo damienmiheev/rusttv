@@ -79,3 +79,180 @@ msgstr "按上下鍵捲動聲明，按返回鍵返回。"
 
 msgid "Third-party notices"
 msgstr "第三方聲明"
+
+msgid "Updates"
+msgstr "更新"
+
+msgid "History"
+msgstr "記錄"
+
+msgid "Waiting for your computer"
+msgstr "等待電腦操作"
+
+msgid "Animations"
+msgstr "動畫"
+
+msgid "Faster (0.5×)"
+msgstr "更快 (0.5×)"
+
+msgid "Off"
+msgstr "關閉"
+
+msgid "Normal"
+msgstr "正常"
+
+msgid "On"
+msgstr "開啟"
+
+msgid "Transition animations"
+msgstr "轉場動畫"
+
+msgid "Window animations"
+msgstr "視窗動畫"
+
+msgid "App animations"
+msgstr "應用程式動畫"
+
+msgid "off"
+msgstr "關閉"
+
+msgid "not seen"
+msgstr "未偵測到"
+
+msgid "on"
+msgstr "開啟"
+
+msgid "default"
+msgstr "預設"
+
+msgid "Your computer"
+msgstr "電腦"
+
+msgid "Changed outside RustTV"
+msgstr "在 RustTV 以外變更"
+
+msgid "Restored from your computer"
+msgstr "從電腦還原"
+
+msgid "This TV"
+msgstr "這台電視"
+
+msgid "time unknown"
+msgstr "時間不明"
+
+msgid "Apps reordered"
+msgstr "已重新排列應用程式"
+
+msgid "Hid {}"
+msgstr "已隱藏 {}"
+
+msgid "Showed {}"
+msgstr "已顯示 {}"
+
+msgid "Check for updates: {}"
+msgstr "檢查更新：{}"
+
+msgid "{}: {} → {}"
+msgstr "{}：{} → {}"
+
+msgid "Firmware updated"
+msgstr "韌體已更新"
+
+msgid "Home takeover: {}"
+msgstr "接管主畫面：{}"
+
+msgid "No change"
+msgstr "沒有變更"
+
+msgid "Your computer applies these: run rusttv history apply-pending within 2 hours"
+msgstr "由電腦套用：請在 2 小時內執行 rusttv history apply-pending"
+
+msgid "This TV changes now"
+msgstr "這台電視立即變更"
+
+msgid "To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it."
+msgstr "如要直接在電視上變更此項目，請在電腦上執行一次 rusttv history allow-tv-settings。在此之前由電腦套用。"
+
+msgid "Some apps may look odd without animations."
+msgstr "關閉動畫後，部分應用程式可能顯示異常。"
+
+msgid "No changes yet. Changes made here or from your computer appear here."
+msgstr "尚無變更。在這台電視上或從電腦進行的變更會顯示在這裡。"
+
+msgid "{} (+{} more)"
+msgstr "{}（還有 {} 項）"
+
+msgid "Restore this state"
+msgstr "還原到這個狀態"
+
+msgid "Check for updates automatically"
+msgstr "自動檢查更新"
+
+msgid "{} min"
+msgstr "{} 分鐘"
+
+msgid "{} h {} min"
+msgstr "{} 小時 {} 分鐘"
+
+msgid "On your computer, run rusttv history apply-pending within {}."
+msgstr "請在 {} 內於電腦上執行 rusttv history apply-pending。"
+
+msgid "Applied."
+msgstr "已套用。"
+
+msgid "Saved for your computer. {}"
+msgstr "已儲存，等待電腦套用。{}"
+
+msgid "Nothing changed: {}"
+msgstr "未做任何變更：{}"
+
+msgid "Nothing changed: wrong code."
+msgstr "未做任何變更：代碼錯誤。"
+
+msgid "Too many wrong codes. Approvals are locked for {}."
+msgstr "錯誤代碼次數過多。核准功能鎖定 {}。"
+
+msgid "Approvals are off in test builds."
+msgstr "測試版本中已關閉核准功能。"
+
+msgid "Busy — try again in a moment."
+msgstr "忙碌中，請稍後再試。"
+
+msgid "Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings."
+msgstr "無法全部復原：{}。請在電腦上執行 rusttv history restore，或在 Android 設定中修正。"
+
+msgid "This is the state now: nothing to restore."
+msgstr "目前已是這個狀態：無需還原。"
+
+msgid "Your computer has a newer RustTV. Update RustTV on this TV."
+msgstr "電腦上的 RustTV 版本較新。請在這台電視上更新 RustTV。"
+
+msgid "Reading history…"
+msgstr "正在讀取記錄…"
+
+msgid "History couldn't be read: {}. Your computer's copy can put it back."
+msgstr "無法讀取記錄：{}。電腦上的副本可以將其還原。"
+
+msgid "Settings"
+msgstr "設定"
+
+msgid "Up and Down choose, OK opens. Back returns."
+msgstr "按上下鍵選擇，按 OK 鍵開啟，按返回鍵返回。"
+
+msgid "Review changes"
+msgstr "檢視變更"
+
+msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
+msgstr "按上下鍵檢視變更。選擇「核准」繼續。按返回鍵取消。"
+
+msgid "Nothing changes until you hold OK. Back cancels."
+msgstr "按住 OK 鍵之前不會有任何變更。按返回鍵取消。"
+
+msgid "Approve"
+msgstr "核准"
+
+msgid "Press these arrows on the remote:"
+msgstr "在遙控器上按下列方向鍵："
+
+msgid "Now hold OK to apply."
+msgstr "現在按住 OK 鍵即可套用。"

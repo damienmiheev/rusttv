@@ -79,3 +79,180 @@ msgstr "上下キー：スクロール。戻る：前の画面へ。"
 
 msgid "Third-party notices"
 msgstr "サードパーティのライセンス"
+
+msgid "Updates"
+msgstr "アップデート"
+
+msgid "History"
+msgstr "履歴"
+
+msgid "Waiting for your computer"
+msgstr "パソコンでの操作待ち"
+
+msgid "Animations"
+msgstr "アニメーション"
+
+msgid "Faster (0.5×)"
+msgstr "高速 (0.5×)"
+
+msgid "Off"
+msgstr "オフ"
+
+msgid "Normal"
+msgstr "標準"
+
+msgid "On"
+msgstr "オン"
+
+msgid "Transition animations"
+msgstr "画面切り替えアニメーション"
+
+msgid "Window animations"
+msgstr "ウィンドウアニメーション"
+
+msgid "App animations"
+msgstr "アプリのアニメーション"
+
+msgid "off"
+msgstr "オフ"
+
+msgid "not seen"
+msgstr "未検出"
+
+msgid "on"
+msgstr "オン"
+
+msgid "default"
+msgstr "デフォルト"
+
+msgid "Your computer"
+msgstr "パソコン"
+
+msgid "Changed outside RustTV"
+msgstr "RustTV 以外で変更"
+
+msgid "Restored from your computer"
+msgstr "パソコンから復元"
+
+msgid "This TV"
+msgstr "このテレビ"
+
+msgid "time unknown"
+msgstr "時刻不明"
+
+msgid "Apps reordered"
+msgstr "アプリを並べ替え"
+
+msgid "Hid {}"
+msgstr "{} を非表示"
+
+msgid "Showed {}"
+msgstr "{} を表示"
+
+msgid "Check for updates: {}"
+msgstr "アップデートの確認：{}"
+
+msgid "{}: {} → {}"
+msgstr "{}：{} → {}"
+
+msgid "Firmware updated"
+msgstr "ファームウェアを更新"
+
+msgid "Home takeover: {}"
+msgstr "ホーム画面の置き換え：{}"
+
+msgid "No change"
+msgstr "変更なし"
+
+msgid "Your computer applies these: run rusttv history apply-pending within 2 hours"
+msgstr "パソコンで適用：2 時間以内に rusttv history apply-pending を実行してください"
+
+msgid "This TV changes now"
+msgstr "このテレビですぐに変更"
+
+msgid "To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it."
+msgstr "テレビ本体で変更するには、パソコンで rusttv history allow-tv-settings を一度実行してください。それまではパソコンが適用します。"
+
+msgid "Some apps may look odd without animations."
+msgstr "アニメーションをオフにすると、一部のアプリの表示が不自然になることがあります。"
+
+msgid "No changes yet. Changes made here or from your computer appear here."
+msgstr "まだ変更はありません。このテレビやパソコンからの変更がここに表示されます。"
+
+msgid "{} (+{} more)"
+msgstr "{}（他 {} 件）"
+
+msgid "Restore this state"
+msgstr "この状態に戻す"
+
+msgid "Check for updates automatically"
+msgstr "アップデートを自動で確認"
+
+msgid "{} min"
+msgstr "{} 分"
+
+msgid "{} h {} min"
+msgstr "{} 時間 {} 分"
+
+msgid "On your computer, run rusttv history apply-pending within {}."
+msgstr "パソコンで {} 以内に rusttv history apply-pending を実行してください。"
+
+msgid "Applied."
+msgstr "適用しました。"
+
+msgid "Saved for your computer. {}"
+msgstr "パソコン用に保存しました。{}"
+
+msgid "Nothing changed: {}"
+msgstr "変更されていません：{}"
+
+msgid "Nothing changed: wrong code."
+msgstr "変更されていません：コードが違います。"
+
+msgid "Too many wrong codes. Approvals are locked for {}."
+msgstr "コードの誤りが多すぎます。承認は {} ロックされます。"
+
+msgid "Approvals are off in test builds."
+msgstr "テストビルドでは承認できません。"
+
+msgid "Busy — try again in a moment."
+msgstr "処理中です。しばらくしてからもう一度お試しください。"
+
+msgid "Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings."
+msgstr "すべてを元に戻せませんでした：{}。パソコンで rusttv history restore を実行するか、Android の設定で修正してください。"
+
+msgid "This is the state now: nothing to restore."
+msgstr "すでにこの状態です。復元するものはありません。"
+
+msgid "Your computer has a newer RustTV. Update RustTV on this TV."
+msgstr "パソコンの RustTV のほうが新しいバージョンです。このテレビの RustTV をアップデートしてください。"
+
+msgid "Reading history…"
+msgstr "履歴を読み込み中…"
+
+msgid "History couldn't be read: {}. Your computer's copy can put it back."
+msgstr "履歴を読み込めませんでした：{}。パソコンのコピーから復元できます。"
+
+msgid "Settings"
+msgstr "設定"
+
+msgid "Up and Down choose, OK opens. Back returns."
+msgstr "上下キー：選択。OK：開く。戻る：前の画面へ。"
+
+msgid "Review changes"
+msgstr "変更内容の確認"
+
+msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
+msgstr "上下キー：変更内容を表示。続けるには「承認」を選択。戻る：キャンセル。"
+
+msgid "Nothing changes until you hold OK. Back cancels."
+msgstr "OK を長押しするまで何も変更されません。戻る：キャンセル。"
+
+msgid "Approve"
+msgstr "承認"
+
+msgid "Press these arrows on the remote:"
+msgstr "リモコンでこの矢印を押してください："
+
+msgid "Now hold OK to apply."
+msgstr "OK を長押しして適用してください。"

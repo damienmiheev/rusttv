@@ -79,3 +79,180 @@ msgstr "Nhấn Lên và Xuống để cuộn. Nhấn Quay lại để trở về
 
 msgid "Third-party notices"
 msgstr "Thông báo của bên thứ ba"
+
+msgid "Updates"
+msgstr "Cập nhật"
+
+msgid "History"
+msgstr "Lịch sử"
+
+msgid "Waiting for your computer"
+msgstr "Đang chờ máy tính"
+
+msgid "Animations"
+msgstr "Hiệu ứng động"
+
+msgid "Faster (0.5×)"
+msgstr "Nhanh hơn (0,5×)"
+
+msgid "Off"
+msgstr "Tắt"
+
+msgid "Normal"
+msgstr "Bình thường"
+
+msgid "On"
+msgstr "Bật"
+
+msgid "Transition animations"
+msgstr "Hiệu ứng chuyển cảnh"
+
+msgid "Window animations"
+msgstr "Hiệu ứng cửa sổ"
+
+msgid "App animations"
+msgstr "Hiệu ứng ứng dụng"
+
+msgid "off"
+msgstr "tắt"
+
+msgid "not seen"
+msgstr "không thấy"
+
+msgid "on"
+msgstr "bật"
+
+msgid "default"
+msgstr "mặc định"
+
+msgid "Your computer"
+msgstr "Máy tính của bạn"
+
+msgid "Changed outside RustTV"
+msgstr "Đã đổi bên ngoài RustTV"
+
+msgid "Restored from your computer"
+msgstr "Đã khôi phục từ máy tính của bạn"
+
+msgid "This TV"
+msgstr "TV này"
+
+msgid "time unknown"
+msgstr "không rõ thời gian"
+
+msgid "Apps reordered"
+msgstr "Đã sắp xếp lại ứng dụng"
+
+msgid "Hid {}"
+msgstr "Đã ẩn {}"
+
+msgid "Showed {}"
+msgstr "Đã hiện {}"
+
+msgid "Check for updates: {}"
+msgstr "Kiểm tra cập nhật: {}"
+
+msgid "{}: {} → {}"
+msgstr "{}: {} → {}"
+
+msgid "Firmware updated"
+msgstr "Đã cập nhật firmware"
+
+msgid "Home takeover: {}"
+msgstr "Thay màn hình chính: {}"
+
+msgid "No change"
+msgstr "Không thay đổi"
+
+msgid "Your computer applies these: run rusttv history apply-pending within 2 hours"
+msgstr "Máy tính của bạn sẽ áp dụng: chạy rusttv history apply-pending trong vòng 2 giờ"
+
+msgid "This TV changes now"
+msgstr "TV này thay đổi ngay"
+
+msgid "To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it."
+msgstr "Để đổi mục này ngay trên TV, hãy chạy rusttv history allow-tv-settings một lần trên máy tính. Trước đó, máy tính của bạn sẽ áp dụng."
+
+msgid "Some apps may look odd without animations."
+msgstr "Một số ứng dụng có thể trông lạ khi tắt hiệu ứng."
+
+msgid "No changes yet. Changes made here or from your computer appear here."
+msgstr "Chưa có thay đổi nào. Thay đổi trên TV hoặc từ máy tính của bạn sẽ hiện ở đây."
+
+msgid "{} (+{} more)"
+msgstr "{} (+{} mục khác)"
+
+msgid "Restore this state"
+msgstr "Khôi phục trạng thái này"
+
+msgid "Check for updates automatically"
+msgstr "Tự động kiểm tra cập nhật"
+
+msgid "{} min"
+msgstr "{} phút"
+
+msgid "{} h {} min"
+msgstr "{} giờ {} phút"
+
+msgid "On your computer, run rusttv history apply-pending within {}."
+msgstr "Trên máy tính, hãy chạy rusttv history apply-pending trong vòng {}."
+
+msgid "Applied."
+msgstr "Đã áp dụng."
+
+msgid "Saved for your computer. {}"
+msgstr "Đã lưu cho máy tính của bạn. {}"
+
+msgid "Nothing changed: {}"
+msgstr "Không có gì thay đổi: {}"
+
+msgid "Nothing changed: wrong code."
+msgstr "Không có gì thay đổi: sai mã."
+
+msgid "Too many wrong codes. Approvals are locked for {}."
+msgstr "Sai mã quá nhiều lần. Phê duyệt bị khóa trong {}."
+
+msgid "Approvals are off in test builds."
+msgstr "Phê duyệt bị tắt trong bản thử nghiệm."
+
+msgid "Busy — try again in a moment."
+msgstr "Đang bận — hãy thử lại sau giây lát."
+
+msgid "Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings."
+msgstr "Không hoàn tác được hết: {}. Hãy sửa bằng rusttv history restore trên máy tính, hoặc trong Cài đặt Android."
+
+msgid "This is the state now: nothing to restore."
+msgstr "Đây đã là trạng thái hiện tại: không có gì để khôi phục."
+
+msgid "Your computer has a newer RustTV. Update RustTV on this TV."
+msgstr "Máy tính của bạn có RustTV mới hơn. Hãy cập nhật RustTV trên TV này."
+
+msgid "Reading history…"
+msgstr "Đang đọc lịch sử…"
+
+msgid "History couldn't be read: {}. Your computer's copy can put it back."
+msgstr "Không đọc được lịch sử: {}. Bản sao trên máy tính có thể khôi phục lại."
+
+msgid "Settings"
+msgstr "Cài đặt"
+
+msgid "Up and Down choose, OK opens. Back returns."
+msgstr "Nhấn Lên và Xuống để chọn, OK để mở. Nhấn Quay lại để trở về."
+
+msgid "Review changes"
+msgstr "Xem lại thay đổi"
+
+msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
+msgstr "Nhấn Lên và Xuống để đọc thay đổi. Chọn Phê duyệt để tiếp tục. Quay lại để hủy."
+
+msgid "Nothing changes until you hold OK. Back cancels."
+msgstr "Không có gì thay đổi cho đến khi bạn giữ OK. Quay lại để hủy."
+
+msgid "Approve"
+msgstr "Phê duyệt"
+
+msgid "Press these arrows on the remote:"
+msgstr "Nhấn các mũi tên này trên điều khiển:"
+
+msgid "Now hold OK to apply."
+msgstr "Giờ hãy giữ OK để áp dụng."

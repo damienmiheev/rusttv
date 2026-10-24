@@ -79,3 +79,180 @@ msgstr "Atas dan Bawah untuk menggulir. Tekan Kembali untuk kembali."
 
 msgid "Third-party notices"
 msgstr "Pemberitahuan pihak ketiga"
+
+msgid "Updates"
+msgstr "Update"
+
+msgid "History"
+msgstr "Riwayat"
+
+msgid "Waiting for your computer"
+msgstr "Menunggu komputer Anda"
+
+msgid "Animations"
+msgstr "Animasi"
+
+msgid "Faster (0.5×)"
+msgstr "Lebih cepat (0,5×)"
+
+msgid "Off"
+msgstr "Nonaktif"
+
+msgid "Normal"
+msgstr "Normal"
+
+msgid "On"
+msgstr "Aktif"
+
+msgid "Transition animations"
+msgstr "Animasi transisi"
+
+msgid "Window animations"
+msgstr "Animasi jendela"
+
+msgid "App animations"
+msgstr "Animasi aplikasi"
+
+msgid "off"
+msgstr "nonaktif"
+
+msgid "not seen"
+msgstr "tidak ditemukan"
+
+msgid "on"
+msgstr "aktif"
+
+msgid "default"
+msgstr "default"
+
+msgid "Your computer"
+msgstr "Komputer Anda"
+
+msgid "Changed outside RustTV"
+msgstr "Diubah di luar RustTV"
+
+msgid "Restored from your computer"
+msgstr "Dipulihkan dari komputer Anda"
+
+msgid "This TV"
+msgstr "TV ini"
+
+msgid "time unknown"
+msgstr "waktu tidak diketahui"
+
+msgid "Apps reordered"
+msgstr "Urutan aplikasi diubah"
+
+msgid "Hid {}"
+msgstr "{} disembunyikan"
+
+msgid "Showed {}"
+msgstr "{} ditampilkan"
+
+msgid "Check for updates: {}"
+msgstr "Periksa update: {}"
+
+msgid "{}: {} → {}"
+msgstr "{}: {} → {}"
+
+msgid "Firmware updated"
+msgstr "Firmware diperbarui"
+
+msgid "Home takeover: {}"
+msgstr "Ambil alih layar utama: {}"
+
+msgid "No change"
+msgstr "Tidak ada perubahan"
+
+msgid "Your computer applies these: run rusttv history apply-pending within 2 hours"
+msgstr "Diterapkan komputer Anda: jalankan rusttv history apply-pending dalam 2 jam"
+
+msgid "This TV changes now"
+msgstr "TV ini berubah sekarang"
+
+msgid "To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it."
+msgstr "Untuk mengubahnya langsung di TV, jalankan rusttv history allow-tv-settings sekali di komputer Anda. Sampai saat itu, komputer Anda yang menerapkannya."
+
+msgid "Some apps may look odd without animations."
+msgstr "Beberapa aplikasi mungkin tampak aneh tanpa animasi."
+
+msgid "No changes yet. Changes made here or from your computer appear here."
+msgstr "Belum ada perubahan. Perubahan dari TV ini atau dari komputer Anda akan muncul di sini."
+
+msgid "{} (+{} more)"
+msgstr "{} (+{} lainnya)"
+
+msgid "Restore this state"
+msgstr "Pulihkan keadaan ini"
+
+msgid "Check for updates automatically"
+msgstr "Periksa update secara otomatis"
+
+msgid "{} min"
+msgstr "{} mnt"
+
+msgid "{} h {} min"
+msgstr "{} jam {} mnt"
+
+msgid "On your computer, run rusttv history apply-pending within {}."
+msgstr "Di komputer Anda, jalankan rusttv history apply-pending dalam {}."
+
+msgid "Applied."
+msgstr "Diterapkan."
+
+msgid "Saved for your computer. {}"
+msgstr "Disimpan untuk komputer Anda. {}"
+
+msgid "Nothing changed: {}"
+msgstr "Tidak ada yang diubah: {}"
+
+msgid "Nothing changed: wrong code."
+msgstr "Tidak ada yang diubah: kode salah."
+
+msgid "Too many wrong codes. Approvals are locked for {}."
+msgstr "Terlalu banyak kode salah. Persetujuan dikunci selama {}."
+
+msgid "Approvals are off in test builds."
+msgstr "Persetujuan nonaktif di build uji."
+
+msgid "Busy — try again in a moment."
+msgstr "Sibuk — coba lagi sebentar lagi."
+
+msgid "Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings."
+msgstr "Tidak semua bisa dibatalkan: {}. Perbaiki dengan rusttv history restore di komputer Anda, atau di Setelan Android."
+
+msgid "This is the state now: nothing to restore."
+msgstr "Ini sudah keadaan saat ini: tidak ada yang perlu dipulihkan."
+
+msgid "Your computer has a newer RustTV. Update RustTV on this TV."
+msgstr "Komputer Anda memiliki RustTV yang lebih baru. Perbarui RustTV di TV ini."
+
+msgid "Reading history…"
+msgstr "Membaca riwayat…"
+
+msgid "History couldn't be read: {}. Your computer's copy can put it back."
+msgstr "Riwayat tidak dapat dibaca: {}. Salinan di komputer Anda bisa memulihkannya."
+
+msgid "Settings"
+msgstr "Setelan"
+
+msgid "Up and Down choose, OK opens. Back returns."
+msgstr "Atas dan Bawah untuk memilih, OK untuk membuka. Tekan Kembali untuk kembali."
+
+msgid "Review changes"
+msgstr "Tinjau perubahan"
+
+msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
+msgstr "Atas dan Bawah untuk membaca perubahan. Pilih Setujui untuk lanjut. Kembali untuk membatalkan."
+
+msgid "Nothing changes until you hold OK. Back cancels."
+msgstr "Tidak ada yang berubah sampai Anda menahan OK. Kembali untuk membatalkan."
+
+msgid "Approve"
+msgstr "Setujui"
+
+msgid "Press these arrows on the remote:"
+msgstr "Tekan panah ini di remote:"
+
+msgid "Now hold OK to apply."
+msgstr "Sekarang tahan OK untuk menerapkan."

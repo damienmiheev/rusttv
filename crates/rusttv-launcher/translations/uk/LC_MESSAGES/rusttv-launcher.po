@@ -79,3 +79,180 @@ msgstr "Вгору й униз гортають текст, «Назад» — �
 
 msgid "Third-party notices"
 msgstr "Ліцензії сторонніх компонентів"
+
+msgid "Updates"
+msgstr "Оновлення"
+
+msgid "History"
+msgstr "Історія"
+
+msgid "Waiting for your computer"
+msgstr "Чекає на ваш комп’ютер"
+
+msgid "Animations"
+msgstr "Анімація"
+
+msgid "Faster (0.5×)"
+msgstr "Швидше (0,5×)"
+
+msgid "Off"
+msgstr "Вимкнено"
+
+msgid "Normal"
+msgstr "Звичайна"
+
+msgid "On"
+msgstr "Увімкнено"
+
+msgid "Transition animations"
+msgstr "Анімація переходів"
+
+msgid "Window animations"
+msgstr "Анімація вікон"
+
+msgid "App animations"
+msgstr "Анімація додатків"
+
+msgid "off"
+msgstr "вимкнено"
+
+msgid "not seen"
+msgstr "немає"
+
+msgid "on"
+msgstr "увімкнено"
+
+msgid "default"
+msgstr "за замовчуванням"
+
+msgid "Your computer"
+msgstr "Ваш комп’ютер"
+
+msgid "Changed outside RustTV"
+msgstr "Змінено поза RustTV"
+
+msgid "Restored from your computer"
+msgstr "Відновлено з вашого комп’ютера"
+
+msgid "This TV"
+msgstr "Цей телевізор"
+
+msgid "time unknown"
+msgstr "час невідомий"
+
+msgid "Apps reordered"
+msgstr "Змінено порядок додатків"
+
+msgid "Hid {}"
+msgstr "Приховано {}"
+
+msgid "Showed {}"
+msgstr "Показано {}"
+
+msgid "Check for updates: {}"
+msgstr "Перевірка оновлень: {}"
+
+msgid "{}: {} → {}"
+msgstr "{}: {} → {}"
+
+msgid "Firmware updated"
+msgstr "Прошивку оновлено"
+
+msgid "Home takeover: {}"
+msgstr "Заміна головного екрана: {}"
+
+msgid "No change"
+msgstr "Без змін"
+
+msgid "Your computer applies these: run rusttv history apply-pending within 2 hours"
+msgstr "Застосує ваш комп’ютер: виконайте rusttv history apply-pending протягом 2 годин"
+
+msgid "This TV changes now"
+msgstr "Зміниться на телевізорі одразу"
+
+msgid "To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it."
+msgstr "Щоб змінювати це на самому телевізорі, один раз виконайте rusttv history allow-tv-settings на комп’ютері. Доти це застосовує ваш комп’ютер."
+
+msgid "Some apps may look odd without animations."
+msgstr "Без анімації деякі додатки можуть виглядати дивно."
+
+msgid "No changes yet. Changes made here or from your computer appear here."
+msgstr "Змін ще немає. Тут з’являтимуться зміни, зроблені на телевізорі чи з комп’ютера."
+
+msgid "{} (+{} more)"
+msgstr "{} (і ще {})"
+
+msgid "Restore this state"
+msgstr "Відновити цей стан"
+
+msgid "Check for updates automatically"
+msgstr "Автоматично перевіряти оновлення"
+
+msgid "{} min"
+msgstr "{} хв"
+
+msgid "{} h {} min"
+msgstr "{} год {} хв"
+
+msgid "On your computer, run rusttv history apply-pending within {}."
+msgstr "На комп’ютері виконайте rusttv history apply-pending протягом {}."
+
+msgid "Applied."
+msgstr "Застосовано."
+
+msgid "Saved for your computer. {}"
+msgstr "Збережено для комп’ютера. {}"
+
+msgid "Nothing changed: {}"
+msgstr "Нічого не змінено: {}"
+
+msgid "Nothing changed: wrong code."
+msgstr "Нічого не змінено: неправильний код."
+
+msgid "Too many wrong codes. Approvals are locked for {}."
+msgstr "Забагато неправильних кодів. Підтвердження заблоковано на {}."
+
+msgid "Approvals are off in test builds."
+msgstr "У тестових збірках підтвердження вимкнено."
+
+msgid "Busy — try again in a moment."
+msgstr "Зайнято — спробуйте трохи згодом."
+
+msgid "Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings."
+msgstr "Не вдалося скасувати все: {}. Виправте це командою rusttv history restore на комп’ютері або в налаштуваннях Android."
+
+msgid "This is the state now: nothing to restore."
+msgstr "Зараз саме цей стан: нічого відновлювати."
+
+msgid "Your computer has a newer RustTV. Update RustTV on this TV."
+msgstr "На комп’ютері новіша версія RustTV. Оновіть RustTV на цьому телевізорі."
+
+msgid "Reading history…"
+msgstr "Читання історії…"
+
+msgid "History couldn't be read: {}. Your computer's copy can put it back."
+msgstr "Не вдалося прочитати історію: {}. Її можна відновити з копії на комп’ютері."
+
+msgid "Settings"
+msgstr "Налаштування"
+
+msgid "Up and Down choose, OK opens. Back returns."
+msgstr "Вгору й униз — вибір, OK — відкрити, «Назад» — вихід."
+
+msgid "Review changes"
+msgstr "Перегляд змін"
+
+msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
+msgstr "Вгору й униз — перегляд змін. Виберіть «Підтвердити», щоб продовжити. «Назад» — скасувати."
+
+msgid "Nothing changes until you hold OK. Back cancels."
+msgstr "Нічого не зміниться, доки ви не утримаєте OK. «Назад» — скасувати."
+
+msgid "Approve"
+msgstr "Підтвердити"
+
+msgid "Press these arrows on the remote:"
+msgstr "Натисніть ці стрілки на пульті:"
+
+msgid "Now hold OK to apply."
+msgstr "Тепер утримуйте OK, щоб застосувати."

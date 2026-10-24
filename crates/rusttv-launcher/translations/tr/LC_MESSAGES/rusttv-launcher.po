@@ -79,3 +79,180 @@ msgstr "Yukarı ve Aşağı bildirimleri kaydırır. Geri: geri dön."
 
 msgid "Third-party notices"
 msgstr "Üçüncü taraf bildirimleri"
+
+msgid "Updates"
+msgstr "Güncellemeler"
+
+msgid "History"
+msgstr "Geçmiş"
+
+msgid "Waiting for your computer"
+msgstr "Bilgisayarınızı bekliyor"
+
+msgid "Animations"
+msgstr "Animasyonlar"
+
+msgid "Faster (0.5×)"
+msgstr "Daha hızlı (0,5×)"
+
+msgid "Off"
+msgstr "Kapalı"
+
+msgid "Normal"
+msgstr "Normal"
+
+msgid "On"
+msgstr "Açık"
+
+msgid "Transition animations"
+msgstr "Geçiş animasyonları"
+
+msgid "Window animations"
+msgstr "Pencere animasyonları"
+
+msgid "App animations"
+msgstr "Uygulama animasyonları"
+
+msgid "off"
+msgstr "kapalı"
+
+msgid "not seen"
+msgstr "bulunamadı"
+
+msgid "on"
+msgstr "açık"
+
+msgid "default"
+msgstr "varsayılan"
+
+msgid "Your computer"
+msgstr "Bilgisayarınız"
+
+msgid "Changed outside RustTV"
+msgstr "RustTV dışında değiştirildi"
+
+msgid "Restored from your computer"
+msgstr "Bilgisayarınızdan geri yüklendi"
+
+msgid "This TV"
+msgstr "Bu TV"
+
+msgid "time unknown"
+msgstr "zaman bilinmiyor"
+
+msgid "Apps reordered"
+msgstr "Uygulamalar yeniden sıralandı"
+
+msgid "Hid {}"
+msgstr "{} gizlendi"
+
+msgid "Showed {}"
+msgstr "{} gösterildi"
+
+msgid "Check for updates: {}"
+msgstr "Güncelleme denetimi: {}"
+
+msgid "{}: {} → {}"
+msgstr "{}: {} → {}"
+
+msgid "Firmware updated"
+msgstr "Donanım yazılımı güncellendi"
+
+msgid "Home takeover: {}"
+msgstr "Ana ekranı devralma: {}"
+
+msgid "No change"
+msgstr "Değişiklik yok"
+
+msgid "Your computer applies these: run rusttv history apply-pending within 2 hours"
+msgstr "Bunları bilgisayarınız uygular: 2 saat içinde rusttv history apply-pending komutunu çalıştırın"
+
+msgid "This TV changes now"
+msgstr "Bu TV şimdi değişir"
+
+msgid "To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it."
+msgstr "Bunu TV’nin kendisinde değiştirmek için bilgisayarınızda bir kez rusttv history allow-tv-settings komutunu çalıştırın. O zamana kadar bunu bilgisayarınız uygular."
+
+msgid "Some apps may look odd without animations."
+msgstr "Bazı uygulamalar animasyonsuz tuhaf görünebilir."
+
+msgid "No changes yet. Changes made here or from your computer appear here."
+msgstr "Henüz değişiklik yok. TV’de veya bilgisayarınızdan yapılan değişiklikler burada görünür."
+
+msgid "{} (+{} more)"
+msgstr "{} (+{} daha)"
+
+msgid "Restore this state"
+msgstr "Bu duruma geri dön"
+
+msgid "Check for updates automatically"
+msgstr "Güncellemeleri otomatik denetle"
+
+msgid "{} min"
+msgstr "{} dk"
+
+msgid "{} h {} min"
+msgstr "{} sa {} dk"
+
+msgid "On your computer, run rusttv history apply-pending within {}."
+msgstr "Bilgisayarınızda {} içinde rusttv history apply-pending komutunu çalıştırın."
+
+msgid "Applied."
+msgstr "Uygulandı."
+
+msgid "Saved for your computer. {}"
+msgstr "Bilgisayarınız için kaydedildi. {}"
+
+msgid "Nothing changed: {}"
+msgstr "Hiçbir şey değişmedi: {}"
+
+msgid "Nothing changed: wrong code."
+msgstr "Hiçbir şey değişmedi: yanlış kod."
+
+msgid "Too many wrong codes. Approvals are locked for {}."
+msgstr "Çok fazla yanlış kod. Onaylar {} boyunca kilitli."
+
+msgid "Approvals are off in test builds."
+msgstr "Test sürümlerinde onaylar kapalıdır."
+
+msgid "Busy — try again in a moment."
+msgstr "Meşgul — biraz sonra tekrar deneyin."
+
+msgid "Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings."
+msgstr "Her şey geri alınamadı: {}. Bilgisayarınızda rusttv history restore komutuyla veya Android Ayarları’ndan düzeltin."
+
+msgid "This is the state now: nothing to restore."
+msgstr "Şu anki durum zaten bu: geri yüklenecek bir şey yok."
+
+msgid "Your computer has a newer RustTV. Update RustTV on this TV."
+msgstr "Bilgisayarınızda daha yeni bir RustTV var. Bu TV’deki RustTV’yi güncelleyin."
+
+msgid "Reading history…"
+msgstr "Geçmiş okunuyor…"
+
+msgid "History couldn't be read: {}. Your computer's copy can put it back."
+msgstr "Geçmiş okunamadı: {}. Bilgisayarınızdaki kopya onu geri yükleyebilir."
+
+msgid "Settings"
+msgstr "Ayarlar"
+
+msgid "Up and Down choose, OK opens. Back returns."
+msgstr "Yukarı ve Aşağı seçer, OK açar. Geri: geri dön."
+
+msgid "Review changes"
+msgstr "Değişiklikleri incele"
+
+msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
+msgstr "Yukarı ve Aşağı değişiklikleri kaydırır. Devam etmek için Onayla’yı seçin. Geri: iptal."
+
+msgid "Nothing changes until you hold OK. Back cancels."
+msgstr "OK’u basılı tutana kadar hiçbir şey değişmez. Geri: iptal."
+
+msgid "Approve"
+msgstr "Onayla"
+
+msgid "Press these arrows on the remote:"
+msgstr "Kumandada şu oklara basın:"
+
+msgid "Now hold OK to apply."
+msgstr "Şimdi uygulamak için OK’u basılı tutun."

@@ -79,3 +79,180 @@ msgstr "Кнопки вверх и вниз прокручивают текст.
 
 msgid "Third-party notices"
 msgstr "Лицензии сторонних компонентов"
+
+msgid "Updates"
+msgstr "Обновления"
+
+msgid "History"
+msgstr "История"
+
+msgid "Waiting for your computer"
+msgstr "Ждёт ваш компьютер"
+
+msgid "Animations"
+msgstr "Анимация"
+
+msgid "Faster (0.5×)"
+msgstr "Быстрее (0,5×)"
+
+msgid "Off"
+msgstr "Выключено"
+
+msgid "Normal"
+msgstr "Обычная"
+
+msgid "On"
+msgstr "Включено"
+
+msgid "Transition animations"
+msgstr "Анимация переходов"
+
+msgid "Window animations"
+msgstr "Анимация окон"
+
+msgid "App animations"
+msgstr "Анимация приложений"
+
+msgid "off"
+msgstr "выключено"
+
+msgid "not seen"
+msgstr "нет"
+
+msgid "on"
+msgstr "включено"
+
+msgid "default"
+msgstr "по умолчанию"
+
+msgid "Your computer"
+msgstr "Ваш компьютер"
+
+msgid "Changed outside RustTV"
+msgstr "Изменено вне RustTV"
+
+msgid "Restored from your computer"
+msgstr "Восстановлено с вашего компьютера"
+
+msgid "This TV"
+msgstr "Этот телевизор"
+
+msgid "time unknown"
+msgstr "время неизвестно"
+
+msgid "Apps reordered"
+msgstr "Порядок приложений изменён"
+
+msgid "Hid {}"
+msgstr "Скрыто: {}"
+
+msgid "Showed {}"
+msgstr "Показано: {}"
+
+msgid "Check for updates: {}"
+msgstr "Проверка обновлений: {}"
+
+msgid "{}: {} → {}"
+msgstr "{}: {} → {}"
+
+msgid "Firmware updated"
+msgstr "Прошивка обновлена"
+
+msgid "Home takeover: {}"
+msgstr "Замена главного экрана: {}"
+
+msgid "No change"
+msgstr "Без изменений"
+
+msgid "Your computer applies these: run rusttv history apply-pending within 2 hours"
+msgstr "Применит ваш компьютер: выполните rusttv history apply-pending в течение 2 часов"
+
+msgid "This TV changes now"
+msgstr "Изменится на телевизоре сразу"
+
+msgid "To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it."
+msgstr "Чтобы менять это на самом телевизоре, один раз выполните rusttv history allow-tv-settings на компьютере. До тех пор это применяет компьютер."
+
+msgid "Some apps may look odd without animations."
+msgstr "Без анимации некоторые приложения могут выглядеть странно."
+
+msgid "No changes yet. Changes made here or from your computer appear here."
+msgstr "Изменений пока нет. Здесь появятся изменения, сделанные на телевизоре или с компьютера."
+
+msgid "{} (+{} more)"
+msgstr "{} (и ещё {})"
+
+msgid "Restore this state"
+msgstr "Восстановить это состояние"
+
+msgid "Check for updates automatically"
+msgstr "Автоматически проверять обновления"
+
+msgid "{} min"
+msgstr "{} мин"
+
+msgid "{} h {} min"
+msgstr "{} ч {} мин"
+
+msgid "On your computer, run rusttv history apply-pending within {}."
+msgstr "На компьютере выполните rusttv history apply-pending в течение {}."
+
+msgid "Applied."
+msgstr "Применено."
+
+msgid "Saved for your computer. {}"
+msgstr "Сохранено для компьютера. {}"
+
+msgid "Nothing changed: {}"
+msgstr "Ничего не изменено: {}"
+
+msgid "Nothing changed: wrong code."
+msgstr "Ничего не изменено: неверный код."
+
+msgid "Too many wrong codes. Approvals are locked for {}."
+msgstr "Слишком много неверных кодов. Подтверждения заблокированы на {}."
+
+msgid "Approvals are off in test builds."
+msgstr "В тестовых сборках подтверждения отключены."
+
+msgid "Busy — try again in a moment."
+msgstr "Занято — попробуйте чуть позже."
+
+msgid "Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings."
+msgstr "Не удалось отменить всё: {}. Исправьте это командой rusttv history restore на компьютере или в настройках Android."
+
+msgid "This is the state now: nothing to restore."
+msgstr "Сейчас уже это состояние: восстанавливать нечего."
+
+msgid "Your computer has a newer RustTV. Update RustTV on this TV."
+msgstr "На компьютере более новая версия RustTV. Обновите RustTV на этом телевизоре."
+
+msgid "Reading history…"
+msgstr "Чтение истории…"
+
+msgid "History couldn't be read: {}. Your computer's copy can put it back."
+msgstr "Не удалось прочитать историю: {}. Её можно восстановить из копии на компьютере."
+
+msgid "Settings"
+msgstr "Настройки"
+
+msgid "Up and Down choose, OK opens. Back returns."
+msgstr "Вверх и вниз — выбор, OK — открыть, «Назад» — вернуться."
+
+msgid "Review changes"
+msgstr "Проверка изменений"
+
+msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
+msgstr "Вверх и вниз — просмотр изменений. Выберите «Подтвердить», чтобы продолжить. «Назад» — отмена."
+
+msgid "Nothing changes until you hold OK. Back cancels."
+msgstr "Ничего не изменится, пока вы не удержите OK. «Назад» — отмена."
+
+msgid "Approve"
+msgstr "Подтвердить"
+
+msgid "Press these arrows on the remote:"
+msgstr "Нажмите эти стрелки на пульте:"
+
+msgid "Now hold OK to apply."
+msgstr "Теперь удерживайте OK, чтобы применить."
