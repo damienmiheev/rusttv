@@ -63,11 +63,5 @@ Technical decisions are logged in ARCHITECTURE.md.
 
 - Root, custom ROMs, firmware modification.
 - Bypassing DRM, access controls, or vendor licensing.
-  *Owner decision 2026-10-23, one exception:* the experimental, opt-in
-  `rusttv tools airplay` (TOOLS.md) turns on a receiver feature the TV maker
-  installed but left disabled on some models, on the owner's own TV, with a
-  restore path. It doesn't touch DRM or system partitions, is never on by
-  default, and the TV maker's setting comes back on every reboot. Not a
-  precedent for other features: each needs its own dated decision here.
 - Universal cross-streaming-service content search.
 - A cloud service, account system, or billing in the MVP.

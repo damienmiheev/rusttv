@@ -288,7 +288,7 @@ Decided "not for now"; raise again when the core launcher is done.
   Owner's idea: open an app on half the screen (a match plus stats, a game
   on HDMI plus a guide, a cooking video plus the recipe). Ranked below the
   phone remote and Tweaks + History: feasibility unknown, smaller everyday
-  value. A fit for `rusttv tools` (TOOLS.md). Discussion so far:
+  value. Discussion so far:
   - **Picture-in-picture** is built into Android TV, but each app decides
     whether it supports it; the launcher can't force it. RustTV could list
     the installed apps that declare PiP and offer "continue in a corner" for

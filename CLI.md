@@ -8,9 +8,7 @@ disable or re-enable the stock launcher, and `launcher install` /
 `optimize apply privacy` / `optimize restore`, which disable or re-enable the
 packages your privacy choices select (all R3), and `optimize apply
 reduced-animations` / `optimize restore`, which change three global
-animation settings and put them back (R2), and the experimental `tools
-airplay enable` / `disable`, which turn on a vendor AirPlay receiver until
-the TV restarts and turn it off again (R2, TOOLS.md), and `update launcher`,
+animation settings and put them back (R2), and `update launcher`,
 which installs or upgrades the RustTV launcher from a verified release (R3),
 only after a person approves the plan at a terminal, or, for launcher plans,
 by a time-limited delegation a person granted there with `rusttv approve`
@@ -41,9 +39,6 @@ commands, and the `--dry-run` of `launcher install` / `uninstall` / `restore`,
 | `optimize apply privacy [--only <categories>] [--choices <file>] [--allow-untested] [--dry-run]` | **Disable** (never uninstall) the packages your [choices](#privacy-choices) select that are installed and enabled: catalog packages in the chosen categories (by default `telemetry`, `ads`, `extras`) or in `also`, plus `extra` ones, minus `keep`. `--only` narrows the categories (comma-separated: `telemetry`, `ads`, `extras`, `casting`, `smart-home`, `voice`, `streaming-apps`); it never adds one, and with it `extra` packages are left out. Order: category, then the order of the profile's tested list, then catalog order, `extra` last. Packages not tested on this model are left out and named in the notes, unless `--allow-untested`: then they are planned and each note says "UNTESTED on this model". With nothing tested or allowed left, `PROFILE_NOT_TESTED` (even with `--dry-run`). Every chosen package is checked live first (SECURITY.md § Protected package policy): if one handles or can handle Home, provides an input method or an enabled accessibility service, or is on `compat/protected.toml`, nothing is planned (`PACKAGE_PROTECTED`). Packages already disabled are skipped and named in the notes; catalog packages not installed are only counted (ones named in `also` or `extra` are named). The protected-package check runs again right before each step, for that step's package; if it fails, the steps done so far are undone (`ROLLED_BACK`). After the last step Home must open the same activity as before, the Home candidates must be unchanged, and the TV input services bound when planning must still be bound (except those of packages the plan disables), otherwise everything is rolled back. Typed confirmation `privacy`. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `optimize apply reduced-animations [--allow-untested] [--dry-run]` | Put `window_animation_scale`, `transition_animation_scale` and `animator_duration_scale` (global settings) at `0.5`: one `settings put global` step per key, each recording the value found first (`settings get global` printing `null` = unset, undone with `settings delete global`) and verified by reading it back. Refused with `OPTIMIZE_NOT_TESTED` (even with `--dry-run`) unless the matching compat profile has `[[optimizer]] profile = "reduced-animations", version = 1, tested = true`; `--allow-untested` plans it anyway for a first test on a device and the notes say "UNTESTED on this model". Refused (`PRECONDITION_FAILED`) while an optimizer journal of this model and firmware family is restorable (one at a time: restore it first), if a current value isn't a decimal like `1.0` (it couldn't be put back), or if every key already has its value, or while a `.toml` file in the journal directory can't be read (it may be an unrestored optimizer journal: check it, restore it if needed, then move it out of the directory; the error names each file); keys already at `0.5` are skipped and named. After the last step Home must still open the activity it opened before, otherwise everything is rolled back. Typed confirmation `optimize`. Journal `<ms>-optimize-reduced-animations-v1.toml`. R2 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `optimize restore [privacy \| reduced-animations] [--journal <file>] [--dry-run]` | Undo `optimize apply`. Without a name, the newest restorable journal for the device's firmware of the one kind that has one; if both a privacy and an optimizer journal are restorable, `PRECONDITION_FAILED` naming `optimize restore privacy` and `optimize restore reduced-animations`. With `--journal` and no name, the journal's plan says which kind it is. Unreadable journal files are named in a warning on stderr and skipped. **privacy**: re-enable what the privacy journal disabled; packages already enabled again (e.g. in Settings) are skipped and named in the notes. Only re-enables. **reduced-animations**: put back each setting's value from before (or delete it if it was unset); a key already back is skipped, and a key that is neither the value RustTV set nor the original (changed since, e.g. in Developer options) is left as is and named, both in the dry run and when it changes between plan and restore (named on stderr). Only `settings` steps. Each refuses the other kind's journal. If nothing is left to undo, `PRECONDITION_FAILED`, and (except with `--dry-run`) the journal is marked `restored`, so the next `optimize restore` finds the journal before it. Typed confirmation `restore`. R3 (privacy) / R2 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
-| `tools airplay status [--check-bonjour]` | **Experimental** (TOOLS.md). Whether `enable` runs on this device (a bundled compat profile matches it, and MediaTek's `com.mediatek.partner.airplay_sys`, `com.mediatek.airplaydaemon` and `com.mediatek.AirplayAPK` are installed) and why not; whether the RustTV launcher (its trigger activity) is installed; with all three packages, also `setup_airplay_enable` and `show_airplay_setting_ui` (`settings get global`), whether the vendor `BootupService` runs (`dumpsys activity services com.mediatek.partner.airplay_sys`), the last 20 log lines of the AirPlay components (`logcat -d -t 2000`, filtered on this computer), listening TCP ports (`ss -ltnp`; null where `ss` is missing) and a restorable `enable` journal. `--check-bonjour` also browses `_airplay._tcp` from this computer for 5 s (`dns-sd -B` on macOS, `avahi-browse -t -p` on Linux; skipped with a note if neither is installed). Prints a caveat on stderr. Read-only | [AirplayStatus](#airplaystatus) |
-| `tools airplay enable [--dry-run]` | **Experimental** (TOOLS.md). Two steps: `settings put global setup_airplay_enable 1`, recording the value found (must be `0` or `7`; the TV maker writes `7` at boot), then `am start -n ai.rusttv.launcher/.tools.HiddenFeatureActivity --es feature airplay --es action start`, which starts MediaTek's `BootupService`; it must run within 20 s, otherwise everything is undone. Refused with `FEATURE_NOT_SUPPORTED` (even with `--dry-run`) without a matching compat profile or the three packages; `PRECONDITION_FAILED` without the RustTV launcher, while an `enable` journal for this firmware is restorable (run `disable` first, also after a restart), when the switch is already `1` or holds another value, or when the service already runs. Lasts until the TV restarts. Typed confirmation `airplay`. Journal `<ms>-tools-airplay.toml`. R2 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
-| `tools airplay disable [--journal <file>] [--dry-run]` | Undo `tools airplay enable` from its journal (by default the newest restorable one for the device's firmware; unreadable journal files are named in a warning on stderr and skipped): `am force-stop com.mediatek.partner.airplay_sys` (Android restarts the persistent service without AirPlay), then put the switch back to the value recorded. A switch changed since (neither `1` nor the original) is left as is. Only these two steps: any other journal is refused. Restarting the TV has the same effect. Typed confirmation `restore`. R2 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `update check` | The latest [release](#updates) (version, page) and whether this `rusttv` is older; with a device, the installed RustTV launcher's `versionName` (`dumpsys package ai.rusttv.launcher`) and primary ABI, and whether the release has a newer APK for it. Without `--serial` the only connected device is checked, and no device (or several, or adb missing) only skips the launcher part, with the reason in `launcher_note`; with `--serial` the device must be there (errors as for other device commands). Doesn't download or verify release files. Read-only | [UpdateCheck](#updatecheck) |
 | `update launcher [--dry-run]` | Download the latest release's `rusttv-launcher-<version>-<abi>.apk` for the device's primary ABI into a private directory under `<state dir>/updates/`, [verify](#updates) it, then the `launcher install` plan with that APK, unchanged (fresh install or upgrade, its refusals, typed confirmation `install`, verify, journal `<ms>-launcher-install.toml`). Refused (`PRECONDITION_FAILED`) when the installed launcher is that version or newer, or reports a version that isn't `<major>.<minor>.<patch>`; `UPDATE_CHECK_FAILED` when the release has no APK for the ABI. The download is removed when the command ends, also after `--dry-run` (whose plan names it). R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `update cli [--dry-run]` | Replace the running `rusttv` (and `rusttv-mcp` if it is in the same directory) with the latest release's: download `rusttv-<version>-<target>.tar.gz` for this build's target triple, [verify](#updates) it, unpack it with `tar`, show which files it replaces, ask for the typed confirmation `update`, then for each file keep the current one as `<name>.previous` and rename the new one over it (same directory, so each replacement is atomic). Then runs the new `rusttv --version`; if it doesn't print `rusttv <version>`, every file is put back (`ROLLED_BACK`). Refused (`PRECONDITION_FAILED`) when the release isn't newer than this build, when the directory isn't writable (installed by another user or a package manager: update it that way), or when `rusttv` runs from a cargo `target/debug` or `target/release` directory (update with git and cargo). Same terminal rule as device changes (`NOT_APPROVED` without one). No device needed; no journal (the `.previous` files are the record; undo with `mv rusttv.previous rusttv`) | [CliUpdate](#cliupdate) (`applied` false with `--dry-run`) |
@@ -65,7 +60,7 @@ lifecycle:
    what is checked after, and how each step is undone. `--dry-run` stops here
    and prints it (`--json`: a [DryRun](#dryrun)).
 2. **Approve**: the plan is applied only after a person types its
-   `confirmation` word (`takeover`, `privacy`, `optimize`, `airplay`, `restore`, `install`, `uninstall`, `upgrade`; `update` for `update cli`; `delegate` for `approve`) at an
+   `confirmation` word (`takeover`, `privacy`, `optimize`, `restore`, `install`, `uninstall`, `upgrade`; `update` for `update cli`; `delegate` for `approve`) at an
    interactive terminal.
    There is no `--yes` flag. Without a terminal on stdin (scripts, agents,
    MCP) the command fails with `NOT_APPROVED` before contacting the device,
@@ -135,7 +130,7 @@ The delegation is a TOML file, `<state dir>/approval-grant.toml`
 `launcher-install` (`launcher install`, `launcher upgrade`, `update
 launcher`), `home-takeover` and `home-takeover-restore` (`launcher takeover`,
 `launcher upgrade`, `launcher restore`), not `launcher uninstall`,
-`optimize`, `tools` or `update cli`. When such a command runs **without** a
+`optimize` or `update cli`. When such a command runs **without** a
 terminal and the delegation is valid (now before its expiry, same serial and
 same `ro.build.fingerprint` as the plan, which the apply checks again on the
 device, scope covering the plan), the plan is approved by it and stderr says
@@ -218,11 +213,7 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
     journals (without a name it refuses with `PRECONDITION_FAILED` when both
     kinds are restorable); new error code `OPTIMIZE_NOT_TESTED`; new
     [DryRun](#dryrun) plan names `optimize-<profile>-v<n>` and `…-restore`
-    with `R2` steps. Also new in `rusttv.v6` (before its release): the
-    experimental commands `tools airplay status`, `enable` and `disable`
-    ([AirplayStatus](#airplaystatus), [DryRun](#dryrun) plan names
-    `tools-airplay` and `tools-airplay-restore`) and the error code
-    `FEATURE_NOT_SUPPORTED`. Everything else is unchanged.
+    with `R2` steps. Everything else is unchanged.
   - `rusttv.v5`: [OptimizeAnalysis](#optimizeanalysis) lists catalog packages
     (`privacy` with its `tested` flag and `packages` is gone; `choices`,
     `categories` and `packages` with `source`, `default`, `tested`,
@@ -282,7 +273,6 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
 | `OPTIMIZE_NOT_TESTED` | 1 | `optimize apply <profile>` (not `privacy`): the matching compat profile doesn't record this optimizer profile and version as tested (`[[optimizer]] … tested = true`), or no profile matches, and `--allow-untested` wasn't given; nothing changed |
 | `PACKAGE_PROTECTED` | 1 | `optimize apply`: your choices select a package RustTV never disables (it handles or can handle Home, provides an input method or an enabled accessibility service, or is on `compat/protected.toml`); the message names each one and why (add it to `keep`, or remove it from `extra`); nothing changed |
 | `INVALID_CHOICES` | 1 | `optimize`: the [choices file](#privacy-choices) can't be read or parsed (a file given with `--choices` must exist), `also` names a package not in the catalog, or `extra` one that is; nothing changed |
-| `FEATURE_NOT_SUPPORTED` | 1 | `tools airplay enable`: no bundled compat profile matches this device, or it lacks MediaTek's AirPlay packages; the message says which; nothing changed |
 | `INVALID_APK` | 1 | `launcher install` found no APK to install: no APK is built for the device's primary ABI, the file is missing or not a file, or its path isn't absolute UTF-8 with a plain `.apk` file name; nothing changed |
 | `NO_JOURNAL` | 1 | `restore` found no journal to restore for this device; pass `--journal <file>` |
 | `ROLLED_BACK` | 1 | A step or its check failed; every step that ran was undone and verified |
@@ -364,8 +354,7 @@ Google TV the stock launcher's priority 2 beats every other launcher's 0);
 
 `plan` (e.g. `home-takeover`, `home-takeover-restore`, `launcher-install`,
 `launcher-uninstall`, `privacy`, `privacy-restore`,
-`optimize-reduced-animations-v1`, `optimize-reduced-animations-v1-restore`,
-`tools-airplay`, `tools-airplay-restore`); `serial`;
+`optimize-reduced-animations-v1`, `optimize-reduced-animations-v1-restore`); `serial`;
 `fingerprint` (`ro.build.fingerprint` the plan is for); `max_risk` (`R0` to
 `R3`); `confirmation` (the word to type); `steps`: in order, each with
 `risk`, `command` (exact adb command line), `records` (original state checked
@@ -409,23 +398,6 @@ prints now (null when unset, or when it can't be read) and `read_error` why
 it can't be read (adb failed, or the output is neither `null` nor a decimal
 like `1.0`), or null. A key that can't be read never fails `optimize
 analyze`; the privacy part is listed as usual.
-
-### AirplayStatus
-
-`serial`; `supported` (boolean: `tools airplay enable` would plan here);
-`reason` (why not, or null); `profile` (file name of the matching bundled
-compat profile, or null); `packages` (`{package, installed}` for each of the
-three MediaTek packages); `launcher_installed` (boolean); and, null unless
-all three packages are installed: `setup_airplay_enable`,
-`show_airplay_setting_ui` (what `settings get global` prints, null when
-unset), `service_running` (boolean), `log` (array of log lines, newest last,
-or null if the log can't be read), `listening_ports` (sorted array of
-integers, or null if `ss` is missing or fails), `journal` (path of a
-restorable `enable` journal for this firmware, or null). `bonjour`: null
-without `--check-bonjour`, else `{tool, instances, note}`: `tool`
-(`dns-sd` \| `avahi-browse`, or null when neither is installed),
-`instances` (names of the `_airplay._tcp` services seen, any device on the
-network) and `note` (string or null).
 
 ### UpdateCheck
 

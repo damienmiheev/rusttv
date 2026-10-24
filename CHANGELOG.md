@@ -28,11 +28,6 @@ First public release (ROADMAP Phase 6).
   back, leaving any setting changed since as it is. Refused on models whose
   profile doesn't record it as tested unless `--allow-untested`; no model
   does yet (OPTIMIZER.md § 1–6).
-- Experimental `tools airplay status`, `enable` and `disable`: turn on, until
-  the TV restarts, a MediaTek AirPlay receiver that some TVs ship installed
-  but disabled, through a trigger activity in the launcher; only on models
-  with a bundled compat profile and the vendor packages. Not certified by
-  Apple for these models (TOOLS.md).
 - `update check`, `update launcher` and `update cli`: install newer RustTV
   releases from GitHub (or `RUSTTV_UPDATE_DIR`), the launcher on a TV through
   the normal install plan and the CLI on this computer with `.previous`
@@ -76,9 +71,6 @@ First public release (ROADMAP Phase 6).
 - Skia's GPU resource cache is capped at 24 MB (patched Slint renderer,
   `third_party/README.md`): opening About and the menu repeatedly no longer
   grows native memory (49.4 → 37.4 MB after three rounds on the Philips).
-- `tools.HiddenFeatureActivity`: no UI, startable only by the adb shell or
-  the system (it requires `android.permission.DUMP`), used by `rusttv tools`
-  (TOOLS.md).
 
 ### Compatibility and benchmarks
 
