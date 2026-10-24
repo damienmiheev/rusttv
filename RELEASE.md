@@ -168,6 +168,7 @@ Work on a release branch; tick each item in the release pull request.
 
 - [ ] `main` is green in CI (fmt, clippy, tests, cargo deny, licence notices, Android APK).
 - [ ] Version bumped in `Cargo.toml` and `Cargo.lock` (above).
+- [ ] `RELEASE_SIGNING_KEY` in `crates/rusttv-core/src/update.rs` is `Some(...)` with the update signing key's public half, committed before the Release build runs. A release built while it is `None` can never update itself (`can_verify` is false in `rusttv update check --json`).
 - [ ] `CHANGELOG.md`: the version's section is complete and dated; "unreleased" removed.
 - [ ] CLI.md, MCP.md and README.md match the commands and JSON schema shipped. A changed JSON field or error code has a schema version bump (CLAUDE.md).
 - [ ] Benchmarks current: the numbers quoted anywhere (README, release notes) come from a run of this version, made by BENCHMARK_PLAN.md, with raw data in `benchmarks/raw/`. No performance claim without it.
@@ -180,15 +181,23 @@ Work on a release branch; tick each item in the release pull request.
 
 - [ ] Run the **Release build** workflow by hand (`workflow_dispatch`) on the release commit; all jobs pass. Download the `cli-*` and `SHA256SUMS` artifacts.
 - [ ] Build the APKs locally with the release key: `android/build.sh`. Check the signature (above).
-- [ ] Rename the APKs to `rusttv-launcher-<version>-<abi>.apk` and add their sums: `shasum -a 256 rusttv-launcher-*.apk >> SHA256SUMS`.
+- [ ] Rename the APKs to `rusttv-launcher-<version>-<abi>.apk` and add their sums, in the directory holding the downloaded CLI archives and `SHA256SUMS`:
+
+  ```bash
+  version=0.1.0  # the Cargo version
+  for abi in arm64-v8a armeabi-v7a x86_64; do
+    cp "<repo>/android/app/build/outputs/apk/release/app-$abi-release.apk" "rusttv-launcher-$version-$abi.apk"
+  done
+  shasum -a 256 rusttv-launcher-*.apk >> SHA256SUMS
+  ```
 - [ ] Sign `SHA256SUMS` with the update signing key and check the signature (above); `RELEASE_SIGNING_KEY` in `rusttv-core` is the key's public half.
 - [ ] Smoke test: `rusttv --version` and `rusttv device list` on macOS and Linux; the signed APK installs (`rusttv launcher install`) and starts on the emulator and on at least one TV with a compat profile; About shows the version and the notices.
 
 ### Tag and publish (owner only)
 
-- [ ] Signed tag on the release commit: `git tag -s v<version> -m "RustTV <version>"`, then push it. The tag must equal `v` + the Cargo version; the workflow fails otherwise. The tag push re-runs the Release build, whose artifacts must match the ones tested.
+- [ ] Signed tag on the release commit: `git tag -s v<version> -m "RustTV <version>"`, then push it. The tag must equal `v` + the Cargo version; the workflow fails otherwise. The tag push re-runs the Release build, which must pass; its archives are not byte-identical to the tested ones (tar records file times), so publish the files from the run whose `SHA256SUMS` you signed, never the tag run's.
 - [ ] GitHub release from the tag with the CLI archives, the signed APKs, `SHA256SUMS` and `SHA256SUMS.minisig`; published (not a draft or pre-release, which `rusttv update` ignores).
-- [ ] From the previous release's binary: `rusttv update check` sees the new version; `rusttv update cli --dry-run` and `rusttv update launcher --dry-run` verify and plan it.
+- [ ] From the previous release's binary (none for the first release): `rusttv update check` sees the new version; `rusttv update cli --dry-run` and `rusttv update launcher --dry-run` verify and plan it.
 - [ ] Release notes: the CHANGELOG section; supported devices (only those with a compat profile); how to install (CLI archive, `rusttv launcher install`); the APK signing certificate's SHA-256 fingerprint; the macOS quarantine note; known issues; the safety model in one paragraph with a link to SECURITY.md.
 
 ## Never in a release
