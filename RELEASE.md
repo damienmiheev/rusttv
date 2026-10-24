@@ -1,16 +1,17 @@
 # Releasing RustTV
 
-How a release is built, signed and checked. Nothing here is automated past
-building: tags, GitHub releases and uploads are done by hand, by the owner.
+How a release is built, signed and checked. GitHub Actions builds everything
+from the tagged commit and makes a draft release; the owner tags, signs on
+their own computer and publishes. The two signing keys never enter CI.
 
 ## What a release contains
 
 | File | Built by | Signed |
 |---|---|---|
 | `rusttv-<version>-<target>.tar.gz` for `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`: `rusttv`, `rusttv-mcp`, README.md, CLI.md, MCP.md, SECURITY.md, LICENSE-MIT, LICENSE-APACHE, THIRD_PARTY_NOTICES.txt | `.github/workflows/release-build.yml` | No (SHA-256 in `SHA256SUMS`) |
-| `rusttv-launcher-<version>-<abi>.apk` for `arm64-v8a`, `armeabi-v7a`, `x86_64` | `android/build.sh`, locally with the release key | Release key (below) |
-| `SHA256SUMS` covering all of the above | the workflow (CLI), `shasum -a 256` (APKs) | Update signing key: `SHA256SUMS.minisig` (below) |
-| `SHA256SUMS.minisig` | `minisign -Sm SHA256SUMS`, locally | — |
+| `rusttv-launcher-<version>-<abi>.apk` for `arm64-v8a`, `armeabi-v7a`, `x86_64` | the same workflow, unsigned (`android/build.sh` with `RUSTTV_UNSIGNED=1`) | Release key, by `scripts/release-sign.sh` locally (below) |
+| `SHA256SUMS` covering all of the above | the workflow (CLI), `scripts/release-sign.sh` (APKs) | Update signing key: `SHA256SUMS.minisig` (below) |
+| `SHA256SUMS.minisig` | `scripts/release-sign.sh` (`minisign -Sm SHA256SUMS`), locally | — |
 
 `rusttv update` (CLI.md § Updates) installs the CLI archive and the APK for
 the device's ABI only if `SHA256SUMS.minisig` is a valid signature of
@@ -41,7 +42,10 @@ Bump it in `Cargo.toml` only, then `cargo check` so `Cargo.lock` follows.
 The APK is signed with a project release key that never enters the repository
 or CI. Without it, `android/build.sh` signs release APKs with the local debug
 key, so builds keep working; those APKs are for testing, never for a release.
-CI has no key, so the APKs the workflow uploads are debug-signed too.
+CI has no key: its APKs are debug-signed, or unsigned in the Release build,
+for `scripts/release-sign.sh` to sign locally with `apksigner` (no rebuild).
+So a release APK is CI's build with the owner's signature: the signature
+says the owner approved that build, not that they built it.
 
 ### Create the key (once)
 
@@ -177,29 +181,19 @@ Work on a release branch; tick each item in the release pull request.
 - [ ] `third_party/` patches still needed, and their upstream issues linked (third_party/README.md).
 - [ ] Trademark/name check done (ROADMAP Phase 6).
 
-### Build
+### Tag, sign and publish (owner)
 
-- [ ] Run the **Release build** workflow by hand (`workflow_dispatch`) on the release commit; all jobs pass.
-- [ ] `scripts/release-sign.sh <run-id>` on that commit does the next four items in one go, asking for the keystore password once and minisign's password once, into `target/release-<version>/`: it downloads the CLI archives and `SHA256SUMS` from the run and checks them, builds the APKs with the release key, checks their certificate, renames them and adds their sums, and signs and checks `SHA256SUMS`. Or do them by hand: download the `cli-*` and `SHA256SUMS` artifacts.
-- [ ] Build the APKs locally with the release key: `android/build.sh`. Check the signature (above).
-- [ ] Rename the APKs to `rusttv-launcher-<version>-<abi>.apk` and add their sums, in the directory holding the downloaded CLI archives and `SHA256SUMS`:
-
-  ```bash
-  version=0.1.0  # the Cargo version
-  for abi in arm64-v8a armeabi-v7a x86_64; do
-    cp "<repo>/android/app/build/outputs/apk/release/app-$abi-release.apk" "rusttv-launcher-$version-$abi.apk"
-  done
-  shasum -a 256 rusttv-launcher-*.apk >> SHA256SUMS
-  ```
-- [ ] Sign `SHA256SUMS` with the update signing key and check the signature (above); `RELEASE_SIGNING_KEY` in `rusttv-core` is the key's public half.
-- [ ] Smoke test: `rusttv --version` and `rusttv device list` on macOS and Linux; the signed APK installs (`rusttv launcher install`) and starts on the emulator and on at least one TV with a compat profile; About shows the version and the notices.
-
-### Tag and publish (owner only)
-
-- [ ] Signed tag on the release commit: `git tag -s v<version> -m "RustTV <version>"`, then push it. The tag must equal `v` + the Cargo version; the workflow fails otherwise. The tag push re-runs the Release build, which must pass; its archives are not byte-identical to the tested ones (tar records file times), so publish the files from the run whose `SHA256SUMS` you signed, never the tag run's.
-- [ ] GitHub release from the tag with the CLI archives, the signed APKs, `SHA256SUMS` and `SHA256SUMS.minisig`; published (not a draft or pre-release, which `rusttv update` ignores).
+- [ ] Signed tag on the release commit, pushed: `git tag -s v<version> -m "RustTV <version>" && git push origin v<version>`. The tag must equal `v` + the Cargo version; the workflow fails otherwise.
+- [ ] The tag push runs the **Release build**; all jobs pass. Its last job creates a **draft** GitHub release with the CLI archives, `SHA256SUMS` (CLI only so far) and notes from the CHANGELOG section plus `.github/release-notes.md` (install, checking the files, safety). It fails if `RELEASE_SIGNING_KEY` isn't set.
+- [ ] `scripts/release-sign.sh v<version>` on the owner's computer. It asks for the keystore password once and minisign's password once. It:
+  - checks the draft and the run belong to the tag, and that `RELEASE_SIGNING_KEY` at the tag is `~/.rusttv-release/rusttv-release.pub`;
+  - downloads the CLI archives and `SHA256SUMS` from the draft and checks them;
+  - downloads the unsigned APKs from the run, checks their alignment, signs them with the release key, checks the certificate and `check-dex.sh`;
+  - adds their sums to `SHA256SUMS`, signs it with the update signing key and checks the signature;
+  - uploads the APKs, `SHA256SUMS` and `SHA256SUMS.minisig` to the draft (copies stay in `target/release-<version>/`).
+- [ ] Smoke test from `target/release-<version>/`: `rusttv --version` and `rusttv device list` on macOS and Linux; the signed APK installs (`rusttv launcher install --apk …`) and starts on the emulator and on at least one TV with a compat profile; About shows the version and the notices.
+- [ ] Read the draft's notes (supported devices, known issues), then **Publish** it on GitHub (not as a pre-release, which `rusttv update` ignores). This works from a phone.
 - [ ] From the previous release's binary (none for the first release): `rusttv update check` sees the new version; `rusttv update cli --dry-run` and `rusttv update launcher --dry-run` verify and plan it.
-- [ ] Release notes: the CHANGELOG section; supported devices (only those with a compat profile); how to install (CLI archive, `rusttv launcher install`); the APK signing certificate's SHA-256 fingerprint; the macOS quarantine note; known issues; the safety model in one paragraph with a link to SECURITY.md.
 
 ## Never in a release
 

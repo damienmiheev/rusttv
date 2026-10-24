@@ -29,7 +29,10 @@ val cargoVersionCode: Int = run {
 // the git-ignored android/keystore.properties (storeFile, storePassword,
 // keyAlias, keyPassword). With neither, release builds are signed with the
 // debug key so local and CI builds still install. A partial setup fails the
-// build rather than quietly falling back to the debug key.
+// build rather than quietly falling back to the debug key. `-Prusttv.unsigned=true`
+// leaves release APKs unsigned (app-<abi>-release-unsigned.apk), for the release
+// workflow: the owner signs them locally (scripts/release-sign.sh).
+val unsignedRelease = project.findProperty("rusttv.unsigned") == "true"
 val releaseSigning: Map<String, String>? = run {
     val props = Properties()
     val file = rootProject.file("keystore.properties")
@@ -95,7 +98,11 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName(if (releaseSigning != null) "release" else "debug")
+            signingConfig = when {
+                unsignedRelease -> null
+                releaseSigning != null -> signingConfigs.getByName("release")
+                else -> signingConfigs.getByName("debug")
+            }
         }
     }
 
