@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::adb::Adb;
 use crate::apps::{PackageListError, package_names};
-use crate::bench::Sleep;
+use crate::bench::{Sleep, parse_wakefulness};
 use crate::command::{
     Component, DeviceCommand, InvalidApk, PackageName, RiskClass, SettingKey, SettingState,
 };
@@ -80,6 +80,10 @@ pub enum Check {
     /// The activity manager runs this service (`dumpsys activity services
     /// <package>`).
     ServiceRunning(Component),
+    /// The screen is on with no screensaver (`mWakefulness=Awake` in
+    /// `dumpsys power`). Output without the field (another Android) counts
+    /// as awake.
+    Awake,
 }
 
 impl Check {
@@ -168,6 +172,10 @@ impl Check {
                 let bound = parse_bound_tv_input_services(&output);
                 Ok(expected.iter().all(|service| bound.contains(service)))
             }
+            Self::Awake => {
+                let output = adb.run(serial, &DeviceCommand::PowerState)?;
+                Ok(parse_wakefulness(&output).is_none_or(|state| state == "Awake"))
+            }
             Self::SettingIs { key, state } => {
                 let output = adb.run(serial, &DeviceCommand::GetSetting(*key))?;
                 Ok(SettingState::from_output(&output).is_ok_and(|now| now == *state))
@@ -208,6 +216,7 @@ impl fmt::Display for Check {
             }
             Self::SettingIs { key, state } => write!(f, "{key} is {state}"),
             Self::ServiceRunning(service) => write!(f, "{service} is running"),
+            Self::Awake => f.write_str("the screen is on, without a screensaver"),
         }
     }
 }

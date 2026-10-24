@@ -13,7 +13,8 @@ First public release (ROADMAP Phase 6).
 - `device list`, `device connect`, `device inspect`; `apps list`;
   `performance snapshot` and `performance benchmark`; `compat profile`.
 - `launcher status`, `launcher install` / `uninstall`, and the opt-in Home
-  takeover / restore (SECURITY.md), all planned, shown as a dry run, approved,
+  takeover / restore (SECURITY.md; the takeover wakes the TV first, since a
+  screensaver swallows the HOME press; plans can show the new `awake` check), all planned, shown as a dry run, approved,
   journaled and verified by the safety engine.
 - `optimize analyze`, `optimize apply privacy` and `optimize restore`: disable
   (never uninstall) packages from a shared package catalog (`compat/packages/`:

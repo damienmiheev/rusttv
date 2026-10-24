@@ -21,6 +21,9 @@ pub const HOME_TAKEOVER: &str = "home-takeover";
 /// How long RustTV gets to come to the front after the HOME key press.
 const FRONT_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How long the TV may take to end its screensaver after a wake-up key.
+const WAKE_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Plans disabling the stock launcher so Home opens RustTV. Read-only.
 ///
 /// Rules from SECURITY.md § Home takeover:
@@ -189,6 +192,9 @@ pub fn takeover_plan(
             DeviceCommand::DisablePackage(stock),
             vec![Check::HomeIs(rusttv.clone())],
         ),
+        // A screensaver eats the Home press (it only ends the screensaver),
+        // and ending it takes a moment: wake first, wait until awake.
+        Step::new(DeviceCommand::WakeUp, vec![Check::Awake]).polling_for(WAKE_TIMEOUT),
         Step::new(DeviceCommand::PressHome, vec![Check::InFront(rusttv)])
             .polling_for(FRONT_TIMEOUT),
     ]);
@@ -320,6 +326,9 @@ mod tests {
             include_str!(concat!("fixtures/google-tv-emulator-api34/", $file)).to_owned()
         };
     }
+    /// `dumpsys power` of an awake Philips TV.
+    const AWAKE: &str = include_str!("fixtures/philips-65oled818-api34/dumpsys-power-head.txt");
+
     macro_rules! synthetic {
         ($file:literal) => {
             include_str!(concat!("fixtures/synthetic-home-takeover/", $file)).to_owned()
@@ -436,6 +445,8 @@ mod tests {
                 DeviceCommand::EnablePackage(stock()),
                 synthetic!("pm-enable.txt"),
             )
+            .respond(DeviceCommand::WakeUp, synthetic!("input-keyevent-home.txt"))
+            .respond(DeviceCommand::PowerState, AWAKE.to_owned())
             .respond(
                 DeviceCommand::PressHome,
                 synthetic!("input-keyevent-home.txt"),
@@ -467,8 +478,8 @@ mod tests {
 
         assert_eq!(dry_run.max_risk, "R3");
         assert_eq!(dry_run.confirmation, "takeover");
-        let [disable, home] = dry_run.steps.as_slice() else {
-            panic!("expected two steps: {dry_run:?}");
+        let [disable, wake, home] = dry_run.steps.as_slice() else {
+            panic!("expected three steps: {dry_run:?}");
         };
         assert_eq!(
             disable.command,
@@ -491,6 +502,15 @@ mod tests {
                 "adb -s emulator-5554 shell pm enable --user 0 com.google.android.apps.tv.launcherx"
             )
         );
+        // A screensaver would eat the Home press: woken first.
+        assert_eq!(wake.risk, "R1");
+        assert_eq!(
+            wake.command,
+            "adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP"
+        );
+        assert_eq!(wake.verify, ["the screen is on, without a screensaver"]);
+        assert_eq!(wake.poll_ms, Some(5_000));
+        assert_eq!(wake.undo, None);
         assert_eq!(home.risk, "R1");
         assert_eq!(
             home.command,
@@ -536,6 +556,7 @@ mod tests {
             changes(&adb),
             [
                 DeviceCommand::DisablePackage(stock()),
+                DeviceCommand::WakeUp,
                 DeviceCommand::PressHome
             ]
         );
@@ -606,6 +627,7 @@ mod tests {
             [
                 DeviceCommand::DisablePackage(setupwraith()),
                 DeviceCommand::DisablePackage(stock()),
+                DeviceCommand::WakeUp,
                 DeviceCommand::PressHome
             ]
         );
@@ -775,6 +797,73 @@ mod tests {
         );
     }
 
+    /// The TV of 2026-10-24: the screensaver was on, so a Home press only
+    /// ended it and nothing opened. Waking first lets Home open RustTV.
+    #[test]
+    fn a_screensaver_is_ended_before_home_is_pressed() {
+        let dreaming = AWAKE.replace("mWakefulness=Awake", "mWakefulness=Dreaming");
+        let adb = tv(
+            vec![
+                real!("home-activity.txt"),
+                synthetic!("home-activity-rusttv.txt"),
+            ],
+            vec![
+                synthetic!("packages-d-none.txt"),
+                synthetic!("packages-d-launcher-disabled.txt"),
+            ],
+            vec![synthetic!("activities-rusttv-front.txt")],
+        )
+        .respond_sequence(DeviceCommand::PowerState, [dreaming, AWAKE.to_owned()]);
+        let plan = takeover_plan(&adb, SERIAL, &tested()).unwrap();
+        let approval = plan.approve("takeover").unwrap();
+        let mut store = MemoryJournal::default();
+
+        let journal = apply(&adb, &plan, &approval, &mut store, &|_| {}).unwrap();
+        assert_eq!(journal.status, JournalStatus::Applied);
+        let calls = adb.calls();
+        let woke = calls.iter().position(|c| *c == DeviceCommand::WakeUp);
+        let pressed = calls.iter().position(|c| *c == DeviceCommand::PressHome);
+        let awake = calls.iter().rposition(|c| *c == DeviceCommand::PowerState);
+        assert!(woke < awake && awake < pressed, "{calls:?}");
+    }
+
+    #[test]
+    fn a_screensaver_that_doesnt_end_rolls_back_without_pressing_home() {
+        let dreaming = AWAKE.replace("mWakefulness=Awake", "mWakefulness=Dreaming");
+        let adb = tv(
+            vec![
+                real!("home-activity.txt"),
+                synthetic!("home-activity-rusttv.txt"),
+            ],
+            vec![
+                synthetic!("packages-d-none.txt"),
+                synthetic!("packages-d-launcher-disabled.txt"),
+                synthetic!("packages-d-none.txt"),
+            ],
+            vec![synthetic!("activities-stock-front.txt")],
+        )
+        .respond(DeviceCommand::PowerState, dreaming);
+        let plan = takeover_plan(&adb, SERIAL, &tested()).unwrap();
+        let approval = plan.approve("takeover").unwrap();
+        let mut store = MemoryJournal::default();
+        let waited = Cell::new(Duration::ZERO);
+
+        let error = apply(&adb, &plan, &approval, &mut store, &|duration| {
+            waited.set(waited.get() + duration);
+        })
+        .unwrap_err();
+        assert_eq!(error.code(), "ROLLED_BACK", "{error}");
+        assert_eq!(waited.get(), WAKE_TIMEOUT);
+        assert_eq!(
+            changes(&adb),
+            [
+                DeviceCommand::DisablePackage(stock()),
+                DeviceCommand::WakeUp,
+                DeviceCommand::EnablePackage(stock())
+            ]
+        );
+    }
+
     #[test]
     fn rusttv_not_coming_to_the_front_within_10_s_rolls_back() {
         let adb = tv(
@@ -811,6 +900,7 @@ mod tests {
             changes(&adb),
             [
                 DeviceCommand::DisablePackage(stock()),
+                DeviceCommand::WakeUp,
                 DeviceCommand::PressHome,
                 DeviceCommand::EnablePackage(stock())
             ]
@@ -818,8 +908,8 @@ mod tests {
         let last = store.last();
         assert_eq!(last.status, JournalStatus::RolledBack);
         assert_eq!(last.steps[0].status, StepStatus::Undone);
-        // Pressing HOME changed nothing persistent, so it has nothing to undo.
-        assert_eq!(last.steps[1].status, StepStatus::Started);
+        // Waking and pressing HOME changed nothing persistent: nothing to undo.
+        assert_eq!(last.steps[2].status, StepStatus::Started);
     }
 
     #[test]
