@@ -56,6 +56,14 @@ Not exposed: `device connect` (changes adb state on the computer),
 it), applying or approving any plan, restoring (only planning a restore),
 and `compat profile`. An apply or approve tool never will be.
 
+No history tools (HISTORY.md, owner decision 2026-10-24): nothing of the
+TV's history (app names, settings, approvals) reaches MCP, and no tool reads
+the history door, which would start the launcher's process. The door's
+writes are launcher-private (risk class RL), above R0, so MCP never runs
+them (a test checks every command the tools run is R0); MCP's plan tools
+build no `history-*` plan, and `--dry-run` proposals of other plans
+don't sync or observe.
+
 ## Plan tools
 
 `launcher_install_plan`, `launcher_uninstall_plan`, `launcher_restore_plan`,
@@ -144,14 +152,14 @@ delegation file (SECURITY.md § Delegated approval).
 
 ## Results
 
-A tool result's `structuredContent` is the CLI's `rusttv.v7` envelope
+A tool result's `structuredContent` is the CLI's `rusttv.v8` envelope
 (CLI.md § Output), and its first text content item is the same JSON as a
 string (`launcher_restore_plan` and `optimize_restore_plan` may add warnings as further text items, see
 § Plan tools):
 
 ```json
-{"schema":"rusttv.v7","ok":true,"data":{}}
-{"schema":"rusttv.v7","ok":false,"error":{"code":"NO_DEVICE","message":"no devices found; connect one with `rusttv device connect <address>`"}}
+{"schema":"rusttv.v8","ok":true,"data":{}}
+{"schema":"rusttv.v8","ok":false,"error":{"code":"NO_DEVICE","message":"no devices found; connect one with `rusttv device connect <address>`"}}
 ```
 
 - Success: `isError` is `false` and `data` is exactly what the CLI prints.

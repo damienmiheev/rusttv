@@ -461,6 +461,33 @@ mod tests {
     }
 
     #[test]
+    fn binary_commands_get_their_stdin_and_return_raw_stdout() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("rusttv-adb-binary-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let program = dir.join("adb");
+        // Echoes stdin, then its arguments, like a device answering.
+        std::fs::write(&program, "#!/bin/sh\ncat\nprintf '%s|' \"$@\"\n").unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let adb = SystemAdb::with_program(&program);
+        let inbox = DeviceCommand::HistoryInbox {
+            nonce: crate::command::HistoryNonce::new("0123456789abcdef").unwrap(),
+            payload: crate::command::InboxPayload::new(vec![0, 255, 10]),
+        };
+        let out = adb
+            .run_binary("tv", &inbox, inbox.stdin().unwrap())
+            .unwrap();
+        assert_eq!(&out[..3], &[0, 255, 10]);
+        assert_eq!(
+            String::from_utf8_lossy(&out[3..]),
+            "-s|tv|exec-in|content|write|--uri|content://ai.rusttv.launcher.history/inbox/0123456789abcdef|"
+        );
+        // Its input would be lost through `run`, so `run` refuses it.
+        assert!(adb.run("tv", &inbox).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn missing_adb_program_reports_adb_not_found() {
         let adb = SystemAdb::with_program("/nonexistent/rusttv-test/adb");
         let error = adb

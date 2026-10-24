@@ -740,7 +740,7 @@ pub fn launcher_test_build(output: &str) -> Option<bool> {
 }
 
 /// Whether the bytes of a `content read …/export/…` are an export (its
-/// header line), not a refusal (`rusttv-result 1 error <CODE> <head>`).
+/// header line), not a refusal (`rusttv-error <CODE>`).
 pub fn is_export(output: &[u8]) -> bool {
     output.starts_with(b"rusttv-export ")
 }

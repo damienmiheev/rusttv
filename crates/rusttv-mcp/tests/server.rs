@@ -399,6 +399,27 @@ async fn invalid_arguments_and_unknown_tools_are_rejected() {
     }
 }
 
+/// The history door's writes are launcher-private (RL), above R0: every
+/// check here that MCP runs only R0 (`changes()`, the assert below) also
+/// keeps MCP from writing to a TV's history (MCP.md: no history tools).
+#[test]
+fn history_door_writes_are_above_what_mcp_runs() {
+    assert!(RiskClass::LauncherPrivate > RiskClass::Read);
+    let nonce = rusttv_core::HistoryNonce::new("0123456789abcdef").unwrap();
+    for command in [
+        DeviceCommand::HistoryInbox {
+            nonce: nonce.clone(),
+            payload: rusttv_core::InboxPayload::new(Vec::new()),
+        },
+        DeviceCommand::HistoryCommit {
+            kind: rusttv_core::DoorKind::Message,
+            nonce,
+        },
+    ] {
+        assert_eq!(command.risk(), RiskClass::LauncherPrivate);
+    }
+}
+
 /// The core functions behind the tools only run R0 (read) commands.
 #[test]
 fn tools_only_run_read_only_commands() {
