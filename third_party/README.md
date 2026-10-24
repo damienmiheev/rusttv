@@ -3,8 +3,8 @@
 ## Slint 1.18.1: reuse the GL context across Android windows
 
 `i-slint-renderer-skia-1.18.1/` and `i-slint-backend-android-activity-1.18.1/`
-are the crates.io sources of Slint 1.18.1, unchanged except for
-`slint-gl-context-reuse.patch` (applied). Their own licences apply
+are the crates.io sources of Slint 1.18.1, unchanged except for the
+`.patch` files described below (applied). Their own licences apply
 (`GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0`;
 see each crate's `LICENSES/`). The root `Cargo.toml` uses them through
 `[patch.crates-io]`.
@@ -45,6 +45,19 @@ the software renderer are unchanged.
 Measured on the Philips with ~31 banners: native heap after a cold start
 30.4 → 27.6 MB (−2.9 MB); the owner checked the banners on the TV.
 Reported upstream as https://github.com/slint-ui/slint/issues/14398.
+
+## Slint 1.18.1: limit Skia's GPU resource cache to 24 MB
+
+`slint-gpu-cache-limit.patch` (applied to `i-slint-renderer-skia-1.18.1/opengl_surface.rs`).
+Skia's `DirectContext` keeps GPU resources (textures, glyph atlases) up to
+256 MB by default and frees them only above that, so each new screen (About,
+the long-press menu) left a few MB of Mali driver memory behind. The renderer
+now sets a 24 MB limit when it creates the context.
+
+Measured on the Philips (About and the menu three times): native heap
+29.5 → 49.4 MB before, 29.6 → 37.4 MB after; PSS at the end 101 → 86 MB
+(`benchmarks/raw/philips-65oled818/2026-10-24/gpu-cache-limit/`). Frame
+timing with the smaller cache is not measured yet.
 
 **Upstream (GL context patch):** reported as https://github.com/slint-ui/slint/issues/14397 (2026-10-23).
 

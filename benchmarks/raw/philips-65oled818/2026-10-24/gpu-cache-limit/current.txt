@@ -1,0 +1,27 @@
+fresh 14:52:23 pss=71797 native=29416 code=22428
+fresh 14:52:34 pss=78191 native=29528 code=22432
+fresh 14:52:44 pss=78179 native=29516 code=22432
+fresh 14:52:54 pss=78175 native=29516 code=22432
+fresh 14:53:04 pss=78175 native=29516 code=22432
+fresh 14:53:15 pss=78175 native=29516 code=22432
+fresh 14:53:25 pss=78175 native=29516 code=22432
+fresh 14:53:35 pss=78175 native=29516 code=22432
+fresh 14:53:45 pss=78175 native=29516 code=22432
+fresh 14:53:55 pss=78175 native=29516 code=22432
+after-about 14:54:22 pss=87932 native=36832 code=23524
+after-about 14:54:32 pss=87044 native=37212 code=23524
+after-about 14:54:42 pss=86456 native=36624 code=23524
+after-about 14:54:52 pss=86460 native=36624 code=23524
+after-about 14:55:03 pss=86460 native=36624 code=23524
+after-about 14:55:13 pss=86460 native=36624 code=23524
+after-menu 14:55:34 pss=93440 native=42980 code=24116
+after-menu 14:55:44 pss=93440 native=42984 code=24116
+after-menu 14:55:54 pss=93196 native=42740 code=24116
+after-menu 14:56:05 pss=93196 native=42740 code=24116
+after-menu 14:56:15 pss=93196 native=42740 code=24116
+after-menu 14:56:25 pss=93196 native=42740 code=24116
+start pss=93196 native=42740
+about-2 pss=98012 native=46188
+menu-2 pss=97805 native=45864
+about-3 pss=100121 native=47316
+menu-3 pss=100909 native=49396

@@ -1,0 +1,13 @@
+--- i-slint-renderer-skia-1.18.1/opengl_surface.rs	2026-10-24 15:45:29
++++ i-slint-renderer-skia-1.18.1/opengl_surface.rs	2026-10-24 15:45:38
+@@ -299,6 +299,10 @@
+             skia_safe::gpu::direct_contexts::make_gl(gl_interface, None).ok_or_else(|| {
+                 "Skia Renderer: Internal Error: Could not create Skia Direct Context from GL interface".to_string()
+             })?;
++        // Skia caches up to 256 MB of GPU resources (textures, glyph atlases) by
++        // default and frees them only above that; on a TV that driver memory keeps
++        // growing. A parked context keeps this limit when it is reused.
++        gr_context.set_resource_cache_limit(24 * 1024 * 1024);
+ 
+         let width: i32 = size.width.try_into().map_err(|e| {
+                 format!("Attempting to create window surface with width that doesn't fit into non-zero i32: {e}")

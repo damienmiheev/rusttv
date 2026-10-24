@@ -1,0 +1,27 @@
+fresh 14:59:28 pss=70812 native=29592 code=20188
+fresh 14:59:38 pss=77217 native=29600 code=20192
+fresh 14:59:48 pss=77205 native=29588 code=20192
+fresh 14:59:58 pss=77200 native=29588 code=20192
+fresh 15:00:08 pss=77200 native=29588 code=20192
+fresh 15:00:19 pss=77200 native=29588 code=20192
+fresh 15:00:29 pss=77200 native=29588 code=20192
+fresh 15:00:39 pss=77120 native=29588 code=20192
+fresh 15:00:49 pss=77124 native=29588 code=20192
+fresh 15:01:00 pss=77124 native=29588 code=20192
+after-about 15:01:26 pss=86156 native=36232 code=21224
+after-about 15:01:36 pss=85244 native=36604 code=21224
+after-about 15:01:46 pss=84704 native=36064 code=21224
+after-about 15:01:56 pss=84704 native=36064 code=21224
+after-about 15:02:07 pss=84704 native=36064 code=21224
+after-about 15:02:17 pss=84704 native=36064 code=21224
+after-menu 15:02:38 pss=85272 native=36560 code=21292
+after-menu 15:02:48 pss=85276 native=36564 code=21292
+after-menu 15:02:59 pss=85272 native=36560 code=21292
+after-menu 15:03:09 pss=85272 native=36560 code=21292
+after-menu 15:03:19 pss=85272 native=36560 code=21292
+after-menu 15:03:29 pss=85272 native=36560 code=21292
+start pss=85272 native=36560
+about-2 pss=87712 native=37632
+menu-2 pss=85788 native=36988
+about-3 pss=87884 native=37804
+menu-3 pss=86220 native=37420

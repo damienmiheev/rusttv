@@ -73,6 +73,9 @@ First public release (ROADMAP Phase 6).
   version after checking its size, SHA-256, package, version and signing
   key. Android asks the user to confirm every install; never a downgrade
   (SECURITY.md § Launcher updates).
+- Skia's GPU resource cache is capped at 24 MB (patched Slint renderer,
+  `third_party/README.md`): opening About and the menu repeatedly no longer
+  grows native memory (49.4 → 37.4 MB after three rounds on the Philips).
 - `tools.HiddenFeatureActivity`: no UI, startable only by the adb shell or
   the system (it requires `android.permission.DUMP`), used by `rusttv tools`
   (TOOLS.md).
