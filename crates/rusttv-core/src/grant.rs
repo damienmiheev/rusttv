@@ -65,7 +65,7 @@ impl GrantScope {
         match self {
             Self::Launcher => {
                 "launcher install / upgrade (also `update launcher`), launcher takeover, launcher \
-                 restore; not launcher uninstall, optimize, tools or update cli"
+                 restore; not launcher uninstall, optimize or update cli"
             }
         }
     }
@@ -369,7 +369,6 @@ mod tests {
             "launcher-uninstall",
             "privacy",
             "optimize-reduced-animations-v1",
-            "tools-airplay",
         ] {
             let reason = grant.refuses(plan, SERIAL, FINGERPRINT, now).unwrap();
             assert!(reason.contains("scope"), "{plan}: {reason}");

@@ -1,2 +1,0 @@
-ACTIVITY MANAGER SERVICES (dumpsys activity services)
-  (nothing)

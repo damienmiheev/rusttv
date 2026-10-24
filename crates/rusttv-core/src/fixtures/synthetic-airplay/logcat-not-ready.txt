@@ -1,3 +1,0 @@
-10-23 12:00:01.100  1234  1250 I AirPlaySystemService: BootupReceiver: setup_airplay_enable=7, not starting
-10-23 12:00:05.200  2345  2360 W AirPlayDaemon: Luna is not ready
-10-23 12:00:06.300  3456  3470 I AirPlayTIS: onCreate
