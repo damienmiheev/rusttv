@@ -121,27 +121,9 @@ fn plan_install(
             ApkPath::from_local_file(path)?
         }
         ApkSource::Built => {
-            let primary = abis.split(',').next().unwrap_or_default();
-            if primary.is_empty() {
-                return Err(PlanError::invalid_apk(
-                    "the device doesn't report `ro.product.cpu.abilist`; pass --apk <file>"
-                        .to_owned(),
-                ));
-            }
-            let path = default_apk(primary).ok_or_else(|| {
-                PlanError::invalid_apk(format!(
-                    "no RustTV APK is built for the device's primary ABI `{primary}` \
-                     (android/build.sh builds {}); pass --apk <file>",
-                    APK_ABIS.join(", ")
-                ))
-            })?;
+            let (apk, primary) = built_apk(abis)?;
             notes.push(format!("APK for the device's primary ABI, {primary}."));
-            ApkPath::from_local_file(&path).map_err(|error| {
-                PlanError::invalid_apk(format!(
-                    "{error}; build it with android/build.sh and run rusttv from the repository \
-                     root, or pass --apk <file>"
-                ))
-            })?
+            apk
         }
     };
 
@@ -178,6 +160,47 @@ fn plan_install(
         vec![step],
         notes,
     )
+}
+
+/// The APK [`install_plan`] with the same `apk` would install on the
+/// device, checked the same way (`INVALID_APK` if there is none). Read-only;
+/// lets `rusttv launcher upgrade` refuse before it changes anything.
+pub fn install_apk(adb: &dyn Adb, serial: &str, apk: Option<&Path>) -> Result<ApkPath, PlanError> {
+    match apk {
+        Some(path) => Ok(ApkPath::from_local_file(path)?),
+        None => {
+            let properties = parse_properties(&adb.run(serial, &DeviceCommand::GetProperties)?);
+            let abis = properties
+                .get("ro.product.cpu.abilist")
+                .map_or("", String::as_str);
+            Ok(built_apk(abis)?.0)
+        }
+    }
+}
+
+/// `android/build.sh`'s APK for the primary ABI of `abis`
+/// (`ro.product.cpu.abilist`), and that ABI.
+fn built_apk(abis: &str) -> Result<(ApkPath, &str), PlanError> {
+    let primary = abis.split(',').next().unwrap_or_default();
+    if primary.is_empty() {
+        return Err(PlanError::invalid_apk(
+            "the device doesn't report `ro.product.cpu.abilist`; pass --apk <file>".to_owned(),
+        ));
+    }
+    let path = default_apk(primary).ok_or_else(|| {
+        PlanError::invalid_apk(format!(
+            "no RustTV APK is built for the device's primary ABI `{primary}` \
+             (android/build.sh builds {}); pass --apk <file>",
+            APK_ABIS.join(", ")
+        ))
+    })?;
+    let apk = ApkPath::from_local_file(&path).map_err(|error| {
+        PlanError::invalid_apk(format!(
+            "{error}; build it with android/build.sh and run rusttv from the repository \
+             root, or pass --apk <file>"
+        ))
+    })?;
+    Ok((apk, primary))
 }
 
 /// Plans uninstalling the RustTV launcher. Read-only.

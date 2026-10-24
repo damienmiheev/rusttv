@@ -1,3 +1,4 @@
+mod approve;
 mod apps;
 mod compat;
 mod launcher;
@@ -58,6 +59,10 @@ enum Command {
     /// TV. Only files signed with the release signing key (SECURITY.md).
     #[command(subcommand)]
     Update(UpdateAction),
+    /// Let launcher plans be applied without a terminal for a while, on one
+    /// device (e.g. by an agent): a time-limited delegation you grant here,
+    /// at a terminal. Also shows or revokes it.
+    Approve(approve::ApproveArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -242,6 +247,22 @@ enum LauncherAction {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Upgrade the RustTV launcher like `launcher install`, also while a Home
+    /// takeover is active: then restore, install and take over again, each
+    /// its own plan, all approved by typing `upgrade` once. Stops at the
+    /// first stage that fails and says how to continue.
+    Upgrade {
+        #[command(flatten)]
+        target: Target,
+        /// APK to install instead of
+        /// `android/app/build/outputs/apk/release/app-<abi>-release.apk`
+        /// (relative to the current directory) from `android/build.sh`.
+        #[arg(long)]
+        apk: Option<PathBuf>,
+        /// Only show the plan; change nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Uninstall the RustTV launcher and its data. Refused while a Home
     /// takeover is active: run `launcher restore` first. Shows the plan and
     /// asks you to type a confirmation.
@@ -388,11 +409,27 @@ enum CliError {
     Plan(#[from] PlanError),
     #[error(transparent)]
     Update(#[from] UpdateError),
+    /// A stage of `launcher upgrade` failed; `context` says what state the
+    /// TV is in and how to continue.
+    #[error("{}. {context}", output::message_with_causes(error.as_ref()))]
+    Stage {
+        error: Box<CliError>,
+        context: &'static str,
+    },
 }
 
 impl CliError {
+    /// This error inside a stage of `launcher upgrade`; keeps its code.
+    fn in_stage(self, context: &'static str) -> Self {
+        Self::Stage {
+            error: Box::new(self),
+            context,
+        }
+    }
+
     fn code(&self) -> &'static str {
         match self {
+            Self::Stage { error, .. } => error.code(),
             Self::Adb(error) => error.code(),
             Self::Selection(error) => error.code(),
             Self::IncompleteProfile(_) => "INCOMPLETE_PROFILE",
@@ -404,6 +441,7 @@ impl CliError {
 
     fn exit_code(&self) -> u8 {
         match self {
+            Self::Stage { error, .. } => error.exit_code(),
             Self::Adb(error) if error.is_device_unreachable() => EXIT_DEVICE_UNREACHABLE,
             Self::Adb(_) => EXIT_FAILURE,
             Self::Selection(error) if error.is_ambiguous() => EXIT_USAGE,
@@ -440,6 +478,12 @@ fn main() -> ExitCode {
             apk,
             dry_run,
         }) => launcher::install(&adb, target, apk.as_deref(), *dry_run, cli.json),
+        Command::Launcher(LauncherAction::Upgrade {
+            target,
+            apk,
+            dry_run,
+        }) => launcher::upgrade(&adb, target, apk.as_deref(), *dry_run, cli.json),
+        Command::Approve(args) => approve::run(&adb, args, cli.json),
         Command::Launcher(LauncherAction::Uninstall { target, dry_run }) => {
             launcher::uninstall(&adb, target, *dry_run, cli.json)
         }

@@ -12,12 +12,12 @@ use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 use rusttv_core::{
-    Adb, Curl, LAUNCHER_INSTALL, LocalRelease, PlanError, Release, ReleaseSource, UpdateError,
-    Version,
+    Adb, Curl, GrantScope, LAUNCHER_INSTALL, LocalRelease, PlanError, Release, ReleaseSource,
+    UpdateError, Version,
 };
 use serde::Serialize;
 
-use crate::launcher::{approve_and_apply, now_unix_ms, require_terminal, show_plan};
+use crate::launcher::{approve_and_apply, approver, now_unix_ms, show_plan};
 use crate::{CliError, Target, output};
 
 /// This build's Rust target triple (build.rs); picks the CLI archive.
@@ -173,9 +173,9 @@ fn print_check(report: &UpdateCheck) {
 /// `rusttv update launcher`: the normal `launcher install` plan, with the
 /// release's APK for the device's primary ABI, downloaded and verified.
 pub fn launcher(adb: &dyn Adb, target: &Target, dry_run: bool, json: bool) -> Result<(), CliError> {
-    if !dry_run {
-        require_terminal()?;
-    }
+    let approver = (!dry_run)
+        .then(|| approver(GrantScope::Launcher))
+        .transpose()?;
     let serial = target.resolve(adb)?;
     let source = release_source();
     let release = rusttv_core::latest_release(source.as_ref())?;
@@ -193,10 +193,10 @@ pub fn launcher(adb: &dyn Adb, target: &Target, dry_run: bool, json: bool) -> Re
         &rusttv_core::journals_dir()?,
     )?;
     show_plan(&plan, dry_run, json);
-    if dry_run {
-        return Ok(());
-    }
-    let path = approve_and_apply(adb, &plan, LAUNCHER_INSTALL, json)?;
+    let Some(approver) = approver else {
+        return Ok(()); // --dry-run
+    };
+    let path = approve_and_apply(adb, &plan, &approver, LAUNCHER_INSTALL, json)?;
     if !json {
         println!(
             "\nDone: the RustTV launcher {} is installed.",

@@ -73,8 +73,8 @@ pub use inspect::{
     DeviceInfo, MemoryInfo, StorageInfo, inspect, parse_df, parse_meminfo, parse_properties,
 };
 pub use install::{
-    LAUNCHER_INSTALL, LAUNCHER_UNINSTALL, default_apk, install_plan, release_install_plan,
-    uninstall_plan,
+    LAUNCHER_INSTALL, LAUNCHER_UNINSTALL, default_apk, install_apk, install_plan,
+    release_install_plan, uninstall_plan,
 };
 pub use journal::{
     ApprovedBy, FileJournal, JOURNAL_SCHEMA_VERSION, Journal, JournalSearch, JournalStatus,

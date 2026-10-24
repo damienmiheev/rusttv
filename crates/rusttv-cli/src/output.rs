@@ -80,7 +80,7 @@ fn print_to_stderr(message: &str) {
 }
 
 /// Joins an error with its chain of causes: "outer: inner: root".
-fn message_with_causes(error: &dyn Error) -> String {
+pub(crate) fn message_with_causes(error: &dyn Error) -> String {
     let mut message = error.to_string();
     let mut source = error.source();
     while let Some(cause) = source {

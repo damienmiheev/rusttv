@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use rusttv_core::{AIRPLAY_CAVEAT, AIRPLAY_TOOL, Adb, AirplayStatus, BonjourCheck, FileJournal};
 
 use crate::launcher::{
-    ChangeReport, approve_and_apply, confirm, note_journal, require_terminal, show_plan,
+    Approver, ChangeReport, approve_and_apply, confirm, note_journal, require_terminal, show_plan,
 };
 use crate::{CliError, Target, output};
 
@@ -148,7 +148,7 @@ pub fn airplay_enable(
     if dry_run {
         return Ok(());
     }
-    let path = approve_and_apply(adb, &plan, AIRPLAY_TOOL, json)?;
+    let path = approve_and_apply(adb, &plan, &Approver::Terminal, AIRPLAY_TOOL, json)?;
     if !json {
         println!("\nDone: the AirPlay service runs; AirPlay is on until the TV restarts.");
         println!("Journal: {}", path.display());

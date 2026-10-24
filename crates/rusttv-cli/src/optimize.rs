@@ -8,7 +8,7 @@ use rusttv_core::{
 };
 
 use crate::launcher::{
-    ChangeReport, approve_and_apply, confirm, note_journal, require_terminal, show_plan,
+    Approver, ChangeReport, approve_and_apply, confirm, note_journal, require_terminal, show_plan,
 };
 use crate::{CliError, Target, output};
 
@@ -160,7 +160,7 @@ pub fn apply_privacy(
     if dry_run {
         return Ok(());
     }
-    let path = approve_and_apply(adb, &plan, PRIVACY, json)?;
+    let path = approve_and_apply(adb, &plan, &Approver::Terminal, PRIVACY, json)?;
     if !json {
         println!("\nDone: the packages are disabled.");
         println!("Journal: {}", path.display());
@@ -194,7 +194,7 @@ pub fn apply_reduced_animations(
     if dry_run {
         return Ok(());
     }
-    let path = approve_and_apply(adb, &plan, plan.name(), json)?;
+    let path = approve_and_apply(adb, &plan, &Approver::Terminal, plan.name(), json)?;
     if !json {
         println!("\nDone: the settings are changed.");
         println!("Journal: {}", path.display());
