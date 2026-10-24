@@ -657,7 +657,8 @@ export component HomeWindow inherits Window {
                 color: Theme.text;
             }
             body := Rectangle {
-                x: 48 * u;
+                // Mirrored, so the scroll bar keeps its gap in right-to-left.
+                x: Dir.x(48 * u, self.width, parent.width);
                 y: 96 * u;
                 width: parent.width - 120 * u;
                 height: parent.height - self.y - 36 * u;
