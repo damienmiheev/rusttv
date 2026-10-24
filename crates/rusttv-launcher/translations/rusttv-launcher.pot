@@ -46,10 +46,166 @@ msgstr ""
 msgid "Couldn't load the licence notices: {}"
 msgstr ""
 
+msgid "Updates"
+msgstr ""
+
+msgid "History"
+msgstr ""
+
+msgid "Waiting for your computer"
+msgstr ""
+
+msgid "Animations"
+msgstr ""
+
+msgid "Faster (0.5×)"
+msgstr ""
+
+msgid "Off"
+msgstr ""
+
+msgid "Normal"
+msgstr ""
+
+msgid "On"
+msgstr ""
+
+msgid "Transition animations"
+msgstr ""
+
+msgid "Window animations"
+msgstr ""
+
+msgid "App animations"
+msgstr ""
+
+msgid "off"
+msgstr ""
+
+msgid "not seen"
+msgstr ""
+
+msgid "on"
+msgstr ""
+
+msgid "default"
+msgstr ""
+
+msgid "Your computer"
+msgstr ""
+
+msgid "Changed outside RustTV"
+msgstr ""
+
+msgid "Restored from your computer"
+msgstr ""
+
+msgid "This TV"
+msgstr ""
+
+msgid "time unknown"
+msgstr ""
+
+msgid "Apps reordered"
+msgstr ""
+
+msgid "Hid {}"
+msgstr ""
+
+msgid "Showed {}"
+msgstr ""
+
+msgid "Check for updates: {}"
+msgstr ""
+
+msgid "{}: {} → {}"
+msgstr ""
+
+msgid "Firmware updated"
+msgstr ""
+
+msgid "Home takeover: {}"
+msgstr ""
+
+msgid "No change"
+msgstr ""
+
+msgid "Your computer applies these: run rusttv history apply-pending within 2 hours"
+msgstr ""
+
+msgid "This TV changes now"
+msgstr ""
+
+msgid "To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it."
+msgstr ""
+
+msgid "Some apps may look odd without animations."
+msgstr ""
+
+msgid "No changes yet. Changes made here or from your computer appear here."
+msgstr ""
+
+msgid "{} (+{} more)"
+msgstr ""
+
+msgid "Restore this state"
+msgstr ""
+
+msgid "Check for updates automatically"
+msgstr ""
+
+msgid "{} min"
+msgstr ""
+
+msgid "{} h {} min"
+msgstr ""
+
+msgid "On your computer, run rusttv history apply-pending within {}."
+msgstr ""
+
+msgid "Applied."
+msgstr ""
+
+msgid "Saved for your computer. {}"
+msgstr ""
+
+msgid "Nothing changed: {}"
+msgstr ""
+
+msgid "Nothing changed: wrong code."
+msgstr ""
+
+msgid "Too many wrong codes. Approvals are locked for {}."
+msgstr ""
+
+msgid "Approvals are off in test builds."
+msgstr ""
+
+msgid "Busy — try again in a moment."
+msgstr ""
+
+msgid "Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings."
+msgstr ""
+
+msgid "This is the state now: nothing to restore."
+msgstr ""
+
+msgid "Your computer has a newer RustTV. Update RustTV on this TV."
+msgstr ""
+
+msgid "Reading history…"
+msgstr ""
+
+msgid "History couldn't be read: {}. Your computer's copy can put it back."
+msgstr ""
+
 msgid "About RustTV"
 msgstr ""
 
 msgid "Hidden apps"
+msgstr ""
+
+msgid "Settings"
 msgstr ""
 
 msgid "About"
@@ -71,4 +227,25 @@ msgid "Up and Down scroll the notices. Back returns."
 msgstr ""
 
 msgid "Third-party notices"
+msgstr ""
+
+msgid "Up and Down choose, OK opens. Back returns."
+msgstr ""
+
+msgid "Review changes"
+msgstr ""
+
+msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
+msgstr ""
+
+msgid "Nothing changes until you hold OK. Back cancels."
+msgstr ""
+
+msgid "Approve"
+msgstr ""
+
+msgid "Press these arrows on the remote:"
+msgstr ""
+
+msgid "Now hold OK to apply."
 msgstr ""

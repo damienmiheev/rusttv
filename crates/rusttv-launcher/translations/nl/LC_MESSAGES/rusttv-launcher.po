@@ -79,3 +79,180 @@ msgstr "Omhoog en Omlaag scrollen door de vermeldingen. Terug om terug te gaan."
 
 msgid "Third-party notices"
 msgstr "Vermeldingen van derden"
+
+msgid "Updates"
+msgstr "Updates"
+
+msgid "History"
+msgstr "Geschiedenis"
+
+msgid "Waiting for your computer"
+msgstr "Wacht op je computer"
+
+msgid "Animations"
+msgstr "Animaties"
+
+msgid "Faster (0.5×)"
+msgstr "Sneller (0,5×)"
+
+msgid "Off"
+msgstr "Uit"
+
+msgid "Normal"
+msgstr "Normaal"
+
+msgid "On"
+msgstr "Aan"
+
+msgid "Transition animations"
+msgstr "Overgangsanimaties"
+
+msgid "Window animations"
+msgstr "Vensteranimaties"
+
+msgid "App animations"
+msgstr "App-animaties"
+
+msgid "off"
+msgstr "uit"
+
+msgid "not seen"
+msgstr "niet gevonden"
+
+msgid "on"
+msgstr "aan"
+
+msgid "default"
+msgstr "standaard"
+
+msgid "Your computer"
+msgstr "Je computer"
+
+msgid "Changed outside RustTV"
+msgstr "Gewijzigd buiten RustTV"
+
+msgid "Restored from your computer"
+msgstr "Hersteld vanaf je computer"
+
+msgid "This TV"
+msgstr "Deze tv"
+
+msgid "time unknown"
+msgstr "tijd onbekend"
+
+msgid "Apps reordered"
+msgstr "Apps opnieuw geordend"
+
+msgid "Hid {}"
+msgstr "{} verborgen"
+
+msgid "Showed {}"
+msgstr "{} weergegeven"
+
+msgid "Check for updates: {}"
+msgstr "Zoeken naar updates: {}"
+
+msgid "{}: {} → {}"
+msgstr "{}: {} → {}"
+
+msgid "Firmware updated"
+msgstr "Firmware bijgewerkt"
+
+msgid "Home takeover: {}"
+msgstr "Startscherm overnemen: {}"
+
+msgid "No change"
+msgstr "Geen wijziging"
+
+msgid "Your computer applies these: run rusttv history apply-pending within 2 hours"
+msgstr "Je computer past deze toe: voer binnen 2 uur rusttv history apply-pending uit"
+
+msgid "This TV changes now"
+msgstr "Verandert nu op deze tv"
+
+msgid "To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it."
+msgstr "Voer eenmaal rusttv history allow-tv-settings uit op je computer om dit op de tv zelf te wijzigen. Tot die tijd past je computer het toe."
+
+msgid "Some apps may look odd without animations."
+msgstr "Sommige apps zien er zonder animaties misschien vreemd uit."
+
+msgid "No changes yet. Changes made here or from your computer appear here."
+msgstr "Nog geen wijzigingen. Wijzigingen op de tv of vanaf je computer verschijnen hier."
+
+msgid "{} (+{} more)"
+msgstr "{} (+{} meer)"
+
+msgid "Restore this state"
+msgstr "Deze staat herstellen"
+
+msgid "Check for updates automatically"
+msgstr "Automatisch zoeken naar updates"
+
+msgid "{} min"
+msgstr "{} min"
+
+msgid "{} h {} min"
+msgstr "{} u {} min"
+
+msgid "On your computer, run rusttv history apply-pending within {}."
+msgstr "Voer op je computer binnen {} rusttv history apply-pending uit."
+
+msgid "Applied."
+msgstr "Toegepast."
+
+msgid "Saved for your computer. {}"
+msgstr "Opgeslagen voor je computer. {}"
+
+msgid "Nothing changed: {}"
+msgstr "Niets gewijzigd: {}"
+
+msgid "Nothing changed: wrong code."
+msgstr "Niets gewijzigd: verkeerde code."
+
+msgid "Too many wrong codes. Approvals are locked for {}."
+msgstr "Te veel verkeerde codes. Goedkeuringen zijn vergrendeld voor {}."
+
+msgid "Approvals are off in test builds."
+msgstr "Goedkeuringen zijn uitgeschakeld in testbuilds."
+
+msgid "Busy — try again in a moment."
+msgstr "Bezig — probeer het zo opnieuw."
+
+msgid "Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings."
+msgstr "Niet alles kon ongedaan worden gemaakt: {}. Los het op met rusttv history restore op je computer of in de Android-instellingen."
+
+msgid "This is the state now: nothing to restore."
+msgstr "Dit is al de huidige staat: niets te herstellen."
+
+msgid "Your computer has a newer RustTV. Update RustTV on this TV."
+msgstr "Je computer heeft een nieuwere RustTV. Werk RustTV bij op deze tv."
+
+msgid "Reading history…"
+msgstr "Geschiedenis lezen…"
+
+msgid "History couldn't be read: {}. Your computer's copy can put it back."
+msgstr "Geschiedenis kon niet worden gelezen: {}. De kopie op je computer kan haar terugzetten."
+
+msgid "Settings"
+msgstr "Instellingen"
+
+msgid "Up and Down choose, OK opens. Back returns."
+msgstr "Omhoog en Omlaag om te kiezen, OK om te openen. Terug om terug te gaan."
+
+msgid "Review changes"
+msgstr "Wijzigingen bekijken"
+
+msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
+msgstr "Omhoog en Omlaag om de wijzigingen te lezen. Kies Goedkeuren om door te gaan. Terug om te annuleren."
+
+msgid "Nothing changes until you hold OK. Back cancels."
+msgstr "Er verandert niets tot je OK ingedrukt houdt. Terug om te annuleren."
+
+msgid "Approve"
+msgstr "Goedkeuren"
+
+msgid "Press these arrows on the remote:"
+msgstr "Druk op deze pijlen op de afstandsbediening:"
+
+msgid "Now hold OK to apply."
+msgstr "Houd nu OK ingedrukt om toe te passen."

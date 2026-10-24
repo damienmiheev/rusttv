@@ -79,3 +79,180 @@ msgstr "استخدم الأعلى والأسفل للتمرير، و«رجوع»
 
 msgid "Third-party notices"
 msgstr "إشعارات الجهات الخارجية"
+
+msgid "Updates"
+msgstr "التحديثات"
+
+msgid "History"
+msgstr "السجل"
+
+msgid "Waiting for your computer"
+msgstr "بانتظار الكمبيوتر"
+
+msgid "Animations"
+msgstr "الرسوم المتحركة"
+
+msgid "Faster (0.5×)"
+msgstr "أسرع (0.5×)"
+
+msgid "Off"
+msgstr "إيقاف"
+
+msgid "Normal"
+msgstr "عادي"
+
+msgid "On"
+msgstr "تشغيل"
+
+msgid "Transition animations"
+msgstr "حركة الانتقالات"
+
+msgid "Window animations"
+msgstr "حركة النوافذ"
+
+msgid "App animations"
+msgstr "حركة التطبيقات"
+
+msgid "off"
+msgstr "متوقف"
+
+msgid "not seen"
+msgstr "غير موجود"
+
+msgid "on"
+msgstr "يعمل"
+
+msgid "default"
+msgstr "الافتراضي"
+
+msgid "Your computer"
+msgstr "الكمبيوتر"
+
+msgid "Changed outside RustTV"
+msgstr "تم التغيير خارج RustTV"
+
+msgid "Restored from your computer"
+msgstr "تمت الاستعادة من الكمبيوتر"
+
+msgid "This TV"
+msgstr "هذا التلفزيون"
+
+msgid "time unknown"
+msgstr "وقت غير معروف"
+
+msgid "Apps reordered"
+msgstr "تمت إعادة ترتيب التطبيقات"
+
+msgid "Hid {}"
+msgstr "تم إخفاء {}"
+
+msgid "Showed {}"
+msgstr "تم إظهار {}"
+
+msgid "Check for updates: {}"
+msgstr "البحث عن تحديثات: {}"
+
+msgid "{}: {} → {}"
+msgstr "{}: {} → {}"
+
+msgid "Firmware updated"
+msgstr "تم تحديث البرنامج الثابت"
+
+msgid "Home takeover: {}"
+msgstr "استبدال الشاشة الرئيسية: {}"
+
+msgid "No change"
+msgstr "لا تغيير"
+
+msgid "Your computer applies these: run rusttv history apply-pending within 2 hours"
+msgstr "يطبّقها الكمبيوتر: شغّل rusttv history apply-pending خلال ساعتين"
+
+msgid "This TV changes now"
+msgstr "يتغيّر على التلفزيون الآن"
+
+msgid "To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it."
+msgstr "لتغيير هذا على التلفزيون نفسه، شغّل rusttv history allow-tv-settings على الكمبيوتر مرة واحدة. وحتى ذلك الحين يطبّقه الكمبيوتر."
+
+msgid "Some apps may look odd without animations."
+msgstr "قد تبدو بعض التطبيقات غريبة دون رسوم متحركة."
+
+msgid "No changes yet. Changes made here or from your computer appear here."
+msgstr "لا تغييرات بعد. ستظهر هنا التغييرات التي تُجرى على التلفزيون أو من الكمبيوتر."
+
+msgid "{} (+{} more)"
+msgstr "{} (+{} أخرى)"
+
+msgid "Restore this state"
+msgstr "استعادة هذه الحالة"
+
+msgid "Check for updates automatically"
+msgstr "البحث عن تحديثات تلقائيًا"
+
+msgid "{} min"
+msgstr "{} دقيقة"
+
+msgid "{} h {} min"
+msgstr "{} ساعة و{} دقيقة"
+
+msgid "On your computer, run rusttv history apply-pending within {}."
+msgstr "على الكمبيوتر، شغّل rusttv history apply-pending خلال {}."
+
+msgid "Applied."
+msgstr "تم التطبيق."
+
+msgid "Saved for your computer. {}"
+msgstr "تم الحفظ ليطبّقه الكمبيوتر. {}"
+
+msgid "Nothing changed: {}"
+msgstr "لم يتغيّر شيء: {}"
+
+msgid "Nothing changed: wrong code."
+msgstr "لم يتغيّر شيء: رمز خاطئ."
+
+msgid "Too many wrong codes. Approvals are locked for {}."
+msgstr "رموز خاطئة كثيرة. الموافقات مقفلة لمدة {}."
+
+msgid "Approvals are off in test builds."
+msgstr "الموافقات متوقفة في الإصدارات التجريبية."
+
+msgid "Busy — try again in a moment."
+msgstr "مشغول — حاول مجددًا بعد قليل."
+
+msgid "Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings."
+msgstr "تعذّر التراجع عن كل شيء: {}. أصلحه باستخدام rusttv history restore على الكمبيوتر، أو من إعدادات Android."
+
+msgid "This is the state now: nothing to restore."
+msgstr "هذه هي الحالة الحالية: لا شيء لاستعادته."
+
+msgid "Your computer has a newer RustTV. Update RustTV on this TV."
+msgstr "لدى الكمبيوتر إصدار أحدث من RustTV. حدّث RustTV على هذا التلفزيون."
+
+msgid "Reading history…"
+msgstr "جارٍ قراءة السجل…"
+
+msgid "History couldn't be read: {}. Your computer's copy can put it back."
+msgstr "تعذّرت قراءة السجل: {}. يمكن للنسخة الموجودة على الكمبيوتر استعادته."
+
+msgid "Settings"
+msgstr "الإعدادات"
+
+msgid "Up and Down choose, OK opens. Back returns."
+msgstr "استخدم الأعلى والأسفل للاختيار، وOK للفتح، و«رجوع» للعودة."
+
+msgid "Review changes"
+msgstr "مراجعة التغييرات"
+
+msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
+msgstr "استخدم الأعلى والأسفل لقراءة التغييرات. اختر «موافقة» للمتابعة، و«رجوع» للإلغاء."
+
+msgid "Nothing changes until you hold OK. Back cancels."
+msgstr "لن يتغيّر شيء حتى تضغط مطولًا على OK. «رجوع» للإلغاء."
+
+msgid "Approve"
+msgstr "موافقة"
+
+msgid "Press these arrows on the remote:"
+msgstr "اضغط هذه الأسهم على جهاز التحكم:"
+
+msgid "Now hold OK to apply."
+msgstr "اضغط الآن مطولًا على OK للتطبيق."

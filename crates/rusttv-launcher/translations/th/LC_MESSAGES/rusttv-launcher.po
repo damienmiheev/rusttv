@@ -79,3 +79,180 @@ msgstr "กดขึ้นและลงเพื่อเลื่อนดู
 
 msgid "Third-party notices"
 msgstr "ประกาศเกี่ยวกับบุคคลที่สาม"
+
+msgid "Updates"
+msgstr "อัปเดต"
+
+msgid "History"
+msgstr "ประวัติ"
+
+msgid "Waiting for your computer"
+msgstr "รอคอมพิวเตอร์ของคุณ"
+
+msgid "Animations"
+msgstr "ภาพเคลื่อนไหว"
+
+msgid "Faster (0.5×)"
+msgstr "เร็วขึ้น (0.5×)"
+
+msgid "Off"
+msgstr "ปิด"
+
+msgid "Normal"
+msgstr "ปกติ"
+
+msgid "On"
+msgstr "เปิด"
+
+msgid "Transition animations"
+msgstr "ภาพเคลื่อนไหวการเปลี่ยนหน้า"
+
+msgid "Window animations"
+msgstr "ภาพเคลื่อนไหวหน้าต่าง"
+
+msgid "App animations"
+msgstr "ภาพเคลื่อนไหวของแอป"
+
+msgid "off"
+msgstr "ปิด"
+
+msgid "not seen"
+msgstr "ไม่พบ"
+
+msgid "on"
+msgstr "เปิด"
+
+msgid "default"
+msgstr "ค่าเริ่มต้น"
+
+msgid "Your computer"
+msgstr "คอมพิวเตอร์ของคุณ"
+
+msgid "Changed outside RustTV"
+msgstr "เปลี่ยนจากภายนอก RustTV"
+
+msgid "Restored from your computer"
+msgstr "กู้คืนจากคอมพิวเตอร์ของคุณ"
+
+msgid "This TV"
+msgstr "ทีวีเครื่องนี้"
+
+msgid "time unknown"
+msgstr "ไม่ทราบเวลา"
+
+msgid "Apps reordered"
+msgstr "จัดเรียงแอปใหม่"
+
+msgid "Hid {}"
+msgstr "ซ่อน {}"
+
+msgid "Showed {}"
+msgstr "แสดง {}"
+
+msgid "Check for updates: {}"
+msgstr "ตรวจหาอัปเดต: {}"
+
+msgid "{}: {} → {}"
+msgstr "{}: {} → {}"
+
+msgid "Firmware updated"
+msgstr "อัปเดตเฟิร์มแวร์แล้ว"
+
+msgid "Home takeover: {}"
+msgstr "แทนที่หน้าจอหลัก: {}"
+
+msgid "No change"
+msgstr "ไม่มีการเปลี่ยนแปลง"
+
+msgid "Your computer applies these: run rusttv history apply-pending within 2 hours"
+msgstr "คอมพิวเตอร์ของคุณจะใช้รายการเหล่านี้: เรียกใช้ rusttv history apply-pending ภายใน 2 ชั่วโมง"
+
+msgid "This TV changes now"
+msgstr "ทีวีเครื่องนี้เปลี่ยนทันที"
+
+msgid "To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it."
+msgstr "หากต้องการเปลี่ยนค่านี้บนทีวีโดยตรง ให้เรียกใช้ rusttv history allow-tv-settings บนคอมพิวเตอร์หนึ่งครั้ง ระหว่างนี้คอมพิวเตอร์ของคุณจะเป็นผู้ใช้การเปลี่ยนแปลง"
+
+msgid "Some apps may look odd without animations."
+msgstr "บางแอปอาจดูแปลกไปเมื่อไม่มีภาพเคลื่อนไหว"
+
+msgid "No changes yet. Changes made here or from your computer appear here."
+msgstr "ยังไม่มีการเปลี่ยนแปลง การเปลี่ยนแปลงจากทีวีนี้หรือจากคอมพิวเตอร์ของคุณจะแสดงที่นี่"
+
+msgid "{} (+{} more)"
+msgstr "{} (+อีก {} รายการ)"
+
+msgid "Restore this state"
+msgstr "กู้คืนสถานะนี้"
+
+msgid "Check for updates automatically"
+msgstr "ตรวจหาอัปเดตโดยอัตโนมัติ"
+
+msgid "{} min"
+msgstr "{} นาที"
+
+msgid "{} h {} min"
+msgstr "{} ชม. {} นาที"
+
+msgid "On your computer, run rusttv history apply-pending within {}."
+msgstr "บนคอมพิวเตอร์ ให้เรียกใช้ rusttv history apply-pending ภายใน {}"
+
+msgid "Applied."
+msgstr "ใช้แล้ว"
+
+msgid "Saved for your computer. {}"
+msgstr "บันทึกไว้ให้คอมพิวเตอร์แล้ว {}"
+
+msgid "Nothing changed: {}"
+msgstr "ไม่มีการเปลี่ยนแปลง: {}"
+
+msgid "Nothing changed: wrong code."
+msgstr "ไม่มีการเปลี่ยนแปลง: รหัสไม่ถูกต้อง"
+
+msgid "Too many wrong codes. Approvals are locked for {}."
+msgstr "ใส่รหัสผิดหลายครั้งเกินไป การอนุมัติถูกล็อกไว้ {}"
+
+msgid "Approvals are off in test builds."
+msgstr "การอนุมัติถูกปิดในเวอร์ชันทดสอบ"
+
+msgid "Busy — try again in a moment."
+msgstr "ไม่ว่าง — โปรดลองอีกครั้งในอีกสักครู่"
+
+msgid "Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings."
+msgstr "เลิกทำได้ไม่ครบ: {} แก้ไขด้วย rusttv history restore บนคอมพิวเตอร์ หรือในการตั้งค่า Android"
+
+msgid "This is the state now: nothing to restore."
+msgstr "นี่คือสถานะปัจจุบันแล้ว: ไม่มีอะไรต้องกู้คืน"
+
+msgid "Your computer has a newer RustTV. Update RustTV on this TV."
+msgstr "คอมพิวเตอร์ของคุณมี RustTV เวอร์ชันใหม่กว่า โปรดอัปเดต RustTV บนทีวีเครื่องนี้"
+
+msgid "Reading history…"
+msgstr "กำลังอ่านประวัติ…"
+
+msgid "History couldn't be read: {}. Your computer's copy can put it back."
+msgstr "อ่านประวัติไม่ได้: {} สำเนาบนคอมพิวเตอร์ของคุณกู้คืนได้"
+
+msgid "Settings"
+msgstr "การตั้งค่า"
+
+msgid "Up and Down choose, OK opens. Back returns."
+msgstr "กดขึ้นและลงเพื่อเลือก กด OK เพื่อเปิด กดกลับเพื่อย้อนกลับ"
+
+msgid "Review changes"
+msgstr "ตรวจสอบการเปลี่ยนแปลง"
+
+msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
+msgstr "กดขึ้นและลงเพื่ออ่านการเปลี่ยนแปลง เลือก อนุมัติ เพื่อดำเนินการต่อ กดกลับเพื่อยกเลิก"
+
+msgid "Nothing changes until you hold OK. Back cancels."
+msgstr "จะไม่มีอะไรเปลี่ยนจนกว่าคุณจะกด OK ค้างไว้ กดกลับเพื่อยกเลิก"
+
+msgid "Approve"
+msgstr "อนุมัติ"
+
+msgid "Press these arrows on the remote:"
+msgstr "กดลูกศรเหล่านี้บนรีโมต:"
+
+msgid "Now hold OK to apply."
+msgstr "กด OK ค้างไว้เพื่อใช้การเปลี่ยนแปลง"

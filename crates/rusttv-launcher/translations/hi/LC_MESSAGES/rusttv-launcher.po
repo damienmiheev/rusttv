@@ -79,3 +79,180 @@ msgstr "ऊपर और नीचे से नोटिस स्क्रॉ�
 
 msgid "Third-party notices"
 msgstr "तीसरे पक्ष के नोटिस"
+
+msgid "Updates"
+msgstr "अपडेट"
+
+msgid "History"
+msgstr "इतिहास"
+
+msgid "Waiting for your computer"
+msgstr "आपके कंप्यूटर का इंतज़ार"
+
+msgid "Animations"
+msgstr "ऐनिमेशन"
+
+msgid "Faster (0.5×)"
+msgstr "तेज़ (0.5×)"
+
+msgid "Off"
+msgstr "बंद"
+
+msgid "Normal"
+msgstr "सामान्य"
+
+msgid "On"
+msgstr "चालू"
+
+msgid "Transition animations"
+msgstr "ट्रांज़िशन ऐनिमेशन"
+
+msgid "Window animations"
+msgstr "विंडो ऐनिमेशन"
+
+msgid "App animations"
+msgstr "ऐप्लिकेशन ऐनिमेशन"
+
+msgid "off"
+msgstr "बंद"
+
+msgid "not seen"
+msgstr "नहीं मिला"
+
+msgid "on"
+msgstr "चालू"
+
+msgid "default"
+msgstr "डिफ़ॉल्ट"
+
+msgid "Your computer"
+msgstr "आपका कंप्यूटर"
+
+msgid "Changed outside RustTV"
+msgstr "RustTV के बाहर बदला गया"
+
+msgid "Restored from your computer"
+msgstr "आपके कंप्यूटर से बहाल किया गया"
+
+msgid "This TV"
+msgstr "यह टीवी"
+
+msgid "time unknown"
+msgstr "समय अज्ञात"
+
+msgid "Apps reordered"
+msgstr "ऐप्लिकेशन का क्रम बदला गया"
+
+msgid "Hid {}"
+msgstr "{} छिपाया गया"
+
+msgid "Showed {}"
+msgstr "{} दिखाया गया"
+
+msgid "Check for updates: {}"
+msgstr "अपडेट की जांच: {}"
+
+msgid "{}: {} → {}"
+msgstr "{}: {} → {}"
+
+msgid "Firmware updated"
+msgstr "फ़र्मवेयर अपडेट हुआ"
+
+msgid "Home takeover: {}"
+msgstr "होम स्क्रीन बदलना: {}"
+
+msgid "No change"
+msgstr "कोई बदलाव नहीं"
+
+msgid "Your computer applies these: run rusttv history apply-pending within 2 hours"
+msgstr "इन्हें आपका कंप्यूटर लागू करेगा: 2 घंटे के अंदर rusttv history apply-pending चलाएं"
+
+msgid "This TV changes now"
+msgstr "यह टीवी अभी बदलेगा"
+
+msgid "To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it."
+msgstr "इसे सीधे टीवी पर बदलने के लिए, अपने कंप्यूटर पर एक बार rusttv history allow-tv-settings चलाएं। तब तक इसे आपका कंप्यूटर लागू करेगा।"
+
+msgid "Some apps may look odd without animations."
+msgstr "ऐनिमेशन के बिना कुछ ऐप्लिकेशन अजीब दिख सकते हैं।"
+
+msgid "No changes yet. Changes made here or from your computer appear here."
+msgstr "अभी कोई बदलाव नहीं। टीवी पर या आपके कंप्यूटर से किए गए बदलाव यहां दिखेंगे।"
+
+msgid "{} (+{} more)"
+msgstr "{} (+{} और)"
+
+msgid "Restore this state"
+msgstr "यह स्थिति बहाल करें"
+
+msgid "Check for updates automatically"
+msgstr "अपडेट की अपने-आप जांच करें"
+
+msgid "{} min"
+msgstr "{} मिनट"
+
+msgid "{} h {} min"
+msgstr "{} घंटे {} मिनट"
+
+msgid "On your computer, run rusttv history apply-pending within {}."
+msgstr "अपने कंप्यूटर पर {} के अंदर rusttv history apply-pending चलाएं।"
+
+msgid "Applied."
+msgstr "लागू किया गया।"
+
+msgid "Saved for your computer. {}"
+msgstr "आपके कंप्यूटर के लिए सहेजा गया। {}"
+
+msgid "Nothing changed: {}"
+msgstr "कुछ नहीं बदला: {}"
+
+msgid "Nothing changed: wrong code."
+msgstr "कुछ नहीं बदला: गलत कोड।"
+
+msgid "Too many wrong codes. Approvals are locked for {}."
+msgstr "बहुत ज़्यादा गलत कोड। मंज़ूरी {} के लिए लॉक है।"
+
+msgid "Approvals are off in test builds."
+msgstr "टेस्ट बिल्ड में मंज़ूरी बंद है।"
+
+msgid "Busy — try again in a moment."
+msgstr "व्यस्त है — थोड़ी देर में फिर कोशिश करें।"
+
+msgid "Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings."
+msgstr "सब कुछ पहले जैसा नहीं हो सका: {}। इसे अपने कंप्यूटर पर rusttv history restore से या Android सेटिंग में ठीक करें।"
+
+msgid "This is the state now: nothing to restore."
+msgstr "अभी यही स्थिति है: बहाल करने को कुछ नहीं।"
+
+msgid "Your computer has a newer RustTV. Update RustTV on this TV."
+msgstr "आपके कंप्यूटर पर RustTV का नया वर्शन है। इस टीवी पर RustTV अपडेट करें।"
+
+msgid "Reading history…"
+msgstr "इतिहास पढ़ा जा रहा है…"
+
+msgid "History couldn't be read: {}. Your computer's copy can put it back."
+msgstr "इतिहास पढ़ा नहीं जा सका: {}। आपके कंप्यूटर की कॉपी से इसे वापस लाया जा सकता है।"
+
+msgid "Settings"
+msgstr "सेटिंग"
+
+msgid "Up and Down choose, OK opens. Back returns."
+msgstr "ऊपर और नीचे से चुनें, OK से खोलें। लौटने के लिए 'वापस' दबाएं।"
+
+msgid "Review changes"
+msgstr "बदलाव देखें"
+
+msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
+msgstr "ऊपर और नीचे से बदलाव पढ़ें। आगे बढ़ने के लिए 'मंज़ूर करें' चुनें। रद्द करने के लिए 'वापस' दबाएं।"
+
+msgid "Nothing changes until you hold OK. Back cancels."
+msgstr "OK दबाकर रखने तक कुछ नहीं बदलेगा। रद्द करने के लिए 'वापस' दबाएं।"
+
+msgid "Approve"
+msgstr "मंज़ूर करें"
+
+msgid "Press these arrows on the remote:"
+msgstr "रिमोट पर ये तीर दबाएं:"
+
+msgid "Now hold OK to apply."
+msgstr "अब लागू करने के लिए OK दबाकर रखें।"

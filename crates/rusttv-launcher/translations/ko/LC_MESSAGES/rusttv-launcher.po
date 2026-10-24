@@ -79,3 +79,180 @@ msgstr "위/아래: 고지 스크롤. 뒤로: 돌아가기."
 
 msgid "Third-party notices"
 msgstr "타사 라이선스 고지"
+
+msgid "Updates"
+msgstr "업데이트"
+
+msgid "History"
+msgstr "기록"
+
+msgid "Waiting for your computer"
+msgstr "컴퓨터 대기 중"
+
+msgid "Animations"
+msgstr "애니메이션"
+
+msgid "Faster (0.5×)"
+msgstr "빠르게 (0.5×)"
+
+msgid "Off"
+msgstr "끄기"
+
+msgid "Normal"
+msgstr "보통"
+
+msgid "On"
+msgstr "켜기"
+
+msgid "Transition animations"
+msgstr "전환 애니메이션"
+
+msgid "Window animations"
+msgstr "창 애니메이션"
+
+msgid "App animations"
+msgstr "앱 애니메이션"
+
+msgid "off"
+msgstr "꺼짐"
+
+msgid "not seen"
+msgstr "없음"
+
+msgid "on"
+msgstr "켜짐"
+
+msgid "default"
+msgstr "기본값"
+
+msgid "Your computer"
+msgstr "내 컴퓨터"
+
+msgid "Changed outside RustTV"
+msgstr "RustTV 외부에서 변경됨"
+
+msgid "Restored from your computer"
+msgstr "내 컴퓨터에서 복원됨"
+
+msgid "This TV"
+msgstr "이 TV"
+
+msgid "time unknown"
+msgstr "시간 알 수 없음"
+
+msgid "Apps reordered"
+msgstr "앱 순서 변경됨"
+
+msgid "Hid {}"
+msgstr "{} 숨김"
+
+msgid "Showed {}"
+msgstr "{} 표시"
+
+msgid "Check for updates: {}"
+msgstr "업데이트 확인: {}"
+
+msgid "{}: {} → {}"
+msgstr "{}: {} → {}"
+
+msgid "Firmware updated"
+msgstr "펌웨어 업데이트됨"
+
+msgid "Home takeover: {}"
+msgstr "홈 화면 대체: {}"
+
+msgid "No change"
+msgstr "변경 없음"
+
+msgid "Your computer applies these: run rusttv history apply-pending within 2 hours"
+msgstr "컴퓨터에서 적용: 2시간 이내에 rusttv history apply-pending 실행"
+
+msgid "This TV changes now"
+msgstr "이 TV에서 바로 변경"
+
+msgid "To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it."
+msgstr "TV에서 직접 변경하려면 컴퓨터에서 rusttv history allow-tv-settings를 한 번 실행하세요. 그 전까지는 컴퓨터가 적용합니다."
+
+msgid "Some apps may look odd without animations."
+msgstr "애니메이션이 없으면 일부 앱이 어색해 보일 수 있습니다."
+
+msgid "No changes yet. Changes made here or from your computer appear here."
+msgstr "아직 변경 사항이 없습니다. TV나 컴퓨터에서 변경한 내용이 여기에 표시됩니다."
+
+msgid "{} (+{} more)"
+msgstr "{} (외 {}개)"
+
+msgid "Restore this state"
+msgstr "이 상태로 복원"
+
+msgid "Check for updates automatically"
+msgstr "자동으로 업데이트 확인"
+
+msgid "{} min"
+msgstr "{}분"
+
+msgid "{} h {} min"
+msgstr "{}시간 {}분"
+
+msgid "On your computer, run rusttv history apply-pending within {}."
+msgstr "컴퓨터에서 {} 이내에 rusttv history apply-pending을 실행하세요."
+
+msgid "Applied."
+msgstr "적용되었습니다."
+
+msgid "Saved for your computer. {}"
+msgstr "컴퓨터용으로 저장했습니다. {}"
+
+msgid "Nothing changed: {}"
+msgstr "변경되지 않음: {}"
+
+msgid "Nothing changed: wrong code."
+msgstr "변경되지 않음: 잘못된 코드입니다."
+
+msgid "Too many wrong codes. Approvals are locked for {}."
+msgstr "잘못된 코드가 너무 많습니다. {} 동안 승인이 잠깁니다."
+
+msgid "Approvals are off in test builds."
+msgstr "테스트 빌드에서는 승인이 꺼져 있습니다."
+
+msgid "Busy — try again in a moment."
+msgstr "처리 중입니다. 잠시 후 다시 시도하세요."
+
+msgid "Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings."
+msgstr "일부를 되돌리지 못했습니다: {}. 컴퓨터에서 rusttv history restore를 실행하거나 Android 설정에서 해결하세요."
+
+msgid "This is the state now: nothing to restore."
+msgstr "이미 현재 상태입니다. 복원할 내용이 없습니다."
+
+msgid "Your computer has a newer RustTV. Update RustTV on this TV."
+msgstr "컴퓨터의 RustTV가 더 최신입니다. 이 TV의 RustTV를 업데이트하세요."
+
+msgid "Reading history…"
+msgstr "기록 읽는 중…"
+
+msgid "History couldn't be read: {}. Your computer's copy can put it back."
+msgstr "기록을 읽을 수 없습니다: {}. 컴퓨터의 사본으로 복구할 수 있습니다."
+
+msgid "Settings"
+msgstr "설정"
+
+msgid "Up and Down choose, OK opens. Back returns."
+msgstr "위/아래: 선택. OK: 열기. 뒤로: 돌아가기."
+
+msgid "Review changes"
+msgstr "변경 사항 검토"
+
+msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
+msgstr "위/아래: 변경 사항 보기. 계속하려면 승인을 선택하세요. 뒤로: 취소."
+
+msgid "Nothing changes until you hold OK. Back cancels."
+msgstr "OK를 길게 누르기 전에는 아무것도 바뀌지 않습니다. 뒤로: 취소."
+
+msgid "Approve"
+msgstr "승인"
+
+msgid "Press these arrows on the remote:"
+msgstr "리모컨에서 이 화살표를 누르세요:"
+
+msgid "Now hold OK to apply."
+msgstr "이제 OK를 길게 눌러 적용하세요."

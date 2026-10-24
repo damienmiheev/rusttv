@@ -79,3 +79,180 @@ msgstr "W górę i W dół przewijają informacje. Wstecz, aby wrócić."
 
 msgid "Third-party notices"
 msgstr "Licencje zewnętrzne"
+
+msgid "Updates"
+msgstr "Aktualizacje"
+
+msgid "History"
+msgstr "Historia"
+
+msgid "Waiting for your computer"
+msgstr "Czeka na komputer"
+
+msgid "Animations"
+msgstr "Animacje"
+
+msgid "Faster (0.5×)"
+msgstr "Szybciej (0,5×)"
+
+msgid "Off"
+msgstr "Wyłączone"
+
+msgid "Normal"
+msgstr "Normalne"
+
+msgid "On"
+msgstr "Włączone"
+
+msgid "Transition animations"
+msgstr "Animacje przejść"
+
+msgid "Window animations"
+msgstr "Animacje okien"
+
+msgid "App animations"
+msgstr "Animacje aplikacji"
+
+msgid "off"
+msgstr "wyłączona"
+
+msgid "not seen"
+msgstr "nie znaleziono"
+
+msgid "on"
+msgstr "włączona"
+
+msgid "default"
+msgstr "domyślnie"
+
+msgid "Your computer"
+msgstr "Twój komputer"
+
+msgid "Changed outside RustTV"
+msgstr "Zmieniono poza RustTV"
+
+msgid "Restored from your computer"
+msgstr "Przywrócono z komputera"
+
+msgid "This TV"
+msgstr "Ten telewizor"
+
+msgid "time unknown"
+msgstr "nieznany czas"
+
+msgid "Apps reordered"
+msgstr "Zmieniono kolejność aplikacji"
+
+msgid "Hid {}"
+msgstr "Ukryto {}"
+
+msgid "Showed {}"
+msgstr "Pokazano {}"
+
+msgid "Check for updates: {}"
+msgstr "Sprawdzanie aktualizacji: {}"
+
+msgid "{}: {} → {}"
+msgstr "{}: {} → {}"
+
+msgid "Firmware updated"
+msgstr "Zaktualizowano oprogramowanie sprzętowe"
+
+msgid "Home takeover: {}"
+msgstr "Zastąpienie ekranu głównego: {}"
+
+msgid "No change"
+msgstr "Bez zmian"
+
+msgid "Your computer applies these: run rusttv history apply-pending within 2 hours"
+msgstr "Zastosuje je komputer: uruchom rusttv history apply-pending w ciągu 2 godzin"
+
+msgid "This TV changes now"
+msgstr "Zmieni się od razu na telewizorze"
+
+msgid "To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it."
+msgstr "Aby zmieniać to na samym telewizorze, raz uruchom rusttv history allow-tv-settings na komputerze. Do tego czasu stosuje to komputer."
+
+msgid "Some apps may look odd without animations."
+msgstr "Bez animacji niektóre aplikacje mogą wyglądać dziwnie."
+
+msgid "No changes yet. Changes made here or from your computer appear here."
+msgstr "Brak zmian. Pojawią się tu zmiany wprowadzone na telewizorze lub z komputera."
+
+msgid "{} (+{} more)"
+msgstr "{} (+{} więcej)"
+
+msgid "Restore this state"
+msgstr "Przywróć ten stan"
+
+msgid "Check for updates automatically"
+msgstr "Automatycznie sprawdzaj aktualizacje"
+
+msgid "{} min"
+msgstr "{} min"
+
+msgid "{} h {} min"
+msgstr "{} godz. {} min"
+
+msgid "On your computer, run rusttv history apply-pending within {}."
+msgstr "Na komputerze uruchom rusttv history apply-pending w ciągu {}."
+
+msgid "Applied."
+msgstr "Zastosowano."
+
+msgid "Saved for your computer. {}"
+msgstr "Zapisano dla komputera. {}"
+
+msgid "Nothing changed: {}"
+msgstr "Nic nie zmieniono: {}"
+
+msgid "Nothing changed: wrong code."
+msgstr "Nic nie zmieniono: błędny kod."
+
+msgid "Too many wrong codes. Approvals are locked for {}."
+msgstr "Zbyt wiele błędnych kodów. Zatwierdzanie zablokowane na {}."
+
+msgid "Approvals are off in test builds."
+msgstr "Zatwierdzanie jest wyłączone w wersjach testowych."
+
+msgid "Busy — try again in a moment."
+msgstr "Zajęte — spróbuj ponownie za chwilę."
+
+msgid "Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings."
+msgstr "Nie udało się cofnąć wszystkiego: {}. Napraw to poleceniem rusttv history restore na komputerze lub w ustawieniach Androida."
+
+msgid "This is the state now: nothing to restore."
+msgstr "To już jest obecny stan: nie ma czego przywracać."
+
+msgid "Your computer has a newer RustTV. Update RustTV on this TV."
+msgstr "Komputer ma nowszą wersję RustTV. Zaktualizuj RustTV na tym telewizorze."
+
+msgid "Reading history…"
+msgstr "Odczytywanie historii…"
+
+msgid "History couldn't be read: {}. Your computer's copy can put it back."
+msgstr "Nie udało się odczytać historii: {}. Kopia na komputerze może ją przywrócić."
+
+msgid "Settings"
+msgstr "Ustawienia"
+
+msgid "Up and Down choose, OK opens. Back returns."
+msgstr "W górę i W dół wybierają, OK otwiera. Wstecz, aby wrócić."
+
+msgid "Review changes"
+msgstr "Przejrzyj zmiany"
+
+msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
+msgstr "W górę i W dół przewijają zmiany. Wybierz Zatwierdź, aby kontynuować. Wstecz, aby anulować."
+
+msgid "Nothing changes until you hold OK. Back cancels."
+msgstr "Nic się nie zmieni, dopóki nie przytrzymasz OK. Wstecz, aby anulować."
+
+msgid "Approve"
+msgstr "Zatwierdź"
+
+msgid "Press these arrows on the remote:"
+msgstr "Naciśnij te strzałki na pilocie:"
+
+msgid "Now hold OK to apply."
+msgstr "Teraz przytrzymaj OK, aby zastosować."

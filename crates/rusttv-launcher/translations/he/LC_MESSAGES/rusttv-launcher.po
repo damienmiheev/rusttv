@@ -79,3 +79,180 @@ msgstr "למעלה ולמטה – גלילה. חזרה – יציאה מהמסך
 
 msgid "Third-party notices"
 msgstr "הודעות צד שלישי"
+
+msgid "Updates"
+msgstr "עדכונים"
+
+msgid "History"
+msgstr "היסטוריה"
+
+msgid "Waiting for your computer"
+msgstr "ממתין למחשב"
+
+msgid "Animations"
+msgstr "אנימציות"
+
+msgid "Faster (0.5×)"
+msgstr "מהיר יותר (0.5×)"
+
+msgid "Off"
+msgstr "כבוי"
+
+msgid "Normal"
+msgstr "רגיל"
+
+msgid "On"
+msgstr "פועל"
+
+msgid "Transition animations"
+msgstr "אנימציות מעבר"
+
+msgid "Window animations"
+msgstr "אנימציות חלון"
+
+msgid "App animations"
+msgstr "אנימציות אפליקציות"
+
+msgid "off"
+msgstr "כבויה"
+
+msgid "not seen"
+msgstr "לא נמצאה"
+
+msgid "on"
+msgstr "פועלת"
+
+msgid "default"
+msgstr "ברירת מחדל"
+
+msgid "Your computer"
+msgstr "המחשב שלך"
+
+msgid "Changed outside RustTV"
+msgstr "שונה מחוץ ל-RustTV"
+
+msgid "Restored from your computer"
+msgstr "שוחזר מהמחשב שלך"
+
+msgid "This TV"
+msgstr "הטלוויזיה הזו"
+
+msgid "time unknown"
+msgstr "שעה לא ידועה"
+
+msgid "Apps reordered"
+msgstr "סדר האפליקציות שונה"
+
+msgid "Hid {}"
+msgstr "הוסתר: {}"
+
+msgid "Showed {}"
+msgstr "הוצג: {}"
+
+msgid "Check for updates: {}"
+msgstr "בדיקת עדכונים: {}"
+
+msgid "{}: {} → {}"
+msgstr "{}: {} → {}"
+
+msgid "Firmware updated"
+msgstr "הקושחה עודכנה"
+
+msgid "Home takeover: {}"
+msgstr "החלפת מסך הבית: {}"
+
+msgid "No change"
+msgstr "ללא שינוי"
+
+msgid "Your computer applies these: run rusttv history apply-pending within 2 hours"
+msgstr "המחשב שלך יחיל אותם: יש להריץ rusttv history apply-pending תוך שעתיים"
+
+msgid "This TV changes now"
+msgstr "הטלוויזיה משתנה עכשיו"
+
+msgid "To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it."
+msgstr "כדי לשנות זאת בטלוויזיה עצמה, יש להריץ פעם אחת rusttv history allow-tv-settings במחשב. עד אז המחשב מחיל את השינוי."
+
+msgid "Some apps may look odd without animations."
+msgstr "בלי אנימציות, חלק מהאפליקציות עשויות להיראות מוזר."
+
+msgid "No changes yet. Changes made here or from your computer appear here."
+msgstr "אין עדיין שינויים. שינויים שנעשו בטלוויזיה או מהמחשב יופיעו כאן."
+
+msgid "{} (+{} more)"
+msgstr "{} (+{} נוספים)"
+
+msgid "Restore this state"
+msgstr "שחזור למצב הזה"
+
+msgid "Check for updates automatically"
+msgstr "בדיקת עדכונים אוטומטית"
+
+msgid "{} min"
+msgstr "{} דק׳"
+
+msgid "{} h {} min"
+msgstr "{} שע׳ {} דק׳"
+
+msgid "On your computer, run rusttv history apply-pending within {}."
+msgstr "יש להריץ במחשב rusttv history apply-pending תוך {}."
+
+msgid "Applied."
+msgstr "הוחל."
+
+msgid "Saved for your computer. {}"
+msgstr "נשמר עבור המחשב. {}"
+
+msgid "Nothing changed: {}"
+msgstr "לא שונה דבר: {}"
+
+msgid "Nothing changed: wrong code."
+msgstr "לא שונה דבר: קוד שגוי."
+
+msgid "Too many wrong codes. Approvals are locked for {}."
+msgstr "יותר מדי קודים שגויים. האישורים נעולים למשך {}."
+
+msgid "Approvals are off in test builds."
+msgstr "האישורים כבויים בגרסאות בדיקה."
+
+msgid "Busy — try again in a moment."
+msgstr "תפוס – כדאי לנסות שוב בעוד רגע."
+
+msgid "Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings."
+msgstr "לא ניתן היה לבטל הכול: {}. אפשר לתקן עם rusttv history restore במחשב, או בהגדרות Android."
+
+msgid "This is the state now: nothing to restore."
+msgstr "זה כבר המצב הנוכחי: אין מה לשחזר."
+
+msgid "Your computer has a newer RustTV. Update RustTV on this TV."
+msgstr "במחשב יש גרסה חדשה יותר של RustTV. יש לעדכן את RustTV בטלוויזיה הזו."
+
+msgid "Reading history…"
+msgstr "ההיסטוריה נקראת…"
+
+msgid "History couldn't be read: {}. Your computer's copy can put it back."
+msgstr "לא ניתן לקרוא את ההיסטוריה: {}. העותק שבמחשב יכול לשחזר אותה."
+
+msgid "Settings"
+msgstr "הגדרות"
+
+msgid "Up and Down choose, OK opens. Back returns."
+msgstr "למעלה ולמטה – בחירה. OK – פתיחה. חזרה – יציאה מהמסך."
+
+msgid "Review changes"
+msgstr "סקירת השינויים"
+
+msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
+msgstr "למעלה ולמטה – קריאת השינויים. יש לבחור באישור כדי להמשיך. חזרה – ביטול."
+
+msgid "Nothing changes until you hold OK. Back cancels."
+msgstr "שום דבר לא משתנה לפני לחיצה ארוכה על OK. חזרה – ביטול."
+
+msgid "Approve"
+msgstr "אישור"
+
+msgid "Press these arrows on the remote:"
+msgstr "יש ללחוץ על החצים האלה בשלט:"
+
+msgid "Now hold OK to apply."
+msgstr "עכשיו יש ללחוץ לחיצה ארוכה על OK כדי להחיל."
