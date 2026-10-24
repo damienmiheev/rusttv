@@ -309,3 +309,55 @@ Decided "not for now"; raise again when the core launcher is done.
     it reports about multi-window and PiP support and which installed apps
     declare PiP; if promising, a reversible test of the two switches with
     the owner's approval, judged by eye.
+
+- **Panels: add-ons with several faces, and a theme builder** — parked
+  2026-10-24. Owner's idea: features such as History/Settings become add-ons
+  ("panels" for people, "add-ons" in code; "widgets" clashes with Android's
+  App Widgets; "cards" and "modules" also considered) kept in the RustTV
+  folder on the launcher, each implementing one contract with several views,
+  like iOS widgets. Later: easy new add-ons, maybe a marketplace, and a tool
+  for building themes (grids, buttons, menus, panels inside menus). Discussion
+  so far:
+  - **Faces, one contract:** *page* (full screen, as Settings is now);
+    *tile* on the Home grid in fixed sizes (1×1, wide 2×1, maybe 2×2: a
+    weather add-on shows a temperature small and a forecast wide); *row*
+    (a compact line in a menu or the Settings list: "History: 3 changes
+    today", a toggle). Possible later faces: *ambient* (idle or screensaver
+    overlay), the *hero* area above the grid, and a *phone* face for the
+    phone remote (the add-on brings its own phone layout). Each face gets
+    data in and a fixed list of actions out (open, toggle, request a change
+    through the existing review + code + hold screen); none touches the
+    system directly. Tiles render only while visible, with no per-frame work
+    (the launcher's performance budgets apply to every add-on).
+  - **Trust levels — the hard part is other people's code, not the views:**
+    1. *Built-in panels*, compiled in (History, Settings, later Weather):
+       fast and safe; today's model.
+    2. *Data-only panels*: layouts, themes, phone-remote layouts, presets.
+       No code, so nothing harmful; can be shared or sold from day one.
+    3. *Code panels from others*, sandboxed: a WASM interpreter with a
+       capability API, or a separate app talking through a content provider
+       like the history door. Running someone's code inside Home is the
+       biggest risk RustTV could take on: needs its own safety review and a
+       dated owner decision (SECURITY.md) before any work.
+  - **Theme builder:** a theme is data — the grid (which panels where, their
+    sizes), the tokens the `Theme` global already has (colours, type sizes,
+    radius, motion), the menus and the panels inside them. Edited on the Mac
+    (later from the phone), previewed in the desktop mode, applied through
+    review and confirm; every change lands in History, so "undo my theme"
+    and "copy my setup to another TV" come for free.
+  - **Marketplace:** first for data-only panels and themes (safe); code
+    panels only after level 3 has a sandbox. Distribution, signing and
+    updates would follow the launcher's update rules (signed, checked,
+    confirmed by the person).
+  - **Groundwork already there:** the Settings page is a section list plus a
+    panel; each section can later become an add-on's page face, so turning
+    History into the first add-on is a refactor, not a rewrite. No add-on
+    abstraction is built before the idea is picked up (no speculative code).
+  - **Open questions:** the name; the face list and tile sizes; the sandbox
+    choice (WASM interpreter size and speed on armv7 to be measured); how a
+    panel declares the data it needs; the marketplace's trust and payment
+    model; where add-ons live in the repository (crates named
+    `rusttv-<name>`, e.g. `rusttv-weather`).
+  - **First step when picked up:** write the contract for the built-in
+    panels only (page, tile, row), move History/Settings onto it, and
+    measure that Home's start, resume and frame times don't change.
