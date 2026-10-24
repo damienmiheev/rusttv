@@ -1,0 +1,81 @@
+# RustTV launcher, Simplified Chinese. Draft translation; needs review by a native speaker.
+msgid ""
+msgstr ""
+"Project-Id-Version: rusttv-launcher\n"
+"PO-Revision-Date: 2026-10-24 00:00+0000\n"
+"Last-Translator: Draft, unreviewed\n"
+"Language-Team: none\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Checking for updates…"
+msgstr "正在检查更新…"
+
+msgid "Up to date"
+msgstr "已是最新版本"
+
+msgid "Version {} available — press OK to install"
+msgstr "发现新版本 {}，按 OK 键安装"
+
+msgid "Allow RustTV to install apps, then press OK to install {}"
+msgstr "请允许 RustTV 安装应用，然后按 OK 键安装 {}"
+
+msgid "Downloading {}%"
+msgstr "正在下载 {}%"
+
+msgid "Installing…"
+msgstr "正在安装…"
+
+msgid "Update installed"
+msgstr "更新已安装"
+
+msgid "Update failed: {}"
+msgstr "更新失败：{}"
+
+msgid "Press OK to check for updates"
+msgstr "按 OK 键检查更新"
+
+msgid "Hide from Home"
+msgstr "从主屏幕隐藏"
+
+msgid "Move"
+msgstr "移动"
+
+msgid "Couldn't open {}"
+msgstr "无法打开 {}"
+
+msgid "Couldn't load apps: {}"
+msgstr "无法加载应用：{}"
+
+msgid "Couldn't load the licence notices: {}"
+msgstr "无法加载许可声明：{}"
+
+msgid "About RustTV"
+msgstr "关于 RustTV"
+
+msgid "Hidden apps"
+msgstr "已隐藏的应用"
+
+msgid "About"
+msgstr "关于"
+
+msgid "OK puts the app back on Home. Back returns."
+msgstr "按 OK 键将应用放回主屏幕，按返回键返回。"
+
+msgid "Version {} · MIT OR Apache-2.0"
+msgstr "版本 {} · MIT OR Apache-2.0"
+
+msgid "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0."
+msgstr "使用 Slint 构建，遵循 Slint Royalty-free License 2.0。另含 Skia（BSD-3-Clause）及采用 MIT 或 Apache-2.0 许可的 Rust 库。"
+
+msgid "Source: github.com/damienmiheev/rusttv"
+msgstr "源代码：github.com/damienmiheev/rusttv"
+
+msgid "Up and Down scroll the notices. Back returns."
+msgstr "按上下键滚动声明，按返回键返回。"
+
+msgid "Third-party notices"
+msgstr "第三方声明"

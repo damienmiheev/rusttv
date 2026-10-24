@@ -1,0 +1,74 @@
+# RustTV launcher texts (crates/rusttv-launcher/ui/home.slint).
+# Template for translations/<lang>/LC_MESSAGES/rusttv-launcher.po; see translations/README.md.
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+
+msgid "Checking for updates…"
+msgstr ""
+
+msgid "Up to date"
+msgstr ""
+
+msgid "Version {} available — press OK to install"
+msgstr ""
+
+msgid "Allow RustTV to install apps, then press OK to install {}"
+msgstr ""
+
+msgid "Downloading {}%"
+msgstr ""
+
+msgid "Installing…"
+msgstr ""
+
+msgid "Update installed"
+msgstr ""
+
+msgid "Update failed: {}"
+msgstr ""
+
+msgid "Press OK to check for updates"
+msgstr ""
+
+msgid "Hide from Home"
+msgstr ""
+
+msgid "Move"
+msgstr ""
+
+msgid "Couldn't open {}"
+msgstr ""
+
+msgid "Couldn't load apps: {}"
+msgstr ""
+
+msgid "Couldn't load the licence notices: {}"
+msgstr ""
+
+msgid "About RustTV"
+msgstr ""
+
+msgid "Hidden apps"
+msgstr ""
+
+msgid "About"
+msgstr ""
+
+msgid "OK puts the app back on Home. Back returns."
+msgstr ""
+
+msgid "Version {} · MIT OR Apache-2.0"
+msgstr ""
+
+msgid "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0."
+msgstr ""
+
+msgid "Source: github.com/damienmiheev/rusttv"
+msgstr ""
+
+msgid "Up and Down scroll the notices. Back returns."
+msgstr ""
+
+msgid "Third-party notices"
+msgstr ""

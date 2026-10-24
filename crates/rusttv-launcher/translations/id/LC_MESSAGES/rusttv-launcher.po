@@ -1,0 +1,81 @@
+# RustTV launcher, Indonesian. Draft translation; needs review by a native speaker.
+msgid ""
+msgstr ""
+"Project-Id-Version: rusttv-launcher\n"
+"PO-Revision-Date: 2026-10-24 00:00+0000\n"
+"Last-Translator: Draft, unreviewed\n"
+"Language-Team: none\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: id\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Checking for updates…"
+msgstr "Memeriksa update…"
+
+msgid "Up to date"
+msgstr "Sudah terbaru"
+
+msgid "Version {} available — press OK to install"
+msgstr "Versi {} tersedia — tekan OK untuk menginstal"
+
+msgid "Allow RustTV to install apps, then press OK to install {}"
+msgstr "Izinkan RustTV menginstal aplikasi, lalu tekan OK untuk menginstal {}"
+
+msgid "Downloading {}%"
+msgstr "Mendownload {}%"
+
+msgid "Installing…"
+msgstr "Menginstal…"
+
+msgid "Update installed"
+msgstr "Update terinstal"
+
+msgid "Update failed: {}"
+msgstr "Update gagal: {}"
+
+msgid "Press OK to check for updates"
+msgstr "Tekan OK untuk memeriksa update"
+
+msgid "Hide from Home"
+msgstr "Sembunyikan dari layar utama"
+
+msgid "Move"
+msgstr "Pindahkan"
+
+msgid "Couldn't open {}"
+msgstr "Tidak dapat membuka {}"
+
+msgid "Couldn't load apps: {}"
+msgstr "Tidak dapat memuat aplikasi: {}"
+
+msgid "Couldn't load the licence notices: {}"
+msgstr "Tidak dapat memuat pemberitahuan lisensi: {}"
+
+msgid "About RustTV"
+msgstr "Tentang RustTV"
+
+msgid "Hidden apps"
+msgstr "Aplikasi tersembunyi"
+
+msgid "About"
+msgstr "Tentang"
+
+msgid "OK puts the app back on Home. Back returns."
+msgstr "OK mengembalikan aplikasi ke layar utama. Tekan Kembali untuk kembali."
+
+msgid "Version {} · MIT OR Apache-2.0"
+msgstr "Versi {} · MIT OR Apache-2.0"
+
+msgid "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0."
+msgstr "Dibuat dengan Slint di bawah Slint Royalty-free License 2.0. Juga menyertakan Skia (BSD-3-Clause) dan library Rust di bawah MIT atau Apache-2.0."
+
+msgid "Source: github.com/damienmiheev/rusttv"
+msgstr "Kode sumber: github.com/damienmiheev/rusttv"
+
+msgid "Up and Down scroll the notices. Back returns."
+msgstr "Atas dan Bawah untuk menggulir. Tekan Kembali untuk kembali."
+
+msgid "Third-party notices"
+msgstr "Pemberitahuan pihak ketiga"

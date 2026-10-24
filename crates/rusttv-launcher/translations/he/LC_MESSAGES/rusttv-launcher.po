@@ -1,0 +1,81 @@
+# RustTV launcher, Hebrew. Draft translation; needs review by a native speaker.
+msgid ""
+msgstr ""
+"Project-Id-Version: rusttv-launcher\n"
+"PO-Revision-Date: 2026-10-24 00:00+0000\n"
+"Last-Translator: Draft, unreviewed\n"
+"Language-Team: none\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: he\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Checking for updates…"
+msgstr "מתבצעת בדיקת עדכונים…"
+
+msgid "Up to date"
+msgstr "הגרסה עדכנית"
+
+msgid "Version {} available — press OK to install"
+msgstr "גרסה {} זמינה — יש ללחוץ OK להתקנה"
+
+msgid "Allow RustTV to install apps, then press OK to install {}"
+msgstr "יש לאשר ל-RustTV להתקין אפליקציות, ואז ללחוץ OK כדי להתקין את {}"
+
+msgid "Downloading {}%"
+msgstr "ההורדה: {}%"
+
+msgid "Installing…"
+msgstr "ההתקנה מתבצעת…"
+
+msgid "Update installed"
+msgstr "העדכון הותקן"
+
+msgid "Update failed: {}"
+msgstr "העדכון נכשל: {}"
+
+msgid "Press OK to check for updates"
+msgstr "יש ללחוץ OK כדי לחפש עדכונים"
+
+msgid "Hide from Home"
+msgstr "הסתרה ממסך הבית"
+
+msgid "Move"
+msgstr "העברה"
+
+msgid "Couldn't open {}"
+msgstr "לא ניתן לפתוח את {}"
+
+msgid "Couldn't load apps: {}"
+msgstr "לא ניתן לטעון אפליקציות: {}"
+
+msgid "Couldn't load the licence notices: {}"
+msgstr "לא ניתן לטעון את הודעות הרישיון: {}"
+
+msgid "About RustTV"
+msgstr "מידע על RustTV"
+
+msgid "Hidden apps"
+msgstr "אפליקציות מוסתרות"
+
+msgid "About"
+msgstr "מידע"
+
+msgid "OK puts the app back on Home. Back returns."
+msgstr "OK – החזרת האפליקציה למסך הבית. חזרה – יציאה מהמסך."
+
+msgid "Version {} · MIT OR Apache-2.0"
+msgstr "גרסה {} · MIT OR Apache-2.0"
+
+msgid "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0."
+msgstr "נבנה עם Slint ברישיון Slint Royalty-free License 2.0. כולל גם את Skia (BSD-3-Clause) וספריות Rust ברישיון MIT או Apache-2.0."
+
+msgid "Source: github.com/damienmiheev/rusttv"
+msgstr "קוד מקור: github.com/damienmiheev/rusttv"
+
+msgid "Up and Down scroll the notices. Back returns."
+msgstr "למעלה ולמטה – גלילה. חזרה – יציאה מהמסך."
+
+msgid "Third-party notices"
+msgstr "הודעות צד שלישי"

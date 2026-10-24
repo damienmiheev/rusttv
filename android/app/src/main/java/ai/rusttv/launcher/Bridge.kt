@@ -96,6 +96,11 @@ object Bridge {
         Runtime.getRuntime().gc()
     }
 
+    /** The app's language as a BCP 47 tag, e.g. "uk-UA" (the first of the user's languages). */
+    @JvmStatic
+    fun language(context: Context): String =
+        context.resources.configuration.locales[0].toLanguageTag()
+
     /** The third-party licence notices packed into the APK by Gradle (app/build.gradle.kts). */
     @JvmStatic
     fun notices(context: Context): String =

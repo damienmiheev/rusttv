@@ -1,0 +1,81 @@
+# RustTV launcher, Dutch. Draft translation; needs review by a native speaker.
+msgid ""
+msgstr ""
+"Project-Id-Version: rusttv-launcher\n"
+"PO-Revision-Date: 2026-10-24 00:00+0000\n"
+"Last-Translator: Draft, unreviewed\n"
+"Language-Team: none\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: nl\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Checking for updates…"
+msgstr "Zoeken naar updates…"
+
+msgid "Up to date"
+msgstr "Up-to-date"
+
+msgid "Version {} available — press OK to install"
+msgstr "Versie {} beschikbaar — druk op OK om te installeren"
+
+msgid "Allow RustTV to install apps, then press OK to install {}"
+msgstr "Sta RustTV toe apps te installeren en druk dan op OK om {} te installeren"
+
+msgid "Downloading {}%"
+msgstr "Downloaden: {}%"
+
+msgid "Installing…"
+msgstr "Installeren…"
+
+msgid "Update installed"
+msgstr "Update geïnstalleerd"
+
+msgid "Update failed: {}"
+msgstr "Update mislukt: {}"
+
+msgid "Press OK to check for updates"
+msgstr "Druk op OK om te zoeken naar updates"
+
+msgid "Hide from Home"
+msgstr "Verbergen op startscherm"
+
+msgid "Move"
+msgstr "Verplaatsen"
+
+msgid "Couldn't open {}"
+msgstr "Kan {} niet openen"
+
+msgid "Couldn't load apps: {}"
+msgstr "Kan apps niet laden: {}"
+
+msgid "Couldn't load the licence notices: {}"
+msgstr "Kan licentievermeldingen niet laden: {}"
+
+msgid "About RustTV"
+msgstr "Over RustTV"
+
+msgid "Hidden apps"
+msgstr "Verborgen apps"
+
+msgid "About"
+msgstr "Over"
+
+msgid "OK puts the app back on Home. Back returns."
+msgstr "OK zet de app terug op het startscherm. Terug om terug te gaan."
+
+msgid "Version {} · MIT OR Apache-2.0"
+msgstr "Versie {} · MIT OR Apache-2.0"
+
+msgid "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0."
+msgstr "Gemaakt met Slint onder de Slint Royalty-free License 2.0. Bevat ook Skia (BSD-3-Clause) en Rust-bibliotheken onder MIT of Apache-2.0."
+
+msgid "Source: github.com/damienmiheev/rusttv"
+msgstr "Broncode: github.com/damienmiheev/rusttv"
+
+msgid "Up and Down scroll the notices. Back returns."
+msgstr "Omhoog en Omlaag scrollen door de vermeldingen. Terug om terug te gaan."
+
+msgid "Third-party notices"
+msgstr "Vermeldingen van derden"

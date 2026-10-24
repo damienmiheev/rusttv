@@ -87,11 +87,12 @@ There is intentionally no `shell(&str)`. Values that end up in `adb shell` argum
 | Module | Role |
 |---|---|
 | `model.rs` | Pure state machine `Home`: tile order, D-pad focus, shelf/grid scroll, long-press menu, move mode, hidden apps, launch in flight. Time is passed in; returns `Effect`s. No Slint, no platform. |
+| `i18n.rs` | Which bundled translation fits the device's language tag (Chinese by script or region, Portuguese to `pt_BR`, else English), and whether it is right-to-left. Translations: `translations/<lang>/LC_MESSAGES/rusttv-launcher.po`, compiled in by `build.rs` (Slint bundled translations, `@tr` in `home.slint`; texts Rust puts together go through the `Strings` global). Right-to-left mirrors positions through the `Dir` global and swaps Left/Right in the model. |
 | `order_file.rs` | Tile order, hidden apps and last focused tile in `order.toml` (app files dir): atomic write, unreadable file kept as `.bak`. |
 | `platform.rs` | `Platform` trait (`list_apps`, `launch`, `take_apps_changed`, `update_status`, `check_for_update`, `install_update`), `PlatformError`, `UpdateStatus`, `Bitmap` (shrink, blur, hero backdrop glow), `FakePlatform` (feature `test-util`). |
 | `ui.rs` + `ui/home.slint` | Rust owns state and timers and pushes properties; Slint draws, animates and forwards keys. `Lifecycle` reports pause/resume. |
 | `android.rs` | `android_main` + `AndroidPlatform` over JNI. The only module with `unsafe` (crate lint `unsafe_code = "deny"`, module `allow`, a `SAFETY:` comment per block). |
-| `bin/desktop.rs` | Desktop dev mode with `FakePlatform` (Slint winit backend + software renderer, no Skia); `--order <file>`, `--demo <dir>` snapshots. |
+| `bin/desktop.rs` | Desktop dev mode with `FakePlatform` (Slint winit backend + software renderer, no Skia); `--order <file>`, `--demo <dir>` snapshots, `RUSTTV_LANG=<tag>` for a translation. |
 
 Targets: on Android Slint's `backend-android-activity-06` (Skia, D11); elsewhere `backend-winit` + `renderer-software`. `crate-type = ["lib", "cdylib"]`; the APK's library is built with the size-tuned `android-release` profile.
 
@@ -106,6 +107,7 @@ LauncherActivity (Kotlin, extends NativeActivity, D11)
    │     banner/icon(context, component, w, h): IntArray?   ARGB pixels, null if none
    │     launch(context, component): Boolean       false if the activity is gone
    │     takeAppsChanged(): Boolean                set by the package receiver; cleared on read
+   │     language(context): String                 BCP 47 tag, read once at start (i18n.rs)
    │     updateStatus(context): String             "kind" or "kind\tdetail" (Updater.kt, D18)
    │     checkForUpdate/installUpdate(context)     start background work, return at once
    │

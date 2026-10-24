@@ -8,6 +8,7 @@
 
 #[cfg(target_os = "android")]
 mod android;
+mod i18n;
 mod model;
 mod order_file;
 mod platform;

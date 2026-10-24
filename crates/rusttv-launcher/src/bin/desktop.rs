@@ -5,6 +5,8 @@
 //!
 //! `--order <file>` keeps the tile order in that file between runs.
 //!
+//! `RUSTTV_LANG=<tag>` (e.g. `uk`, `ar`) shows that translation.
+//!
 //! `--demo <dir>` instead plays a fixed key script and writes a BMP snapshot
 //! after each step into `<dir>`, then quits. Needs no screen-capture permission.
 
@@ -91,6 +93,9 @@ fn demo_script() -> Vec<DemoStep> {
         Tap(DOWN),
         ms(300),
         Snapshot("12-menu-hide"),
+        // A text too long for the menu (some translations) slides after a pause.
+        ms(2000),
+        Snapshot("12b-menu-marquee"),
         Tap(OK),
         ms(400),
         Snapshot("13-hidden"),
@@ -113,6 +118,8 @@ fn demo_script() -> Vec<DemoStep> {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut options = RunOptions {
+        // e.g. RUSTTV_LANG=uk or RUSTTV_LANG=ar to try a translation.
+        language: std::env::var("RUSTTV_LANG").ok(),
         right_to_left: false,
         simulated_pause: Some(SIMULATED_APP_START),
         order_file: None,

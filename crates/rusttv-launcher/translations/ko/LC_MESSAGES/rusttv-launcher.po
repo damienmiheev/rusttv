@@ -1,0 +1,81 @@
+# RustTV launcher, Korean. Draft translation; needs review by a native speaker.
+msgid ""
+msgstr ""
+"Project-Id-Version: rusttv-launcher\n"
+"PO-Revision-Date: 2026-10-24 00:00+0000\n"
+"Last-Translator: Draft, unreviewed\n"
+"Language-Team: none\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: ko\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Checking for updates…"
+msgstr "업데이트 확인 중…"
+
+msgid "Up to date"
+msgstr "최신 상태입니다"
+
+msgid "Version {} available — press OK to install"
+msgstr "버전 {} 사용 가능 — OK를 눌러 설치"
+
+msgid "Allow RustTV to install apps, then press OK to install {}"
+msgstr "RustTV의 앱 설치를 허용한 다음 OK를 눌러 {} 버전을 설치하세요"
+
+msgid "Downloading {}%"
+msgstr "다운로드 중 {}%"
+
+msgid "Installing…"
+msgstr "설치 중…"
+
+msgid "Update installed"
+msgstr "업데이트 설치됨"
+
+msgid "Update failed: {}"
+msgstr "업데이트 실패: {}"
+
+msgid "Press OK to check for updates"
+msgstr "OK를 눌러 업데이트 확인"
+
+msgid "Hide from Home"
+msgstr "홈 화면에서 숨기기"
+
+msgid "Move"
+msgstr "이동"
+
+msgid "Couldn't open {}"
+msgstr "{}을(를) 열 수 없음"
+
+msgid "Couldn't load apps: {}"
+msgstr "앱을 불러올 수 없음: {}"
+
+msgid "Couldn't load the licence notices: {}"
+msgstr "라이선스 고지를 불러올 수 없음: {}"
+
+msgid "About RustTV"
+msgstr "RustTV 정보"
+
+msgid "Hidden apps"
+msgstr "숨긴 앱"
+
+msgid "About"
+msgstr "정보"
+
+msgid "OK puts the app back on Home. Back returns."
+msgstr "OK: 앱을 홈 화면에 다시 표시. 뒤로: 돌아가기."
+
+msgid "Version {} · MIT OR Apache-2.0"
+msgstr "버전 {} · MIT OR Apache-2.0"
+
+msgid "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0."
+msgstr "Slint Royalty-free License 2.0에 따라 Slint로 제작되었습니다. Skia(BSD-3-Clause) 및 MIT 또는 Apache-2.0 라이선스의 Rust 라이브러리도 포함되어 있습니다."
+
+msgid "Source: github.com/damienmiheev/rusttv"
+msgstr "소스 코드: github.com/damienmiheev/rusttv"
+
+msgid "Up and Down scroll the notices. Back returns."
+msgstr "위/아래: 고지 스크롤. 뒤로: 돌아가기."
+
+msgid "Third-party notices"
+msgstr "타사 라이선스 고지"

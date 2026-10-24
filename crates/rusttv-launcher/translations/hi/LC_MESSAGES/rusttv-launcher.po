@@ -1,0 +1,81 @@
+# RustTV launcher, Hindi. Draft translation; needs review by a native speaker.
+msgid ""
+msgstr ""
+"Project-Id-Version: rusttv-launcher\n"
+"PO-Revision-Date: 2026-10-24 00:00+0000\n"
+"Last-Translator: Draft, unreviewed\n"
+"Language-Team: none\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: hi\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Checking for updates…"
+msgstr "अपडेट देखे जा रहे हैं…"
+
+msgid "Up to date"
+msgstr "सबसे नया वर्शन"
+
+msgid "Version {} available — press OK to install"
+msgstr "वर्शन {} उपलब्ध है — इंस्टॉल करने के लिए OK दबाएं"
+
+msgid "Allow RustTV to install apps, then press OK to install {}"
+msgstr "RustTV को ऐप्लिकेशन इंस्टॉल करने की अनुमति दें, फिर {} इंस्टॉल करने के लिए OK दबाएं"
+
+msgid "Downloading {}%"
+msgstr "डाउनलोड हो रहा है {}%"
+
+msgid "Installing…"
+msgstr "इंस्टॉल हो रहा है…"
+
+msgid "Update installed"
+msgstr "अपडेट इंस्टॉल हो गया"
+
+msgid "Update failed: {}"
+msgstr "अपडेट नहीं हो सका: {}"
+
+msgid "Press OK to check for updates"
+msgstr "अपडेट देखने के लिए OK दबाएं"
+
+msgid "Hide from Home"
+msgstr "होम स्क्रीन से छिपाएं"
+
+msgid "Move"
+msgstr "जगह बदलें"
+
+msgid "Couldn't open {}"
+msgstr "{} नहीं खुल सका"
+
+msgid "Couldn't load apps: {}"
+msgstr "ऐप्लिकेशन लोड नहीं हो सके: {}"
+
+msgid "Couldn't load the licence notices: {}"
+msgstr "लाइसेंस नोटिस लोड नहीं हो सके: {}"
+
+msgid "About RustTV"
+msgstr "RustTV के बारे में"
+
+msgid "Hidden apps"
+msgstr "छिपाए गए ऐप्लिकेशन"
+
+msgid "About"
+msgstr "जानकारी"
+
+msgid "OK puts the app back on Home. Back returns."
+msgstr "OK दबाकर ऐप्लिकेशन को होम स्क्रीन पर वापस लाएं। लौटने के लिए 'वापस' दबाएं।"
+
+msgid "Version {} · MIT OR Apache-2.0"
+msgstr "वर्शन {} · MIT OR Apache-2.0"
+
+msgid "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0."
+msgstr "Slint Royalty-free License 2.0 के तहत Slint से बनाया गया। इसमें Skia (BSD-3-Clause) और MIT या Apache-2.0 के तहत Rust लाइब्रेरी भी शामिल हैं।"
+
+msgid "Source: github.com/damienmiheev/rusttv"
+msgstr "सोर्स कोड: github.com/damienmiheev/rusttv"
+
+msgid "Up and Down scroll the notices. Back returns."
+msgstr "ऊपर और नीचे से नोटिस स्क्रॉल करें। लौटने के लिए 'वापस' दबाएं।"
+
+msgid "Third-party notices"
+msgstr "तीसरे पक्ष के नोटिस"

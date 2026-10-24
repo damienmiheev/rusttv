@@ -1,0 +1,81 @@
+# RustTV launcher, Spanish. Draft translation; needs review by a native speaker.
+msgid ""
+msgstr ""
+"Project-Id-Version: rusttv-launcher\n"
+"PO-Revision-Date: 2026-10-24 00:00+0000\n"
+"Last-Translator: Draft, unreviewed\n"
+"Language-Team: none\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: es\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Checking for updates…"
+msgstr "Buscando actualizaciones…"
+
+msgid "Up to date"
+msgstr "Actualizado"
+
+msgid "Version {} available — press OK to install"
+msgstr "Versión {} disponible — pulsa OK para instalarla"
+
+msgid "Allow RustTV to install apps, then press OK to install {}"
+msgstr "Permite que RustTV instale apps y luego pulsa OK para instalar {}"
+
+msgid "Downloading {}%"
+msgstr "Descargando {} %"
+
+msgid "Installing…"
+msgstr "Instalando…"
+
+msgid "Update installed"
+msgstr "Actualización instalada"
+
+msgid "Update failed: {}"
+msgstr "Error al actualizar: {}"
+
+msgid "Press OK to check for updates"
+msgstr "Pulsa OK para buscar actualizaciones"
+
+msgid "Hide from Home"
+msgstr "Ocultar de la pantalla de inicio"
+
+msgid "Move"
+msgstr "Mover"
+
+msgid "Couldn't open {}"
+msgstr "No se pudo abrir {}"
+
+msgid "Couldn't load apps: {}"
+msgstr "No se pudieron cargar las apps: {}"
+
+msgid "Couldn't load the licence notices: {}"
+msgstr "No se pudieron cargar los avisos de licencia: {}"
+
+msgid "About RustTV"
+msgstr "Acerca de RustTV"
+
+msgid "Hidden apps"
+msgstr "Apps ocultas"
+
+msgid "About"
+msgstr "Acerca de"
+
+msgid "OK puts the app back on Home. Back returns."
+msgstr "OK vuelve a mostrar la app en la pantalla de inicio. Atrás para volver."
+
+msgid "Version {} · MIT OR Apache-2.0"
+msgstr "Versión {} · MIT OR Apache-2.0"
+
+msgid "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0."
+msgstr "Creado con Slint bajo la licencia Slint Royalty-free License 2.0. También incluye Skia (BSD-3-Clause) y bibliotecas de Rust bajo MIT o Apache-2.0."
+
+msgid "Source: github.com/damienmiheev/rusttv"
+msgstr "Código fuente: github.com/damienmiheev/rusttv"
+
+msgid "Up and Down scroll the notices. Back returns."
+msgstr "Arriba y Abajo desplazan los avisos. Atrás para volver."
+
+msgid "Third-party notices"
+msgstr "Avisos de terceros"

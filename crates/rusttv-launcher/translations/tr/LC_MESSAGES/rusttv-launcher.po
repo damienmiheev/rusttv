@@ -1,0 +1,81 @@
+# RustTV launcher, Turkish. Draft translation; needs review by a native speaker.
+msgid ""
+msgstr ""
+"Project-Id-Version: rusttv-launcher\n"
+"PO-Revision-Date: 2026-10-24 00:00+0000\n"
+"Last-Translator: Draft, unreviewed\n"
+"Language-Team: none\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: tr\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgid "Checking for updates…"
+msgstr "Güncellemeler kontrol ediliyor…"
+
+msgid "Up to date"
+msgstr "Güncel"
+
+msgid "Version {} available — press OK to install"
+msgstr "Sürüm {} mevcut — yüklemek için OK’a basın"
+
+msgid "Allow RustTV to install apps, then press OK to install {}"
+msgstr "RustTV’nin uygulama yüklemesine izin verin, ardından {} sürümünü yüklemek için OK’a basın"
+
+msgid "Downloading {}%"
+msgstr "İndiriliyor: %{}"
+
+msgid "Installing…"
+msgstr "Yükleniyor…"
+
+msgid "Update installed"
+msgstr "Güncelleme yüklendi"
+
+msgid "Update failed: {}"
+msgstr "Güncelleme başarısız: {}"
+
+msgid "Press OK to check for updates"
+msgstr "Güncellemeleri kontrol etmek için OK’a basın"
+
+msgid "Hide from Home"
+msgstr "Ana ekrandan gizle"
+
+msgid "Move"
+msgstr "Taşı"
+
+msgid "Couldn't open {}"
+msgstr "{} açılamadı"
+
+msgid "Couldn't load apps: {}"
+msgstr "Uygulamalar yüklenemedi: {}"
+
+msgid "Couldn't load the licence notices: {}"
+msgstr "Lisans bildirimleri yüklenemedi: {}"
+
+msgid "About RustTV"
+msgstr "RustTV hakkında"
+
+msgid "Hidden apps"
+msgstr "Gizli uygulamalar"
+
+msgid "About"
+msgstr "Hakkında"
+
+msgid "OK puts the app back on Home. Back returns."
+msgstr "OK uygulamayı ana ekrana geri koyar. Geri: geri dön."
+
+msgid "Version {} · MIT OR Apache-2.0"
+msgstr "Sürüm {} · MIT OR Apache-2.0"
+
+msgid "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0."
+msgstr "Slint ile Slint Royalty-free License 2.0 kapsamında geliştirildi. Ayrıca Skia (BSD-3-Clause) ve MIT veya Apache-2.0 lisanslı Rust kitaplıklarını içerir."
+
+msgid "Source: github.com/damienmiheev/rusttv"
+msgstr "Kaynak kodu: github.com/damienmiheev/rusttv"
+
+msgid "Up and Down scroll the notices. Back returns."
+msgstr "Yukarı ve Aşağı bildirimleri kaydırır. Geri: geri dön."
+
+msgid "Third-party notices"
+msgstr "Üçüncü taraf bildirimleri"

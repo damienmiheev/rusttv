@@ -23,6 +23,50 @@ export struct TileData {
     kind: int,
 }
 
+// Texts that Rust puts together (ui.rs), translated here like the rest
+// (translations/, @tr). Kind and item values match ui.rs.
+export global Strings {
+    // ui.rs `update_line`: 0 idle, 1 checking, 2 up to date, 3 available,
+    // 4 needs permission, 5 downloading, 6 installing, 7 installed, 8 failed.
+    public pure function update-line(kind: int, detail: string) -> string {
+        if kind == 1 { return @tr("Checking for updates…"); }
+        if kind == 2 { return @tr("Up to date"); }
+        if kind == 3 { return @tr("Version {} available — press OK to install", detail); }
+        if kind == 4 { return @tr("Allow RustTV to install apps, then press OK to install {}", detail); }
+        if kind == 5 { return @tr("Downloading {}%", detail); }
+        if kind == 6 { return @tr("Installing…"); }
+        if kind == 7 { return @tr("Update installed"); }
+        if kind == 8 { return @tr("Update failed: {}", detail); }
+        return @tr("Press OK to check for updates");
+    }
+    // ui.rs `menu_label`: 0 move, 1 hide.
+    public pure function menu-label(item: int) -> string {
+        if item == 1 { return @tr("Hide from Home"); }
+        return @tr("Move");
+    }
+    public pure function couldnt-open(app: string) -> string {
+        return @tr("Couldn't open {}", app);
+    }
+    public pure function couldnt-load-apps(error: string) -> string {
+        return @tr("Couldn't load apps: {}", error);
+    }
+    public pure function couldnt-load-notices(error: string) -> string {
+        return @tr("Couldn't load the licence notices: {}", error);
+    }
+}
+
+// Layout direction (set from ui.rs). For Arabic and Hebrew the layout is
+// mirrored: tiles run from the right, text aligns right. Pictures and the
+// (English) licence notices are not mirrored.
+export global Dir {
+    in property <bool> rtl;
+    // `x` of a box `width` wide inside a parent `parent` wide, mirrored when rtl.
+    public pure function x(x: length, width: length, parent: length) -> length {
+        return rtl ? parent - x - width : x;
+    }
+    out property <TextHorizontalAlignment> start: rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+}
+
 global Theme {
     out property <color> bg: #0E1014;
     out property <color> surface: #1C1F26;
@@ -71,7 +115,7 @@ component Artwork inherits Rectangle {
         y: data.kind == 1 ? parent.height * 0.15 + 80 * u : 0;
         width: parent.width;
         height: data.kind == 1 ? 32 * u : parent.height;
-        text: data.kind == 3 ? "About RustTV" : data.label;
+        text: data.kind == 3 ? @tr("About RustTV") : data.kind == 5 ? @tr("Hidden apps") : data.label;
         font-size: 23 * u;
         color: Theme.text;
         horizontal-alignment: center;
@@ -168,7 +212,7 @@ component Tile inherits Rectangle {
 
         // The update dot. Not animated, so it adds no frames to the home screen.
         if badge: Rectangle {
-            x: parent.width - self.width - 14 * u;
+            x: Dir.x(parent.width - self.width - 14 * u, self.width, parent.width);
             y: 14 * u;
             width: 18 * u;
             height: self.width;
@@ -192,7 +236,7 @@ component Tile inherits Rectangle {
         x: 0;
         y: parent.height + 24 * u + 2 * u;
         width: parent.width;
-        text: data.kind == 3 ? "About" : data.label;
+        text: data.kind == 3 ? @tr("About") : data.kind == 5 ? @tr("Hidden apps") : data.label;
         font-size: 25 * u;
         font-weight: 500;
         color: #00000066;
@@ -234,7 +278,7 @@ component HeroLayer inherits Rectangle {
     Rectangle {
         width: parent.width * 1.3;
         height: self.width;
-        x: glow.x * parent.width - self.width / 2;
+        x: (Dir.rtl ? 1 - glow.x : glow.x) * parent.width - self.width / 2;
         y: glow.y * parent.height - self.height / 2;
         opacity: glow.strength;
         background: @radial-gradient(circle, glow.color 0%, glow.color.with-alpha(0.45) 30%, glow.color.with-alpha(0) 70%);
@@ -245,7 +289,7 @@ component HeroLayer inherits Rectangle {
         y: 0;
         width: parent.width;
         height: 780 * u;
-        background: @linear-gradient(90deg, #0E1014D9 0%, #0E101466 40%, #0E101400 70%);
+        background: @linear-gradient(Dir.rtl ? 270deg : 90deg, #0E1014D9 0%, #0E101466 40%, #0E101400 70%);
     }
     Rectangle {
         y: 400 * u;
@@ -258,7 +302,7 @@ component HeroLayer inherits Rectangle {
         background: Theme.bg;
     }
     Rectangle {
-        x: 90 * u;
+        x: Dir.x(90 * u, self.width, parent.width);
         y: 360 * u;
         width: 448 * u;
         height: 252 * u;
@@ -272,10 +316,11 @@ component HeroLayer inherits Rectangle {
         }
     }
     Text {
-        x: 90 * u;
+        x: Dir.x(90 * u, self.width, parent.width);
         y: 640 * u;
         width: 1740 * u;
-        text: data.kind == 3 ? "RustTV" : data.label;
+        horizontal-alignment: Dir.start;
+        text: data.kind == 3 ? "RustTV" : data.kind == 5 ? @tr("Hidden apps") : data.label;
         font-size: 57 * u;
         font-weight: 500;
         color: Theme.text;
@@ -310,6 +355,11 @@ export component HomeWindow inherits Window {
     // The long-press menu of the focused tile (ui.rs `menu_label`); empty when closed.
     in property <[string]> menu-items;
     in property <int> menu-selected;
+    // The selected menu item's marquee (ui.rs `schedule_marquee`): its text
+    // slides to its end while this is true and back while false. How long one
+    // slide takes for it; 0 when it fits.
+    in property <bool> menu-marquee-end;
+    out property <duration> menu-marquee-time: max(0px, menu-measure.preferred-width - (380 - 16 - 48) * u) / (60 * u) * 1s;
     // The hidden apps page.
     in property <[TileData]> hidden-tiles;
     in property <int> hidden-focus;
@@ -323,6 +373,14 @@ export component HomeWindow inherits Window {
     preferred-width: 1280px;
     preferred-height: 720px;
     background: Theme.bg;
+
+    // Measures the selected menu item's text for `menu-marquee-time`; never drawn.
+    menu-measure := Text {
+        visible: false;
+        text: menu-items[menu-selected];
+        font-size: 27 * u;
+        font-weight: 500;
+    }
 
     keys := FocusScope {
         key-pressed(event) => {
@@ -360,7 +418,7 @@ export component HomeWindow inherits Window {
         animate y { duration: 250ms; easing: ease-out; }
 
         for tile[i] in tiles: Tile {
-            x: (90 + mod(i, 6) * 298) * u;
+            x: Dir.x((90 + mod(i, 6) * 298) * u, 250 * u, root.width);
             y: floor(i / 6) * 251 * u;
             data: tile;
             u: root.u;
@@ -382,7 +440,7 @@ export component HomeWindow inherits Window {
         width: 380 * u;
         height: (menu-items.length * 64 + 16) * u;
         // 19 is how far the focused tile grows past its slot on each side.
-        x: column < 4 ? self.tile-x + (250 + 19 + 24) * u : self.tile-x - (19 + 24) * u - self.width;
+        x: Dir.x(column < 4 ? self.tile-x + (250 + 19 + 24) * u : self.tile-x - (19 + 24) * u - self.width, self.width, root.width);
         y: self.tile-y + (141 * u - self.height) / 2;
         opacity: mode == Mode.menu ? 1 : 0;
         animate opacity { duration: mode == Mode.menu ? 150ms : 0ms; easing: ease-out; }
@@ -400,16 +458,33 @@ export component HomeWindow inherits Window {
             border-radius: 10 * u;
             background: i == menu-selected ? Theme.text : Theme.text.with-alpha(0);
             animate background { duration: 120ms; }
-            Text {
+            // A text too long for the menu (some translations) is cut with
+            // "…". While its item is selected it slides to its end and back,
+            // paced by ui.rs (`menu-marquee-end`), so a menu that fits adds
+            // no frames.
+            Rectangle {
                 x: 24 * u;
                 width: parent.width - 48 * u;
-                text: item;
-                font-size: 27 * u;
-                font-weight: 500;
-                color: i == menu-selected ? Theme.bg : Theme.text;
-                vertical-alignment: center;
-                overflow: elide;
-                animate color { duration: 120ms; }
+                clip: true;
+                property <length> overflow: max(0px, label.preferred-width - self.width);
+                property <bool> sliding: i == menu-selected && mode == Mode.menu && self.overflow > 0;
+                property <length> shift: self.sliding && menu-marquee-end ? self.overflow : 0px;
+                animate shift { duration: self.overflow / (60 * u) * 1s; easing: ease-in-out; }
+                label := Text {
+                    // Reads `shift` in every case: Slint evaluates lazily, and a
+                    // value first read while it changes jumps instead of
+                    // animating. Right-to-left starts at the right end.
+                    x: Dir.rtl ? parent.shift - (parent.sliding ? parent.overflow : 0px) : -parent.shift;
+                    width: parent.sliding ? self.preferred-width : parent.width;
+                    text: item;
+                    horizontal-alignment: Dir.start;
+                    font-size: 27 * u;
+                    font-weight: 500;
+                    color: i == menu-selected ? Theme.bg : Theme.text;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    animate color { duration: 120ms; }
+                }
             }
         }
     }
@@ -420,17 +495,21 @@ export component HomeWindow inherits Window {
         background: Theme.bg;
 
         Text {
-            x: 90 * u;
+            x: Dir.x(90 * u, self.width, parent.width);
             y: 90 * u;
-            text: "Hidden apps";
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: @tr("Hidden apps");
             font-size: 57 * u;
             font-weight: 500;
             color: Theme.text;
         }
         Text {
-            x: 90 * u;
+            x: Dir.x(90 * u, self.width, parent.width);
             y: 176 * u;
-            text: "OK puts the app back on Home. Back returns.";
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: @tr("OK puts the app back on Home. Back returns.");
             font-size: 25 * u;
             color: Theme.text-dim;
         }
@@ -445,7 +524,7 @@ export component HomeWindow inherits Window {
                 animate y { duration: 250ms; easing: ease-out; }
 
                 for tile[i] in hidden-tiles: Tile {
-                    x: (90 + mod(i, 6) * 298) * u;
+                    x: Dir.x((90 + mod(i, 6) * 298) * u, 250 * u, root.width);
                     y: floor(i / 6) * 251 * u;
                     data: tile;
                     u: root.u;
@@ -460,7 +539,7 @@ export component HomeWindow inherits Window {
     }
 
     if toast != "": Rectangle {
-        x: 90 * u;
+        x: Dir.x(90 * u, self.width, root.width);
         y: (1020 - 64) * u;
         width: toast-text.preferred-width + 48 * u;
         height: 64 * u;
@@ -475,43 +554,49 @@ export component HomeWindow inherits Window {
         }
     }
 
-    // About: who made RustTV on the left, the licence notices on the right.
+    // About: who made RustTV on the left, the licence notices on the right
+    // (swapped for right-to-left languages).
     if mode == Mode.about: Rectangle {
         background: Theme.bg;
 
         VerticalLayout {
-            x: 90 * u;
+            x: Dir.x(90 * u, self.width, parent.width);
             width: 560 * u;
             padding-top: 120 * u;
             padding-bottom: 90 * u;
             spacing: 24 * u;
             alignment: start;
             Text {
+                horizontal-alignment: Dir.start;
                 text: "RustTV";
                 font-size: 76 * u;
                 font-weight: 500;
                 color: Theme.text;
             }
             Text {
-                text: "Version " + version + " · MIT OR Apache-2.0";
+                horizontal-alignment: Dir.start;
+                text: @tr("Version {} · MIT OR Apache-2.0", version);
                 font-size: 29 * u;
                 color: Theme.text-dim;
                 wrap: word-wrap;
             }
             Text {
+                horizontal-alignment: Dir.start;
                 text: update-status;
                 font-size: 29 * u;
                 color: update-available ? Theme.accent : Theme.text;
                 wrap: word-wrap;
             }
             Text {
-                text: "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0.";
+                horizontal-alignment: Dir.start;
+                text: @tr("Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0.");
                 font-size: 25 * u;
                 color: Theme.text-dim;
                 wrap: word-wrap;
             }
             Text {
-                text: "Source: github.com/damienmiheev/rusttv";
+                horizontal-alignment: Dir.start;
+                text: @tr("Source: github.com/damienmiheev/rusttv");
                 font-size: 25 * u;
                 color: Theme.text-dim;
                 wrap: word-wrap;
@@ -520,7 +605,8 @@ export component HomeWindow inherits Window {
                 height: 240 * u;
             }
             Text {
-                text: "Up and Down scroll the notices. Back returns.";
+                horizontal-alignment: Dir.start;
+                text: @tr("Up and Down scroll the notices. Back returns.");
                 font-size: 25 * u;
                 color: Theme.text-dim;
                 wrap: word-wrap;
@@ -528,7 +614,7 @@ export component HomeWindow inherits Window {
         }
 
         panel := Rectangle {
-            x: 720 * u;
+            x: Dir.x(720 * u, self.width, parent.width);
             y: 90 * u;
             width: 1110 * u;
             height: 900 * u;
@@ -537,9 +623,11 @@ export component HomeWindow inherits Window {
             clip: true;
 
             Text {
-                x: 48 * u;
+                x: Dir.x(48 * u, self.width, parent.width);
                 y: 36 * u;
-                text: "Third-party notices";
+                width: parent.width - 96 * u;
+                horizontal-alignment: Dir.start;
+                text: @tr("Third-party notices");
                 font-size: 29 * u;
                 font-weight: 500;
                 color: Theme.text;
@@ -575,7 +663,7 @@ export component HomeWindow inherits Window {
             }
             // Scroll bar: where the panel is in all the notices.
             if notices-fraction < 1: Rectangle {
-                x: parent.width - 36 * u;
+                x: Dir.x(parent.width - 36 * u, self.width, parent.width);
                 y: body.y;
                 width: 4 * u;
                 height: body.height;

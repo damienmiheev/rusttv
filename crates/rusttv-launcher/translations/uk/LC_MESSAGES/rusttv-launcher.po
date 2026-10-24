@@ -1,0 +1,81 @@
+# RustTV launcher, Ukrainian. Draft translation; needs review by a native speaker.
+msgid ""
+msgstr ""
+"Project-Id-Version: rusttv-launcher\n"
+"PO-Revision-Date: 2026-10-24 00:00+0000\n"
+"Last-Translator: Draft, unreviewed\n"
+"Language-Team: none\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: uk\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgid "Checking for updates…"
+msgstr "Перевірка оновлень…"
+
+msgid "Up to date"
+msgstr "Встановлено останню версію"
+
+msgid "Version {} available — press OK to install"
+msgstr "Доступна версія {} — натисніть OK, щоб встановити"
+
+msgid "Allow RustTV to install apps, then press OK to install {}"
+msgstr "Дозвольте RustTV встановлювати додатки, а потім натисніть OK, щоб встановити {}"
+
+msgid "Downloading {}%"
+msgstr "Завантаження {}%"
+
+msgid "Installing…"
+msgstr "Встановлення…"
+
+msgid "Update installed"
+msgstr "Оновлення встановлено"
+
+msgid "Update failed: {}"
+msgstr "Не вдалося оновити: {}"
+
+msgid "Press OK to check for updates"
+msgstr "Натисніть OK, щоб перевірити оновлення"
+
+msgid "Hide from Home"
+msgstr "Сховати з головного екрана"
+
+msgid "Move"
+msgstr "Перемістити"
+
+msgid "Couldn't open {}"
+msgstr "Не вдалося відкрити {}"
+
+msgid "Couldn't load apps: {}"
+msgstr "Не вдалося завантажити додатки: {}"
+
+msgid "Couldn't load the licence notices: {}"
+msgstr "Не вдалося завантажити відомості про ліцензії: {}"
+
+msgid "About RustTV"
+msgstr "Про RustTV"
+
+msgid "Hidden apps"
+msgstr "Приховані додатки"
+
+msgid "About"
+msgstr "Про програму"
+
+msgid "OK puts the app back on Home. Back returns."
+msgstr "OK повертає додаток на головний екран, «Назад» — вихід."
+
+msgid "Version {} · MIT OR Apache-2.0"
+msgstr "Версія {} · MIT OR Apache-2.0"
+
+msgid "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0."
+msgstr "Створено на Slint за ліцензією Slint Royalty-free License 2.0. Також містить Skia (BSD-3-Clause) і бібліотеки Rust за ліцензією MIT або Apache-2.0."
+
+msgid "Source: github.com/damienmiheev/rusttv"
+msgstr "Вихідний код: github.com/damienmiheev/rusttv"
+
+msgid "Up and Down scroll the notices. Back returns."
+msgstr "Вгору й униз гортають текст, «Назад» — вихід."
+
+msgid "Third-party notices"
+msgstr "Ліцензії сторонніх компонентів"

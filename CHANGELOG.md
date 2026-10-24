@@ -51,6 +51,12 @@ First public release (ROADMAP Phase 6).
 - Rust + Slint home screen for Android TV 8+: app grid with banners, D-pad
   navigation, move mode, About page with the third-party licence notices.
 - One APK per ABI: arm64-v8a, armeabi-v7a, x86_64.
+- In the TV's language: English plus 20 translations (Arabic, Chinese
+  Simplified and Traditional, Dutch, French, German, Hebrew, Hindi,
+  Indonesian, Italian, Japanese, Korean, Polish, Portuguese (Brazil),
+  Russian, Spanish, Thai, Turkish, Ukrainian, Vietnamese), drafted by AI and
+  awaiting native review; Arabic and Hebrew mirror the layout
+  (`crates/rusttv-launcher/translations/`).
 - Updates itself from GitHub releases: once a day (on by default) it checks
   the latest release; About shows the result, and OK installs a newer
   version after checking its size, SHA-256, package, version and signing

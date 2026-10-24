@@ -1,0 +1,81 @@
+# RustTV launcher, Thai. Draft translation; needs review by a native speaker.
+msgid ""
+msgstr ""
+"Project-Id-Version: rusttv-launcher\n"
+"PO-Revision-Date: 2026-10-24 00:00+0000\n"
+"Last-Translator: Draft, unreviewed\n"
+"Language-Team: none\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: th\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Checking for updates…"
+msgstr "กำลังตรวจหาอัปเดต…"
+
+msgid "Up to date"
+msgstr "เป็นเวอร์ชันล่าสุดแล้ว"
+
+msgid "Version {} available — press OK to install"
+msgstr "มีเวอร์ชัน {} แล้ว — กด OK เพื่อติดตั้ง"
+
+msgid "Allow RustTV to install apps, then press OK to install {}"
+msgstr "อนุญาตให้ RustTV ติดตั้งแอป แล้วกด OK เพื่อติดตั้ง {}"
+
+msgid "Downloading {}%"
+msgstr "กำลังดาวน์โหลด {}%"
+
+msgid "Installing…"
+msgstr "กำลังติดตั้ง…"
+
+msgid "Update installed"
+msgstr "ติดตั้งอัปเดตแล้ว"
+
+msgid "Update failed: {}"
+msgstr "อัปเดตไม่สำเร็จ: {}"
+
+msgid "Press OK to check for updates"
+msgstr "กด OK เพื่อตรวจหาอัปเดต"
+
+msgid "Hide from Home"
+msgstr "ซ่อนจากหน้าจอหลัก"
+
+msgid "Move"
+msgstr "ย้าย"
+
+msgid "Couldn't open {}"
+msgstr "เปิด {} ไม่ได้"
+
+msgid "Couldn't load apps: {}"
+msgstr "โหลดแอปไม่ได้: {}"
+
+msgid "Couldn't load the licence notices: {}"
+msgstr "โหลดประกาศเกี่ยวกับใบอนุญาตไม่ได้: {}"
+
+msgid "About RustTV"
+msgstr "เกี่ยวกับ RustTV"
+
+msgid "Hidden apps"
+msgstr "แอปที่ซ่อนไว้"
+
+msgid "About"
+msgstr "เกี่ยวกับ"
+
+msgid "OK puts the app back on Home. Back returns."
+msgstr "กด OK เพื่อนำแอปกลับไปที่หน้าจอหลัก กดกลับเพื่อย้อนกลับ"
+
+msgid "Version {} · MIT OR Apache-2.0"
+msgstr "เวอร์ชัน {} · MIT OR Apache-2.0"
+
+msgid "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0."
+msgstr "สร้างด้วย Slint ภายใต้ Slint Royalty-free License 2.0 และมี Skia (BSD-3-Clause) รวมถึงไลบรารี Rust ภายใต้ MIT หรือ Apache-2.0"
+
+msgid "Source: github.com/damienmiheev/rusttv"
+msgstr "ซอร์สโค้ด: github.com/damienmiheev/rusttv"
+
+msgid "Up and Down scroll the notices. Back returns."
+msgstr "กดขึ้นและลงเพื่อเลื่อนดู กดกลับเพื่อย้อนกลับ"
+
+msgid "Third-party notices"
+msgstr "ประกาศเกี่ยวกับบุคคลที่สาม"

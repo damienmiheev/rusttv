@@ -12,6 +12,7 @@ use slint::{
     ComponentHandle, Model, ModelRc, SharedPixelBuffer, SharedString, Timer, TimerMode, VecModel,
 };
 
+use crate::i18n;
 use crate::model::{
     App, Effect, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT, MenuItem, Scroll,
     State, TileId,
@@ -35,7 +36,7 @@ use crate::platform::{AppEntry, Artwork, Bitmap, Platform, PlatformError, Update
 mod generated {
     slint::include_modules!();
 }
-use generated::{HomeWindow, TileData};
+use generated::{Dir, HomeWindow, Strings, TileData};
 
 /// Idle time before the focused tile starts to sway (it fades in, so this can
 /// be short); quick D-pad scrolling passes tiles without starting a sway.
@@ -83,6 +84,10 @@ const NOTICES_SCREEN_LINES: usize = 32;
 /// Lines one Up or Down press scrolls the notices; a held key repeats it.
 const NOTICES_STEP: usize = 5;
 
+/// How long the selected menu item's text rests before it slides, and at
+/// each end of the slide (its marquee).
+const MARQUEE_HOLD: Duration = Duration::from_secs(1);
+
 /// How often the updater's status is read while the About page is open or an
 /// update step runs. One cheap bridge call; the window changes only when the
 /// status does, so the home screen gets no extra frames.
@@ -91,6 +96,11 @@ const UPDATE_POLL: Duration = Duration::from_millis(500);
 /// Settings for [`run`].
 #[derive(Debug, Clone, Default)]
 pub struct RunOptions {
+    /// The device's language as a BCP 47 tag (e.g. `uk-UA`): selects the
+    /// bundled translation (English if there is none) and turns on
+    /// [`RunOptions::right_to_left`] for Arabic or Hebrew. `None` leaves
+    /// Slint's own choice from the system locale.
+    pub language: Option<String>,
     /// Mirror left and right for right-to-left languages.
     pub right_to_left: bool,
     /// Pretend the launched app took over the screen this long after a launch.
@@ -255,10 +265,15 @@ impl Demo {
 /// Creates the window and its controller; the caller runs the event loop.
 fn start(
     platform: impl Platform + 'static,
-    options: RunOptions,
+    mut options: RunOptions,
     clock: Clock,
 ) -> Result<(HomeWindow, Rc<RefCell<Controller>>), PlatformError> {
     let window = HomeWindow::new().map_err(ui_error)?;
+    if let Some(language) = &options.language {
+        select_language(language);
+        options.right_to_left |= i18n::is_right_to_left(language);
+    }
+    window.global::<Dir>().set_rtl(options.right_to_left);
     let controller = Controller::new(Box::new(platform), &window, options, clock);
 
     let weak = Rc::downgrade(&controller);
@@ -275,6 +290,15 @@ type Clock = Box<dyn Fn() -> Duration>;
 fn real_clock() -> Clock {
     let started = Instant::now();
     Box::new(move || started.elapsed())
+}
+
+/// Shows the bundled translation for `language`, or English. Needs a window
+/// to exist (Slint's translations hang off its context).
+fn select_language(language: &str) {
+    let bundled = i18n::bundled_language(language).unwrap_or("en");
+    if let Err(error) = slint::select_bundled_translation(bundled) {
+        log::warn!("selecting the {bundled} translation failed: {error}");
+    }
 }
 
 fn ui_error(error: impl std::fmt::Display) -> PlatformError {
@@ -307,6 +331,10 @@ struct Controller {
     idle_timer: Timer,
     hero_timer: Timer,
     toast_timer: Timer,
+    /// Paces the selected menu item's marquee.
+    marquee_timer: Timer,
+    /// The menu item the marquee runs for; `None` while the menu is closed.
+    marquee_for: Option<usize>,
     pause_timer: Timer,
     /// Apps whose artwork is still [`Artwork::Later`], in tile order.
     pending_artwork: VecDeque<String>,
@@ -334,7 +362,7 @@ impl Controller {
         let menu_items = Rc::new(VecModel::default());
         window.set_menu_items(ModelRc::from(menu_items.clone()));
         window.set_version(env!("CARGO_PKG_VERSION").into());
-        window.set_update_status(update_line(&UpdateStatus::Idle).into());
+        window.set_update_status(update_line(window, &UpdateStatus::Idle));
 
         let (order, hidden, saved_focus) =
             options
@@ -374,6 +402,8 @@ impl Controller {
                 idle_timer: Timer::default(),
                 hero_timer: Timer::default(),
                 toast_timer: Timer::default(),
+                marquee_timer: Timer::default(),
+                marquee_for: None,
                 pause_timer: Timer::default(),
                 pending_artwork: VecDeque::new(),
                 artwork_timer: Timer::default(),
@@ -433,7 +463,12 @@ impl Controller {
             }
             Err(error) => {
                 self.home.set_apps(&[]);
-                self.show_toast(format!("Couldn't load apps: {error}"));
+                let text = self.window.upgrade().map(|window| {
+                    window
+                        .global::<Strings>()
+                        .invoke_couldnt_load_apps(error.to_string().into())
+                });
+                self.show_toast(text.unwrap_or_default());
             }
         }
     }
@@ -529,7 +564,11 @@ impl Controller {
             Some(Effect::Launch(id)) => self.launch(&id),
             Some(Effect::ShowLaunchError(id)) => {
                 let label = self.apps.get(&id).map_or(id.as_str(), |app| &app.label);
-                self.show_toast(format!("Couldn't open {label}"));
+                let text = self
+                    .window
+                    .upgrade()
+                    .map(|window| window.global::<Strings>().invoke_couldnt_open(label.into()));
+                self.show_toast(text.unwrap_or_default());
             }
             Some(Effect::SaveOrder) => self.save_order(),
             Some(Effect::OpenAbout) => {
@@ -594,7 +633,7 @@ impl Controller {
             return;
         }
         if let Some(window) = self.window.upgrade() {
-            window.set_update_status(update_line(&status).into());
+            window.set_update_status(update_line(&window, &status));
             window.set_update_available(status.is_available());
         }
         self.update = status;
@@ -623,7 +662,15 @@ impl Controller {
     fn open_notices(&mut self) {
         let text = self.platform.notices().unwrap_or_else(|error| {
             log::warn!("loading the licence notices failed: {error}");
-            format!("Couldn't load the licence notices: {error}")
+            self.window
+                .upgrade()
+                .map(|window| {
+                    window
+                        .global::<Strings>()
+                        .invoke_couldnt_load_notices(error.to_string().into())
+                        .into()
+                })
+                .unwrap_or_default()
         });
         self.notices = Some(Notices::new(text));
     }
@@ -704,15 +751,49 @@ impl Controller {
             });
     }
 
+    /// Starts the selected menu item's marquee from its beginning, or stops it
+    /// when the menu closed. A text that fits never moves.
+    fn restart_marquee(&self, window: &HomeWindow) {
+        self.marquee_timer.stop();
+        window.set_menu_marquee_end(false);
+        if self.marquee_for.is_some() {
+            self.schedule_marquee(MARQUEE_HOLD);
+        }
+    }
+
+    /// After `after`, slides the selected item's text the other way, then
+    /// waits for the slide plus [`MARQUEE_HOLD`] before the next one.
+    fn schedule_marquee(&self, after: Duration) {
+        let me = self.me.clone();
+        self.marquee_timer
+            .start(TimerMode::SingleShot, after, move || {
+                let Some(controller) = me.upgrade() else {
+                    return;
+                };
+                let this = controller.borrow();
+                let Some(window) = this.window.upgrade() else {
+                    return;
+                };
+                let slide = Duration::from_millis(
+                    u64::try_from(window.get_menu_marquee_time()).unwrap_or_default(),
+                );
+                if slide.is_zero() {
+                    return;
+                }
+                window.set_menu_marquee_end(!window.get_menu_marquee_end());
+                this.schedule_marquee(slide + MARQUEE_HOLD);
+            });
+    }
+
     fn set_idle_phase(&self, phase: i32) {
         if let Some(window) = self.window.upgrade() {
             window.set_idle_phase(phase);
         }
     }
 
-    fn show_toast(&mut self, text: String) {
+    fn show_toast(&mut self, text: SharedString) {
         if let Some(window) = self.window.upgrade() {
-            window.set_toast(text.into());
+            window.set_toast(text);
         }
         let window = self.window.clone();
         self.toast_timer
@@ -758,11 +839,19 @@ impl Controller {
             window.set_hidden_focus(i32::try_from(focus).unwrap_or(i32::MAX));
         }
         let (items, selected) = self.home.menu().unwrap_or_default();
-        let labels: Vec<SharedString> = items.iter().map(|item| menu_label(*item).into()).collect();
+        let labels: Vec<SharedString> = items
+            .iter()
+            .map(|item| menu_label(&window, *item))
+            .collect();
         if !self.menu_items.iter().eq(labels.iter().cloned()) {
             self.menu_items.set_vec(labels);
         }
         window.set_menu_selected(i32::try_from(selected).unwrap_or(i32::MAX));
+        let marquee_for = self.home.menu().map(|(_, selected)| selected);
+        if marquee_for != self.marquee_for {
+            self.marquee_for = marquee_for;
+            self.restart_marquee(&window);
+        }
         window.set_focused_index(i32::try_from(self.home.focus()).unwrap_or(i32::MAX));
         match self.home.scroll() {
             Scroll::Shelf => window.set_shelf(true),
@@ -995,31 +1084,32 @@ fn mode_value(state: State) -> i32 {
 }
 
 /// What the long-press menu shows for an item.
-fn menu_label(item: MenuItem) -> &'static str {
-    match item {
-        MenuItem::Move => "Move",
-        MenuItem::Hide => "Hide from Home",
-    }
+fn menu_label(window: &HomeWindow, item: MenuItem) -> SharedString {
+    let item = match item {
+        MenuItem::Move => 0,
+        MenuItem::Hide => 1,
+    };
+    window.global::<Strings>().invoke_menu_label(item)
 }
 
-/// The About page's update line for a status; says what OK does when it isn't
-/// a plain check.
-fn update_line(status: &UpdateStatus) -> String {
-    match status {
-        UpdateStatus::Idle => "Press OK to check for updates".to_owned(),
-        UpdateStatus::Checking => "Checking for updates…".to_owned(),
-        UpdateStatus::UpToDate => "Up to date".to_owned(),
-        UpdateStatus::Available(version) => {
-            format!("Version {version} available — press OK to install")
-        }
-        UpdateStatus::NeedsPermission(version) => {
-            format!("Allow RustTV to install apps, then press OK to install {version}")
-        }
-        UpdateStatus::Downloading(percent) => format!("Downloading {percent}%"),
-        UpdateStatus::Installing => "Installing…".to_owned(),
-        UpdateStatus::Installed => "Update installed".to_owned(),
-        UpdateStatus::Failed(reason) => format!("Update failed: {reason}"),
-    }
+/// The About page's update line for a status, in the current language
+/// (`Strings.update-line` in home.slint); says what OK does when it isn't a
+/// plain check.
+fn update_line(window: &HomeWindow, status: &UpdateStatus) -> SharedString {
+    let (kind, detail) = match status {
+        UpdateStatus::Idle => (0, String::new()),
+        UpdateStatus::Checking => (1, String::new()),
+        UpdateStatus::UpToDate => (2, String::new()),
+        UpdateStatus::Available(version) => (3, version.clone()),
+        UpdateStatus::NeedsPermission(version) => (4, version.clone()),
+        UpdateStatus::Downloading(percent) => (5, percent.to_string()),
+        UpdateStatus::Installing => (6, String::new()),
+        UpdateStatus::Installed => (7, String::new()),
+        UpdateStatus::Failed(reason) => (8, reason.clone()),
+    };
+    window
+        .global::<Strings>()
+        .invoke_update_line(kind, detail.into())
 }
 
 /// Maps Slint key text to a model input.
@@ -1157,6 +1247,15 @@ mod tests {
     }
 
     fn screen_with(platform: FakePlatform, order_file: Option<PathBuf>) -> Screen {
+        screen_in(platform, order_file, None)
+    }
+
+    /// A screen for a device language (`RunOptions::language`).
+    fn screen_in(
+        platform: FakePlatform,
+        order_file: Option<PathBuf>,
+        language: Option<&str>,
+    ) -> Screen {
         // The testing backend is per thread and may be set only once per thread.
         thread_local!(static BACKEND: () = i_slint_backend_testing::init_no_event_loop());
         BACKEND.with(|_| {});
@@ -1166,6 +1265,7 @@ mod tests {
         };
         let lifecycle = Lifecycle::default();
         let options = RunOptions {
+            language: language.map(str::to_owned),
             order_file,
             lifecycle: lifecycle.clone(),
             ..RunOptions::default()
@@ -1733,5 +1833,75 @@ mod tests {
         screen.set_update(UpdateStatus::Available("0.2.0".into()));
         screen.wait(POLL + 1);
         assert!(screen.window.get_update_available());
+    }
+
+    // --- languages ---
+
+    #[test]
+    fn a_device_language_with_a_translation_shows_it() {
+        let screen = screen_in(abc(), None, Some("uk-UA"));
+        open_about(&screen);
+        let line = screen.window.get_update_status();
+        assert!(!line.is_empty());
+        assert_ne!(line, "Press OK to check for updates");
+        assert!(!screen.window.global::<Dir>().get_rtl());
+    }
+
+    #[test]
+    fn a_language_without_a_translation_falls_back_to_english() {
+        let screen = screen_in(abc(), None, Some("sv-SE"));
+        open_about(&screen);
+        assert_eq!(
+            screen.window.get_update_status(),
+            "Press OK to check for updates"
+        );
+    }
+
+    #[test]
+    fn arabic_and_hebrew_mirror_the_layout_and_the_arrows() {
+        for language in ["ar-EG", "he-IL"] {
+            let screen = screen_in(abc(), None, Some(language));
+            assert!(screen.window.global::<Dir>().get_rtl(), "{language}");
+        }
+    }
+
+    #[test]
+    fn a_menu_item_too_long_to_fit_slides_to_its_end_and_back_while_selected() {
+        let screen = screen_in(abc(), None, Some("de"));
+        let end = || screen.window.get_menu_marquee_end();
+        screen.long_press_ok();
+        // "Verschieben" fits: it never moves.
+        assert_eq!(screen.window.get_menu_marquee_time(), 0);
+        screen.wait(3000);
+        assert!(!end());
+
+        // "Auf dem Startbildschirm ausblenden" doesn't: it rests, slides out,
+        // holds, slides back, holds, and again.
+        screen.tap(DOWN);
+        let slide = u64::try_from(screen.window.get_menu_marquee_time()).unwrap();
+        assert!(slide > 0);
+        let hold = MARQUEE_HOLD.as_millis() as u64;
+        screen.wait(hold - 50);
+        assert!(!end());
+        screen.wait(100);
+        assert!(end());
+        screen.wait(slide + hold - 100);
+        assert!(end());
+        screen.wait(100);
+        assert!(!end());
+        screen.wait(slide + hold);
+        assert!(end());
+
+        // Another item starts over; closing the menu stops it.
+        screen.tap(UP);
+        assert!(!end());
+        screen.tap(DOWN);
+        screen.wait(hold + 50);
+        assert!(end());
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert!(!end());
+        screen.wait(3 * (slide + hold));
+        assert!(!end());
     }
 }

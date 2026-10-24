@@ -47,7 +47,9 @@ fn android_main(app: AndroidApp) {
             return;
         }
     };
+    let language = platform.language();
     let options = RunOptions {
+        language,
         right_to_left: false,
         simulated_pause: None,
         order_file: app.internal_data_path().map(|dir| dir.join("order.toml")),
@@ -109,6 +111,25 @@ impl AndroidPlatform {
             vm,
             bridge,
         })
+    }
+
+    /// The app's language as a BCP 47 tag (`Bridge.language`), or `None` if
+    /// the call fails (Slint then picks from the system locale).
+    fn language(&self) -> Option<String> {
+        self.with_bridge("read language", |env, bridge, activity| {
+            let tag = env
+                .call_static_method(
+                    bridge,
+                    "language",
+                    "(Landroid/content/Context;)Ljava/lang/String;",
+                    &[JValue::Object(activity)],
+                )?
+                .l()?;
+            let tag = JString::from(tag);
+            Ok(String::from(env.get_string(&tag)?))
+        })
+        .inspect_err(|error| log::warn!("reading the language failed: {error}"))
+        .ok()
     }
 
     /// Runs `f` with a JNI env, the bridge class and the activity (a `Context`).

@@ -1,0 +1,81 @@
+# RustTV launcher, Arabic. Draft translation; needs review by a native speaker.
+msgid ""
+msgstr ""
+"Project-Id-Version: rusttv-launcher\n"
+"PO-Revision-Date: 2026-10-24 00:00+0000\n"
+"Last-Translator: Draft, unreviewed\n"
+"Language-Team: none\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: ar\n"
+"Plural-Forms: nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 ? 4 : 5);\n"
+
+msgid "Checking for updates…"
+msgstr "جارٍ البحث عن تحديثات…"
+
+msgid "Up to date"
+msgstr "محدَّث"
+
+msgid "Version {} available — press OK to install"
+msgstr "الإصدار {} متاح — اضغط OK للتثبيت"
+
+msgid "Allow RustTV to install apps, then press OK to install {}"
+msgstr "اسمح لـ RustTV بتثبيت التطبيقات، ثم اضغط OK لتثبيت {}"
+
+msgid "Downloading {}%"
+msgstr "جارٍ التنزيل {}%"
+
+msgid "Installing…"
+msgstr "جارٍ التثبيت…"
+
+msgid "Update installed"
+msgstr "تم تثبيت التحديث"
+
+msgid "Update failed: {}"
+msgstr "تعذّر التحديث: {}"
+
+msgid "Press OK to check for updates"
+msgstr "اضغط OK للبحث عن تحديثات"
+
+msgid "Hide from Home"
+msgstr "إخفاء من الشاشة الرئيسية"
+
+msgid "Move"
+msgstr "نقل"
+
+msgid "Couldn't open {}"
+msgstr "تعذّر فتح {}"
+
+msgid "Couldn't load apps: {}"
+msgstr "تعذّر تحميل التطبيقات: {}"
+
+msgid "Couldn't load the licence notices: {}"
+msgstr "تعذّر تحميل إشعارات الترخيص: {}"
+
+msgid "About RustTV"
+msgstr "حول RustTV"
+
+msgid "Hidden apps"
+msgstr "التطبيقات المخفية"
+
+msgid "About"
+msgstr "حول"
+
+msgid "OK puts the app back on Home. Back returns."
+msgstr "اضغط OK لإعادة التطبيق إلى الشاشة الرئيسية، و«رجوع» للعودة."
+
+msgid "Version {} · MIT OR Apache-2.0"
+msgstr "الإصدار {} · MIT OR Apache-2.0"
+
+msgid "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0."
+msgstr "تم الإنشاء باستخدام Slint بموجب ترخيص Slint Royalty-free License 2.0. يتضمن أيضًا Skia (BSD-3-Clause) ومكتبات Rust بموجب ترخيص MIT أو Apache-2.0."
+
+msgid "Source: github.com/damienmiheev/rusttv"
+msgstr "الرمز المصدر: github.com/damienmiheev/rusttv"
+
+msgid "Up and Down scroll the notices. Back returns."
+msgstr "استخدم الأعلى والأسفل للتمرير، و«رجوع» للعودة."
+
+msgid "Third-party notices"
+msgstr "إشعارات الجهات الخارجية"

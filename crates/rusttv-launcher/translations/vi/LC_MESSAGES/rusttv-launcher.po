@@ -1,0 +1,81 @@
+# RustTV launcher, Vietnamese. Draft translation; needs review by a native speaker.
+msgid ""
+msgstr ""
+"Project-Id-Version: rusttv-launcher\n"
+"PO-Revision-Date: 2026-10-24 00:00+0000\n"
+"Last-Translator: Draft, unreviewed\n"
+"Language-Team: none\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: vi\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Checking for updates…"
+msgstr "Đang kiểm tra bản cập nhật…"
+
+msgid "Up to date"
+msgstr "Đã là phiên bản mới nhất"
+
+msgid "Version {} available — press OK to install"
+msgstr "Đã có phiên bản {} — nhấn OK để cài đặt"
+
+msgid "Allow RustTV to install apps, then press OK to install {}"
+msgstr "Cho phép RustTV cài đặt ứng dụng, rồi nhấn OK để cài đặt {}"
+
+msgid "Downloading {}%"
+msgstr "Đang tải xuống {}%"
+
+msgid "Installing…"
+msgstr "Đang cài đặt…"
+
+msgid "Update installed"
+msgstr "Đã cài đặt bản cập nhật"
+
+msgid "Update failed: {}"
+msgstr "Cập nhật không thành công: {}"
+
+msgid "Press OK to check for updates"
+msgstr "Nhấn OK để kiểm tra bản cập nhật"
+
+msgid "Hide from Home"
+msgstr "Ẩn khỏi màn hình chính"
+
+msgid "Move"
+msgstr "Di chuyển"
+
+msgid "Couldn't open {}"
+msgstr "Không mở được {}"
+
+msgid "Couldn't load apps: {}"
+msgstr "Không tải được ứng dụng: {}"
+
+msgid "Couldn't load the licence notices: {}"
+msgstr "Không tải được thông báo giấy phép: {}"
+
+msgid "About RustTV"
+msgstr "Giới thiệu về RustTV"
+
+msgid "Hidden apps"
+msgstr "Ứng dụng đã ẩn"
+
+msgid "About"
+msgstr "Giới thiệu"
+
+msgid "OK puts the app back on Home. Back returns."
+msgstr "Nhấn OK để đưa ứng dụng trở lại màn hình chính. Nhấn Quay lại để trở về."
+
+msgid "Version {} · MIT OR Apache-2.0"
+msgstr "Phiên bản {} · MIT OR Apache-2.0"
+
+msgid "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0."
+msgstr "Xây dựng bằng Slint theo Slint Royalty-free License 2.0. Bao gồm cả Skia (BSD-3-Clause) và các thư viện Rust theo MIT hoặc Apache-2.0."
+
+msgid "Source: github.com/damienmiheev/rusttv"
+msgstr "Mã nguồn: github.com/damienmiheev/rusttv"
+
+msgid "Up and Down scroll the notices. Back returns."
+msgstr "Nhấn Lên và Xuống để cuộn. Nhấn Quay lại để trở về."
+
+msgid "Third-party notices"
+msgstr "Thông báo của bên thứ ba"
