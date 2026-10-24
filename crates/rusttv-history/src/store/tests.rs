@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use super::*;
 use crate::entry::ApprovedBy;
@@ -254,7 +254,7 @@ fn packs_loose_objects_and_then_everything_into_one_pack() {
         }
     }
     record_until_packing(&mut store, &mut n);
-    let outcome = store.pack().unwrap().unwrap();
+    let outcome = store.pack(&AtomicBool::new(false)).unwrap().unwrap();
     assert!(!outcome.full);
     assert!(outcome.objects >= PACK_LOOSE_AT);
     let (loose, packs) = store.object_files().unwrap();
@@ -266,10 +266,10 @@ fn packs_loose_objects_and_then_everything_into_one_pack() {
     // Seven more packs make the next pack a full repack into one.
     for _ in 0..7 {
         record_until_packing(&mut store, &mut n);
-        assert!(!store.pack().unwrap().unwrap().full);
+        assert!(!store.pack(&AtomicBool::new(false)).unwrap().unwrap().full);
     }
     record_until_packing(&mut store, &mut n);
-    let outcome = store.pack().unwrap().unwrap();
+    let outcome = store.pack(&AtomicBool::new(false)).unwrap().unwrap();
     assert!(outcome.full);
     assert_eq!(store.object_files().unwrap(), (Vec::new(), 1));
     assert_eq!(store.log(usize::MAX).unwrap().len(), n);
@@ -298,4 +298,69 @@ fn packages_and_device_facts_are_kept() {
         .unwrap();
     assert_eq!(store.state(&id).unwrap(), observed);
     assert_eq!(store.entry(&id).unwrap().meta.author, Author::Drift);
+}
+
+#[test]
+fn an_id_is_set_once() {
+    let dir = TempDir::new();
+    let mut store = dir.store("tv.git");
+    assert_eq!(store.id().unwrap(), None);
+    let id = HistoryId::parse("0f8b6a2c-5d1e-4c3b-9a7f-1e2d3c4b5a69").unwrap();
+    store.set_id(&id).unwrap();
+    store.set_id(&id).unwrap();
+    let other = HistoryId::parse("00000000-0000-4000-8000-000000000000").unwrap();
+    assert!(store.set_id(&other).is_err());
+    assert_eq!(dir.store("tv.git").id().unwrap(), Some(id));
+    for bad in [
+        "",
+        "0F8B6A2C-5D1E-4C3B-9A7F-1E2D3C4B5A69",
+        "0f8b6a2c5d1e4c3b9a7f1e2d3c4b5a69",
+        "../../x",
+    ] {
+        assert!(HistoryId::parse(bad).is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn a_long_history_is_exported_in_parts() {
+    let dir = TempDir::new();
+    let mut tv_store = dir.store("tv.git");
+    let total = EXPORT_PART_COMMITS + 5;
+    for n in 0..total {
+        tv_store.record(&state(n), &tv(), n as i64).unwrap();
+    }
+    let mut mac = dir.store("mac.git");
+    let mut parts = 0;
+    loop {
+        let since = mac.head().unwrap();
+        let export = tv_store.export(since.as_ref()).unwrap();
+        mac.import(
+            &export.pack,
+            export.head.as_ref().unwrap(),
+            Limits::default(),
+        )
+        .unwrap();
+        parts += 1;
+        if !export.more {
+            break;
+        }
+    }
+    assert_eq!(parts, 2);
+    assert_eq!(mac.head().unwrap(), tv_store.head().unwrap());
+    assert_eq!(mac.log(usize::MAX).unwrap().len(), total);
+}
+
+#[test]
+fn packing_stops_when_interrupted_and_leaves_the_history_intact() {
+    let dir = TempDir::new();
+    let mut store = dir.store("tv.git");
+    let mut n = 0;
+    while !store.needs_packing().unwrap() {
+        store.record(&state(n), &tv(), n as i64).unwrap();
+        n += 1;
+    }
+    assert!(store.pack(&AtomicBool::new(true)).is_err());
+    assert!(store.pack_files().unwrap().is_empty());
+    assert_eq!(store.log(usize::MAX).unwrap().len(), n);
+    assert!(store.pack(&AtomicBool::new(false)).unwrap().is_some());
 }

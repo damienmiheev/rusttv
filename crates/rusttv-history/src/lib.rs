@@ -8,9 +8,11 @@
 //! CLI; it depends on neither.
 
 mod diff;
+pub mod door;
 mod entry;
 mod state;
 mod store;
+pub mod tv;
 
 pub use diff::{Change, diff};
 pub use entry::{ApprovedBy, Author, Entry, EntryId, Meta};
@@ -18,7 +20,7 @@ pub use state::{
     Device, Launcher, PackageState, SETTING_KEYS, STATE_FORMAT, Settings, State, is_package_name,
     is_setting_value, is_tile_name,
 };
-pub use store::{Export, Limits, PackOutcome, Store};
+pub use store::{EXPORT_PART_COMMITS, Export, HistoryId, Limits, PackOutcome, Store};
 
 /// Why a history operation failed.
 #[derive(Debug, thiserror::Error)]

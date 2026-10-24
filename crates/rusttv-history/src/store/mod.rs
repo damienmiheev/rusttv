@@ -49,14 +49,59 @@ impl Default for Limits {
     }
 }
 
-/// A history's entries after some entry, as a git pack.
+/// Commits in one export part: ~1,000 entries ≈ 0.7 MB packed (measured),
+/// far below the 8 MB part size HISTORY.md § 5 allows.
+pub const EXPORT_PART_COMMITS: usize = 2_000;
+
+/// The file in the repository that holds its [`HistoryId`].
+const ID_FILE: &str = "rusttv-id";
+
+/// A history's id: a random UUID made by the TV with its first entry
+/// (HISTORY.md § 4.4), lowercase `8-4-4-4-12` hex.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct HistoryId(String);
+
+impl HistoryId {
+    /// Validates a UUID in its canonical lowercase form.
+    pub fn parse(text: &str) -> Result<Self, HistoryError> {
+        let groups: Vec<&str> = text.split('-').collect();
+        let lengths: Vec<usize> = groups.iter().map(|group| group.len()).collect();
+        let hex = groups.iter().all(|group| {
+            group
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        });
+        if lengths == [8, 4, 4, 4, 12] && hex {
+            Ok(Self(text.to_owned()))
+        } else {
+            Err(HistoryError::invalid(format!(
+                "{text:?} is not a history id"
+            )))
+        }
+    }
+
+    /// The UUID text.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for HistoryId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Part of a history after some entry, as a git pack.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Export {
-    /// The newest entry, `None` for an empty history.
+    /// The newest entry in this part, `None` for an empty history.
     pub head: Option<EntryId>,
-    /// A pack of the commits after `since` and everything they need; empty
-    /// when there is nothing new.
+    /// A pack of the part's commits and everything they need; empty when
+    /// there is nothing new.
     pub pack: Vec<u8>,
+    /// Whether newer entries follow: export again from `head`.
+    pub more: bool,
 }
 
 /// What [`Store::pack`] did.
@@ -89,6 +134,30 @@ impl Store {
             dir: dir.to_owned(),
             repo,
         })
+    }
+
+    /// This history's id, `None` until one is set.
+    pub fn id(&self) -> Result<Option<HistoryId>, HistoryError> {
+        match fs::read_to_string(self.dir.join(ID_FILE)) {
+            Ok(text) => HistoryId::parse(text.trim()).map(Some),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(HistoryError::storage(error)),
+        }
+    }
+
+    /// Sets this history's id; refuses to change one that is set.
+    pub fn set_id(&mut self, id: &HistoryId) -> Result<(), HistoryError> {
+        match self.id()? {
+            Some(current) if &current == id => Ok(()),
+            Some(current) => Err(HistoryError::invalid(format!(
+                "this history is {current}, not {id}"
+            ))),
+            None => {
+                let temp = self.dir.join(format!("{ID_FILE}.tmp"));
+                fs::write(&temp, format!("{id}\n")).map_err(HistoryError::storage)?;
+                fs::rename(&temp, self.dir.join(ID_FILE)).map_err(HistoryError::storage)
+            }
+        }
     }
 
     /// Reopens the repository, so objects and packs written meanwhile (or by
@@ -284,27 +353,39 @@ impl Store {
 
     /// The entries after `since` (all of them for `None`) as a pack.
     pub fn export(&self, since: Option<&EntryId>) -> Result<Export, HistoryError> {
-        let head = self.head()?;
-        let pack = match &head {
-            None if since.is_some() => {
+        let Some(head) = self.head()? else {
+            if since.is_some() {
                 return Err(HistoryError::NotAContinuation(
                     "this history is empty".to_owned(),
                 ));
             }
-            None => Vec::new(),
-            Some(head) => {
-                let commits = self.commits_after(head, since)?;
-                if commits.is_empty() {
-                    Vec::new()
-                } else {
-                    self.write_pack(
-                        commits,
-                        output::count::objects::ObjectExpansion::TreeContents,
-                    )?
-                }
-            }
+            return Ok(Export {
+                head: None,
+                pack: Vec::new(),
+                more: false,
+            });
         };
-        Ok(Export { head, pack })
+        let mut commits = self.commits_after(&head, since)?;
+        let more = commits.len() > EXPORT_PART_COMMITS;
+        commits.truncate(EXPORT_PART_COMMITS);
+        let Some(last) = commits.last() else {
+            return Ok(Export {
+                head: Some(head),
+                pack: Vec::new(),
+                more: false,
+            });
+        };
+        let part_head = EntryId::from_object(*last);
+        let pack = self.write_pack(
+            commits,
+            output::count::objects::ObjectExpansion::TreeContents,
+            &AtomicBool::new(false),
+        )?;
+        Ok(Export {
+            head: Some(part_head),
+            pack,
+            more,
+        })
     }
 
     /// A pack of `ids`, expanded as `expansion` says: whole objects, no deltas.
@@ -312,18 +393,18 @@ impl Store {
         &self,
         ids: Vec<gix::ObjectId>,
         expansion: output::count::objects::ObjectExpansion,
+        interrupt: &AtomicBool,
     ) -> Result<Vec<u8>, HistoryError> {
         let mut db = gix::odb::at(self.dir.join("objects"), gix::hash::Kind::Sha1)
             .map_err(HistoryError::storage)?
             .into_arc()
             .map_err(HistoryError::storage)?;
         db.prevent_pack_unload();
-        let interrupt = AtomicBool::new(false);
         let (counts, _) = output::count::objects_unthreaded(
             &db,
             &mut ids.into_iter().map(Ok),
             &gix::progress::Discard,
-            &interrupt,
+            interrupt,
             expansion,
         )
         .map_err(HistoryError::storage)?;
@@ -505,7 +586,7 @@ impl Store {
     /// what the new pack holds. `None` when there was nothing to do. Safe to
     /// stop at any point: a pack is used only once complete, and objects are
     /// removed only after it is.
-    pub fn pack(&mut self) -> Result<Option<PackOutcome>, HistoryError> {
+    pub fn pack(&mut self, interrupt: &AtomicBool) -> Result<Option<PackOutcome>, HistoryError> {
         let (loose, packs) = self.object_files()?;
         let full = packs >= REPACK_AT;
         if !full && loose.len() < PACK_LOOSE_AT {
@@ -520,9 +601,14 @@ impl Store {
             self.write_pack(
                 commits,
                 output::count::objects::ObjectExpansion::TreeContents,
+                interrupt,
             )?
         } else {
-            self.write_pack(loose.clone(), output::count::objects::ObjectExpansion::AsIs)?
+            self.write_pack(
+                loose.clone(),
+                output::count::objects::ObjectExpansion::AsIs,
+                interrupt,
+            )?
         };
         let objects = pack_object_count(&bytes)? as usize;
         let pack_dir = self.dir.join("objects").join("pack");
@@ -531,7 +617,7 @@ impl Store {
             &mut &bytes[..],
             Some(&pack_dir),
             &mut gix::progress::Discard,
-            &AtomicBool::new(false),
+            interrupt,
             None::<gix::odb::Cache<gix::odb::store::Handle<std::sync::Arc<gix::odb::Store>>>>,
             gix::hash::Kind::Sha1,
             gix_pack::bundle::write::Options {
