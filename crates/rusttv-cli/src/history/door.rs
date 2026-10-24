@@ -85,16 +85,41 @@ pub(crate) fn send(
     kind: DoorKind,
     payload: Vec<u8>,
 ) -> Result<CommitResult, CliError> {
-    let nonce = nonce();
-    let inbox = DeviceCommand::HistoryInbox {
-        nonce: nonce.clone(),
-        payload: InboxPayload::new(payload),
-    };
-    let stdin = inbox.stdin().unwrap_or_default().to_vec();
-    adb.run_binary(serial, &inbox, &stdin)?;
-    let output = adb.run(serial, &DeviceCommand::HistoryCommit { kind, nonce })?;
+    let output = answered(
+        || {
+            let nonce = nonce();
+            let inbox = DeviceCommand::HistoryInbox {
+                nonce: nonce.clone(),
+                payload: InboxPayload::new(payload.clone()),
+            };
+            let stdin = inbox.stdin().unwrap_or_default().to_vec();
+            adb.run_binary(serial, &inbox, &stdin)?;
+            Ok(adb.run(serial, &DeviceCommand::HistoryCommit { kind, nonce })?)
+        },
+        || std::thread::sleep(RETRY_AFTER),
+    )?;
     Ok(CommitResult::parse(&output).map_err(Failure::from)?)
 }
+
+/// Runs `send` (write the inbox, then commit) and returns the commit's
+/// output. Right after the launcher is installed or upgraded, the first call
+/// can come back empty: Android hasn't started the new package's door yet
+/// (seen on the Philips 65OLED818). Nothing was committed then, so the whole
+/// message is sent once more after `wait`.
+fn answered(
+    mut send: impl FnMut() -> Result<String, CliError>,
+    wait: impl Fn(),
+) -> Result<String, CliError> {
+    let output = send()?;
+    if !output.trim().is_empty() {
+        return Ok(output);
+    }
+    wait();
+    send()
+}
+
+/// How long to wait before sending a message again that got no answer.
+const RETRY_AFTER: std::time::Duration = std::time::Duration::from_millis(1500);
 
 /// Sends one message; a refusal is an error naming the TV's code.
 pub(crate) fn send_message(
@@ -152,6 +177,30 @@ impl From<HistoryError> for Failure {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_empty_answer_is_sent_once_more() {
+        let mut answers = vec!["rusttv-result 1 ok none".to_owned(), String::new()];
+        let waited = std::cell::Cell::new(0);
+        let output = answered(
+            || Ok(answers.pop().unwrap()),
+            || waited.set(waited.get() + 1),
+        )
+        .unwrap();
+        assert_eq!(output, "rusttv-result 1 ok none");
+        assert_eq!(waited.get(), 1);
+
+        let mut sent = 0;
+        let output = answered(
+            || {
+                sent += 1;
+                Ok("rusttv-result 1 ok none".to_owned())
+            },
+            || {},
+        )
+        .unwrap();
+        assert_eq!((sent, output.as_str()), (1, "rusttv-result 1 ok none"));
+    }
 
     #[test]
     fn nonces_are_valid_and_differ() {
