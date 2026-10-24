@@ -8,10 +8,13 @@
 
 #[cfg(target_os = "android")]
 mod android;
+mod history;
 mod i18n;
 mod model;
 mod order_file;
 mod platform;
+mod review;
+mod settings;
 mod ui;
 
 pub use model::{
@@ -24,3 +27,10 @@ pub use platform::{AppEntry, Artwork, Bitmap, Platform, PlatformError, UpdateSta
 #[cfg(any(test, feature = "test-util"))]
 pub use ui::{DemoStep, run_demo};
 pub use ui::{Lifecycle, RunOptions, run};
+
+/// Starts the history thread for the desktop dev mode over `dir`, the
+/// directory of the order file (HISTORY.md).
+#[cfg(not(target_os = "android"))]
+pub fn start_desktop_history(dir: std::path::PathBuf) {
+    history::desktop::start(dir);
+}

@@ -24,6 +24,7 @@ log.workspace = true
 material-colors.workspace = true
 serde.workspace = true
 toml.workspace = true
+rusttv-history.workspace = true
 
 # Desktop dev mode: window via winit, CPU rendering (no Skia download).
 [target.'cfg(not(target_os = "android"))'.dependencies]

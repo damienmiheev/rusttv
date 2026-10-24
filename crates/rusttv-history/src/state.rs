@@ -240,12 +240,18 @@ pub fn is_package_name(name: &str) -> bool {
 }
 
 /// A tile name: `about`, `settings`, `hidden-apps`, or a component
-/// `<package>/<class>`.
+/// `<package>/<class>`. Tile names are only shown, never run, so the package
+/// part is checked by its characters (not [`is_package_name`]'s stricter
+/// shape): one bad name must not stop the whole history.
 pub fn is_tile_name(name: &str) -> bool {
     match name.split_once('/') {
         None => matches!(name, "about" | "settings" | "hidden-apps"),
         Some((package, class)) => {
-            is_package_name(package)
+            !package.is_empty()
+                && package.len() <= 255
+                && package
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_'))
                 && !class.is_empty()
                 && class.len() <= 255
                 && class
@@ -304,6 +310,7 @@ mod tests {
             "format = 1\n[settings.global]\nanimator_duration_scale = \"0.5; rm\"\n",
             "format = 1\n[packages]\n\"com.example; reboot\" = \"disabled\"\n",
             "format = 1\n[launcher]\norder = [\"../../etc\"]\n",
+            "format = 1\n[launcher]\norder = [\"a/b\\nc\"]\n",
             "format = 1\nextra = 1\n",
         ] {
             assert!(

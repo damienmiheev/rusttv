@@ -12,6 +12,7 @@ use slint::{
     ComponentHandle, Model, ModelRc, SharedPixelBuffer, SharedString, Timer, TimerMode, VecModel,
 };
 
+use crate::history::History;
 use crate::i18n;
 use crate::model::{
     App, Effect, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT, MenuItem, Scroll,
@@ -36,7 +37,9 @@ use crate::platform::{AppEntry, Artwork, Bitmap, Platform, PlatformError, Update
 mod generated {
     slint::include_modules!();
 }
-use generated::{Dir, HomeWindow, Strings, TileData};
+use generated::{Dir, HomeWindow, ReviewLine, SettingsRow, Strings, TileData};
+
+mod settings_view;
 
 /// Idle time before the focused tile starts to sway (it fades in, so this can
 /// be short); quick D-pad scrolling passes tiles without starting a sway.
@@ -346,6 +349,24 @@ struct Controller {
     /// The updater's status as last shown.
     update: UpdateStatus,
     update_timer: Timer,
+    /// The Settings page while it is open (HISTORY.md § 8).
+    settings: Option<crate::settings::SettingsPage>,
+    /// The review screen while it is open, over the Settings page.
+    review: Option<crate::review::Review>,
+    /// The line under the Settings or review title: (`settings-status` kind,
+    /// detail); kind 0 shows the hint.
+    settings_status: (i32, String),
+    /// Ends a held OK on the review screen.
+    hold_timer: Timer,
+    /// The OK that confirmed a review is still held: its release must not
+    /// reach the Settings page underneath.
+    swallow_ok_release: bool,
+    /// Packs the history a few seconds after the launcher left the screen.
+    pack_timer: Timer,
+    settings_sections: Rc<VecModel<SharedString>>,
+    settings_rows: Rc<VecModel<SettingsRow>>,
+    review_lines: Rc<VecModel<ReviewLine>>,
+    review_code: Rc<VecModel<i32>>,
 }
 
 impl Controller {
@@ -361,6 +382,14 @@ impl Controller {
         window.set_hidden_tiles(ModelRc::from(hidden_tiles.clone()));
         let menu_items = Rc::new(VecModel::default());
         window.set_menu_items(ModelRc::from(menu_items.clone()));
+        let settings_sections = Rc::new(VecModel::default());
+        window.set_settings_sections(ModelRc::from(settings_sections.clone()));
+        let settings_rows = Rc::new(VecModel::default());
+        window.set_settings_rows(ModelRc::from(settings_rows.clone()));
+        let review_lines = Rc::new(VecModel::default());
+        window.set_review_lines(ModelRc::from(review_lines.clone()));
+        let review_code = Rc::new(VecModel::default());
+        window.set_review_code(ModelRc::from(review_code.clone()));
         window.set_version(env!("CARGO_PKG_VERSION").into());
         window.set_update_status(update_line(window, &UpdateStatus::Idle));
 
@@ -411,9 +440,20 @@ impl Controller {
                 saved_focus,
                 update: UpdateStatus::Idle,
                 update_timer: Timer::default(),
+                settings: None,
+                review: None,
+                settings_status: (0, String::new()),
+                hold_timer: Timer::default(),
+                swallow_ok_release: false,
+                pack_timer: Timer::default(),
+                settings_sections,
+                settings_rows,
+                review_lines,
+                review_code,
             })
         });
         *controller.borrow().options.lifecycle.0.borrow_mut() = Rc::downgrade(&controller);
+        settings_view::register(&controller);
         {
             let mut this = controller.borrow_mut();
             this.reload_apps();
@@ -431,6 +471,13 @@ impl Controller {
     /// updater's status: on Android the daily check may have just started.
     fn resume(&mut self) {
         self.refresh_update();
+        self.pack_timer.stop();
+        if let Some(history) = History::get() {
+            history.resumed();
+            if history.take_launcher_changed() {
+                self.reload_launcher_state();
+            }
+        }
         let changed = self.platform.take_apps_changed().unwrap_or_else(|error| {
             log::warn!("checking for app changes failed: {error}");
             true
@@ -570,7 +617,15 @@ impl Controller {
                     .map(|window| window.global::<Strings>().invoke_couldnt_open(label.into()));
                 self.show_toast(text.unwrap_or_default());
             }
-            Some(Effect::SaveOrder) => self.save_order(),
+            Some(Effect::SaveOrder) => {
+                self.save_order();
+                // The person moved, hid or showed an app (HISTORY.md § 2).
+                if let Some(history) = History::get() {
+                    history.launcher_edited();
+                }
+            }
+            Some(Effect::OpenSettings) => self.open_settings(),
+            Some(Effect::Settings(input)) => self.settings_input(input),
             Some(Effect::OpenAbout) => {
                 self.open_notices();
                 self.refresh_update();
@@ -583,6 +638,10 @@ impl Controller {
         // stops it there: back on Home, focus is on the app that was opened.
         if input == Input::Paused && self.home.focused() != self.saved_focus.as_ref() {
             self.save_order();
+        }
+        if input == Input::Paused {
+            self.close_settings_view();
+            self.schedule_pack();
         }
         if let Some(notices) = &mut self.notices {
             match input {
@@ -681,6 +740,10 @@ impl Controller {
         let Some(path) = &self.options.order_file else {
             return;
         };
+        // A TV change from the history owns the order file until it ends.
+        if History::get().is_some_and(History::busy) {
+            return;
+        }
         let focus = self.home.focused();
         match order_file::save(path, self.home.order(), self.home.hidden(), focus) {
             Ok(()) => self.saved_focus = focus.cloned(),
@@ -714,7 +777,7 @@ impl Controller {
             State::Browse if self.pressed => LONG_PRESS,
             State::Launching => LAUNCH_TIMEOUT,
             State::Moving => MOVE_IDLE_TIMEOUT,
-            State::Browse | State::About | State::Menu | State::Hidden => {
+            State::Browse | State::About | State::Menu | State::Hidden | State::Settings => {
                 self.tick_timer.stop();
                 return;
             }
@@ -860,7 +923,12 @@ impl Controller {
                 window.set_first_row(i32::try_from(first_row).unwrap_or(i32::MAX));
             }
         }
-        window.set_mode(mode_value(self.home.state()));
+        window.set_mode(if self.review.is_some() {
+            7
+        } else {
+            mode_value(self.home.state())
+        });
+        self.render_settings(&window);
         window.set_pressed(self.pressed);
         if self.home.state() != State::About && self.notices.take().is_some() {
             // Closed: free the text until the page opens again.
@@ -946,6 +1014,12 @@ impl Controller {
                 return TileData {
                     label: "Hidden apps".into(),
                     kind: 5,
+                    ..TileData::default()
+                };
+            }
+            TileId::Settings => {
+                return TileData {
+                    kind: 6,
                     ..TileData::default()
                 };
             }
@@ -1080,6 +1154,7 @@ fn mode_value(state: State) -> i32 {
         State::About => 3,
         State::Menu => 4,
         State::Hidden => 5,
+        State::Settings => 6,
     }
 }
 
@@ -1218,6 +1293,10 @@ mod tests {
         fn install_update(&mut self) -> Result<(), PlatformError> {
             self.platform.borrow_mut().install_update()
         }
+
+        fn random_code(&mut self) -> [u32; 4] {
+            self.platform.borrow_mut().random_code()
+        }
     }
 
     struct Screen {
@@ -1231,6 +1310,7 @@ mod tests {
     const UP: &str = "\u{F700}";
     const DOWN: &str = "\u{F701}";
     const RIGHT: &str = "\u{F703}";
+    const LEFT: &str = "\u{F702}";
     const BACK: &str = "\u{F748}";
 
     /// The home screen with three apps (A, B, C, then About), focus on A.
@@ -1402,7 +1482,6 @@ mod tests {
         assert_eq!(screen.window.get_focused_index(), 2);
         screen.wait(HERO_DELAY.as_millis() as u64 + 1);
         assert_eq!(screen.hero(), "C");
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1456,8 +1535,16 @@ mod tests {
             .map(|(id, _)| id.clone())
             .collect();
         let app = |name: &str| TileId::App(format!("{name}/.Main"));
-        assert_eq!(saved, [app("b"), app("a"), app("c"), TileId::About]);
-        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            saved,
+            [
+                app("b"),
+                app("a"),
+                app("c"),
+                TileId::About,
+                TileId::Settings
+            ]
+        );
     }
 
     #[test]
@@ -1504,15 +1591,15 @@ mod tests {
         }
         screen.lifecycle.resumed();
         screen.wait(1);
-        // A, B, C loading; About.
-        assert_eq!(screen.kinds(), [4, 4, 4, 3]);
+        // A, B, C loading; About, Settings.
+        assert_eq!(screen.kinds(), [4, 4, 4, 3, 6]);
         assert_eq!(screen.artwork_calls(), 0);
 
         assert_eq!(screen.shared.platform.borrow().artwork_loaded_calls(), 0);
 
         screen.wait(20);
         screen.wait(20);
-        assert_eq!(screen.kinds(), [0, 0, 0, 3]);
+        assert_eq!(screen.kinds(), [0, 0, 0, 3, 6]);
         assert_eq!(screen.artwork_calls(), 3);
         // Told once, after the last picture, so it can free what it decoded.
         assert_eq!(screen.shared.platform.borrow().artwork_loaded_calls(), 1);
@@ -1531,8 +1618,8 @@ mod tests {
             screen.tap(DOWN);
             screen.tap(OK); // Hide from Home
             assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
-            // A, C, About, Hidden apps; focus on C, where B was.
-            assert_eq!(screen.kinds(), [0, 0, 3, 5]);
+            // A, C, About, Settings, Hidden apps; focus on C, where B was.
+            assert_eq!(screen.kinds(), [0, 0, 3, 6, 5]);
             assert_eq!(screen.window.get_focused_index(), 1);
             assert!(screen.launched().is_empty());
         }
@@ -1540,10 +1627,10 @@ mod tests {
 
         // Started again, with artwork loaded later as on Android: B's is not read.
         let screen = screen_with(abc().with_lazy_artwork(), Some(file.clone()));
-        assert_eq!(screen.kinds(), [4, 4, 3, 5]);
+        assert_eq!(screen.kinds(), [4, 4, 3, 6, 5]);
         screen.wait(20);
         screen.wait(20);
-        assert_eq!(screen.kinds(), [0, 0, 3, 5]);
+        assert_eq!(screen.kinds(), [0, 0, 3, 6, 5]);
         assert_eq!(screen.artwork_calls(), 2);
 
         // Its page reads it.
@@ -1569,11 +1656,10 @@ mod tests {
         // OK puts it back, before About; the page closes with focus on it.
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
-        assert_eq!(screen.kinds(), [0, 0, 0, 3]);
+        assert_eq!(screen.kinds(), [0, 0, 0, 3, 6]);
         assert_eq!(screen.window.get_focused_index(), 2);
         assert_eq!(screen.window.get_tiles().row_data(2).unwrap().label, "B");
         assert!(order_file::load(&file).hidden.is_empty());
-        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -1903,5 +1989,103 @@ mod tests {
         assert!(!end());
         screen.wait(3 * (slide + hold));
         assert!(!end());
+    }
+
+    /// The process's one history thread and its directory, shared by the
+    /// tests that use it (each with its own order file in it).
+    fn history_dir() -> PathBuf {
+        static DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+        DIR.get_or_init(|| {
+            let dir =
+                std::env::temp_dir().join(format!("rusttv-ui-history-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            crate::history::desktop::start(dir.clone());
+            dir
+        })
+        .clone()
+    }
+
+    /// Lets the history thread answer and the UI pick the answer up.
+    fn settle(screen: &Screen) {
+        for _ in 0..100 {
+            std::thread::sleep(Duration::from_millis(5));
+            screen.wait(20);
+        }
+    }
+
+    #[test]
+    fn faster_animations_are_reviewed_approved_with_the_code_and_recorded() {
+        let dir = history_dir();
+        let screen = screen(Some(dir.join("order.toml")));
+        // A, B, C, About, Settings.
+        for _ in 0..4 {
+            screen.tap(RIGHT);
+        }
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        settle(&screen);
+        assert_eq!(screen.window.get_settings_sections().row_count(), 3);
+        screen.tap(RIGHT);
+        screen.tap(DOWN);
+        screen.tap(OK); // Faster
+        assert_eq!(screen.window.get_mode(), 7, "the review screen opens");
+        // A header and the three scales, then Approve.
+        assert_eq!(screen.window.get_review_lines().row_count(), 4);
+        for _ in 0..4 {
+            screen.tap(DOWN);
+        }
+        screen.tap(OK);
+        assert_eq!(screen.window.get_review_phase(), 1);
+        // FakePlatform's code: left, up, right, down.
+        for key in [LEFT, UP, RIGHT, DOWN] {
+            screen.tap(key);
+        }
+        assert_eq!(
+            (screen.window.get_review_phase(), screen.window.get_mode()),
+            (2, 7),
+            "{}",
+            screen.window.get_settings_status()
+        );
+        screen.wait(1_000);
+        screen.key(OK, true);
+        assert!(screen.window.get_review_holding());
+        screen.wait(2_100);
+        screen.key(OK, false);
+        settle(&screen);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        assert_eq!(screen.window.get_settings_status(), "Applied.");
+
+        // History has it, approved on the TV.
+        let history = crate::history::History::get().unwrap();
+        let overview = history.overview();
+        assert_eq!(overview.settings["animator_duration_scale"], "0.5");
+        let newest = &overview.entries[0];
+        assert_eq!(newest.author, rusttv_history::Author::Tv);
+        assert_eq!(newest.changes.len(), 3);
+    }
+
+    #[test]
+    fn a_wrong_arrow_changes_nothing_and_says_so() {
+        let dir = history_dir();
+        let screen = screen(Some(dir.join("order.toml")));
+        for _ in 0..4 {
+            screen.tap(RIGHT);
+        }
+        screen.tap(OK);
+        settle(&screen);
+        screen.tap(RIGHT);
+        screen.tap(DOWN);
+        screen.tap(OK);
+        for _ in 0..4 {
+            screen.tap(DOWN);
+        }
+        screen.tap(OK);
+        screen.tap(UP); // the code starts with left
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        assert_eq!(
+            screen.window.get_settings_status(),
+            "Nothing changed: wrong code."
+        );
     }
 }
