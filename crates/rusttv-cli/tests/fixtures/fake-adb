@@ -41,6 +41,10 @@ tv:shell\ pm\ list\ packages\ -f)
 tv:shell\ dumpsys\ package\ ai.rusttv.launcher)
     cat "$update/dumpsys-package-rusttv.txt"
     ;;
+# Upgrading the installed launcher (host-side `adb install`, no `shell`).
+tv:install\ -r\ --pkg\ ai.rusttv.launcher\ *)
+    cat "$install/adb-install.txt"
+    ;;
 # The same TV before the RustTV launcher is installed.
 tv-fresh:devices\ -l)
     cat "$captures/devices-l.txt"

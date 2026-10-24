@@ -40,6 +40,16 @@ First public release (ROADMAP Phase 6).
   with the owner's minisign key (`SHA256SUMS.minisig`); never a downgrade.
   Until the key is compiled in, both install paths refuse
   (`UPDATE_VERIFY_FAILED`) (CLI.md § Updates, SECURITY.md § Updates).
+- `launcher upgrade`: install or upgrade the launcher also while a Home
+  takeover is active, as restore, install and takeover again, three separate
+  plans approved by typing `upgrade` once; stops at the first failing stage
+  and says how to continue.
+- `approve --for <duration> --only launcher`, `--status`, `--revoke`: a
+  time-limited (at most 2 h) delegation, granted at a terminal by typing
+  `delegate`, that lets launcher install, upgrade, takeover and restore
+  plans for one device and firmware be applied without a terminal (e.g. by
+  an agent). Journals record how each plan was approved (`approved_by`)
+  (owner decision 2026-10-24, SECURITY.md § Delegated approval).
 - Stable `--json` output, schema `rusttv.v7`, and documented error codes (CLI.md).
 
 ### MCP server (`rusttv-mcp`)

@@ -913,6 +913,233 @@ fn launcher_install_and_uninstall_without_a_terminal_are_refused_before_touching
     }
 }
 
+/// `ro.build.fingerprint` of the synthetic getprop fixture (scenario `tv`).
+const TV_FINGERPRINT: &str =
+    "google/sdk_google_atv64_arm64/emu64a:14/UTT3.240625.001.K5/12345678:userdebug/dev-keys";
+
+fn now_unix_ms() -> u64 {
+    let elapsed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap();
+    u64::try_from(elapsed.as_millis()).unwrap()
+}
+
+/// Writes a launcher-scope grant for the `tv` scenario's device into `state`,
+/// valid from `granted` to `expires` (unix ms), as `rusttv approve` would.
+fn write_grant(state: &std::path::Path, granted: u64, expires: u64) {
+    std::fs::write(
+        state.join("approval-grant.toml"),
+        format!(
+            "schema_version = 1\nserial = \"emulator-5554\"\nfingerprint = \"{TV_FINGERPRINT}\"\n\
+             scope = \"launcher\"\ngranted_at_unix_ms = {granted}\nexpires_at_unix_ms = {expires}\n"
+        ),
+    )
+    .unwrap();
+}
+
+const MINUTE_MS: u64 = 60_000;
+
+#[test]
+fn approve_without_a_terminal_is_refused_and_grants_nothing() {
+    let state = state_dir("approve-no-terminal");
+    let output = rusttv_with_state(
+        "tv",
+        &state,
+        &["approve", "--for", "30m", "--only", "launcher", "--json"],
+    );
+
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let json = json_stdout(&output);
+    assert_eq!(json["error"]["code"], "NOT_APPROVED");
+    let message = json["error"]["message"].as_str().unwrap();
+    assert!(message.contains("interactive terminal"), "{message}");
+    assert!(!state.join("approval-grant.toml").exists());
+
+    // Longer than 2 h, or no scope: usage errors.
+    let output = rusttv_with_state(
+        "tv",
+        &state,
+        &["approve", "--for", "3h", "--only", "launcher"],
+    );
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    let output = rusttv_with_state("tv", &state, &["approve", "--for", "30m"]);
+    assert_eq!(output.status.code(), Some(2), "{output:?}");
+    std::fs::remove_dir_all(state).unwrap();
+}
+
+#[test]
+fn approve_status_shows_the_grant_and_revoke_deletes_it() {
+    let state = state_dir("approve-status");
+    let status = |state: &std::path::Path| {
+        let output = rusttv_with_state("no-devices", state, &["approve", "--status", "--json"]);
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+        json_stdout(&output)["data"].clone()
+    };
+    let data = status(&state);
+    assert_eq!(data["grant"], Value::Null);
+    assert_eq!(data["valid"], false);
+
+    let now = now_unix_ms();
+    write_grant(&state, now - MINUTE_MS, now + 29 * MINUTE_MS);
+    let data = status(&state);
+    assert_eq!(data["valid"], true, "{data}");
+    assert_eq!(data["reason"], Value::Null);
+    assert_eq!(data["grant"]["serial"], "emulator-5554");
+    assert_eq!(data["grant"]["scope"], "launcher");
+
+    write_grant(&state, now - 60 * MINUTE_MS, now - 30 * MINUTE_MS);
+    let data = status(&state);
+    assert_eq!(data["valid"], false);
+    assert!(
+        data["reason"].as_str().unwrap().contains("expired"),
+        "{data}"
+    );
+
+    // Revoking needs no terminal and no device.
+    let revoke = |state: &std::path::Path| {
+        let output = rusttv_with_state("no-devices", state, &["approve", "--revoke", "--json"]);
+        assert_eq!(output.status.code(), Some(0), "{output:?}");
+        json_stdout(&output)["data"]["revoked"].clone()
+    };
+    assert_eq!(revoke(&state), true);
+    assert!(!state.join("approval-grant.toml").exists());
+    assert_eq!(revoke(&state), false);
+    std::fs::remove_dir_all(state).unwrap();
+}
+
+#[test]
+fn launcher_install_without_a_terminal_applies_only_with_a_valid_grant() {
+    let dir = state_dir("install-grant");
+    let apk = fake_apk(&dir, "builds/app-x86_64-release.apk");
+    let install = [
+        "launcher",
+        "install",
+        "--apk",
+        apk.to_str().unwrap(),
+        "--json",
+    ];
+    let now = now_unix_ms();
+
+    // Expired: refused before the device is touched, pointing to `rusttv approve`.
+    write_grant(&dir, now - 60 * MINUTE_MS, now - 30 * MINUTE_MS);
+    let output = rusttv_in(&dir, "no-devices", &install);
+    assert_eq!(output.status.code(), Some(1), "{output:?}");
+    let json = json_stdout(&output);
+    assert_eq!(json["error"]["code"], "NOT_APPROVED");
+    let message = json["error"]["message"].as_str().unwrap();
+    assert!(message.contains("rusttv approve"), "{message}");
+    assert!(message.contains("expired"), "{message}");
+
+    // Valid: the upgrade is applied and the journal says how it was approved.
+    let granted = now - MINUTE_MS;
+    write_grant(&dir, granted, now + 29 * MINUTE_MS);
+    let output = rusttv_in(&dir, "tv", &install);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    assert_eq!(data["status"], "applied");
+    let journal = std::fs::read_to_string(data["journal"].as_str().unwrap()).unwrap();
+    assert!(journal.contains("by = \"delegation\""), "{journal}");
+    assert!(
+        journal.contains(&format!("granted_at_unix_ms = {granted}")),
+        "{journal}"
+    );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.contains("Approved by the delegation granted at"),
+        "{stderr}"
+    );
+
+    // The launcher scope never covers uninstalling.
+    let output = rusttv_in(&dir, "tv", &["launcher", "uninstall", "--json"]);
+    assert_eq!(json_stdout(&output)["error"]["code"], "NOT_APPROVED");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn launcher_upgrade_dry_run_without_a_takeover_is_the_install_plan() {
+    let dir = state_dir("upgrade-no-takeover");
+    let apk = fake_apk(&dir, "builds/app-x86_64-release.apk");
+    let output = rusttv_in(
+        &dir,
+        "tv",
+        &[
+            "launcher",
+            "upgrade",
+            "--apk",
+            apk.to_str().unwrap(),
+            "--dry-run",
+            "--json",
+        ],
+    );
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    assert_eq!(data["takeover_active"], false);
+    assert_eq!(data["confirmation"], "upgrade");
+    let stages = data["stages"].as_array().unwrap();
+    assert_eq!(stages.len(), 1);
+    assert_eq!(stages[0]["stage"], "install");
+    assert_eq!(stages[0]["plan"]["plan"], "launcher-install");
+    assert_eq!(stages[0]["plan"]["confirmation"], "upgrade");
+    let command = stages[0]["plan"]["steps"][0]["command"].as_str().unwrap();
+    assert!(
+        command.contains("install -r --pkg ai.rusttv.launcher"),
+        "{command}"
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn launcher_upgrade_dry_run_during_a_takeover_shows_the_restore_and_what_follows() {
+    let dir = state_dir("upgrade-takeover");
+    std::fs::write(
+        dir.join("journals/1761220000000-home-takeover.toml"),
+        TAKEOVER_JOURNAL,
+    )
+    .unwrap();
+    let apk = fake_apk(&dir, "builds/app-x86_64-release.apk");
+    let args = [
+        "launcher",
+        "upgrade",
+        "--apk",
+        apk.to_str().unwrap(),
+        "--dry-run",
+    ];
+    let output = rusttv_in(&dir, "tv", &[&args[..], &["--json"]].concat());
+
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let data = &json_stdout(&output)["data"];
+    assert_eq!(data["takeover_active"], true);
+    assert_eq!(data["confirmation"], "upgrade");
+    let stages = data["stages"].as_array().unwrap();
+    let names: Vec<&str> = stages
+        .iter()
+        .map(|stage| stage["stage"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["restore", "install", "takeover"]);
+    assert_eq!(stages[0]["plan"]["plan"], "home-takeover-restore");
+    assert_eq!(stages[1]["plan"], Value::Null);
+    let install = stages[1]["description"].as_str().unwrap();
+    assert!(install.contains(apk.to_str().unwrap()), "{install}");
+    assert_eq!(stages[2]["plan"], Value::Null);
+    let takeover = stages[2]["description"].as_str().unwrap();
+    assert!(
+        takeover.contains("com.google.android.apps.tv.launcherx"),
+        "{takeover}"
+    );
+
+    let output = rusttv_in(&dir, "tv", &args);
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("pm enable --user 0"), "{stdout}");
+    assert!(stdout.contains("three stages"), "{stdout}");
+    // A dry run changes nothing: the takeover journal is still restorable.
+    let journal =
+        std::fs::read_to_string(dir.join("journals/1761220000000-home-takeover.toml")).unwrap();
+    assert_eq!(journal, TAKEOVER_JOURNAL);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 #[test]
 fn optimize_analyze_json_lists_catalog_packages_with_state_and_testing() {
     let output = rusttv_with_fake_adb("philips", &["optimize", "analyze", "--json"]);

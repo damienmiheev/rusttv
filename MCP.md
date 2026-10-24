@@ -134,9 +134,13 @@ example:
 
 Running it re-plans against the device as it is then, shows the plan, and
 asks for the `confirmation` word; without an interactive terminal it fails
-with `NOT_APPROVED`. An agent should show the dry run and the command to the
+with `NOT_APPROVED`, unless the person granted a time-limited delegation with
+`rusttv approve` at a terminal (launcher plans only, CLI.md § Delegated
+approval). An agent should show the dry run and the command to the
 user, not run it: never give an agent a terminal running `rusttv`
-(SECURITY.md § Change lifecycle, step 4).
+(SECURITY.md § Change lifecycle, step 4). MCP is unchanged by delegation:
+no tool applies a plan, and the server never creates or edits the
+delegation file (SECURITY.md § Delegated approval).
 
 ## Results
 

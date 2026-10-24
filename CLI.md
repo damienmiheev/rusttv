@@ -4,7 +4,7 @@ The contract for scripts and AI agents. All commands are **read-only** except
 `performance benchmark`, which stops and starts the apps it measures (risk
 class R1, transient), `launcher takeover` / `launcher restore`, which
 disable or re-enable the stock launcher, and `launcher install` /
-`launcher uninstall`, which install or remove the RustTV launcher, and
+`launcher upgrade` / `launcher uninstall`, which install, upgrade or remove the RustTV launcher, and
 `optimize apply privacy` / `optimize restore`, which disable or re-enable the
 packages your privacy choices select (all R3), and `optimize apply
 reduced-animations` / `optimize restore`, which change three global
@@ -12,7 +12,9 @@ animation settings and put them back (R2), and the experimental `tools
 airplay enable` / `disable`, which turn on a vendor AirPlay receiver until
 the TV restarts and turn it off again (R2, TOOLS.md), and `update launcher`,
 which installs or upgrades the RustTV launcher from a verified release (R3),
-only after a person approves the plan at a terminal (see [Changing a device](#changing-a-device)).
+only after a person approves the plan at a terminal, or, for launcher plans,
+by a time-limited delegation a person granted there with `rusttv approve`
+(see [Changing a device](#changing-a-device)).
 `update cli` replaces programs on this computer, not the device, and also
 asks for a typed confirmation ([Updates](#updates)). Run
 `rusttv <command> --help` for every option. Agents can use the read-only
@@ -32,6 +34,7 @@ commands, and the `--dry-run` of `launcher install` / `uninstall` / `restore`,
 | `launcher status` | Which activity the Home button opens, every Home candidate with its priority, whether the RustTV launcher is installed / is Home. Read-only | [LauncherStatus](#launcherstatus) |
 | `launcher takeover [--dry-run]` | Make RustTV the Home screen by **disabling** (never uninstalling) the stock launcher (SECURITY.md § Home takeover). Only on devices whose bundled compat profile records a tested takeover (`TAKEOVER_NOT_TESTED` otherwise, even with `--dry-run`). Shows the plan, asks for typed confirmation, verifies Home opens RustTV, wakes the TV (ends a screensaver, which would swallow the HOME press; up to 5 s), presses HOME and waits up to 10 s for RustTV to be in front and running, rolls back otherwise. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `launcher install [--apk <file>] [--dry-run]` | Install the RustTV launcher (`ai.rusttv.launcher`) with `adb install --pkg ai.rusttv.launcher`, which makes Android refuse an APK of any other package. The APK is `android/app/build/outputs/apk/release/app-<abi>-release.apk` (from `android/build.sh`, relative to the current directory, so run from the repository root) for the device's primary ABI, the first of `ro.product.cpu.abilist` (`arm64-v8a`, `armeabi-v7a` or `x86_64`; `INVALID_APK` otherwise), or `--apk <file>` (any directory; file name of ASCII letters, digits, `.`, `_`, `-` ending in `.apk`). Checks RustTV is installed and can handle Home; a fresh install is uninstalled again otherwise. If RustTV is already installed it is an **upgrade** (`adb install -r`, keeps its data) that can't be undone: the plan says so, and it is refused while Home depends on RustTV (as for `uninstall`). Typed confirmation. Doesn't change which app Home opens. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
+| `launcher upgrade [--apk <file>] [--dry-run]` | Install or upgrade the RustTV launcher, also while a Home takeover is active. Without an active takeover it is `launcher install` (same plan, refusals, checks and journal) with the confirmation `upgrade`. With one (a restorable takeover journal for this firmware, as `launcher install` detects it), three stages, each the existing plan with its own journal, rollback and checks, in this order: `launcher restore` of that journal, then `launcher install` (an upgrade), then `launcher takeover`. Each later plan is made only when its stage starts, against the device as the stage before left it, so the dry run shows the restore plan in full and describes the other two (the APK, which is checked now; the packages the journal recorded as disabled). A person types `upgrade` once at a terminal; that approves each stage's plan for this device and firmware, for this run only (or a [delegation](#delegated-approval) approves each one). Refused before anything changes if the APK is missing (`INVALID_APK`) or a journal file can't be read (`JOURNAL_FAILED`). Stops at the first stage that fails; the error keeps that stage's code and says how the TV is left and what to run: restore failed: nothing installed, finish with `launcher restore`; install failed: Home opens the stock launcher, RustTV still installed (the old version unless the error says otherwise), run `launcher takeover` to go back; takeover rolled back: Home opens the stock launcher with the new RustTV, run `launcher takeover` again. R3 | array of [StageReport](#stagereport); with `--dry-run`: [LauncherUpgrade](#launcherupgrade) |
 | `launcher uninstall [--dry-run]` | Uninstall the RustTV launcher and its data (`pm uninstall ai.rusttv.launcher`; it can remove no other package). Refused (`PRECONDITION_FAILED`) while a Home takeover is active: a takeover journal for this firmware that isn't restored, a journal file that can't be read (it may be one; check it, then move it out of the journal directory), or no system launcher other than RustTV handling Home. Run `launcher restore` first, so the TV is never left with only Android's fallback Home. Then checks RustTV is gone and Home opens the launcher it opened before (or the system launcher, if it opened RustTV). Can't be undone; reinstall with `launcher install`. Typed confirmation. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `launcher restore [--journal <file> \| --from-profile] [--dry-run]` | Undo `launcher takeover`: re-enable the stock launcher (and any other package the takeover disabled) from the takeover's journal (by default the newest one for the device's firmware; each journal file that can't be read is named in a warning on stderr, also with `--json`, and skipped). Without a journal (lost, or the takeover ran on another computer), `--from-profile` rebuilds one from the device's compiled-in profile: it re-enables the packages that profile's takeover disables, only where they are disabled now, and saves the result as a new `<ms>-home-takeover-from-profile.toml` journal. Typed confirmation. R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `optimize analyze [--choices <file>]` | Every package of the catalog (`compat/packages/`, OPTIMIZER.md § Generic design) installed on the device, and every `extra` of your [choices](#privacy-choices), in plan order: category (default or opt-in), what it does, side effects, whether it was tested on this model (listed in the matching compat profile's `[[privacy.tested]]`), whether your choices select it, whether it is enabled / disabled, and whether RustTV refuses to touch it (protected). Works on any device; without a matching profile nothing is tested. Also every [optimizer profile](OPTIMIZER.md#3-profiles) with its status on the device (`suggested`, `available`, `applied`, `drifted`, `stale`, `not_tested`, `already_set`, `unknown`; reads the journals) and the current value of each of its settings (`settings get global <key>`). Read-only | [OptimizeAnalysis](#optimizeanalysis) |
@@ -44,6 +47,9 @@ commands, and the `--dry-run` of `launcher install` / `uninstall` / `restore`,
 | `update check` | The latest [release](#updates) (version, page) and whether this `rusttv` is older; with a device, the installed RustTV launcher's `versionName` (`dumpsys package ai.rusttv.launcher`) and primary ABI, and whether the release has a newer APK for it. Without `--serial` the only connected device is checked, and no device (or several, or adb missing) only skips the launcher part, with the reason in `launcher_note`; with `--serial` the device must be there (errors as for other device commands). Doesn't download or verify release files. Read-only | [UpdateCheck](#updatecheck) |
 | `update launcher [--dry-run]` | Download the latest release's `rusttv-launcher-<version>-<abi>.apk` for the device's primary ABI into a private directory under `<state dir>/updates/`, [verify](#updates) it, then the `launcher install` plan with that APK, unchanged (fresh install or upgrade, its refusals, typed confirmation `install`, verify, journal `<ms>-launcher-install.toml`). Refused (`PRECONDITION_FAILED`) when the installed launcher is that version or newer, or reports a version that isn't `<major>.<minor>.<patch>`; `UPDATE_CHECK_FAILED` when the release has no APK for the ABI. The download is removed when the command ends, also after `--dry-run` (whose plan names it). R3 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `update cli [--dry-run]` | Replace the running `rusttv` (and `rusttv-mcp` if it is in the same directory) with the latest release's: download `rusttv-<version>-<target>.tar.gz` for this build's target triple, [verify](#updates) it, unpack it with `tar`, show which files it replaces, ask for the typed confirmation `update`, then for each file keep the current one as `<name>.previous` and rename the new one over it (same directory, so each replacement is atomic). Then runs the new `rusttv --version`; if it doesn't print `rusttv <version>`, every file is put back (`ROLLED_BACK`). Refused (`PRECONDITION_FAILED`) when the release isn't newer than this build, when the directory isn't writable (installed by another user or a package manager: update it that way), or when `rusttv` runs from a cargo `target/debug` or `target/release` directory (update with git and cargo). Same terminal rule as device changes (`NOT_APPROVED` without one). No device needed; no journal (the `.previous` files are the record; undo with `mv rusttv.previous rusttv`) | [CliUpdate](#cliupdate) (`applied` false with `--dry-run`) |
+| `approve --for <duration> --only launcher` | Grant a [delegation](#delegated-approval): for `<duration>` (`<n>m` or `<n>h`, more than 0 and at most `2h`; default `30m`), launcher plans for this device and firmware are applied without a terminal. Shows the device (serial, model, `ro.build.fingerprint`), the scope and the expiry, then asks for the typed confirmation `delegate`; needs an interactive terminal (`NOT_APPROVED` otherwise). Replaces any earlier delegation. Changes only `<state dir>/approval-grant.toml` on this computer | [GrantStatus](#grantstatus) |
+| `approve --status` | The delegation, if any, and whether it is valid now. Read-only; no device needed | [GrantStatus](#grantstatus) |
+| `approve --revoke` | Delete the delegation; no terminal or device needed | `{"path": string, "revoked": boolean}` (`revoked` false when there was none) |
 | `compat profile` | Compatibility profile for `compat/devices/` (TOML on stdout; `--json` wraps it) | `{"path": string, "profile": object}` |
 
 Commands that target a device take `--serial <serial>`. Without it, the only
@@ -59,10 +65,11 @@ lifecycle:
    what is checked after, and how each step is undone. `--dry-run` stops here
    and prints it (`--json`: a [DryRun](#dryrun)).
 2. **Approve**: the plan is applied only after a person types its
-   `confirmation` word (`takeover`, `privacy`, `optimize`, `airplay`, `restore`, `install`, `uninstall`; `update` for `update cli`) at an
+   `confirmation` word (`takeover`, `privacy`, `optimize`, `airplay`, `restore`, `install`, `uninstall`, `upgrade`; `update` for `update cli`; `delegate` for `approve`) at an
    interactive terminal.
    There is no `--yes` flag. Without a terminal on stdin (scripts, agents,
-   MCP) the command fails with `NOT_APPROVED` before contacting the device.
+   MCP) the command fails with `NOT_APPROVED` before contacting the device,
+   unless a valid [delegation](#delegated-approval) covers it.
    This proves a terminal, not a person: never run `rusttv` for an agent in
    a pseudo-terminal.
 3. **Apply**: the device's `ro.build.fingerprint` must match the plan and each
@@ -98,6 +105,46 @@ with `PRECONDITION_FAILED` until it is moved out of the directory. The state dir
 otherwise `~/Library/Application Support/rusttv` on macOS and
 `$XDG_STATE_HOME/rusttv` (default `~/.local/state/rusttv`) on Linux.
 Recovery is never guaranteed.
+
+Each journal records how its plan was approved in `approved_by` (and a
+restored journal how its restore was, in `restore_approved_by`): `{ by =
+"terminal" }`, `{ by = "delegation", granted_at_unix_ms = <ms> }` or `{ by =
+"upgrade", confirmed_at_unix_ms = <ms> }` (a `launcher upgrade` stage).
+Journals without them (written before, or rebuilt by `--from-profile`) still
+load. Builds before this field (earlier `rusttv.v7` builds and older) refuse
+unknown journal fields, so they list such journals as unreadable, like
+optimizer journals before `rusttv.v6` (and so refuse `launcher install`
+(upgrade) / `uninstall` until they are moved).
+
+### Delegated approval
+
+*Owner decision 2026-10-24 (SECURITY.md § Delegated approval).* A person at
+an interactive terminal may let launcher plans be applied without a terminal
+for a while, e.g. by an agent in their session:
+
+```sh
+rusttv approve --for 30m --only launcher [--serial <s>]   # asks for `delegate`
+rusttv approve --status [--json]
+rusttv approve --revoke
+```
+
+The delegation is a TOML file, `<state dir>/approval-grant.toml`
+(`schema_version`, `serial`, `fingerprint`, `scope`, `granted_at_unix_ms`,
+`expires_at_unix_ms`); one at a time, a new one replaces it. It lasts at most
+2 h (default 30 min). Scope `launcher` covers exactly the plans
+`launcher-install` (`launcher install`, `launcher upgrade`, `update
+launcher`), `home-takeover` and `home-takeover-restore` (`launcher takeover`,
+`launcher upgrade`, `launcher restore`), not `launcher uninstall`,
+`optimize`, `tools` or `update cli`. When such a command runs **without** a
+terminal and the delegation is valid (now before its expiry, same serial and
+same `ro.build.fingerprint` as the plan, which the apply checks again on the
+device, scope covering the plan), the plan is approved by it and stderr says
+"Approved by the delegation granted at HH:MM UTC, valid until HH:MM UTC".
+With a terminal a person is present, so the command asks as usual. Without
+either: `NOT_APPROVED`, naming `rusttv approve`. A delegation file that
+doesn't parse, or claims more than 2 h, approves nothing. Agents and MCP
+servers must never create or edit it: this is a rule, not a lock, since
+anything that can write files as you can write it.
 
 ### Updates
 
@@ -158,7 +205,12 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
     cli` ([UpdateCheck](#updatecheck), [CliUpdate](#cliupdate); `update
     launcher` reuses the `launcher-install` [DryRun](#dryrun)); new error
     codes `UPDATE_CHECK_FAILED` and `UPDATE_VERIFY_FAILED`; new confirmation
-    word `update`. Everything else is unchanged.
+    word `update`. Also new in `rusttv.v7` (before its release): the
+    commands `launcher upgrade` ([LauncherUpgrade](#launcherupgrade),
+    [StageReport](#stagereport)) and `approve` ([GrantStatus](#grantstatus);
+    [delegated approval](#delegated-approval)), the confirmation words
+    `upgrade` and `delegate`, and the journal fields `approved_by` /
+    `restore_approved_by`. Everything else is unchanged.
   - `rusttv.v6`: [OptimizeAnalysis](#optimizeanalysis) has a new `optimizer`
     array (status and current settings of each optimizer profile); new
     command `optimize apply reduced-animations`; `optimize restore` takes an
@@ -223,8 +275,8 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
 | `INCOMPLETE_PROFILE` | 1 | The device didn't report a value a compatibility profile needs |
 | `INVALID_PLAN` | 1 | A plan or journal has a step that can't be undone, or doesn't match its journal (a bug or an edited journal) |
 | `PRECONDITION_FAILED` | 1 | The device isn't in the state the plan needs (e.g. RustTV not installed, Home isn't a stock launcher, firmware changed since planning); nothing changed |
-| `NOT_APPROVED` | 1 | No interactive terminal, or the confirmation wasn't typed; nothing changed |
-| `JOURNAL_FAILED` | 1 | A journal couldn't be read or written; if a change had started, it was rolled back |
+| `NOT_APPROVED` | 1 | No interactive terminal and no valid [delegation](#delegated-approval) covering the plan, or the confirmation wasn't typed; nothing changed |
+| `JOURNAL_FAILED` | 1 | A journal (or the delegation file) couldn't be read or written; if a change had started, it was rolled back |
 | `TAKEOVER_NOT_TESTED` | 1 | No bundled compat profile matches this device's model and firmware family, or it doesn't record a tested takeover of the stock launcher Home opens; nothing changed |
 | `PROFILE_NOT_TESTED` | 1 | `optimize apply`: none of the chosen packages that are enabled on the device is tested on this model (no compat profile matches, or its `[[privacy.tested]]` doesn't list them), and `--allow-untested` wasn't given; the message names them; nothing changed |
 | `OPTIMIZE_NOT_TESTED` | 1 | `optimize apply <profile>` (not `privacy`): the matching compat profile doesn't record this optimizer profile and version as tested (`[[optimizer]] … tested = true`), or no profile matches, and `--allow-untested` wasn't given; nothing changed |
@@ -245,7 +297,7 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
 | Variable | Effect |
 |---|---|
 | `RUSTTV_ADB` | Path of the `adb` executable to use instead of the one on `PATH` |
-| `RUSTTV_STATE_DIR` | Directory for journals instead of the platform default ([Changing a device](#changing-a-device)) |
+| `RUSTTV_STATE_DIR` | Directory for journals and the delegation file instead of the platform default ([Changing a device](#changing-a-device)) |
 | `RUSTTV_CONFIG_DIR` | Directory of the privacy choices file `privacy.toml` instead of the platform default ([Privacy choices](#privacy-choices)) |
 | `RUSTTV_CURL` | Path of the `curl` executable `update` uses instead of the one on `PATH` |
 | `RUSTTV_UPDATE_DIR` | Read the latest release from this directory instead of GitHub, with no network: `release.json` (the subset of GitHub's release JSON RustTV reads: `tag_name`, `draft`, `prerelease`, `html_url`, `assets` of `{name, browser_download_url, size}`) and each asset as a file named after it. Files are verified exactly like downloads, so they must be signed with the release signing key ([Updates](#updates)); for tests and offline installs |
@@ -398,6 +450,30 @@ kept), `confirmation` (`update`), `applied` (false for `--dry-run`).
 ### ChangeReport
 
 `journal` (path of the journal file); `status` (`applied` \| `restored`).
+
+### LauncherUpgrade
+
+`takeover_active` (boolean: the upgrade has the three stages);
+`confirmation` (`upgrade`); `stages`: in order, each with `stage`
+(`restore` \| `install` \| `takeover`), `plan` (a [DryRun](#dryrun), or null
+for a stage planned only when it runs: the install and takeover of an active
+takeover) and `description` (what the stage does, for people). Without an
+active takeover there is one `install` stage, whose plan's `confirmation` is
+`upgrade`.
+
+### StageReport
+
+`stage` (`restore` \| `install` \| `takeover`), and `journal`, `status` as in
+[ChangeReport](#changereport): one per stage, in order (only `install`
+without an active takeover).
+
+### GrantStatus
+
+`path` (the delegation file); `grant` (null when there is none, or it can't
+be read; else `schema_version`, `serial`, `fingerprint`, `scope`
+(`launcher`), `granted_at_unix_ms`, `expires_at_unix_ms`); `valid` (boolean:
+it approves plans now, within its scope, device and firmware); `reason` (why
+not, or null).
 
 ### Stats
 
