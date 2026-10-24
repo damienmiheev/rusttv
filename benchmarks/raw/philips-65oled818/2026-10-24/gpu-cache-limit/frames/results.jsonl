@@ -1,0 +1,4 @@
+{"file": "A1.txt", "frames": 8739, "gaps": 8702, "drops": 6, "drop_pct": 0.07, "missed_vsyncs": 13, "p50_ms": 16.7, "p90_ms": 16.7, "p99_ms": 16.8, "max_ms": 83.4}
+{"file": "B1.txt", "frames": 8098, "gaps": 8062, "drops": 4, "drop_pct": 0.05, "missed_vsyncs": 16, "p50_ms": 16.7, "p90_ms": 16.7, "p99_ms": 16.8, "max_ms": 100.0}
+{"file": "A2.txt", "frames": 8762, "gaps": 8724, "drops": 2, "drop_pct": 0.02, "missed_vsyncs": 5, "p50_ms": 16.7, "p90_ms": 16.7, "p99_ms": 16.8, "max_ms": 83.3}
+{"file": "B2.txt", "frames": 7926, "gaps": 7890, "drops": 3, "drop_pct": 0.04, "missed_vsyncs": 7, "p50_ms": 16.7, "p90_ms": 16.7, "p99_ms": 16.8, "max_ms": 100.2}

@@ -29,11 +29,41 @@ library: GPU resources that Skia keeps, since its cache limit defaults to
 256 MB. The growth is in the old build too, so i18n didn't cause it.
 
 **Result.** With the limit the menu adds 0.5 MB instead of 4.5–6 MB, and later
-rounds stay flat. The first About still adds ~6.5 MB in every build (not
-repeated; not investigated). About, the menu and the edge fades rendered
-normally with the limit (checked on screenshots, since deleted).
+rounds stay flat. About, the menu and the edge fades rendered normally with
+the limit (checked on screenshots, since deleted).
 
-**Not measured:** frame timing. A smaller cache can mean more texture
-uploads; there is no BENCHMARK_PLAN.md frame-time data for this build yet.
+**The first ~6.5 MB is the first focus move, not About.** `steps.sh` presses
+Right before opening About. Profiled separately on the limited build (fresh
+start, heapprofd as above): one focus move added 5.8 MB of native heap, 6.1 MB
+of it in `libGLES_mali` (one 4.45 MB block, the size of a 1080×1080 RGBA
+surface); a second move added 1.2 MB. Opening and closing About on its own
+added 1.1 MB (0.61 MB driver, 0.42 MB ours). These are GPU resources Skia keeps
+for reuse, inside the 24 MB limit; the driver has no symbols, so which surface
+the 4.45 MB block backs is not known.
+
+## Frames
+
+`frames/`: does the smaller cache drop frames? RustTV draws without
+Choreographer, so neither `gfxinfo` nor Perfetto's frame timeline sees its
+frames on this TV. Instead `frames/block.sh` reads the present times of
+RustTV's layer (`dumpsys SurfaceFlinger --latency`, 127 frames per read)
+every 1.5 s through 6 rounds of a fixed navigation (4 rows down, 5 right,
+back, long-press menu), after 1 warm-up round, and `frames/frames.py` merges
+the reads and counts gaps over 1.5 vsync (16.7 ms) as drops. Blocks A1, B1,
+A2, B2 (A = 24 MB limit at f08d424, B = the same without the limit),
+installed with `rusttv launcher upgrade`; raw reads in
+`frames/<block>-latency.txt.gz`, results in `frames/results.jsonl`.
+
+| Block | Frames | Drops (gaps > 25 ms) | Drop % | p99 gap | Max gap |
+|---|---|---|---|---|---|
+| A1 limit | 8,739 | 6 | 0.07 | 16.8 ms | 83 ms |
+| B1 none | 8,098 | 4 | 0.05 | 16.8 ms | 100 ms |
+| A2 limit | 8,762 | 2 | 0.02 | 16.8 ms | 83 ms |
+| B2 none | 7,926 | 3 | 0.04 | 16.8 ms | 100 ms |
+
+No difference beyond run-to-run noise: both builds drop under 0.1% of
+frames, with p99 at one vsync. One run of 6 rounds per block, not the
+≥ 10 runs BENCHMARK_PLAN.md asks for, so this shows no regression rather
+than proving equality.
 
 No identifying data: measurements of RustTV only.

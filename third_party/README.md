@@ -56,8 +56,9 @@ now sets a 24 MB limit when it creates the context.
 
 Measured on the Philips (About and the menu three times): native heap
 29.5 → 49.4 MB before, 29.6 → 37.4 MB after; PSS at the end 101 → 86 MB
-(`benchmarks/raw/philips-65oled818/2026-10-24/gpu-cache-limit/`). Frame
-timing with the smaller cache is not measured yet.
+(`benchmarks/raw/philips-65oled818/2026-10-24/gpu-cache-limit/`). Dropped
+frames during scripted navigation: under 0.1% with and without the limit
+(A/B/A/B, same place).
 
 **Upstream (GL context patch):** reported as https://github.com/slint-ui/slint/issues/14397 (2026-10-23).
 
