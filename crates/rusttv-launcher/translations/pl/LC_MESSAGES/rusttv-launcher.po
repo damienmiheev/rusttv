@@ -268,3 +268,12 @@ msgstr "Wolniejsze (1,5×)"
 
 msgid "Slowest (2×)"
 msgstr "Najwolniejsze (2×)"
+
+msgid "History started"
+msgstr "Historia rozpoczęta"
+
+msgid "Added {}"
+msgstr "Dodano {}"
+
+msgid "Removed {}"
+msgstr "Usunięto {}"

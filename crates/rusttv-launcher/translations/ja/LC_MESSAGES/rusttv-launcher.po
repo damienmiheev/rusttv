@@ -268,3 +268,12 @@ msgstr "遅め (1.5×)"
 
 msgid "Slowest (2×)"
 msgstr "最も遅い (2×)"
+
+msgid "History started"
+msgstr "履歴を開始"
+
+msgid "Added {}"
+msgstr "{} を追加"
+
+msgid "Removed {}"
+msgstr "{} を削除"

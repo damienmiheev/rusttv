@@ -268,3 +268,12 @@ msgstr "Chậm hơn (1,5×)"
 
 msgid "Slowest (2×)"
 msgstr "Chậm nhất (2×)"
+
+msgid "History started"
+msgstr "Bắt đầu lịch sử"
+
+msgid "Added {}"
+msgstr "Đã thêm {}"
+
+msgid "Removed {}"
+msgstr "Đã gỡ {}"

@@ -116,7 +116,8 @@ export global Strings {
         return @tr("time unknown");
     }
     // ui.rs `change_line`: 0 reordered, 1 hid, 2 showed, 3 update check,
-    // 4 setting, 5 package, 6 firmware, 7 Home takeover, 8 nothing.
+    // 4 setting, 5 package, 6 firmware, 7 Home takeover, 8 nothing,
+    // 9 added to Home (installed), 10 removed from Home.
     public pure function change-line(kind: int, name: string, old: string, new: string) -> string {
         if kind == 0 { return @tr("Apps reordered"); }
         if kind == 1 { return @tr("Hid {}", name); }
@@ -125,6 +126,8 @@ export global Strings {
         if kind == 4 || kind == 5 { return @tr("{}: {} → {}", name, old, new); }
         if kind == 6 { return @tr("Firmware updated"); }
         if kind == 7 { return @tr("Home takeover: {}", new); }
+        if kind == 9 { return @tr("Added {}", name); }
+        if kind == 10 { return @tr("Removed {}", name); }
         return @tr("No change");
     }
     // 0 changed on the TV now, 1 applied by the computer later.
@@ -143,6 +146,9 @@ export global Strings {
     }
     public pure function and-more(line: string, more: int) -> string {
         return @tr("{} (+{} more)", line, more);
+    }
+    public pure function history-started() -> string {
+        return @tr("History started");
     }
     public pure function restore-this() -> string {
         return @tr("Restore this state");

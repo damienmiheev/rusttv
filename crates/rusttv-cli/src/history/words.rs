@@ -94,6 +94,10 @@ pub(crate) fn time(unix: i64) -> String {
 pub(crate) enum ChangeView {
     /// Tiles moved on Home.
     Reordered { moved: Vec<String> },
+    /// A tile appeared on Home (an app installed).
+    Added { tile: String },
+    /// A tile left Home (an app removed).
+    Removed { tile: String },
     /// An app hidden or shown again.
     Hidden { tile: String, hidden: bool },
     /// The launcher's update switch.
@@ -126,6 +130,8 @@ impl ChangeView {
             Change::Reordered { moved } => Self::Reordered {
                 moved: moved.clone(),
             },
+            Change::Added { tile } => Self::Added { tile: tile.clone() },
+            Change::Removed { tile } => Self::Removed { tile: tile.clone() },
             Change::Hidden { tile, hidden } => Self::Hidden {
                 tile: tile.clone(),
                 hidden: *hidden,
@@ -163,6 +169,8 @@ pub(crate) fn change(change: &Change) -> String {
     let text = |value: &Option<String>| value.clone().unwrap_or_else(|| "unknown".to_owned());
     match change {
         Change::Reordered { moved } => format!("Moved on Home: {}", moved.join(", ")),
+        Change::Added { tile } => format!("Added to Home: {tile}"),
+        Change::Removed { tile } => format!("Removed from Home: {tile}"),
         Change::Hidden { tile, hidden: true } => format!("Hid {tile}"),
         Change::Hidden {
             tile,

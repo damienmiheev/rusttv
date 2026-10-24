@@ -268,3 +268,12 @@ msgstr "Повільніша (1,5×)"
 
 msgid "Slowest (2×)"
 msgstr "Найповільніша (2×)"
+
+msgid "History started"
+msgstr "Історію розпочато"
+
+msgid "Added {}"
+msgstr "Додано {}"
+
+msgid "Removed {}"
+msgstr "Видалено {}"

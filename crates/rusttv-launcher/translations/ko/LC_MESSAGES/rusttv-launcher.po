@@ -268,3 +268,12 @@ msgstr "느리게 (1.5×)"
 
 msgid "Slowest (2×)"
 msgstr "가장 느리게 (2×)"
+
+msgid "History started"
+msgstr "기록 시작"
+
+msgid "Added {}"
+msgstr "{} 추가됨"
+
+msgid "Removed {}"
+msgstr "{} 삭제됨"

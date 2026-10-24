@@ -268,3 +268,12 @@ msgstr "Lebih lambat (1,5×)"
 
 msgid "Slowest (2×)"
 msgstr "Paling lambat (2×)"
+
+msgid "History started"
+msgstr "Riwayat dimulai"
+
+msgid "Added {}"
+msgstr "{} ditambahkan"
+
+msgid "Removed {}"
+msgstr "{} dihapus"

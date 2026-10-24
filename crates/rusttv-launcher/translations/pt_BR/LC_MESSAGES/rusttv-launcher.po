@@ -268,3 +268,12 @@ msgstr "Mais lenta (1,5×)"
 
 msgid "Slowest (2×)"
 msgstr "A mais lenta (2×)"
+
+msgid "History started"
+msgstr "Histórico iniciado"
+
+msgid "Added {}"
+msgstr "{} adicionado"
+
+msgid "Removed {}"
+msgstr "{} removido"

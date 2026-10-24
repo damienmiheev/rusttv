@@ -268,3 +268,12 @@ msgstr "Замедленная (1,5×)"
 
 msgid "Slowest (2×)"
 msgstr "Самая медленная (2×)"
+
+msgid "History started"
+msgstr "История начата"
+
+msgid "Added {}"
+msgstr "Добавлено: {}"
+
+msgid "Removed {}"
+msgstr "Удалено: {}"

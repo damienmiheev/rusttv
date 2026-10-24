@@ -268,3 +268,12 @@ msgstr "धीमा (1.5×)"
 
 msgid "Slowest (2×)"
 msgstr "सबसे धीमा (2×)"
+
+msgid "History started"
+msgstr "इतिहास शुरू हुआ"
+
+msgid "Added {}"
+msgstr "{} जोड़ा गया"
+
+msgid "Removed {}"
+msgstr "{} हटाया गया"

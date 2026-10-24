@@ -41,6 +41,8 @@ pub(crate) struct EntryView {
     pub author: Author,
     /// Put back from the computer (at or before the newest import).
     pub imported: bool,
+    /// The first entry: the state when the history started.
+    pub first: bool,
     /// What changed from the entry before it.
     pub changes: Vec<Change>,
 }
@@ -305,6 +307,7 @@ mod tests {
             time_unix: 1_790_000_000 + i64::from(n),
             author: Author::Tv,
             imported: false,
+            first: false,
             changes: Vec::new(),
         }
     }

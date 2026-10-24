@@ -268,3 +268,12 @@ msgstr "איטי יותר (1.5×)"
 
 msgid "Slowest (2×)"
 msgstr "הכי איטי (2×)"
+
+msgid "History started"
+msgstr "ההיסטוריה התחילה"
+
+msgid "Added {}"
+msgstr "נוסף {}"
+
+msgid "Removed {}"
+msgstr "הוסר {}"

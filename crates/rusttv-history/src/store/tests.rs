@@ -392,3 +392,27 @@ fn a_long_history_goes_back_whole_in_one_pack() {
         .unwrap();
     assert_eq!(tv_store.log(usize::MAX).unwrap().len(), total);
 }
+
+#[test]
+fn the_first_entry_starts_the_history_and_an_installed_app_is_an_entry() {
+    let dir = TempDir::new();
+    let mut store = dir.store("tv.git");
+    let first = store
+        .record(&state(1), &Meta::new(Author::Drift), 1)
+        .unwrap()
+        .unwrap();
+    assert_eq!(store.entry(&first).unwrap().summary, "History started");
+    let mut installed = state(1);
+    installed
+        .launcher
+        .order
+        .push("com.example.new/.Main".into());
+    let added = store
+        .record(&installed, &Meta::new(Author::Drift), 2)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        store.entry(&added).unwrap().summary,
+        "Added com.example.new"
+    );
+}

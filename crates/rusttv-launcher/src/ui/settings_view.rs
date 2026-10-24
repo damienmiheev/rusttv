@@ -474,10 +474,12 @@ impl Controller {
                     })
                     .collect();
                 if rows.is_empty() {
-                    rows.push(row(
-                        strings.invoke_change_line(8, "".into(), "".into(), "".into()),
-                        "",
-                    ));
+                    let line = if entry.first {
+                        strings.invoke_history_started()
+                    } else {
+                        strings.invoke_change_line(8, "".into(), "".into(), "".into())
+                    };
+                    rows.push(row(line, ""));
                 }
                 let focused = if page.can_restore() {
                     rows.push(row(strings.invoke_restore_this(), ""));
@@ -525,9 +527,13 @@ impl Controller {
                             .entries
                             .iter()
                             .map(|entry| {
-                                let title = summary_line(window, &entry.changes, |tile| {
-                                    self.tile_label(tile)
-                                });
+                                let title = if entry.first {
+                                    strings.invoke_history_started().to_string()
+                                } else {
+                                    summary_line(window, &entry.changes, |tile| {
+                                        self.tile_label(tile)
+                                    })
+                                };
                                 row(title.into(), &self.when_and_who(window, entry))
                             })
                             .collect()
@@ -672,6 +678,8 @@ fn change_line(
             )
         }
         Change::Package { name, old, new } => (5, name.as_str().into(), package(old), package(new)),
+        Change::Added { tile } => (9, label(tile).into(), "".into(), "".into()),
+        Change::Removed { tile } => (10, label(tile).into(), "".into(), "".into()),
         Change::Firmware { .. } => (6, "".into(), "".into(), "".into()),
         Change::Takeover { active } => (7, "".into(), "".into(), strings.invoke_on_off(*active)),
         _ => (8, "".into(), "".into(), "".into()),

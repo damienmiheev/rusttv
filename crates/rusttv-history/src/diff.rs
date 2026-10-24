@@ -14,6 +14,17 @@ pub enum Change {
         /// Tiles whose position changed.
         moved: Vec<String>,
     },
+    /// A tile appeared on Home (an app was installed, or a built-in tile
+    /// came with an update).
+    Added {
+        /// The tile's name.
+        tile: String,
+    },
+    /// A tile left Home (an app was removed).
+    Removed {
+        /// The tile's name.
+        tile: String,
+    },
     /// An app was hidden or shown again.
     Hidden {
         /// The app's component name.
@@ -85,6 +96,16 @@ pub fn diff(old: &State, new: &State) -> Vec<Change> {
             .collect();
         changes.push(Change::Reordered { moved });
     }
+    for tile in &new.launcher.order {
+        if !old.launcher.order.contains(tile) {
+            changes.push(Change::Added { tile: tile.clone() });
+        }
+    }
+    for tile in &old.launcher.order {
+        if !new.launcher.order.contains(tile) {
+            changes.push(Change::Removed { tile: tile.clone() });
+        }
+    }
     let hidden: BTreeSet<&String> = old
         .launcher
         .hidden
@@ -146,6 +167,8 @@ pub(crate) fn summary(changes: &[Change]) -> String {
     };
     let one = match first {
         Change::Reordered { .. } => "Reordered apps".to_owned(),
+        Change::Added { tile } => format!("Added {}", tile.split('/').next().unwrap_or(tile)),
+        Change::Removed { tile } => format!("Removed {}", tile.split('/').next().unwrap_or(tile)),
         Change::Hidden { tile, hidden } => {
             let app = tile.split('/').next().unwrap_or(tile);
             format!("{} {app}", if *hidden { "Hid" } else { "Showed" })
@@ -198,7 +221,7 @@ mod tests {
     }
 
     #[test]
-    fn a_move_names_the_tiles_that_moved_and_ignores_new_apps() {
+    fn a_move_names_the_tiles_that_moved_and_new_apps_are_added() {
         let mut old = State::new();
         old.launcher.order = ["a.b/.A", "c.d/.C", "about"].map(String::from).to_vec();
         let mut new = State::new();
@@ -207,13 +230,29 @@ mod tests {
             .to_vec();
         assert_eq!(
             diff(&old, &new),
-            vec![Change::Reordered {
-                moved: vec!["c.d/.C".into(), "a.b/.A".into()]
-            }]
+            vec![
+                Change::Reordered {
+                    moved: vec!["c.d/.C".into(), "a.b/.A".into()]
+                },
+                Change::Added {
+                    tile: "e.f/.New".into()
+                }
+            ]
         );
         let mut added = old.clone();
         added.launcher.order.push("e.f/.New".into());
-        assert!(diff(&old, &added).is_empty());
+        assert_eq!(
+            diff(&old, &added),
+            vec![Change::Added {
+                tile: "e.f/.New".into()
+            }]
+        );
+        assert_eq!(
+            diff(&added, &old),
+            vec![Change::Removed {
+                tile: "e.f/.New".into()
+            }]
+        );
     }
 
     #[test]

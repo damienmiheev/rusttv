@@ -406,7 +406,13 @@ fn entry_views(history: &TvHistory) -> Result<Vec<EntryView>, HistoryError> {
             time_unix: entry.time_unix,
             author: entry.meta.author,
             imported: newest_import.is_some_and(|import| index > import),
-            changes: diff(&parent, &current),
+            first: entry.parent.is_none(),
+            // The first entry is the starting state, not a change.
+            changes: if entry.parent.is_none() {
+                Vec::new()
+            } else {
+                diff(&parent, &current)
+            },
         });
         state = Some(parent);
     }

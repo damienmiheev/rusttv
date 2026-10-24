@@ -268,3 +268,12 @@ msgstr "أبطأ (1.5×)"
 
 msgid "Slowest (2×)"
 msgstr "الأبطأ (2×)"
+
+msgid "History started"
+msgstr "بدأ السجل"
+
+msgid "Added {}"
+msgstr "أُضيف {}"
+
+msgid "Removed {}"
+msgstr "أُزيل {}"

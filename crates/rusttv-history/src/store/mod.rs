@@ -203,9 +203,10 @@ impl Store {
     }
 
     /// Records `state` as a new entry at `time_unix` (seconds, the
-    /// recording device's clock). An unchanged state is recorded only for
-    /// the Mac's notes and imports (they record that a plan or an import
-    /// happened); otherwise returns `None`.
+    /// recording device's clock). A state with no visible change ([`diff`]
+    /// is empty) is recorded only for the Mac's notes and imports (they
+    /// record that a plan or an import happened); otherwise returns `None`.
+    /// The first entry's summary is "History started".
     pub fn record(
         &mut self,
         state: &State,
@@ -220,7 +221,9 @@ impl Store {
             None => State::new(),
         };
         let changes = diff(&old, state);
-        let changed = parent.is_none() || !old.same_as(state);
+        // Only what a person can see changed counts: apps installed or
+        // removed move the order without a change worth an entry.
+        let changed = parent.is_none() || !changes.is_empty();
         if !changed && !matches!(meta.author, Author::Mac | Author::Import) {
             return Ok(None);
         }
@@ -247,8 +250,14 @@ impl Store {
             email: COMMITTER.1.into(),
             time: time.as_str(),
         };
+        let first = parent.is_none();
         let parents = parent.map(|id| id.object()).transpose()?;
-        let message = meta.message(&summary(&changes));
+        let summary = if first {
+            "History started".to_owned()
+        } else {
+            summary(&changes)
+        };
+        let message = meta.message(&summary);
         let id = self
             .repo
             .commit_as(signature, signature, MAIN, message, tree, parents)
