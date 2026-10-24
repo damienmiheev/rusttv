@@ -90,6 +90,20 @@ First public release (ROADMAP Phase 6).
   version after checking its size, SHA-256, package, version and signing
   key. Android asks the user to confirm every install; never a downgrade
   (SECURITY.md § Launcher updates).
+- Settings page (a tile after About; HISTORY.md § 8): Animations (Normal,
+  Faster, Off), the update check on or off, the TV's history (who changed
+  what, and "Restore this state"), and approvals waiting for the computer.
+  Changes are reviewed and approved on the TV: Approve, a random 4-arrow
+  code shown only on the screen (`FLAG_SECURE`), then OK held for 2 s;
+  wrong codes lock approvals for longer each time; test builds can't
+  approve. With `WRITE_SECURE_SETTINGS` (granted from the computer) the TV
+  applies the animation scales itself; everything else waits for
+  `rusttv history apply-pending`.
+- History: every change RustTV manages (the launcher's order and hidden
+  apps, the animation scales, catalog packages, firmware) as git commits in
+  the launcher's storage, packed in the background, read by the computer
+  through a door that answers only adb (SECURITY.md § The history door).
+  Moving, hiding and showing apps are recorded too.
 - Skia's GPU resource cache is capped at 24 MB (patched Slint renderer,
   `third_party/README.md`): opening About and the menu repeatedly no longer
   grows native memory (49.4 → 37.4 MB after three rounds on the Philips).

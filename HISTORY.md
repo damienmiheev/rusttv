@@ -1,8 +1,9 @@
 # Tweaks + History — design
 
-Status (2026-10-24): **design v3, after review rounds 1–2** (separate
-security, engineering and combined reviews; § Review log). Nothing is built.
-Replaces ROADMAP.md § Tweaks + History once built.
+Status (2026-10-24): **built** on the design below (v3 after three review
+rounds, § Review log), tested on the desktop and with fakes; the run on the
+Philips is recorded in § Spike results and benchmarks/raw. As-built notes are
+marked *As built*. Replaces ROADMAP.md § Tweaks + History.
 
 ## Owner decisions (2026-10-24)
 
@@ -209,6 +210,9 @@ Also at the end of every plan-applying command. **History id:** a UUID
   is recorded on the TV first, the old history can't be put back on the TV
   but stays readable on the Mac.
 
+*As built:* the whole history goes in one pack (`Store::export_whole`), as
+the TV takes an import only whole (~0.7 MB per 1,000 entries).
+
 `rusttv history restore-tv [--history <id>]` (`--history` required when more
 than one fits): a plan, typed approval `history`, whose one step imports the
 pack (class RL). The launcher accepts it only into an
@@ -385,14 +389,16 @@ component (64u rows, light pill with dark text, 10u radius, 120 ms colour
 change); the update dot; `Dir` mirroring; `@tr` in all 21 languages. No new
 colours, fonts, shadows or effects.
 
-**Motion** (emil-design-eng): nothing new moves on D-pad presses; pages fade
-in 250 ms ease-out like About and Hidden apps; the one deliberate animation
+**Motion** (emil-design-eng): nothing new moves on D-pad presses; pages
+appear at once like About and Hidden apps (*As built*: neither fades; a
+page opened by a key doesn't animate); the one deliberate animation
 is the hold: the track fills **2 s linear while held, back in 200 ms
 ease-out on release** (slow where the person decides, fast where the system
 answers).
 
 ### 8.1 Entry
-A **Settings** tile next to About, in About's quiet style.
+A **Settings** tile next to About, in About's quiet style. *As built:* after
+About; the two stay together at the end, and new apps go before them.
 
 ### 8.2 Page
 Hidden-apps header: "Settings" (57u) at 90u/90u, one dim hint line. Below,

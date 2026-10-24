@@ -32,8 +32,12 @@ rusttv/
 │   ├── rusttv-core/        # device model, Adb trait, typed commands, inspect, perf, (later) safety engine
 │   ├── rusttv-cli/         # binary `rusttv`: clap, output formatting
 │   ├── rusttv-mcp/         # binary `rusttv-mcp`: read-only MCP server over stdio (rmcp + tokio)
+│   ├── rusttv-history/     # TV history in git (gix): snapshots, store, door protocol, TV side (HISTORY.md)
 │   └── rusttv-launcher/    # home screen: model, Slint UI, JNI bridge; cdylib + desktop dev mode
-├── android/                # Gradle app ai.rusttv.launcher: Kotlin shim, manifest, build.sh
+├── android/                # Gradle app ai.rusttv.launcher: Kotlin shim, manifest, build.sh, check-dex.sh
+├── benchmarks/raw/         # measurements per device and date (BENCHMARK_PLAN.md)
+├── spikes/                 # throwaway experiments, kept for their README numbers
+├── third_party/            # patched upstream crates (third_party/README.md), not linted
 ├── compat/
 │   ├── README.md           # how to contribute a profile
 │   ├── protected.toml      # static protected-package deny-list (SECURITY.md), compiled in
@@ -42,6 +46,17 @@ rusttv/
 │   └── devices/*.toml      # one file per device model/firmware family
 └── *.md
 ```
+
+**Naming and boundaries.** Every crate is `crates/rusttv-<name>`, one
+feature area each (`rusttv-history` today; `rusttv-remote` for the phone
+remote next; later add-ons such as `rusttv-weather`, ROADMAP § Panels). A
+shared crate is declared once in the workspace's `[workspace.dependencies]`
+and used as `<name>.workspace = true`. Dependencies point one way: the
+binaries (`rusttv-cli`, `rusttv-mcp`) use `rusttv-core` and the feature
+crates; the launcher uses feature crates but **never** `rusttv-core` (the
+safety engine, adb and the update verifier stay off the TV); a feature crate
+depends on neither the launcher nor `rusttv-core`, so both sides share it.
+Platform code (JNI, Kotlin) stays in the launcher and `android/`.
 
 `compat/optimizer/` holds the optimizer profiles (so far `reduced-animations.toml`), compiled into the binary by `crates/rusttv-core/src/optimizer.rs`. The Phase 4 optimizer (typed `SetSetting`/`GetSetting` commands and the `SettingIs` check on the existing plan engine) is described in [OPTIMIZER.md](OPTIMIZER.md).
 
@@ -88,10 +103,13 @@ There is intentionally no `shell(&str)`. Values that end up in `adb shell` argum
 |---|---|
 | `model.rs` | Pure state machine `Home`: tile order, D-pad focus, shelf/grid scroll, long-press menu, move mode, hidden apps, launch in flight. Time is passed in; returns `Effect`s. No Slint, no platform. |
 | `i18n.rs` | Which bundled translation fits the device's language tag (Chinese by script or region, Portuguese to `pt_BR`, else English), and whether it is right-to-left. Translations: `translations/<lang>/LC_MESSAGES/rusttv-launcher.po`, compiled in by `build.rs` (Slint bundled translations, `@tr` in `home.slint`; texts Rust puts together go through the `Strings` global). Right-to-left mirrors positions through the `Dir` global and swaps Left/Right in the model. |
-| `order_file.rs` | Tile order, hidden apps and last focused tile in `order.toml` (app files dir): atomic write, unreadable file kept as `.bak`. |
+| `order_file.rs` | Tile order, hidden apps and last focused tile in `order.toml` (app files dir): atomic write, unreadable file kept as `.bak`. The history's `[launcher]` section is read from and written to it; the update switch is the `update-check-off` flag file next to it (also read by `Updater.kt`). |
+| `history.rs` | The one history thread per process (`History::global`): owns `rusttv_history::tv::TvHistory`; the UI and the door send it jobs. `HistoryPlatform` is what it needs from the platform (desktop: in-memory settings; Android: `android/history.rs`). Packing at background priority, 5 s after a pause, interrupted on resume. |
+| `settings.rs`, `review.rs` | Pure state machines for the Settings page (sections, panel rows, what OK asks for) and the review screen (read, Approve, the 4-arrow code, hold OK 2 s). |
+| `ui/settings_view.rs` | Draws them and runs the approval: page data and approved changes run on worker threads, picked up by a short timer; `FLAG_SECURE` while the review is open. |
 | `platform.rs` | `Platform` trait (`list_apps`, `launch`, `take_apps_changed`, `update_status`, `check_for_update`, `install_update`), `PlatformError`, `UpdateStatus`, `Bitmap` (shrink, blur, hero backdrop glow), `FakePlatform` (feature `test-util`). |
 | `ui.rs` + `ui/home.slint` | Rust owns state and timers and pushes properties; Slint draws, animates and forwards keys. `Lifecycle` reports pause/resume. |
-| `android.rs` | `android_main` + `AndroidPlatform` over JNI. The only module with `unsafe` (crate lint `unsafe_code = "deny"`, module `allow`, a `SAFETY:` comment per block). |
+| `android.rs`, `android/history.rs` | `android_main` + `AndroidPlatform` over JNI; the history's Android platform and the door's native entry points (`History.native*`). The only modules with `unsafe` (crate lint `unsafe_code = "deny"`, module `allow`, a `SAFETY:` comment per block). |
 | `bin/desktop.rs` | Desktop dev mode with `FakePlatform` (Slint winit backend + software renderer, no Skia); `--order <file>`, `--demo <dir>` snapshots, `RUSTTV_LANG=<tag>` for a translation. |
 
 Targets: on Android Slint's `backend-android-activity-06` (Skia, D11); elsewhere `backend-winit` + `renderer-software`. `crate-type = ["lib", "cdylib"]`; the APK's library is built with the size-tuned `android-release` profile.
@@ -110,6 +128,15 @@ LauncherActivity (Kotlin, extends NativeActivity, D11)
    │     language(context): String                 BCP 47 tag, read once at start (i18n.rs)
    │     updateStatus(context): String             "kind" or "kind\tdetail" (Updater.kt, D18)
    │     checkForUpdate/installUpdate(context)     start background work, return at once
+   │     setSecure(activity, on)                   FLAG_SECURE + hidden overlays for the review screen
+   │     randomCode(): IntArray                    SecureRandom, the review code
+   │
+   ├─ History.kt (helpers for the Rust history thread, and the door's natives)
+   │     setting/putSetting(context, index)        through SecureSettings only (three keys, by index)
+   │     bootCount, elapsedMs, randomBytes, testBuild, lowerPriority
+   │     external nativeExport/nativePending/nativeCommit   (android/history.rs)
+   ├─ SecureSettings.kt  the only settings writer in the APK (check-dex.sh enforces it)
+   ├─ HistoryProvider.kt the door: uid 2000 only, onCreate does nothing, loads the library on use
    │
 Rust: trait Platform { list_apps(), launch(), take_apps_changed(), update_status(), check_for_update(), install_update() }
    ├─ AndroidPlatform  — class loaded once via the activity's class loader; JNI calls in local
@@ -126,7 +153,7 @@ Rust: trait Platform { list_apps(), launch(), take_apps_changed(), update_status
 
 ### Still open
 
-- About page with Slint attribution exists; app details and settings do not.
+- About page with Slint attribution and a Settings page (HISTORY.md § 8) exist; app details don't.
 - Banner cache is in memory only; a disk cache only if measurements justify it.
 - Device checks on the Philips TV (focus timings, backdrop look, label readability at 3 m) and benchmarks per BENCHMARK_PLAN.md.
 
@@ -177,3 +204,4 @@ Dev/CI tools: `cargo-deny` (covers RustSec advisories + licenses, so `cargo-audi
 | D19 | 2026-10-24 | Delegated approval: `rusttv launcher upgrade` runs restore, install and takeover as three unchanged plans under one typed `upgrade` (an in-memory, per-run grant approves each, since later plans are built against the device after the stage before); `rusttv approve` stores a time-limited grant (one device and firmware, scope enum with only `launcher`, at most 2 h) that `Plan::approve_by_grant` checks for runs without a terminal; journals record `approved_by` (SECURITY.md § Delegated approval) | A `--yes` flag (rejected by the owner); one merged upgrade plan (would break "irreversible step last" and plan against a stale device); signing or encrypting the grant (an agent that can write the file can also read any key on the same machine) | Agents misuse the grant file, or a scope beyond the launcher is wanted |
 | D20 | 2026-10-24 | Owner decision: drop the experimental AirPlay tool (`rusttv tools airplay`, the launcher's trigger activity, its typed commands, setting keys and error code) as a dead end for now; no experimental `tools` command group remains. The research notes stay private, outside this repository. Package-catalog entries for vendor AirPlay receivers stay: the privacy optimizer can still disable them | Keeping the tool behind its experimental gate | The owner reopens it with a new dated decision |
 | D21 | 2026-10-24 | TV history (HISTORY.md, owner decisions): real git in pure Rust (`gix`, sha1 only, packing in v1) in a shared `rusttv-history` crate with no `rusttv-core` dependency, one store on the TV (launcher-private) and a full bare copy per history on the Mac; the TV and the Mac meet only through a door, a uid-2000-only `ContentProvider`, read with `adb exec-out content read` and written with `adb exec-in content write` + `content call … commit` (new binary `Adb::run_binary`); a new risk class RL (launcher-private, between R0 and R1) for the door's writes, sent around plan-applying commands without an approval of their own; TV approvals (code + hold OK) that the Mac applies only through `history apply-pending` at a terminal, after consuming them through the door, when the live plan is exactly the approved list (`approve_by_tv`, `approved_by = tv`) | A custom store (more code to get right than git); the Mac writing the TV's store directly (`run-as` needs a debuggable build); a separate approval for every door write (a note after each plan would need a second confirmation); silent application of TV approvals on the next connection (rejected by both reviews) | The door's provider is reachable by another uid on some firmware, or gix's size or speed budgets (HISTORY.md § 9) are missed |
+| D22 | 2026-10-24 | Launcher side of the history (HISTORY.md § 3–9): one history thread per process owns the store (no locks; the door's binder threads wait for answers, the UI never waits on the key path); the door is a `ContentProvider` in the launcher's process that loads the native library on first use; approvals on the TV are review → Approve → a random 4-arrow code under `FLAG_SECURE` → hold OK 2 s, with doubling lockouts after wrong codes, and are off in debuggable or profileable builds; `WRITE_SECURE_SETTINGS` is used only by `SecureSettings.kt`, enforced by a DEX scan in `build.sh` and a Rust source test; `profileable` only in builds made with `-Prusttv.profileable=true` | A `Mutex<Store>` shared by threads (round 3: a race between a TV entry and a Mac observation); "physical remote only" (measured on the Philips: the adb shell can write `/dev/input` and `/dev/uinput`, so injected keys look physical); a provider in its own process (two writers to one store); no grant in v1 (owner decision 5) | Slint or Android starts exposing window contents in a way `FLAG_SECURE` doesn't cover (e.g. the accessibility tree), or the history thread's work shows up in Home's frame times |

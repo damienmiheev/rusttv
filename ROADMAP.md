@@ -234,8 +234,9 @@ Decided "not for now"; raise again when the core launcher is done.
     the Android TV Remote Service is installed and listening, and whether it
     reports the current app.
 
-- **Tweaks + History: TV-side changes with a git-backed history** — parked
-  2026-10-24. Owner's idea: what the CLI can change, the launcher's Settings
+- **Tweaks + History: TV-side changes with a git-backed history** — **built
+  2026-10-24, see HISTORY.md** (the discussion below is kept as its origin).
+  Parked 2026-10-24. Owner's idea: what the CLI can change, the launcher's Settings
   page can change too, and every change from either side is a snapshot in a
   history the Mac can review and restore. Discussion so far:
   - **History lives on the TV** (source of truth), with a copy on the Mac.
