@@ -259,9 +259,7 @@ pub fn history_restore_plan(
         "Packages are checked against the protected-package policy now and again right before \
          each step; if one fails, the steps done so far are undone."
             .to_owned(),
-        format!(
-            "After the last step Home must still open {home}; otherwise every step is undone."
-        ),
+        format!("After the last step Home must still open {home}; otherwise every step is undone."),
         "Undo with `rusttv history restore --journal <file>` (the journal this writes); a value \
          changed since is left as is."
             .to_owned(),
@@ -278,7 +276,9 @@ pub fn history_restore_plan(
                 Vec::new()
             };
             let requirements = match &command {
-                DeviceCommand::DisablePackage(package) => vec![Check::NotProtected(package.clone())],
+                DeviceCommand::DisablePackage(package) => {
+                    vec![Check::NotProtected(package.clone())]
+                }
                 _ => Vec::new(),
             };
             Step::new(command, checks).requiring(requirements)
@@ -433,33 +433,35 @@ pub fn approve_by_tv(
     }
     let mut left: Vec<&TvChange> = changes.iter().collect();
     for step in plan.steps() {
-        let position = left.iter().position(|change| match (step.command(), change) {
-            (
-                DeviceCommand::SetSetting { key, to, from },
-                TvChange::Setting {
-                    key: approved,
-                    old,
-                    new,
-                },
-            ) => key == approved && same_scale(from, old) && same_scale(to, new),
-            (
-                DeviceCommand::DisablePackage(package),
-                TvChange::Package {
-                    package: approved,
-                    old: Some(true),
-                    new: false,
-                },
-            )
-            | (
-                DeviceCommand::EnablePackage(package),
-                TvChange::Package {
-                    package: approved,
-                    old: Some(false),
-                    new: true,
-                },
-            ) => package == approved,
-            _ => false,
-        });
+        let position = left
+            .iter()
+            .position(|change| match (step.command(), change) {
+                (
+                    DeviceCommand::SetSetting { key, to, from },
+                    TvChange::Setting {
+                        key: approved,
+                        old,
+                        new,
+                    },
+                ) => key == approved && same_scale(from, old) && same_scale(to, new),
+                (
+                    DeviceCommand::DisablePackage(package),
+                    TvChange::Package {
+                        package: approved,
+                        old: Some(true),
+                        new: false,
+                    },
+                )
+                | (
+                    DeviceCommand::EnablePackage(package),
+                    TvChange::Package {
+                        package: approved,
+                        old: Some(false),
+                        new: true,
+                    },
+                ) => package == approved,
+                _ => false,
+            });
         match position {
             Some(index) => {
                 left.remove(index);
@@ -585,10 +587,12 @@ pub fn history_restore_undo_plan(
         )));
     }
     let plan = restore_plan(journal, serial, &fingerprint)?;
-    Ok(plan.with_notes(skipped.into_iter().chain([
-        "Right before each step a setting is read again; one changed since is left as is."
-            .to_owned(),
-    ])))
+    Ok(plan.with_notes(
+        skipped.into_iter().chain([
+            "Right before each step a setting is read again; one changed since is left as is."
+                .to_owned(),
+        ]),
+    ))
 }
 
 /// Plans putting this computer's copy of a history back into the TV's empty

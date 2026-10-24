@@ -6,7 +6,7 @@
 //! file matches it (`rusttv_core::download_verified`).
 
 use std::fs::{self, DirBuilder, OpenOptions};
-use std::io::{self, IsTerminal};
+use std::io;
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
@@ -245,7 +245,7 @@ struct FileReport {
 
 /// `rusttv update cli`.
 pub fn cli(dry_run: bool, json: bool) -> Result<(), CliError> {
-    if !dry_run && !io::stdin().is_terminal() {
+    if !dry_run && !rusttv_core::stdin_is_terminal() {
         return Err(PlanError::not_approved(
             "this replaces programs on this computer and needs a person to approve it at an \
              interactive terminal; nothing changed (use --dry-run to only see the plan)",

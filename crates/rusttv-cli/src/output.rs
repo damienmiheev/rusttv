@@ -1,8 +1,8 @@
 //! Result and error printing shared by all commands.
 //!
 //! With `--json`, everything goes to stdout as one JSON envelope:
-//! `{"schema":"rusttv.v7","ok":true,"data":...}` or
-//! `{"schema":"rusttv.v7","ok":false,"error":{"code":...,"message":...}}`.
+//! `{"schema":"rusttv.v8","ok":true,"data":...}` or
+//! `{"schema":"rusttv.v8","ok":false,"error":{"code":...,"message":...}}`.
 //! Changing a field or an error code requires a new schema version.
 
 use std::error::Error;
@@ -10,7 +10,7 @@ use std::error::Error;
 use serde::Serialize;
 
 /// Version of the JSON output contract.
-pub const SCHEMA: &str = "rusttv.v7";
+pub const SCHEMA: &str = "rusttv.v8";
 
 #[derive(Debug, Serialize)]
 struct Success<'a, T> {

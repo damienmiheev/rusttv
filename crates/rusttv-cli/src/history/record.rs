@@ -18,13 +18,21 @@ use super::{door, sync, words};
 use crate::{CliError, output};
 
 /// Observes the device and tells the TV's history around one plan.
-#[derive(Debug)]
 pub(crate) struct Recorder<'a> {
     adb: &'a dyn Adb,
     serial: String,
     /// Whether the door may be written, once known: the launcher is
     /// installed and the empty-history rule doesn't hold it back.
     allowed: Option<bool>,
+}
+
+impl std::fmt::Debug for Recorder<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Recorder")
+            .field("serial", &self.serial)
+            .field("allowed", &self.allowed)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<'a> Recorder<'a> {
@@ -84,9 +92,7 @@ impl<'a> Recorder<'a> {
     pub(crate) fn finish(&self, plan: &str, journal: &Path, restore: bool, consumed: Option<&str>) {
         let allowed = match self.allowed {
             // Installed when the plan started; an uninstall plan removes it.
-            Some(allowed) => {
-                allowed && launcher_installed(self.adb, &self.serial).unwrap_or(false)
-            }
+            Some(allowed) => allowed && launcher_installed(self.adb, &self.serial).unwrap_or(false),
             None => match self.check() {
                 Ok(allowed) => allowed == Some(true),
                 Err(error) => {
@@ -102,16 +108,24 @@ impl<'a> Recorder<'a> {
             // Nothing was applied: no journal, nothing to note.
             return;
         };
-        let result = note(self.adb, &self.serial, plan, journal, &recorded, restore, consumed)
-            .and_then(|note| {
-                door::send_message(
-                    self.adb,
-                    &self.serial,
-                    &Message::Note { note },
-                    "recording the plan",
-                )
-            })
-            .and_then(|_| sync::sync(self.adb, &self.serial, None));
+        let result = note(
+            self.adb,
+            &self.serial,
+            plan,
+            journal,
+            &recorded,
+            restore,
+            consumed,
+        )
+        .and_then(|note| {
+            door::send_message(
+                self.adb,
+                &self.serial,
+                &Message::Note { note },
+                "recording the plan",
+            )
+        })
+        .and_then(|_| sync::sync(self.adb, &self.serial, None));
         if let Err(error) = result {
             warn("the plan couldn't be recorded in the TV's history", &error);
         }
@@ -199,9 +213,11 @@ pub(crate) fn observe(adb: &dyn Adb, serial: &str) -> Result<Observation, CliErr
         })
         .collect();
     let installed = adb.run(serial, &DeviceCommand::ListPackages)?;
-    let installed = rusttv_core::parse_package_list(&installed)?;
+    let installed =
+        rusttv_core::parse_package_list(&installed).map_err(rusttv_core::AdbError::from)?;
     let disabled = adb.run(serial, &DeviceCommand::ListDisabledPackages)?;
-    let disabled = rusttv_core::parse_package_list(&disabled)?;
+    let disabled =
+        rusttv_core::parse_package_list(&disabled).map_err(rusttv_core::AdbError::from)?;
     let mut packages = BTreeMap::new();
     for entry in rusttv_core::bundled_catalog() {
         let name = entry.package.as_str();

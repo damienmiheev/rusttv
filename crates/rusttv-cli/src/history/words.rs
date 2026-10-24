@@ -164,7 +164,10 @@ pub(crate) fn change(change: &Change) -> String {
     match change {
         Change::Reordered { moved } => format!("Moved on Home: {}", moved.join(", ")),
         Change::Hidden { tile, hidden: true } => format!("Hid {tile}"),
-        Change::Hidden { tile, hidden: false } => format!("Showed {tile} again"),
+        Change::Hidden {
+            tile,
+            hidden: false,
+        } => format!("Showed {tile} again"),
         Change::UpdateCheck { on } => format!(
             "Check for updates automatically: {}",
             if *on { "on" } else { "off" }

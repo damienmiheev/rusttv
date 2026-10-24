@@ -55,11 +55,7 @@ impl Devices {
         let path = Self::path()?;
         match fs::read_to_string(&path) {
             Ok(text) => toml::from_str(&text).map_err(|error| {
-                Failure::new(
-                    "HISTORY_STORAGE",
-                    format!("{}: {error}", path.display()),
-                )
-                .into()
+                Failure::new("HISTORY_STORAGE", format!("{}: {error}", path.display())).into()
             }),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
             Err(error) => Err(Failure::storage(&path, &error).into()),

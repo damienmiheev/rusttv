@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusttv_core::{Adb, DeviceCommand, DoorKind, HistoryNonce, HistorySince, InboxPayload};
-use rusttv_history::door::{CommitResult, ExportHeader, Message, PendingList};
+use rusttv_history::door::{CommitResult, ExportHeader, Message, PendingList, parse_read_error};
 use rusttv_history::{EntryId, HistoryError};
 
 use super::Failure;
@@ -26,8 +26,8 @@ pub(crate) enum ExportReply {
         /// Everything the TV printed.
         bytes: Vec<u8>,
     },
-    /// A refusal: the TV's error code and its history's head (`None`: empty).
-    Refused(CommitResult),
+    /// A refusal (`rusttv-error <CODE>`): the TV's error code.
+    Refused(String),
 }
 
 impl ExportReply {
@@ -52,8 +52,8 @@ pub(crate) fn export(
             .map_err(|error| Failure::invalid(error.to_string()))?,
     };
     let bytes = adb.run_binary(serial, &DeviceCommand::HistoryExport(since), &[])?;
-    if let Some(refused) = refusal(&bytes)? {
-        return Ok(ExportReply::Refused(refused));
+    if let Some(code) = parse_read_error(&bytes) {
+        return Ok(ExportReply::Refused(code));
     }
     let (header, pack) = ExportHeader::split(&bytes).map_err(Failure::from)?;
     let pack_at = bytes.len() - pack.len();
@@ -64,26 +64,12 @@ pub(crate) fn export(
     })
 }
 
-/// A refusal line (`rusttv-result 1 error …`), if that is what the TV sent.
-fn refusal(bytes: &[u8]) -> Result<Option<CommitResult>, CliError> {
-    if !bytes.starts_with(b"rusttv-result ") {
-        return Ok(None);
-    }
-    let text = std::str::from_utf8(&bytes[..bytes.len().min(512)])
-        .map_err(|_| Failure::invalid("the TV's answer isn't UTF-8".to_owned()))?;
-    let result = CommitResult::parse(text).map_err(Failure::from)?;
-    if result.error.is_none() {
-        return Err(Failure::invalid("the TV answered `ok` instead of data".to_owned()).into());
-    }
-    Ok(Some(result))
-}
-
 /// The TV's valid pending approvals. R0, but it starts the launcher's
 /// process: only `history` and plan-applying commands read it.
 pub(crate) fn pending(adb: &dyn Adb, serial: &str) -> Result<PendingList, CliError> {
     let bytes = adb.run_binary(serial, &DeviceCommand::HistoryPending, &[])?;
-    if let Some(refused) = refusal(&bytes)? {
-        return Err(Failure::refused(&refused, "reading the approvals waiting on the TV").into());
+    if let Some(code) = parse_read_error(&bytes) {
+        return Err(Failure::refused(&code, "reading the approvals waiting on the TV").into());
     }
     let text = std::str::from_utf8(&bytes)
         .map_err(|_| Failure::invalid("the pending approvals aren't UTF-8".to_owned()))?;
@@ -119,8 +105,8 @@ pub(crate) fn send_message(
 ) -> Result<CommitResult, CliError> {
     let text = message.to_toml().map_err(Failure::from)?;
     let result = send(adb, serial, DoorKind::Message, text.into_bytes())?;
-    if result.error.is_some() {
-        return Err(Failure::refused(&result, what).into());
+    if let Some(code) = &result.error {
+        return Err(Failure::refused(code, what).into());
     }
     Ok(result)
 }

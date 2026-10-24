@@ -388,7 +388,7 @@ impl Plan {
     }
 
     /// The plan with `notes` added after its own.
-    pub(crate) fn with_notes(mut self, notes: impl IntoIterator<Item = String>) -> Self {
+    pub fn with_notes(mut self, notes: impl IntoIterator<Item = String>) -> Self {
         self.notes.extend(notes);
         self
     }
@@ -1052,7 +1052,8 @@ impl PlanError {
         PlanErrorKind::Journal(error.to_string()).into()
     }
 
-    pub(crate) fn precondition(reason: String) -> Self {
+    /// The device isn't in the state a plan needs (`PRECONDITION_FAILED`).
+    pub fn precondition(reason: String) -> Self {
         PlanErrorKind::Precondition(reason).into()
     }
 

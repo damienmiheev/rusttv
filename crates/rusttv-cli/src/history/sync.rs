@@ -74,27 +74,21 @@ pub(crate) fn sync(
 
     let mut since = candidate_head.clone();
     let mut reply = door::export(adb, serial, since.as_ref())?;
-    if let ExportReply::Refused(refused) = &reply
+    if let ExportReply::Refused(code) = &reply
         && since.is_some()
-        && refused.error.as_deref() == Some("HISTORY_NOT_FOUND")
-        && refused.head.is_some()
+        && code == "HISTORY_NOT_FOUND"
     {
-        // The TV doesn't hold that entry: another history now.
+        // The TV doesn't hold that entry: its history is empty or another one.
         since = None;
         reply = door::export(adb, serial, None)?;
     }
     let header = match &reply {
-        ExportReply::Refused(refused)
-            if refused.error.as_deref() == Some("HISTORY_NOT_FOUND") && refused.head.is_none() =>
-        {
-            None
+        ExportReply::Refused(code) => {
+            return Err(Failure::refused(code, "reading the TV's history").into());
         }
-        ExportReply::Refused(refused) => {
-            return Err(Failure::refused(refused, "reading the TV's history").into());
-        }
-        ExportReply::Export { header, .. } => Some(header.clone()),
+        ExportReply::Export { header, .. } => header.clone(),
     };
-    let Some(id) = header.as_ref().and_then(|header| header.history.clone()) else {
+    let Some(id) = header.history.clone() else {
         return Ok(Synced {
             serialno,
             history: None,
@@ -121,9 +115,9 @@ pub(crate) fn sync(
     loop {
         let header = match &reply {
             ExportReply::Export { header, .. } => header.clone(),
-            ExportReply::Refused(refused) => {
+            ExportReply::Refused(code) => {
                 return Err(Failure::refused(
-                    refused,
+                    code,
                     "reading the TV's history after this computer's newest entry",
                 )
                 .into());
@@ -217,9 +211,10 @@ pub(crate) fn watchlist(
     }
     let info = adb.run(
         serial,
-        &DeviceCommand::PackageInfo(PackageName::new(rusttv_core::RUSTTV_LAUNCHER).map_err(
-            |error| Failure::invalid(error.to_string()),
-        )?),
+        &DeviceCommand::PackageInfo(
+            PackageName::new(rusttv_core::RUSTTV_LAUNCHER)
+                .map_err(|error| Failure::invalid(error.to_string()))?,
+        ),
     )?;
     let grant = match rusttv_core::launcher_grant(&info) {
         None => "launcher not installed",
@@ -230,10 +225,9 @@ pub(crate) fn watchlist(
 
     let path = mac::watchlist_path(id)?;
     let before = match fs::read_to_string(&path) {
-        Ok(text) => Some(
-            toml::from_str::<Baseline>(&text)
-                .map_err(|error| Failure::new("HISTORY_STORAGE", format!("{}: {error}", path.display())))?,
-        ),
+        Ok(text) => Some(toml::from_str::<Baseline>(&text).map_err(|error| {
+            Failure::new("HISTORY_STORAGE", format!("{}: {error}", path.display()))
+        })?),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(error) => return Err(Failure::storage(&path, &error).into()),
     };

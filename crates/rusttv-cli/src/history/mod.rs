@@ -16,15 +16,12 @@ use rusttv_core::{
     JournalStore, PackageName, PlanError, RestoreTarget, SettingKey, SettingState, SettingValue,
     TvChange,
 };
-use rusttv_history::door::{
-    ApprovedChange, CommitResult, ExportHeader, Message, PendingApproval,
-};
+use rusttv_history::door::{ApprovedChange, ExportHeader, Message, PendingApproval};
 use rusttv_history::{EntryId, HistoryId, PackageState, State, Store};
 use serde::Serialize;
 
 use crate::launcher::{
-    ChangeReport, apply_recorded, confirm, note_journal, read_confirmation, restore_journal,
-    show_plan,
+    ChangeReport, apply_recorded, confirm, read_confirmation, restore_journal, show_plan,
 };
 use crate::{CliError, Target, output};
 
@@ -54,20 +51,23 @@ impl Failure {
     }
 
     /// The TV's door refused `what`, with its code.
-    pub(crate) fn refused(result: &CommitResult, what: &str) -> Self {
-        let code = result.error.as_deref().unwrap_or("UNKNOWN");
+    pub(crate) fn refused(code: &str, what: &str) -> Self {
         let hint = match code {
             "TV_BUSY" => ": a change on the TV is in progress; try again in a moment",
             "HISTORY_RATE_LIMITED" => ": too many entries from this computer this hour",
-            "HISTORY_FORMAT_NEWER" => ": the TV has a newer RustTV; run `rusttv update cli`",
+            "HISTORY_FORMAT_NEWER" => {
+                ": the TV's history is from a newer RustTV; run `rusttv update cli`"
+            }
             "PENDING_INVALID" => ": the approval was used already or has expired",
             "HISTORY_NOT_EMPTY" => ": the TV already has a history",
             _ => "",
         };
-        Self::new(
-            "HISTORY_REFUSED",
-            format!("the TV refused {what} ({code}){hint}"),
-        )
+        let error = if code == "HISTORY_FORMAT_NEWER" {
+            "HISTORY_FORMAT_NEWER"
+        } else {
+            "HISTORY_REFUSED"
+        };
+        Self::new(error, format!("the TV refused {what} ({code}){hint}"))
     }
 
     pub(crate) fn code(&self) -> &'static str {
@@ -306,12 +306,7 @@ fn approved_text(change: &ApprovedChange) -> String {
     }
 }
 
-fn sync_command(
-    adb: &dyn Adb,
-    target: &Target,
-    which: &Which,
-    json: bool,
-) -> Result<(), CliError> {
+fn sync_command(adb: &dyn Adb, target: &Target, which: &Which, json: bool) -> Result<(), CliError> {
     let serial = target.resolve(adb)?;
     let forced = which.id()?;
     let synced = sync::sync(adb, &serial, forced.as_ref())?;
@@ -341,8 +336,7 @@ fn sync_command(
             change.key,
             shown(&change.before),
             shown(&change.now),
-            if change.key == "write_secure_settings" && change.now.as_deref() != Some("granted")
-            {
+            if change.key == "write_secure_settings" && change.now.as_deref() != Some("granted") {
                 " (reinstalling the launcher drops it: `rusttv history allow-tv-settings`)"
             } else {
                 ""
@@ -604,10 +598,6 @@ fn target_of(state: &State) -> Result<RestoreTarget, CliError> {
 }
 
 /// Plans and applies one `history-restore` plan approved at the terminal.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "one entry point per CLI command"
-)]
 fn restore(
     adb: &dyn Adb,
     target: &Target,
@@ -650,7 +640,11 @@ fn restore(
         )]);
     }
     if !json {
-        println!("Restore entry {} ({}):\n", &id.as_str()[..12], state_summary(&store, &id));
+        println!(
+            "Restore entry {} ({}):\n",
+            &id.as_str()[..12],
+            state_summary(&store, &id)
+        );
     }
     show_plan(&plan, dry_run, json);
     if dry_run {
@@ -660,7 +654,10 @@ fn restore(
     let (path, journal) = apply_recorded(adb, &plan, &approval, HISTORY_RESTORE, None)?;
     report_change(&path, journal.status, json);
     if !json {
-        println!("Undo with `rusttv history restore --journal {}`.", path.display());
+        println!(
+            "Undo with `rusttv history restore --journal {}`.",
+            path.display()
+        );
     }
     Ok(())
 }
@@ -668,7 +665,13 @@ fn restore(
 fn state_summary(store: &Store, id: &EntryId) -> String {
     store.entry(id).map_or_else(
         |_| String::new(),
-        |entry| format!("{}, {}", entry.summary, words::time(entry.time_unix).trim_end()),
+        |entry| {
+            format!(
+                "{}, {}",
+                entry.summary,
+                words::time(entry.time_unix).trim_end()
+            )
+        },
     )
 }
 
@@ -806,27 +809,30 @@ fn restore_tv(
         .ok_or_else(|| Failure::new("HISTORY_NOT_FOUND", format!("history {id} is empty")))?;
 
     // Only into an empty history (the TV refuses anything else too).
-    match door::export(adb, &serial, Some(&head))? {
-        door::ExportReply::Refused(refused)
-            if refused.error.as_deref() == Some("HISTORY_NOT_FOUND") && refused.head.is_none() => {}
-        door::ExportReply::Refused(refused) => {
-            return Err(Failure::new(
-                "HISTORY_NOT_EMPTY",
-                format!(
-                    "the TV already has a history (newest entry {}); the old one stays \
-                     readable here: `rusttv history log --history {id}`",
-                    refused.head.as_ref().map_or("unknown", EntryId::as_str)
-                ),
-            )
-            .into());
+    let held = match door::export(adb, &serial, Some(&head))? {
+        door::ExportReply::Export { .. } => Some(head.clone()),
+        door::ExportReply::Refused(code) if code == "HISTORY_NOT_FOUND" => {
+            match door::export(adb, &serial, None)? {
+                door::ExportReply::Export { header, .. } => header.head,
+                door::ExportReply::Refused(code) => {
+                    return Err(Failure::refused(&code, "reading its history").into());
+                }
+            }
         }
-        door::ExportReply::Export { .. } => {
-            return Err(Failure::new(
-                "HISTORY_NOT_EMPTY",
-                format!("the TV already holds history {id}; nothing to put back"),
-            )
-            .into());
+        door::ExportReply::Refused(code) => {
+            return Err(Failure::refused(&code, "reading its history").into());
         }
+    };
+    if let Some(held) = held {
+        return Err(Failure::new(
+            "HISTORY_NOT_EMPTY",
+            format!(
+                "the TV already has a history (newest entry {}); it can't take another one, and \
+                 history {id} stays readable here: `rusttv history log --history {id}`",
+                &held.as_str()[..12]
+            ),
+        )
+        .into());
     }
     let export = store.export(None).map_err(Failure::from)?;
     if export.more {
@@ -846,8 +852,8 @@ fn restore_tv(
     .into_bytes();
     bytes.extend_from_slice(&export.pack);
     let size = bytes.len();
-    let head_since = HistorySince::entry(head.as_str())
-        .map_err(|error| Failure::invalid(error.to_string()))?;
+    let head_since =
+        HistorySince::entry(head.as_str()).map_err(|error| Failure::invalid(error.to_string()))?;
     let plan = rusttv_core::restore_tv_plan(
         adb,
         &serial,
@@ -927,10 +933,9 @@ fn apply_pending(adb: &dyn Adb, target: &Target, json: bool) -> Result<(), CliEr
     )?;
     match rusttv_core::launcher_test_build(&info) {
         None if rusttv_core::launcher_grant(&info).is_none() => {
-            return Err(PlanError::precondition(
-                "the RustTV launcher isn't installed".to_owned(),
-            )
-            .into());
+            return Err(
+                PlanError::precondition("the RustTV launcher isn't installed".to_owned()).into(),
+            );
         }
         Some(false) => {}
         _ => {
@@ -1021,8 +1026,13 @@ fn apply_one(
             (plan.approve(&typed)?, plan)
         }
     };
-    let (path, journal) =
-        apply_recorded(adb, &plan, &approval_done, HISTORY_RESTORE, Some(&approval.hash))?;
+    let (path, journal) = apply_recorded(
+        adb,
+        &plan,
+        &approval_done,
+        HISTORY_RESTORE,
+        Some(&approval.hash),
+    )?;
     if !json {
         println!("\nDone.\nJournal: {}", path.display());
     }
@@ -1091,9 +1101,4 @@ pub(crate) fn sync_before_removal(adb: &dyn Adb, serial: &str) -> Result<(), Cli
     } else {
         Err(PlanError::not_approved("`continue` was not typed; nothing changed").into())
     }
-}
-
-#[allow(dead_code, reason = "kept for the journal note helper")]
-fn _unused(_: &Path) {
-    note_journal(Path::new(""));
 }

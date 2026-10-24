@@ -191,16 +191,16 @@ impl Client {
     }
 }
 
-/// `data` of a successful `rusttv.v7` envelope.
+/// `data` of a successful `rusttv.v8` envelope.
 fn data(envelope: Value) -> Value {
-    assert_eq!(envelope["schema"], "rusttv.v7");
+    assert_eq!(envelope["schema"], "rusttv.v8");
     assert_eq!(envelope["ok"], true, "{envelope}");
     envelope["data"].clone()
 }
 
-/// `error.code` of a failed `rusttv.v7` envelope.
+/// `error.code` of a failed `rusttv.v8` envelope.
 fn error_code(envelope: &Value) -> &str {
-    assert_eq!(envelope["schema"], "rusttv.v7");
+    assert_eq!(envelope["schema"], "rusttv.v8");
     assert_eq!(envelope["ok"], false, "{envelope}");
     assert!(
         envelope["error"]["message"]
@@ -391,7 +391,7 @@ async fn invalid_arguments_and_unknown_tools_are_rejected() {
             .request("tools/call", json!({"name": tool, "arguments": arguments}))
             .await;
         // A JSON-RPC error, or (for arguments rmcp can't deserialize) a tool
-        // error without a `rusttv.v7` envelope: either way nothing ran.
+        // error without a `rusttv.v8` envelope: either way nothing ran.
         let rejected = response["error"]["code"].is_i64()
             || (response["result"]["isError"] == true
                 && response["result"]["structuredContent"].is_null());

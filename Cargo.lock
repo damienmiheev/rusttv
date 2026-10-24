@@ -4784,6 +4784,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "rusttv-core",
+ "rusttv-history",
  "serde",
  "serde_json",
  "thiserror 2.0.21",

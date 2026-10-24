@@ -243,7 +243,11 @@ impl Adb for SystemAdb {
 /// Runs `command` the way it needs: binary commands with their stdin through
 /// [`Adb::run_binary`] (stdout discarded), the rest through [`Adb::run`].
 /// Used by the plan engine, whose steps only need to know they ran.
-pub(crate) fn run_step(adb: &dyn Adb, serial: &str, command: &DeviceCommand) -> Result<(), AdbError> {
+pub(crate) fn run_step(
+    adb: &dyn Adb,
+    serial: &str,
+    command: &DeviceCommand,
+) -> Result<(), AdbError> {
     if !command.is_binary() {
         return adb.run(serial, command).map(drop);
     }
@@ -351,7 +355,10 @@ mod fake {
         ) -> Result<Vec<u8>, AdbError> {
             self.log.borrow_mut().push(command.clone());
             self.inputs.borrow_mut().push(stdin.to_vec());
-            let Some(outputs) = self.binary.get(command).filter(|outputs| !outputs.is_empty())
+            let Some(outputs) = self
+                .binary
+                .get(command)
+                .filter(|outputs| !outputs.is_empty())
             else {
                 return Err(AdbError::from_failure(
                     serial,
