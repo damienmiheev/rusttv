@@ -16,7 +16,9 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
 
-use rusttv_launcher::{Bitmap, DemoStep, FakePlatform, RunOptions, run, run_demo};
+use rusttv_launcher::{
+    Bitmap, DemoStep, FakePlatform, RunOptions, run, run_demo, start_desktop_history,
+};
 
 /// Stand-in for the time an app takes to cover the launcher, so the launch
 /// animation finishes before the launcher "comes back".
@@ -113,6 +115,52 @@ fn demo_script() -> Vec<DemoStep> {
         ms(400),
         Snapshot("16-shown-again"),
         Tap(UP),
+        // Settings: the last tile (HISTORY.md § 8).
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(RIGHT),
+        Tap(RIGHT),
+        Tap(RIGHT),
+        Tap(RIGHT),
+        Tap(RIGHT),
+        Tap(OK),
+        ms(600),
+        Snapshot("17-settings"),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(RIGHT),
+        ms(300),
+        Snapshot("18-settings-history"),
+        Tap(BACK),
+        Tap(UP),
+        Tap(UP),
+        Tap(RIGHT),
+        Tap(DOWN),
+        Tap(OK),
+        ms(400),
+        Snapshot("19-review"),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(OK),
+        ms(300),
+        Snapshot("20-review-code"),
+        // FakePlatform's code: left, up, right, down.
+        Tap(LEFT),
+        Tap(UP),
+        Tap(RIGHT),
+        Tap(DOWN),
+        ms(1200),
+        Press(OK),
+        ms(1000),
+        Snapshot("21-review-holding"),
+        ms(1400),
+        Release(OK),
+        ms(800),
+        Snapshot("22-applied"),
+        Tap(BACK),
     ]
 }
 
@@ -127,17 +175,32 @@ fn main() -> Result<(), Box<dyn Error>> {
     };
     let mut args = std::env::args().skip(1);
     let Some(flag) = args.next() else {
+        // History needs a place for its files: a fresh temporary one.
+        let dir = std::env::temp_dir().join(format!("rusttv-desktop-{}", std::process::id()));
+        std::fs::create_dir_all(&dir)?;
+        options.order_file = Some(dir.join("order.toml"));
+        start_desktop_history(dir);
         return Ok(run(FakePlatform::sample(), options)?);
     };
     let dir = match (flag.as_str(), args.next()) {
         ("--order", Some(file)) => {
-            options.order_file = Some(PathBuf::from(file));
+            let file = PathBuf::from(file);
+            // History next to the order file, like the launcher's files dir.
+            let parent = file.parent().map_or_else(PathBuf::new, Path::to_path_buf);
+            start_desktop_history(if parent.as_os_str().is_empty() { ".".into() } else { parent });
+            options.order_file = Some(file);
             return Ok(run(FakePlatform::sample(), options)?);
         }
         ("--demo", Some(dir)) => PathBuf::from(dir),
         _ => return Err("usage: rusttv-launcher-desktop [--order <file> | --demo <dir>]".into()),
     };
     std::fs::create_dir_all(&dir)?;
+    // A fresh history and order file for each demo run.
+    let state = dir.join("state");
+    let _ = std::fs::remove_dir_all(&state);
+    std::fs::create_dir_all(&state)?;
+    options.order_file = Some(state.join("order.toml"));
+    start_desktop_history(state);
 
     let mut platform = FakePlatform::sample();
     platform.fail_launches_of(FAILING_APP);
