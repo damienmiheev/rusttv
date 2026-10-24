@@ -286,6 +286,23 @@ pub fn is_nonce(text: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
+/// A door read (`export`, `pending`) that failed answers one line,
+/// `rusttv-error <CODE>`, instead of its data.
+pub fn read_error(code: &str) -> Vec<u8> {
+    format!("rusttv-error {code}\n").into_bytes()
+}
+
+/// The error code if `bytes` is a failed read's answer.
+pub fn parse_read_error(bytes: &[u8]) -> Option<String> {
+    let rest = bytes.strip_prefix(b"rusttv-error ")?;
+    let end = rest.iter().position(|b| *b == b'\n').unwrap_or(rest.len());
+    let code = std::str::from_utf8(&rest[..end]).ok()?;
+    (!code.is_empty()
+        && code.len() <= 64
+        && code.bytes().all(|b| b.is_ascii_uppercase() || b == b'_'))
+    .then(|| code.to_owned())
+}
+
 /// What a commit answered: one line in the result bundle, key `rusttv`:
 /// `rusttv-result 1 ok <head|none>` or `rusttv-result 1 error <CODE> <head|none>`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -529,6 +546,16 @@ mod tests {
         assert_eq!(CommitResult::parse(&output).unwrap(), busy);
         assert!(CommitResult::parse("Error: java.lang.SecurityException").is_err());
         assert!(CommitResult::parse("rusttv-result 1 error bad-code none").is_err());
+    }
+
+    #[test]
+    fn a_failed_read_says_its_code() {
+        assert_eq!(
+            parse_read_error(&read_error("HISTORY_NOT_FOUND")).as_deref(),
+            Some("HISTORY_NOT_FOUND")
+        );
+        assert_eq!(parse_read_error(b"rusttv-export 1 none none 0\n"), None);
+        assert_eq!(parse_read_error(b"rusttv-error bad code\n"), None);
     }
 
     #[test]
