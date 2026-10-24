@@ -1,0 +1,3 @@
+WINDOW MANAGER WINDOWS (dumpsys window windows)
+  mCurrentFocus=Window{79effda u0 org.droidtv.tvsystemui}
+  mFocusedApp=ActivityRecord{f4c270e u0 ai.rusttv.launcher/.LauncherActivity t76386}

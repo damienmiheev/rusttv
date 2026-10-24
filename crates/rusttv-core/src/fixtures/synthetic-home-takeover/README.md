@@ -26,6 +26,8 @@ They continue the real Google TV emulator captures in
 | `activities-stock-front.txt` | same | Stock launcher still in front | Same |
 | `ps-rusttv-running.txt` | `ps -A -o PID,RSS,NAME` | RustTV process alive | Format of `../emulator-pixel3a-api34/ps.txt`, trimmed |
 | `ps-rusttv-not-running.txt` | same | RustTV process gone (crashed) | Same |
+| `focus-app.txt` | `dumpsys window windows` | an app's activity has focus | `mCurrentFocus` line seen on the Philips 65OLED818, 2026-10-24, trimmed |
+| `focus-tv-overlay.txt` | same | the Philips logo overlay has focus while awake | Same TV, same day: `org.droidtv.tvsystemui`, trimmed |
 
 The engine never parses the `pm disable-user` / `pm enable` output; it
 verifies by reading state again, so a wrong guess there can't hide a failure.

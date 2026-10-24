@@ -109,6 +109,10 @@ pub enum DeviceCommand {
     /// Wakes the screen and ends the screensaver, as any key press would
     /// (`input keyevent KEYCODE_WAKEUP`). Transient.
     WakeUp,
+    /// The window manager's windows, including which one has input focus
+    /// (`dumpsys window windows`): a TV maker's overlay can take focus while
+    /// the screen is awake (the Philips logo overlay, 2026-10-24).
+    FocusedWindow,
     /// Every input method, enabled or not, one id per line (`ime list -a -s`).
     InputMethods,
     /// Enabled accessibility services, `:`-separated components or `null`
@@ -212,6 +216,7 @@ impl DeviceCommand {
             | Self::ProcessCpuTimes
             | Self::Activities
             | Self::PowerState
+            | Self::FocusedWindow
             | Self::InputMethods
             | Self::EnabledAccessibilityServices
             | Self::TvInputs
@@ -342,6 +347,7 @@ impl DeviceCommand {
             Self::Activities => vec!["shell", "dumpsys", "activity", "activities"],
             Self::PressHome => vec!["shell", "input", "keyevent", "KEYCODE_HOME"],
             Self::PowerState => vec!["shell", "dumpsys", "power"],
+            Self::FocusedWindow => vec!["shell", "dumpsys", "window", "windows"],
             Self::WakeUp => vec!["shell", "input", "keyevent", "KEYCODE_WAKEUP"],
             Self::InputMethods => vec!["shell", "ime", "list", "-a", "-s"],
             Self::EnabledAccessibilityServices => vec![
@@ -1122,6 +1128,7 @@ mod tests {
             DeviceCommand::Activities,
             DeviceCommand::PressHome,
             DeviceCommand::PowerState,
+            DeviceCommand::FocusedWindow,
             DeviceCommand::WakeUp,
             DeviceCommand::InputMethods,
             DeviceCommand::EnabledAccessibilityServices,
@@ -1183,6 +1190,7 @@ mod tests {
                 | DeviceCommand::Activities
                 | DeviceCommand::PressHome
                 | DeviceCommand::PowerState
+                | DeviceCommand::FocusedWindow
                 | DeviceCommand::WakeUp
                 | DeviceCommand::InputMethods
                 | DeviceCommand::EnabledAccessibilityServices

@@ -1,0 +1,3 @@
+WINDOW MANAGER WINDOWS (dumpsys window windows)
+  mCurrentFocus=Window{7c8f582 u0 ai.rusttv.launcher/ai.rusttv.launcher.LauncherActivity}
+  mFocusedApp=ActivityRecord{f4c270e u0 ai.rusttv.launcher/.LauncherActivity t76386}

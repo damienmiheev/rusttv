@@ -449,6 +449,7 @@ mod tests {
             )
             .respond(DeviceCommand::WakeUp, synthetic!("input-keyevent-home.txt"))
             .respond(DeviceCommand::PowerState, AWAKE.to_owned())
+            .respond(DeviceCommand::FocusedWindow, synthetic!("focus-app.txt"))
             .respond(
                 DeviceCommand::PressHome,
                 synthetic!("input-keyevent-home.txt"),
@@ -510,7 +511,12 @@ mod tests {
             wake.command,
             "adb -s emulator-5554 shell input keyevent KEYCODE_WAKEUP"
         );
-        assert_eq!(wake.verify, ["the screen is on, without a screensaver"]);
+        assert_eq!(
+            wake.verify,
+            [
+                "the screen is on, with no screensaver or TV overlay in front (if the TV shows one, press any key on the remote and run this again)"
+            ]
+        );
         assert_eq!(wake.poll_ms, Some(5_000));
         assert_eq!(wake.undo, None);
         assert_eq!(home.risk, "R1");
@@ -815,7 +821,8 @@ mod tests {
             ],
             vec![synthetic!("activities-rusttv-front.txt")],
         )
-        .respond_sequence(DeviceCommand::PowerState, [dreaming, AWAKE.to_owned()]);
+        .respond_sequence(DeviceCommand::PowerState, [dreaming, AWAKE.to_owned()])
+        .respond(DeviceCommand::FocusedWindow, synthetic!("focus-app.txt"));
         let plan = takeover_plan(&adb, SERIAL, &tested()).unwrap();
         let approval = plan.approve("takeover").unwrap();
         let mut store = MemoryJournal::default();
@@ -827,6 +834,37 @@ mod tests {
         let pressed = calls.iter().position(|c| *c == DeviceCommand::PressHome);
         let awake = calls.iter().rposition(|c| *c == DeviceCommand::PowerState);
         assert!(woke < awake && awake < pressed, "{calls:?}");
+    }
+
+    #[test]
+    fn a_tv_overlay_in_front_rolls_back_without_pressing_home_and_says_what_to_do() {
+        let adb = tv(
+            vec![
+                real!("home-activity.txt"),
+                synthetic!("home-activity-rusttv.txt"),
+            ],
+            vec![
+                synthetic!("packages-d-none.txt"),
+                synthetic!("packages-d-launcher-disabled.txt"),
+                synthetic!("packages-d-none.txt"),
+            ],
+            vec![synthetic!("activities-stock-front.txt")],
+        )
+        .respond(
+            DeviceCommand::FocusedWindow,
+            synthetic!("focus-tv-overlay.txt"),
+        );
+        let plan = takeover_plan(&adb, SERIAL, &tested()).unwrap();
+        let approval = plan.approve("takeover").unwrap();
+        let mut store = MemoryJournal::default();
+
+        let error = apply(&adb, &plan, &approval, &mut store, &|_| {}).unwrap_err();
+        assert_eq!(error.code(), "ROLLED_BACK", "{error}");
+        assert!(
+            error.to_string().contains("press any key on the remote"),
+            "{error}"
+        );
+        assert!(!adb.calls().contains(&DeviceCommand::PressHome));
     }
 
     #[test]

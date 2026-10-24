@@ -515,6 +515,20 @@ pub fn parse_wakefulness(output: &str) -> Option<&str> {
         .map(str::trim)
 }
 
+/// The window with input focus, when it is a system overlay rather than an
+/// app's activity: `mCurrentFocus=Window{… u0 org.droidtv.tvsystemui}` (no
+/// `/`). `None` for an activity, no focus, or output without the field.
+pub fn parse_focused_overlay(output: &str) -> Option<&str> {
+    let focus = output
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("mCurrentFocus="))?
+        .trim();
+    let name = focus.strip_prefix("Window{")?.strip_suffix('}')?;
+    // `<hash> u<user> <name>`; an activity's name is `package/class`.
+    let name = name.splitn(3, ' ').nth(2)?.trim();
+    (!name.is_empty() && !name.contains('/')).then_some(name)
+}
+
 /// Whether the screen is on with no screensaver. Output without the field
 /// (a different Android) counts as awake: the start timeout still applies.
 fn is_awake(adb: &dyn Adb, serial: &str) -> Result<bool, AdbError> {
@@ -591,6 +605,24 @@ pub(crate) fn every_benchmark_error() -> Vec<BenchmarkError> {
         }
     }
     all
+}
+
+#[cfg(test)]
+mod focus_tests {
+    use super::parse_focused_overlay;
+
+    #[test]
+    fn an_overlay_is_a_focused_window_that_is_no_activity() {
+        let app = include_str!("fixtures/synthetic-home-takeover/focus-app.txt");
+        let overlay = include_str!("fixtures/synthetic-home-takeover/focus-tv-overlay.txt");
+        assert_eq!(parse_focused_overlay(app), None);
+        assert_eq!(
+            parse_focused_overlay(overlay),
+            Some("org.droidtv.tvsystemui")
+        );
+        assert_eq!(parse_focused_overlay("  mCurrentFocus=null\n"), None);
+        assert_eq!(parse_focused_overlay("no such field"), None);
+    }
 }
 
 #[cfg(test)]

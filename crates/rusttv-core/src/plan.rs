@@ -184,7 +184,11 @@ impl Check {
             }
             Self::Awake => {
                 let output = adb.run(serial, &DeviceCommand::PowerState)?;
-                Ok(parse_wakefulness(&output).is_none_or(|state| state == "Awake"))
+                if !parse_wakefulness(&output).is_none_or(|state| state == "Awake") {
+                    return Ok(false);
+                }
+                let windows = adb.run(serial, &DeviceCommand::FocusedWindow)?;
+                Ok(crate::bench::parse_focused_overlay(&windows).is_none())
             }
             Self::SettingIs { key, state } => {
                 let output = adb.run(serial, &DeviceCommand::GetSetting(*key))?;
@@ -233,7 +237,10 @@ impl fmt::Display for Check {
                 )
             }
             Self::SettingIs { key, state } => write!(f, "{key} is {state}"),
-            Self::Awake => f.write_str("the screen is on, without a screensaver"),
+            Self::Awake => f.write_str(
+                "the screen is on, with no screensaver or TV overlay in front (if the TV \
+                 shows one, press any key on the remote and run this again)",
+            ),
             Self::SecureSettingsGranted(true) => {
                 f.write_str("the RustTV launcher holds WRITE_SECURE_SETTINGS")
             }
