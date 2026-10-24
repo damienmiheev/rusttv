@@ -94,9 +94,11 @@ RustTV-Approved-By: tv-code sha256:… | terminal | delegation | upgrade | none
   coalesced or amended.
 - **One writer:** the launcher. The Mac only fetches; it sends
   observations, notes and pending consumption through the door.
-- **Caps:** 60 entries an hour for the TV's own edits; a separate 30 an hour
-  for everything that comes through the door. Over the cap: refused with
-  `HISTORY_RATE_LIMITED`, nothing dropped silently.
+- **Caps:** 60 entries an hour for the TV's own edits: over the cap, the
+  next entry waits and then records the full current state once (only
+  in-between states are skipped; the edit itself is never lost). A separate
+  30 an hour for everything through the door: over it, refused with
+  `HISTORY_RATE_LIMITED`.
 
 ### What needs the code on the TV
 
@@ -112,17 +114,23 @@ RustTV-Approved-By: tv-code sha256:… | terminal | delegation | upgrade | none
   `gix-pack` with `generate` and `streaming-input`; one crate,
   `rusttv-history` (no `rusttv-core` dependency), shared by the launcher and
   the CLI.
-- **TV:** bare repository `files/history.git`, opened lazily on the first
-  history action. A process-wide `Mutex<Store>` guards **ref updates and
-  file swaps only**; reading (log, show, export) works from a ref snapshot
-  without the lock (git objects never change). Every JNI entry wraps in
-  `catch_unwind`; a poisoned lock is recovered by re-opening the store.
+- **TV:** bare repository `files/history.git` (its id in `rusttv-id`, a
+  UUID from Kotlin), opened lazily on the first history job. **One history
+  thread owns the store** (process-wide, started on first use by the UI or
+  the provider); the UI sends jobs without waiting, the provider sends a job
+  and waits for its answer on its binder thread. So every entry is read
+  head → build snapshot → commit in one job, and nothing races.
+- **No panics on untrusted input:** the Android build aborts on panic
+  (`panic = "abort"`), so a panic would kill Home; parsing and import are
+  covered by property tests with random and damaged input. Crash recovery
+  is the TV journal (§ 4.1).
 - **Packing:** at ≥ 256 loose objects the launcher packs the objects of the
   commits after the newest packed one (gix-pack generator +
   `Bundle::write_to_directory`, which verifies), re-reads the history, then
-  deletes those loose objects; at ≥ 8 packs, one full repack. Low-priority
-  background thread, only while the launcher is paused; a resume abandons
-  it (temp files removed). Measured: 0.7 s per 256 objects; full repack of
+  deletes those loose objects; at ≥ 8 packs, one full repack. On the history
+  thread at background CPU priority, starting 5 s after the launcher pauses
+  (so it doesn't compete with the app being opened); a resume interrupts it
+  (gix's interrupt flag; temp files removed). Measured: 0.7 s per 256 objects; full repack of
   1,000 entries 3 s; 1,000 entries packed = 720 KB.
 - **Mac:** `<state dir>/history/<history id>.git`, a normal bare repository
   (`git log`, `git diff`, any tool), written with gix — no system `git`.
@@ -144,8 +152,8 @@ RustTV-Approved-By: tv-code sha256:… | terminal | delegation | upgrade | none
 
 1. Edit on the Settings page (a draft; Back discards).
 2. **Review** (§ 8.5): each change, old → new, grouped "This TV changes now"
-   / "Needs your computer" (packages; packages the device profile hasn't
-   tested are listed as "can't be changed on this TV model yet").
+   / "Needs your computer" (packages, with their state "as last seen by your
+   computer": the TV can't see catalog packages; the computer re-checks).
 3. **Code + hold OK** (§ 6).
 4. **TV journal first:** `files/history/journal.toml` (atomic): approval
    hash, each step's key, original value and target, status `applying`.
@@ -157,8 +165,11 @@ RustTV-Approved-By: tv-code sha256:… | terminal | delegation | upgrade | none
    pending approval (§ 6.3).
 7. **Recovery** runs when the store first opens, whatever started the
    process (UI or provider): a journal still `applying` is rolled back by
-   the same rule and recorded. While a journal is `applying`, door writes
-   get `TV_BUSY`.
+   the same rule and recorded; one `applied` without its commit is rolled
+   forward (committed). While a journal exists, door writes get `TV_BUSY`
+   and the UI doesn't write `order.toml`. Launcher-state changes are the
+   last step, one atomic rename of `order.toml`; when recovery changed it,
+   the UI reloads it on resume (a flag, like the apps-changed flag).
 
 ### 4.2 A change from the Mac
 
@@ -190,10 +201,17 @@ Also at the end of every plan-applying command. **History id:** a UUID
 
 ### 4.5 Reinstall: put the history back
 
-`sync` finds the TV empty and a Mac history for this serial → it offers
+- `rusttv launcher uninstall` (and any plan that reinstalls the launcher)
+  runs a sync **before** its plan; if the sync fails it asks before going on.
+- While the TV's history is empty and the Mac holds one for this serial, the
+  CLI sends **no** observations or notes (they would start a new history);
+  it offers `restore-tv` instead. Limit, stated in the CLI: once something
+  is recorded on the TV first, the old history can't be put back on the TV
+  but stays readable on the Mac.
+
 `rusttv history restore-tv [--history <id>]` (`--history` required when more
 than one fits): a plan, typed approval `history`, whose one step imports the
-pack (class RL, irreversible, last). The launcher accepts it only into an
+pack (class RL). The launcher accepts it only into an
 empty store, keeps the old id, labels every imported entry "restored from
 your computer", and commits an `import` entry for the live state. Imports
 carry no pending approvals or journals.
@@ -248,12 +266,27 @@ Typed `DeviceCommand`s, fixed URIs plus validated hex:
 - **Class RL (new): launcher-private.** A `RiskClass` variant ordered between
   `Read` and `Transient`: above R0 (MCP never runs it; the "only listed
   commands above R0" test lists these four) and at most Transient (no
-  inverse required). Door writes in plan-applying commands need no extra
-  approval, like the Mac's own journal writes; `import` is a step of the
-  `history-restore-tv` plan, marked irreversible and last.
+  inverse required). It only appends to RustTV's own history and never
+  changes device state: SECURITY.md states this as the one exception to
+  "every modifying operation is a plan" (door writes in plan-applying
+  commands need no extra approval, like the Mac's own journal writes);
+  `import` is still a step of the `history-restore-tv` plan.
 - **Results:** `content write` returns nothing, so writes go to
-  `inbox/<nonce>` and `content call … commit` processes them and returns a
-  bundle (`ok`, error code, new head) the CLI parses.
+  `inbox/<nonce>` — `openFile("w")` returns a real temp file
+  (`ParcelFileDescriptor.open`), so the bytes are on disk when `content
+  write` exits — and `content call … commit` validates and processes them
+  and returns a bundle (`ok`, error code, new head) the CLI parses.
+- **Export format:** one header line, then the pack:
+  `rusttv-export 1 <history-uuid> <head|none> <more:0|1>\n`. Parts of at
+  most 8 MB (by commit count); `more:1` means fetch again from the new head.
+  An unknown `since` is its own error (`HISTORY_NOT_FOUND`): the CLI then
+  fetches `all` into the repository for that history id.
+- **Notes can't claim a TV approval:** the TV writes `tv-code` only for an
+  approval it marked consumed for that note's consume nonce; other notes may
+  say only `terminal | delegation | upgrade | none`.
+- **The provider's `onCreate` does nothing** (no library load, no store
+  open): it runs on Home's cold-start path. Its JNI calls pass the `Context`
+  (a provider-only process has no activity).
 - **Binary on stdout:** exports are a git pack, verified on arrival; any
   other bytes are an error. The `Adb` trait gets a binary method (`&[u8]` in,
   `Vec<u8>` out).
@@ -284,7 +317,8 @@ person looking at the TV with a remote is the person.
    with repeat count 0, timed key-down to key-up, so an OK held from the
    previous screen can't confirm.
 4. A wrong arrow closes the review ("Nothing changed"). **Three wrong codes
-   in a row lock TV approvals for 1 hour of TV uptime,** persisted in the
+   in a row lock TV approvals for 1 hour of TV uptime, then 2, 4, 8 … hours
+   for each further lockout** (a correct code resets it), persisted in the
    launcher's files (survives reboots: the remaining time counts down only
    while the TV runs).
 5. Nothing about the code reaches logcat or accessibility: the code glyphs
@@ -304,11 +338,11 @@ person looking at the TV with a remote is the person.
 - **Valid for 2 h of TV uptime in the same boot**; the provider decides with
   its own clocks and returns only valid ones, with seconds left.
 - **Applied by `rusttv history apply-pending`** in an interactive terminal
-  (nothing to type: the approval happened on the TV). Every interactive
-  `rusttv` command that talks to the TV mentions waiting approvals and the
-  time left. Never from non-interactive runs, `sync`, `inspect` or MCP.
-- Order: the CLI recomputes the hash from the list → **consumes it through
-  the door** (`commit consume:<nonce>`; the TV marks it used atomically;
+  (nothing to type: the approval happened on the TV). `history` commands and
+  plan-applying commands mention waiting approvals and the time left; never
+  `inspect`, `bench`, `perf` or MCP (they must not start the launcher's
+  process). Never applied from non-interactive runs, `sync`, `inspect` or MCP.
+- Order: the CLI **consumes it through the door** (`commit consume:<nonce>`; the TV marks it used atomically;
   nothing is applied without `ok`) → builds the `history-restore` plan live
   → applies it only if its steps are exactly the approved list with the same
   old values (otherwise: shows both and asks for typed approval at the
@@ -329,9 +363,10 @@ person looking at the TV with a remote is the person.
 - **Containment tests:**
   - DEX: scan the release APK's method references (build-tools `dexdump`);
     any reference to `Settings$Global|Secure|System.put*`,
-    `ContentResolver.insert|update|delete|call|bulkInsert|applyBatch`, or
-    reflection (`Class.forName`, `Method.invoke`) outside `SecureSettings`
-    fails the build check.
+    `ContentResolver.insert|update|delete|call|bulkInsert|applyBatch`
+    anywhere in the DEX, or reflection (`Class.forName`, `Method.invoke`)
+    from `ai.rusttv.launcher.*` (kotlin-stdlib uses reflection itself),
+    outside `SecureSettings` fails the check.
   - Rust: no `android/provider/Settings` string outside the one JNI call.
 - **Watchlist on every sync** (R0, baseline on the Mac):
   `enabled_accessibility_services`, `default_input_method`,
@@ -398,9 +433,11 @@ the panel; Left or Back return; Back on the list leaves Settings.
 ### 8.5 Review and confirm
 Hidden-apps header "Review changes"; the change list in two groups (§ 4.1);
 each line `name: old → new` with the package id shown and bidi controls and
-line breaks stripped from labels. Bottom block: "Press" + four arrow glyphs
-(fixed order) + "then hold OK"; a 4u track under "Hold OK to apply". Back
-cancels at any time. The result replaces the block in one line: "Applied",
+line breaks stripped from labels. Up/Down scroll the list; its last row is
+**Approve**. OK on it replaces the list's focus with the confirm block, and
+only then do arrows count as the code: "Press" + four arrow glyphs (fixed
+order) + "then hold OK"; a 4u track under "Hold OK to apply". Back cancels
+at any time. The result replaces the block in one line: "Applied",
 "Saved for your computer", or "Nothing changed: …".
 
 ## 9. Performance budgets
@@ -487,3 +524,16 @@ run-to-run noise blocks the step.
   all states listed. Kept by owner decision: hold OK after the code. Changed
   wording: "next time it connects" → `apply-pending` within 2 h with
   reminders (silent application was rejected by both reviews).
+- **Round 3** (combined, verdict "ready to implement"): `launcher
+  uninstall` syncs first and nothing is recorded into an empty TV history
+  while the Mac holds one; an export header line with the history id, head
+  and parts, `HISTORY_NOT_FOUND`; no `catch_unwind` (Android aborts on
+  panic): no panics on untrusted input, property-tested; inbox files are
+  real files; one history thread owns the store (read → build → commit in
+  one job); the TV-edit cap defers instead of refusing; arrows scroll until
+  **Approve**; pending reminders only in `history` and plan commands;
+  DEX reflection rule only for our classes; recovery flag and no
+  `order.toml` writes while a TV journal exists; notes can't claim a TV
+  approval; doubling lockouts. Cut: the TV's untested-package flag (the
+  Mac refuses those), live package values on the TV (shown as last seen),
+  the CLI re-hashing the list, "irreversible, last" on the RL import.
