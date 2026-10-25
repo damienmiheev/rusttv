@@ -680,6 +680,15 @@ impl Home {
                     ..open
                 });
             }
+            // On the hidden apps page a tap puts the app back, as OK does.
+            Mode::Hidden { .. } if !long => {
+                let TileId::App(component) = id else {
+                    return None;
+                };
+                let focus = self.hidden_apps.iter().position(|app| app == component)?;
+                self.mode = Mode::Hidden { focus };
+                return self.handle_hidden(Input::OkPressed);
+            }
             _ => return None,
         }
         self.ok_since = None;
@@ -689,6 +698,18 @@ impl Home {
         } else {
             self.activate(now)
         }
+    }
+
+    /// The phone remote picked `item` in the open menu: as selecting it and
+    /// pressing OK.
+    pub fn menu_pick(&mut self, item: MenuItem, now: Duration) -> Option<Effect> {
+        let items = menu_items(self.current().as_ref());
+        let index = items.iter().position(|entry| *entry == item)?;
+        let Mode::Menu { selected, .. } = &mut self.mode else {
+            return None;
+        };
+        *selected = index;
+        self.handle_menu(Input::OkPressed, now)
     }
 
     /// A long OK decided by the phone remote: the focused tile's menu, as
@@ -845,8 +866,9 @@ impl Home {
         &self.folders
     }
 
-    /// Whether the app is on Home or in a folder: never a hidden one.
-    pub fn shows_app(&self, id: &str) -> bool {
+    /// Whether the app is installed and listed somewhere: on Home, in a
+    /// folder or on the hidden apps page.
+    pub fn lists_app(&self, id: &str) -> bool {
         self.tiles
             .iter()
             .any(|tile| matches!(tile, TileId::App(app) if app == id))
@@ -854,6 +876,7 @@ impl Home {
                 .folders
                 .values()
                 .any(|folder| folder.apps.iter().any(|app| app == id))
+            || self.hidden_apps.iter().any(|app| app == id)
     }
 
     /// Component names of all hidden apps, including ones no longer installed.
@@ -2727,16 +2750,43 @@ mod tests {
     }
 
     #[test]
-    fn shows_apps_on_home_and_in_folders_but_not_hidden_ones() {
+    fn lists_apps_on_home_in_folders_and_hidden() {
         let mut home = home_with_folder();
-        assert!(home.shows_app("a00"), "in the folder");
-        assert!(home.shows_app("a02"), "on Home");
-        assert!(!home.shows_app("folder:1"));
+        assert!(home.lists_app("a00"), "in the folder");
+        assert!(home.lists_app("a02"), "on Home");
+        assert!(!home.lists_app("folder:1"));
         let hidden = BTreeSet::from(["a01".to_owned()]);
         home = Home::new(Order::default(), BTreeMap::new(), hidden, false);
         home.set_apps(&apps(3));
-        assert!(!home.shows_app("a01"));
-        assert!(!home.shows_app("not-installed/.Main"));
+        assert!(home.lists_app("a01"), "on the hidden apps page");
+        assert!(!home.lists_app("not-installed/.Main"));
+    }
+
+    #[test]
+    fn the_phone_picks_menu_items_and_puts_hidden_apps_back() {
+        let mut home = home(3);
+        assert!(home.point(&id("a01"), true, Duration::ZERO).is_none());
+        assert_eq!(home.state(), State::Menu);
+        assert_eq!(
+            home.menu_pick(MenuItem::Hide, Duration::ZERO),
+            Some(Effect::SaveOrder)
+        );
+        assert!(home.hidden().contains("a01"));
+        // Open the hidden apps page from its tile, then tap the app.
+        assert_eq!(
+            home.point(&TileId::Hidden, false, Duration::ZERO),
+            Some(Effect::OpenHidden)
+        );
+        assert_eq!(home.state(), State::Hidden);
+        assert_eq!(
+            home.point(&id("a01"), false, Duration::ZERO),
+            Some(Effect::SaveOrder)
+        );
+        assert!(!home.hidden().contains("a01"));
+        // A choice the menu doesn't offer does nothing.
+        home.point(&TileId::About, true, Duration::ZERO);
+        assert_eq!(home.menu_pick(MenuItem::Hide, Duration::ZERO), None);
+        assert_eq!(home.state(), State::Menu);
     }
 
     /// Home with folder 1 = [a01, a00], dropped and still open.

@@ -304,7 +304,8 @@
   // Asks the TV for the apps' pictures this phone lacks (or got a week ago).
   function askPictures(tiles) {
     for (const tile of tiles) {
-      if (!tile.id.includes("/") || asked.has(tile.id)) continue;
+      const builtin = tile.id === "about" || tile.id === "settings" || tile.id === "hidden-apps";
+      if ((!tile.id.includes("/") && !builtin) || asked.has(tile.id)) continue;
       const have = pictures.get(tile.id);
       if (have && Date.now() - have.at < WEEK_MS) continue;
       asked.add(tile.id);
@@ -348,7 +349,7 @@
         ? "linear-gradient(150deg, #FFC35C, #F5A524 42%, #D9480F)"
         : `linear-gradient(150deg, ${colour(tile.id)}, #0E1014 140%)`;
       const label = document.createElement("span");
-      label.textContent = tile.label;
+      label.textContent = nameOf(tile);
       box.append(label);
     }
     return box;
@@ -383,7 +384,7 @@
       const element = old.get(tile.id);
       if (!element) return fresh;
       element.className = fresh.className;
-      element.setAttribute("aria-label", tile.label);
+      element.setAttribute("aria-label", nameOf(tile));
       if (!(gesture && element === gesture.element)) {
         // The same picture: keep its element, so it isn't decoded again.
         const was = element.firstChild, art = fresh.firstChild;
@@ -398,17 +399,23 @@
     });
   }
 
+  // Built-in tiles in the phone's language; apps and folders by their name.
+  function nameOf(tile) {
+    const key = { about: "tile_about", settings: "tile_settings", "hidden-apps": "hidden_title" }[tile.id];
+    return key ? t(key) : tile.label;
+  }
+
   function tileButton(tile, tiles, focused) {
     const button = document.createElement("button");
     const moving = dragging && gesture && tile.id === gesture.id;
     const target = dragging && gesture && gesture.on && tile.id === gesture.over;
     button.className = "tile" + (tile.id === focused ? " focused" : "") + (moving ? " dragging" : "") + (target ? " over" : "");
     button.dataset.id = tile.id;
-    button.setAttribute("aria-label", tile.label);
+    button.setAttribute("aria-label", nameOf(tile));
     button.append(art(tile, tiles));
     const name = document.createElement("div");
     name.className = "name";
-    name.textContent = tile.label;
+    name.textContent = nameOf(tile);
     button.append(name);
     return button;
   }
@@ -419,10 +426,9 @@
     const tiles = home ? view.tiles || [] : [];
     const focused = home ? view.focused : null;
     const focusedTile = tiles.find((t) => t.id === focused);
-    $("hero").textContent = focusedTile ? focusedTile.label : "";
+    $("hero").textContent = focusedTile ? nameOf(focusedTile) : "";
     $("glow").style.setProperty("--glow", focusedTile ? colour(focusedTile.id).replace("30%)", "30% / 0.35)") : "#F5A52426");
 
-    if (home && session) picturesLoaded.then(() => askPictures(tiles));
     if (tab === "apps") {
       // While a tile is dragged the grid reflows live, as the TV's does.
       flip($("grid"), () => sync($("grid"), tiles.filter((t) => !t.folder), tiles, focused));
@@ -434,6 +440,30 @@
           sync($("folder-grid"), tiles.filter((t) => t.folder === folder.id), tiles, focused));
       }
     }
+    // The TV's long-press menu, hidden apps page and other screens.
+    const mode = home ? view.mode : null;
+    const menu = mode === "menu" && view.menu;
+    $("menu").hidden = !menu;
+    if (menu) {
+      $("menu-title").textContent = focusedTile ? nameOf(focusedTile) : "";
+      $("menu-items").replaceChildren(...menu.items.map((choice, index) => {
+        const item = document.createElement("button");
+        item.setAttribute("role", "menuitem");
+        item.className = index === menu.selected ? "selected" : "";
+        item.textContent = t(choice === "hide" ? "menu_hide" : "menu_move");
+        item.addEventListener("click", () => send({ type: "menu", choice }));
+        return item;
+      }));
+    }
+    const hidden = mode === "hidden" ? view.hidden || [] : [];
+    $("hidden-page").hidden = mode !== "hidden";
+    if (mode === "hidden") sync($("hidden-grid"), hidden, hidden, focused);
+    $("screen").hidden = mode !== "settings";
+    if (mode === "settings") $("screen-title").textContent = t(focused === "about" ? "tile_about" : "tile_settings");
+    // Back only where the TV's Back does something.
+    const back = !!(home && (view.folder || ["menu", "moving", "hidden", "settings", "text"].includes(mode)));
+    $("back").hidden = !back;
+    if (home && session) picturesLoaded.then(() => askPictures(tiles.concat(hidden)));
     const moving = home && view.mode === "moving";
     $("moving").hidden = !moving;
     if (moving) {
@@ -456,6 +486,7 @@
     const field = view.text;
     $("wants").hidden = !field;
     $("keyboard").hidden = !field;
+    $("nav").hidden = $("back").hidden && $("keyboard").hidden;
     if (field) $("wants-text").textContent = field.label ? t("wants", field.label) : t("wants_any");
     if (field && !$("typing").hidden) syncTyping(field);
     if (field && home && view.mode === "text" && $("typing").hidden) openTyping();
@@ -578,7 +609,12 @@
     gesture = null;
   }
 
-  for (const area of [$("apps"), $("folder")]) {
+  // Tapping outside the menu closes it, as Back does.
+  $("menu").addEventListener("click", (event) => {
+    if (event.target === $("menu")) press("back");
+  });
+
+  for (const area of [$("apps"), $("folder"), $("hidden-page")]) {
     area.addEventListener("pointerdown", onTileDown);
     area.addEventListener("contextmenu", (event) => event.preventDefault());
   }

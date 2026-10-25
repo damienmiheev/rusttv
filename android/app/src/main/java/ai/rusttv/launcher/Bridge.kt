@@ -128,12 +128,24 @@ object Bridge {
         drawable.draw(Canvas(bitmap))
         val out = java.io.ByteArrayOutputStream()
         out.write(kind)
-        @Suppress("DEPRECATION") // WEBP_LOSSY needs API 30; WEBP is lossy below 100.
-        val format = if (android.os.Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
-        bitmap.compress(format, 80, out)
+        bitmap.compress(webpFormat(), 80, out)
         bitmap.recycle()
         return out.toByteArray()
     }
+
+    /** ARGB pixels (a built-in tile's banner) as WebP, for the phones. */
+    @JvmStatic
+    fun webp(pixels: IntArray, width: Int, height: Int): ByteArray {
+        val bitmap = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+        val out = java.io.ByteArrayOutputStream()
+        bitmap.compress(webpFormat(), 80, out)
+        bitmap.recycle()
+        return out.toByteArray()
+    }
+
+    @Suppress("DEPRECATION") // WEBP_LOSSY needs API 30; WEBP is lossy below 100.
+    private fun webpFormat() =
+        if (android.os.Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
 
     /** Starts the TV activity; false if it no longer exists. */
     @JvmStatic

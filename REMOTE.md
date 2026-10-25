@@ -94,7 +94,8 @@ to its home screen.
   right to left for Arabic and Hebrew), from `page/i18n.js`, checked by
   `page/i18n.test.mjs` in CI. Tiles show the apps' own banners (or icons),
   see Storage. Not yet: pictures for the built-in tiles (About, Settings,
-  Hidden apps), renaming a folder from the phone, a home-screen icon.
+  Hidden apps), renaming a folder from the phone (typing works), a
+  home-screen icon.
 - **Look:** the launcher's colours, Inter, the RustTV icon and the built-in
   tile images.
   - Focus is shown as on the TV: the focused tile grows slightly, with a soft
@@ -139,8 +140,8 @@ to its home screen.
     version at listing time would slow the TV's cold start). The Cache API
     is off on plain HTTP.
   - As built (2026-10-25): the phone asks for each app it has no fresh
-    picture of; the TV checks the app is on Home or in a folder (never a
-    hidden one), and its picture thread draws the banner (else the icon)
+    picture of; the TV checks the app is installed and listed (on Home, in
+    a folder or on the hidden apps page), and its picture thread draws the banner (else the icon)
     through `Bridge.tilePicture` and compresses it to WebP with Android's
     own encoder, then sends it to that phone only. After each burst it asks
     Android for one garbage collection, as the launcher does after loading
@@ -303,16 +304,30 @@ echoed.
   - the open folder and its page;
   - the focused tile;
   - the mode: browse, menu, moving, hidden list, settings, review, or text
-    with its label.
+    with its label;
+  - the open long-press menu (its items and the selected one), and on the
+    hidden apps page the hidden apps.
 
-  Hidden apps are never sent. It is made from `Home` by a pure, tested
+  The phone mirrors Home exactly, the hidden apps page included (owner's
+  decision, 2026-10-25): every paired phone, a guest's too, sees the hidden
+  apps while that page is open on the TV, and their pictures. It is made
+  from `Home` by a pure, tested
   function and is about 4 KB for ~100 tiles. It is sent whole on each change,
   with no diffs in v1.
 - **Phone input goes into `Home::handle(Input, now)`**, like the remote's
   keys, so the model tests cover both:
   - a tap on a tile is `FocusTile` followed by `OkPressed`;
   - a drag is move mode, with the model's existing 0.6 s hover-to-folder
-    timing.
+    timing;
+  - `menu { choice: move | hide }` picks that item of the open menu, as
+    selecting it and pressing OK (`Home::menu_pick`);
+  - on the hidden apps page, a tap on an app puts it back on Home, as OK
+    does.
+
+  Settings and About show on the phone only as their name; there, as
+  before, a phone can only press Back. The phone shows Back only where the
+  TV's Back does something (a folder, the menu, a move, the hidden apps
+  page, Settings, About, typing).
 
   The review/approval screen **drops every phone input**: phone keys arrive
   through RustTV's own socket, so they can be told apart from the remote.
