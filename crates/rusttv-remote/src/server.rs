@@ -479,8 +479,19 @@ fn read_head(stream: &mut TcpStream, deadline: Instant) -> Result<(Vec<u8>, Vec<
     }
 }
 
-/// Answers a page request itself; for a WebSocket upgrade returns the key.
-fn route(stream: &mut TcpStream, page: &str, head: &[u8]) -> Result<Option<String>, RemoteError> {
+/// What a request asks for.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Route {
+    Page,
+    /// A valid WebSocket upgrade from the page itself, with its key.
+    Upgrade(String),
+    BadRequest,
+    NotFound,
+    NotAllowed,
+}
+
+/// Reads a request head (pure, so it can be fuzzed).
+pub(crate) fn classify(head: &[u8]) -> Result<Route, RemoteError> {
     if head.len() > MAX_HEAD {
         return Err(RemoteError::TooLong("request head"));
     }
@@ -499,25 +510,11 @@ fn route(stream: &mut TcpStream, page: &str, head: &[u8]) -> Result<Option<Strin
             .find(|header| header.name.eq_ignore_ascii_case(name))
             .and_then(|header| std::str::from_utf8(header.value).ok())
     };
-    let respond = |stream: &mut TcpStream, status: &str, kind: &str, body: &str| {
-        let response = format!(
-            "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nCache-Control: no-store\r\n\
-             X-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n\
-             Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' blob: data:\r\n\
-             Connection: close\r\n\r\n{body}",
-            body.len()
-        );
-        stream.write_all(response.as_bytes()).map_err(io)
-    };
     if request.method != Some("GET") {
-        respond(stream, "405 Method Not Allowed", "text/plain", "")?;
-        return Ok(None);
+        return Ok(Route::NotAllowed);
     }
-    match request.path {
-        Some("/") => {
-            respond(stream, "200 OK", "text/html; charset=utf-8", page)?;
-            Ok(None)
-        }
+    Ok(match request.path {
+        Some("/") => Route::Page,
         Some("/ws") => {
             let host = header("Host").unwrap_or_default();
             let upgrade = header("Upgrade").is_some_and(|v| v.eq_ignore_ascii_case("websocket"));
@@ -531,23 +528,39 @@ fn route(stream: &mut TcpStream, page: &str, head: &[u8]) -> Result<Option<Strin
             let version = header("Sec-WebSocket-Version") == Some("13");
             match header("Sec-WebSocket-Key") {
                 Some(key) if upgrade && connection && same_origin && version && key.len() <= 64 => {
-                    Ok(Some(key.to_owned()))
+                    Route::Upgrade(key.to_owned())
                 }
-                _ => {
-                    respond(stream, "400 Bad Request", "text/plain", "")?;
-                    Ok(None)
-                }
+                _ => Route::BadRequest,
             }
         }
-        _ => {
-            respond(stream, "404 Not Found", "text/plain", "")?;
-            Ok(None)
-        }
+        _ => Route::NotFound,
+    })
+}
+
+/// Answers a page request itself; for a WebSocket upgrade returns the key.
+fn route(stream: &mut TcpStream, page: &str, head: &[u8]) -> Result<Option<String>, RemoteError> {
+    let respond = |stream: &mut TcpStream, status: &str, kind: &str, body: &str| {
+        let response = format!(
+            "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nCache-Control: no-store\r\n\
+             X-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n\
+             Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' blob: data:\r\n\
+             Connection: close\r\n\r\n{body}",
+            body.len()
+        );
+        stream.write_all(response.as_bytes()).map_err(io)
+    };
+    match classify(head)? {
+        Route::Upgrade(key) => return Ok(Some(key)),
+        Route::Page => respond(stream, "200 OK", "text/html; charset=utf-8", page)?,
+        Route::BadRequest => respond(stream, "400 Bad Request", "text/plain", "")?,
+        Route::NotFound => respond(stream, "404 Not Found", "text/plain", "")?,
+        Route::NotAllowed => respond(stream, "405 Method Not Allowed", "text/plain", "")?,
     }
+    Ok(None)
 }
 
 /// `Sec-WebSocket-Accept`: base64 of SHA-1 over the key and RFC 6455's GUID.
-fn accept_key(key: &str) -> Result<String, RemoteError> {
+pub(crate) fn accept_key(key: &str) -> Result<String, RemoteError> {
     let mut input = Vec::with_capacity(key.len() + 36);
     input.extend_from_slice(key.as_bytes());
     input.extend_from_slice(b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11");

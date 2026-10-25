@@ -196,9 +196,18 @@ to its home screen.
     - 30 connection attempts a minute, then 1 minute of silence;
     - 200 messages a second per phone (D-pad repeat is about 30 a second).
   - Idle sockets are pinged every 20 s and dropped after 2 missed pongs.
-- **Tests:** property tests with random and damaged input, and one
-  `cargo fuzz` run on the frame and message parser (on the Mac, not a
-  runtime dependency).
+- **Tests:** property tests with random and damaged input, loopback tests
+  with a real client, and fuzz targets in `crates/rusttv-remote/fuzz/`
+  (`cargo +nightly fuzz run <target>`, on the Mac, not a runtime
+  dependency):
+  - `phone_message`: any bytes as a decrypted phone message;
+  - `websocket_frames`: frames read with the listener's limits;
+  - `request_head`: the HTTP request head and the upgrade's accept key;
+  - `phones_file`: any text as the phones file (what parses writes back
+    the same).
+
+  First run (2026-10-25): 5 minutes each, about 86 million inputs in all,
+  no crash, hang or failed assertion.
 - **Fallback:** if the budgets in § 7 or fuzzing say so, the listener moves
   to a Kotlin `Service` with `android:process=":remote"`. That service loads
   the same native library and talks to Home over a `LocalSocket`.

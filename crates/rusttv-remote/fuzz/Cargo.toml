@@ -1,0 +1,46 @@
+[package]
+name = "rusttv-remote-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+# Run with `cargo +nightly fuzz run <target>` from crates/rusttv-remote
+# (REMOTE.md § 3). Not part of the main workspace; nightly only.
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+tungstenite = { version = "0.30.0", default-features = false }
+rusttv-remote = { path = "..", features = ["fuzzing"] }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "phone_message"
+path = "fuzz_targets/phone_message.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "phones_file"
+path = "fuzz_targets/phones_file.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "request_head"
+path = "fuzz_targets/request_head.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "websocket_frames"
+path = "fuzz_targets/websocket_frames.rs"
+test = false
+doc = false
+bench = false
