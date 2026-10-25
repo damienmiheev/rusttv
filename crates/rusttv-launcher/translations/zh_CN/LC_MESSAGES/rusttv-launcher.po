@@ -328,3 +328,58 @@ msgstr "已将 {} 放入 {}"
 
 msgid "Took {} out of {}"
 msgstr "已将 {} 移出 {}"
+
+# RustTV Remote (REMOTE.md)
+msgid "RustTV Remote"
+msgstr "RustTV Remote"
+
+msgid "Use a phone as a remote, keyboard and touchpad. It can press keys and type, but never change settings or approve anything."
+msgstr "把手机用作遥控器、键盘和触控板。它可以按键和输入文字，但绝不会更改设置或批准任何操作。"
+
+msgid "Pair a phone"
+msgstr "配对手机"
+
+msgid "Shows a code to scan with the phone's camera"
+msgstr "显示供手机相机扫描的二维码"
+
+msgid "Press OK again to remove it"
+msgstr "再按一次 OK 键删除"
+
+msgid "OK removes it"
+msgstr "按 OK 键删除"
+
+msgid "RustTV Remote can't start: another app uses its network port (8484)."
+msgstr "RustTV Remote 无法启动：另一个应用正在使用它的网络端口 (8484)。"
+
+msgid "This TV has no network address. Connect it to your network and try again."
+msgstr "这台电视没有网络地址。请连接网络后重试。"
+
+msgid "Pairing stopped after three wrong tries. Back returns; open Pair a phone again for a new code."
+msgstr "三次错误后已停止配对。按返回键返回；重新打开“配对手机”获取新二维码。"
+
+msgid "Couldn't make the code."
+msgstr "无法生成二维码。"
+
+msgid "Removed {}. It can't control this TV any more."
+msgstr "已删除 {}。它无法再控制这台电视。"
+
+msgid "OK allows this phone. Back refuses."
+msgstr "按 OK 键允许这部手机，按返回键拒绝。"
+
+msgid "Back returns."
+msgstr "按返回键返回。"
+
+msgid "Scan this code with your phone's camera and open the link.\n\nThe phone must be on the same network as this TV. The code works once, for two minutes."
+msgstr "用手机相机扫描此二维码并打开链接。\n\n手机必须与这台电视在同一网络中。二维码只能使用一次，有效两分钟。"
+
+msgid "Allow “{}”?"
+msgstr "允许“{}”吗？"
+
+msgid "Check that the phone shows the same code:"
+msgstr "请确认手机显示的是同一个代码："
+
+msgid "It will be able to press keys and type on this TV. It can never change settings or approve anything."
+msgstr "它将可以在这台电视上按键和输入文字，但绝不会更改设置或批准任何操作。"
+
+msgid "“{}” is paired."
+msgstr "“{}”已配对。"

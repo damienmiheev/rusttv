@@ -6,10 +6,14 @@
 "use strict";
 (() => {
   const C = window.RustTVCrypto;
+  const { t } = window.RustTVText;
   const $ = (id) => document.getElementById(id);
   const encoder = new TextEncoder(), decoder = new TextDecoder();
   const random = (length) => crypto.getRandomValues(new Uint8Array(length));
   const STORE = "rusttv-remote";
+  // Phase 2 (REMOTE.md § 5): until the TV controls other apps through its
+  // remote service, their buttons stay hidden instead of doing nothing.
+  const CAN_CONTROL_APPS = false;
   const MAX_TEXT = 1024;
 
   // --- Storage (the phone's keys for this TV's address) ----------------------
@@ -95,7 +99,7 @@
     if (!pairing || pairing.nonce) return;
     const name = cleanName($("phone-name").value);
     if (!name) {
-      $("pair-status").textContent = "Give this phone a name (up to 40 characters).";
+      $("pair-status").textContent = t("name_needed");
       return;
     }
     pairing.name = name;
@@ -104,7 +108,7 @@
     $("name-field").hidden = true;
     $("pair-button").hidden = true;
     $("pair-code").hidden = false;
-    $("pair-status").textContent = "Waiting for the TV…";
+    $("pair-status").textContent = t("waiting");
     connect();
   });
 
@@ -130,9 +134,9 @@
     socket.onclose = () => {
       socket = null;
       session = null;
-      setStatus(false, "Reconnecting…");
+      setStatus(false, t("reconnecting"));
       if (pairing?.nonce) {
-        failPairing("The connection to the TV broke. Open “Pair a phone” on the TV and scan again.");
+        failPairing(t("broke"));
       } else if (credentials && !document.hidden) {
         retry = Math.min(retry + 1, 6);
         retryTimer = setTimeout(connect, 500 * 2 ** retry);
@@ -172,15 +176,16 @@
       session = new C.Session(C.sessionKey(C.unhex(credentials.key, 32), challenge));
       challenge = null;
       retry = 0;
-      setStatus(true, "Connected");
+      setStatus(true, t("connected"));
+      suggestInstall();
     } else if (message.type === "denied") {
       if (pairing?.nonce) {
-        failPairing("The TV refused, or the code ran out. Open “Pair a phone” on the TV and scan again.");
+        failPairing(t("refused"));
       } else {
         // The TV doesn't know this phone any more (it was removed in Settings).
         credentials = null;
         store.clear();
-        $("scan-text").textContent = "This phone isn't paired with the TV any more. On the TV, open Settings → RustTV Remote → Pair a phone, then scan the code.";
+        $("scan-text").textContent = t("unpaired");
         show("scan");
       }
       socket?.close();
@@ -223,20 +228,16 @@
       lastKind = message.type;
       setTab(message.type === "home" ? "apps" : "touchpad");
     }
-    setStatus(true, message.type === "home" ? "RustTV is in front" : `${message.app || "Another app"} is in front`);
+    setStatus(true, message.type === "home" ? t("rusttv_front") : message.app ? t("app_front", message.app) : t("other_front"));
     render();
   }
 
   function setTab(name) {
     tab = name;
-    $("tab-apps").setAttribute("aria-selected", String(name === "apps"));
-    $("tab-touchpad").setAttribute("aria-selected", String(name === "touchpad"));
     $("apps").hidden = name !== "apps";
     $("touchpad").hidden = name !== "touchpad";
     render();
   }
-  $("tab-apps").addEventListener("click", () => setTab("apps"));
-  $("tab-touchpad").addEventListener("click", () => setTab("touchpad"));
 
   // A banner stand-in until banners travel: a colour from the tile's id.
   function colour(id) {
@@ -270,9 +271,50 @@
     return box;
   }
 
+  // Tiles that changed place slide there (FLIP), short and strong ease-out.
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  function flip(container, rebuild) {
+    const before = new Map();
+    for (const element of container.querySelectorAll(".tile")) before.set(element.dataset.id, element.getBoundingClientRect());
+    rebuild();
+    if (reducedMotion.matches || before.size === 0) return;
+    for (const element of container.querySelectorAll(".tile")) {
+      const was = before.get(element.dataset.id);
+      if (!was) continue;
+      const now = element.getBoundingClientRect();
+      const dx = was.left - now.left, dy = was.top - now.top;
+      if (dx || dy) {
+        element.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: "none" }],
+          { duration: 220, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
+      }
+    }
+  }
+
+  // Puts `shown` into `container` in order, reusing each tile's element: an
+  // element under a finger must stay in the page, or the browser can lose
+  // the rest of the touch. The dragged tile keeps its children too.
+  function sync(container, shown, tiles, focused) {
+    const old = new Map([...container.children].map((element) => [element.dataset.id, element]));
+    const next = shown.map((tile) => {
+      const fresh = tileButton(tile, tiles, focused);
+      const element = old.get(tile.id);
+      if (!element) return fresh;
+      element.className = fresh.className;
+      element.setAttribute("aria-label", tile.label);
+      if (!(gesture && element === gesture.element)) element.replaceChildren(...fresh.childNodes);
+      return element;
+    });
+    for (const element of old.values()) if (!next.includes(element)) element.remove();
+    next.forEach((element, index) => {
+      if (container.children[index] !== element) container.insertBefore(element, container.children[index] || null);
+    });
+  }
+
   function tileButton(tile, tiles, focused) {
     const button = document.createElement("button");
-    button.className = "tile" + (tile.id === focused ? " focused" : "");
+    const moving = dragging && gesture && tile.id === gesture.id;
+    const target = dragging && gesture && gesture.on && tile.id === gesture.over;
+    button.className = "tile" + (tile.id === focused ? " focused" : "") + (moving ? " dragging" : "") + (target ? " over" : "");
     button.dataset.id = tile.id;
     button.setAttribute("aria-label", tile.label);
     button.append(art(tile, tiles));
@@ -292,34 +334,40 @@
     $("hero").textContent = focusedTile ? focusedTile.label : "";
     $("glow").style.setProperty("--glow", focusedTile ? colour(focusedTile.id).replace("30%)", "30% / 0.35)") : "#F5A52426");
 
-    if (tab === "apps" && !dragging) {
-      const grid = $("grid");
-      grid.replaceChildren(...tiles.filter((t) => !t.folder).map((t) => tileButton(t, tiles, focused)));
+    if (tab === "apps") {
+      // While a tile is dragged the grid reflows live, as the TV's does.
+      flip($("grid"), () => sync($("grid"), tiles.filter((t) => !t.folder), tiles, focused));
       const folder = home && view.folder;
       $("folder").hidden = !folder;
       if (folder) {
         $("folder-name").textContent = folder.name;
-        $("folder-grid").replaceChildren(...tiles.filter((t) => t.folder === folder.id).map((t) => tileButton(t, tiles, focused)));
+        flip($("folder-grid"), () =>
+          sync($("folder-grid"), tiles.filter((t) => t.folder === folder.id), tiles, focused));
       }
     }
     const moving = home && view.mode === "moving";
     $("moving").hidden = !moving;
     if (moving) {
       const moved = (gesture && tiles.find((t) => t.id === gesture.id)) || focusedTile;
-      $("moving-title").textContent = `Moving ${moved ? moved.label : "an app"}`;
+      $("moving-title").textContent = moved ? t("moving", moved.label) : t("moving_any");
     }
 
+    for (const element of document.querySelectorAll("[data-other-apps]")) element.hidden = !CAN_CONTROL_APPS;
     const pointer = !home && view.pointer;
-    $("mode").textContent = pointer ? "Pointer" : "Arrows";
+    $("mode").textContent = t(pointer ? "mode_pointer" : "mode_arrows");
     $("mode").className = "mode" + (pointer ? " pointer" : "");
     $("pad-hint").textContent = pointer
-      ? "One finger moves the pointer · tap to click · two fingers scroll"
+      ? t("hint_pointer")
       : home
-        ? "Swipe to move between apps · tap for OK"
-        : "Swipes are arrow keys here · tap for OK · press and hold for a long press";
+        ? t("hint_home")
+        : CAN_CONTROL_APPS
+          ? t("hint_app")
+          : t("hint_soon");
+    if (!home && !CAN_CONTROL_APPS) $("mode").textContent = t("mode_soon");
     const field = view.text;
     $("wants").hidden = !field;
-    if (field) $("wants-text").textContent = `${field.label || "A text field"} wants text`;
+    $("keyboard").hidden = !field;
+    if (field) $("wants-text").textContent = field.label ? t("wants", field.label) : t("wants_any");
     if (field && !$("typing").hidden) syncTyping(field);
     if (field && home && view.mode === "text" && $("typing").hidden) openTyping();
     if (!field && !$("typing").hidden && typingAsked) closeTyping();
@@ -336,7 +384,7 @@
   });
 
   // --- Tiles: tap, hold, drag ---------------------------------------------------
-  const HOLD = 450, SLOP = 12;
+  const HOLD = 450, SLOP = 12, DWELL = 150;
   let gesture = null, dragging = false;
 
   function tileAt(x, y) {
@@ -347,7 +395,7 @@
   function onTileDown(event) {
     const tile = event.target.closest(".tile");
     if (!tile || !session) return;
-    gesture = { id: tile.dataset.id, element: tile, x: event.clientX, y: event.clientY, held: false, over: tile.dataset.id, pointer: event.pointerId };
+    gesture = { id: tile.dataset.id, element: tile, x: event.clientX, y: event.clientY, held: false, over: tile.dataset.id, on: false, pointer: event.pointerId };
     gesture.timer = setTimeout(() => {
       if (!gesture) return;
       gesture.held = true;
@@ -388,24 +436,51 @@
           && event.clientY >= panel.top && event.clientY <= panel.bottom;
         if (!inside) over = null;
       }
-      if (over !== gesture.over) {
-        document.querySelector(".tile.over")?.classList.remove("over");
-        if (over && over !== gesture.id) document.querySelector(`.tile[data-id="${CSS.escape(over)}"]`)?.classList.add("over");
-        gesture.over = over;
-        send({ type: "drag", id: gesture.id, over, phase: "move" });
+      // Over the middle of another tile's picture: rest there for a folder.
+      // Near its edges: take its place.
+      let on = false;
+      if (over && over !== gesture.id) {
+        const art = document.querySelector(`.tile[data-id="${CSS.escape(over)}"] .art`)?.getBoundingClientRect();
+        on = !!art && Math.abs(event.clientX - (art.left + art.width / 2)) < art.width * 0.25
+          && Math.abs(event.clientY - (art.top + art.height / 2)) < art.height * 0.3;
+      }
+      // Only where the finger stays a moment: crossing tiles on the way
+      // must not shuffle them (and the shuffle can undo itself).
+      const same = over === gesture.over && on === gesture.on;
+      const waiting = gesture.next && over === gesture.next.over && on === gesture.next.on;
+      if (same) {
+        clearTimeout(gesture.dwell);
+        gesture.next = null;
+      } else if (!waiting) {
+        clearTimeout(gesture.dwell);
+        gesture.next = { over, on };
+        gesture.dwell = setTimeout(commitOver, DWELL);
       }
     }
+  }
+
+  function commitOver() {
+    if (!gesture?.next) return;
+    const { over, on } = gesture.next;
+    gesture.next = null;
+    document.querySelector(".tile.over")?.classList.remove("over");
+    if (on) document.querySelector(`.tile[data-id="${CSS.escape(over)}"]`)?.classList.add("over");
+    gesture.over = over;
+    gesture.on = on;
+    send({ type: "drag", id: gesture.id, over, phase: "move", on });
   }
 
   function onTileUp(event, cancelled) {
     if (!gesture || event.pointerId !== gesture.pointer) return;
     clearTimeout(gesture.timer);
     if (dragging) {
+      clearTimeout(gesture.dwell);
+      // Lifted before the dwell ran out: the drop goes where the finger is.
+      if (!cancelled) commitOver();
       send({ type: "drag", id: gesture.id, over: gesture.over, phase: cancelled ? "cancel" : "end" });
       dragging = false;
       $("ghost").hidden = true;
       document.querySelector(".tile.over")?.classList.remove("over");
-      gesture.element.classList.remove("dragging");
       gesture = null;
       render();
       return;
@@ -468,7 +543,7 @@
       // Only shown here; the long press is sent on release, if the finger
       // never moved (a resting finger that then swipes is a swipe).
       padState.timer = setTimeout(() => {
-        if (padState && !padState.moved && !pointerMode()) showFlash("Long press");
+        if (padState && !padState.moved && !pointerMode()) showFlash(t("flash_long"));
       }, LONG);
     }
   });
@@ -500,7 +575,7 @@
     if (Math.max(Math.abs(tx), Math.abs(ty)) >= 48) {
       const key = Math.abs(tx) > Math.abs(ty) ? (tx > 0 ? "right" : "left") : ty > 0 ? "down" : "up";
       press(key);
-      showFlash(key[0].toUpperCase() + key.slice(1));
+      showFlash(t(key));
       padState.x = event.clientX;
       padState.y = event.clientY;
     }
@@ -517,7 +592,7 @@
     } else if (!padState.moved && held < 400) {
       if (pointerMode()) {
         send({ type: "pointer", dx: 0, dy: 0, action: "click" });
-        showFlash("Click");
+        showFlash(t("flash_click"));
       } else {
         press("ok");
         showFlash("OK");
@@ -535,8 +610,8 @@
   function openTyping(free = false) {
     typingAsked = !free;
     const field = view?.text;
-    $("typing-eyebrow").textContent = field ? "The TV is asking for text" : "Typing on the TV";
-    $("typing-label").textContent = field?.label || "Text";
+    $("typing-eyebrow").textContent = t(field ? "asking" : "typing_free");
+    $("typing-label").textContent = field?.label || t("text_label");
     typed = field?.value || "";
     input.value = typed;
     $("typing").hidden = false;
@@ -550,7 +625,7 @@
 
   // Follows the TV's value while the phone isn't typing.
   function syncTyping(field) {
-    $("typing-label").textContent = field.label || "Text";
+    $("typing-label").textContent = field.label || t("text_label");
     if (document.activeElement !== input) {
       typed = field.value || "";
       input.value = typed;
@@ -602,6 +677,45 @@
   $("typing-close").addEventListener("click", closeTyping);
   $("keyboard").addEventListener("click", () => openTyping(!view?.text));
   $("wants").addEventListener("click", () => openTyping(false));
+
+  // iOS Safari shows :active only on pages that listen for touches.
+  document.addEventListener("touchstart", () => {}, { passive: true });
+
+  // --- The phone's language -----------------------------------------------------
+  document.documentElement.lang = window.RustTVText.lang.replace("_", "-");
+  document.documentElement.dir = window.RustTVText.rtl ? "rtl" : "ltr";
+  for (const element of document.querySelectorAll("[data-t]")) element.textContent = t(element.dataset.t);
+  for (const element of document.querySelectorAll("[data-t-label]")) element.setAttribute("aria-label", t(element.dataset.tLabel));
+
+  // --- Add to Home Screen ---------------------------------------------------------
+  // Suggested once paired (never with the pairing link in the address, which
+  // the Home Screen would keep), until "Got it", or a week after "Not now".
+  const INSTALL = "rusttv-remote-install";
+  const WEEK = 7 * 24 * 3600 * 1000;
+  function suggestInstall() {
+    const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    if (standalone || location.hash || (!ios && !/Android/.test(navigator.userAgent))) return;
+    let seen = null;
+    try {
+      seen = JSON.parse(localStorage.getItem(INSTALL));
+    } catch {
+      // Unreadable: suggest again.
+    }
+    if (seen && (seen.done || Date.now() - seen.at < WEEK)) return;
+    $("install-text").textContent = t(ios ? "install_ios" : "install_android");
+    $("install").hidden = false;
+  }
+  function closeInstall(done) {
+    $("install").hidden = true;
+    try {
+      localStorage.setItem(INSTALL, JSON.stringify({ done, at: Date.now() }));
+    } catch {
+      // Private browsing: suggested again next time.
+    }
+  }
+  $("install-ok").addEventListener("click", () => closeInstall(true));
+  $("install-later").addEventListener("click", () => closeInstall(false));
 
   start();
 })();

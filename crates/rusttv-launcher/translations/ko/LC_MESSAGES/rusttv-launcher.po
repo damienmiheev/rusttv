@@ -328,3 +328,58 @@ msgstr "{}을(를) {}에 넣음"
 
 msgid "Took {} out of {}"
 msgstr "{}을(를) {}에서 꺼냄"
+
+# RustTV Remote (REMOTE.md)
+msgid "RustTV Remote"
+msgstr "RustTV Remote"
+
+msgid "Use a phone as a remote, keyboard and touchpad. It can press keys and type, but never change settings or approve anything."
+msgstr "휴대폰을 리모컨, 키보드, 터치패드로 사용하세요. 버튼을 누르고 입력할 수 있지만, 설정을 바꾸거나 무엇을 승인할 수는 없습니다."
+
+msgid "Pair a phone"
+msgstr "휴대폰 연결"
+
+msgid "Shows a code to scan with the phone's camera"
+msgstr "휴대폰 카메라로 스캔할 코드를 표시합니다"
+
+msgid "Press OK again to remove it"
+msgstr "삭제하려면 OK를 한 번 더 누르세요"
+
+msgid "OK removes it"
+msgstr "OK: 삭제"
+
+msgid "RustTV Remote can't start: another app uses its network port (8484)."
+msgstr "RustTV Remote를 시작할 수 없음: 다른 앱이 네트워크 포트(8484)를 사용 중입니다."
+
+msgid "This TV has no network address. Connect it to your network and try again."
+msgstr "이 TV에 네트워크 주소가 없습니다. 네트워크에 연결한 뒤 다시 시도하세요."
+
+msgid "Pairing stopped after three wrong tries. Back returns; open Pair a phone again for a new code."
+msgstr "세 번 틀려서 연결을 중단했습니다. 뒤로: 돌아가기. 새 코드는 휴대폰 연결을 다시 여세요."
+
+msgid "Couldn't make the code."
+msgstr "코드를 만들지 못했습니다."
+
+msgid "Removed {}. It can't control this TV any more."
+msgstr "{}을(를) 삭제했습니다. 더 이상 이 TV를 제어할 수 없습니다."
+
+msgid "OK allows this phone. Back refuses."
+msgstr "OK: 이 휴대폰 허용. 뒤로: 거부."
+
+msgid "Back returns."
+msgstr "뒤로: 돌아가기."
+
+msgid "Scan this code with your phone's camera and open the link.\n\nThe phone must be on the same network as this TV. The code works once, for two minutes."
+msgstr "휴대폰 카메라로 이 코드를 스캔하고 링크를 여세요.\n\n휴대폰이 이 TV와 같은 네트워크에 있어야 합니다. 코드는 한 번, 2분 동안 유효합니다."
+
+msgid "Allow “{}”?"
+msgstr "“{}”을(를) 허용할까요?"
+
+msgid "Check that the phone shows the same code:"
+msgstr "휴대폰에 같은 코드가 표시되는지 확인하세요:"
+
+msgid "It will be able to press keys and type on this TV. It can never change settings or approve anything."
+msgstr "이 TV에서 버튼을 누르고 입력할 수 있게 됩니다. 설정을 바꾸거나 무엇을 승인할 수는 없습니다."
+
+msgid "“{}” is paired."
+msgstr "“{}” 연결됨."

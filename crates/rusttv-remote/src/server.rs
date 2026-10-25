@@ -67,9 +67,9 @@ pub type Clock = Arc<dyn Fn() -> u64 + Send + Sync>;
 pub struct Options {
     /// [`PORT`] on the TV; 0 in tests for any free port.
     pub port: u16,
-    /// The page served at `/` ([`PAGE`](crate::PAGE)): its `<!--crypto.js-->`
-    /// and `<!--app.js-->` markers become inline scripts, allowed by their
-    /// hashes in the page's Content-Security-Policy.
+    /// The page served at `/` ([`PAGE`](crate::PAGE)): its `<!--i18n.js-->`,
+    /// `<!--crypto.js-->` and `<!--app.js-->` markers become inline scripts,
+    /// allowed by their hashes in the page's Content-Security-Policy.
     pub page: &'static str,
     pub random: Random,
     pub clock: Clock,
@@ -564,6 +564,7 @@ impl Page {
         let mut html = template.to_owned();
         let mut hashes = Vec::new();
         for (marker, script) in [
+            ("<!--i18n.js-->", crate::I18N_JS),
             ("<!--crypto.js-->", crate::CRYPTO_JS),
             ("<!--app.js-->", crate::APP_JS),
         ] {

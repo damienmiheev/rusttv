@@ -24,6 +24,11 @@ body { font-family: Inter, -apple-system, system-ui, "Segoe UI", Roboto, sans-se
 button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer;
   transition: transform 160ms var(--ease), background-color 120ms ease; }
 button:active { transform: scale(0.97); }
+.tile:active .art { transform: scale(0.97); }
+.tile.focused:active .art { transform: scale(1.02); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0ms !important; animation-duration: 0ms !important; }
+}
 svg { display: block; }
 [hidden] { display: none !important; }
 .screen { position: fixed; inset: 0; display: flex; flex-direction: column; overflow: hidden; }
@@ -46,7 +51,7 @@ header { position: relative; display: flex; align-items: center; gap: 12px; padd
 .hero h1 { margin: 0; font-size: 34px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.05; min-height: 36px; }
 .hero p { margin: 0; font-size: 13px; color: var(--dim); }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 14px; }
-.tile { display: flex; flex-direction: column; gap: 9px; text-align: left; touch-action: pan-y; }
+.tile { display: flex; flex-direction: column; gap: 9px; text-align: start; touch-action: pan-y; }
 .art { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center;
   box-shadow: 0 4px 10px #00000040; transition: transform 150ms var(--ease), box-shadow 150ms var(--ease); }
 .art span { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; color: #fff; padding: 0 10px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
@@ -78,7 +83,7 @@ header { position: relative; display: flex; align-items: center; gap: 12px; padd
 
 /* Touchpad */
 #touchpad { flex: 1; display: flex; flex-direction: column; padding-top: 14px; padding-bottom: calc(var(--bottom) + 96px); }
-#wants { margin: 0 16px 12px 16px; height: 54px; border-radius: 18px; background: #F5A5241A; box-shadow: inset 0 0 0 1px #F5A52433; display: flex; align-items: center; gap: 12px; padding: 0 16px; text-align: left; }
+#wants { margin: 0 16px 12px 16px; height: 54px; border-radius: 18px; background: #F5A5241A; box-shadow: inset 0 0 0 1px #F5A52433; display: flex; align-items: center; gap: 12px; padding: 0 16px; text-align: start; }
 #wants span { flex: 1; font-size: 14px; color: #E7D9BC; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #wants em { font-style: normal; font-size: 14px; font-weight: 600; color: var(--accent); }
 #pad { position: relative; flex: 1; margin: 0 16px; border-radius: 32px; overflow: hidden; touch-action: none;
@@ -99,12 +104,9 @@ header { position: relative; display: flex; align-items: center; gap: 12px; padd
 .volume button { width: 56px; height: 52px; display: flex; align-items: center; justify-content: center; color: var(--text); }
 
 /* Dock */
-nav { position: absolute; z-index: 25; left: 12px; right: 12px; bottom: calc(var(--bottom) + 18px); height: 64px; padding: 0 8px; border-radius: 32px;
-  background: #1C1F26F2; -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); box-shadow: inset 0 1px 0 #FFFFFF12, 0 -16px 40px 8px #0E1014; display: flex; align-items: center; gap: 6px; }
+nav { position: absolute; z-index: 25; inset-inline-start: 16px; bottom: calc(var(--bottom) + 18px); height: 64px; padding: 0 8px; border-radius: 32px;
+  background: #1C1F26F2; -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); box-shadow: inset 0 1px 0 #FFFFFF12, 0 -16px 40px 8px #0E1014; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 nav > button { width: 48px; height: 48px; border-radius: 24px; display: flex; align-items: center; justify-content: center; flex: none; }
-.tabs { flex: 1; height: 44px; border-radius: 22px; background: var(--bg); padding: 3px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; }
-.tabs button { border-radius: 19px; font-size: 14px; font-weight: 500; color: var(--dim); }
-.tabs button[aria-selected="true"] { background: var(--raised); box-shadow: inset 0 1px 0 #FFFFFF14; color: var(--text); font-weight: 600; }
 
 /* Typing */
 #typing { position: fixed; inset: 0; z-index: 40; background: var(--bg); padding: calc(var(--top) + 16px) 16px 16px 16px; display: flex; flex-direction: column; gap: 18px; }
@@ -133,6 +135,18 @@ input { font: inherit; height: 52px; border-radius: 14px; border: 2px solid var(
 .code b { font-size: 64px; font-weight: 700; letter-spacing: 0.08em; color: var(--accent); line-height: 1; font-variant-numeric: tabular-nums; }
 .code span { font-size: 15px; line-height: 1.5; }
 .wide { height: 52px; border-radius: 26px; font-size: 16px; }
+
+/* Add to Home Screen */
+#install { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; background: #0E1014A6; animation: fade 200ms ease-out; }
+#install .sheet { width: 100%; margin: 0 8px calc(var(--bottom) + 8px) 8px; padding: 26px 20px 20px 20px; border-radius: 32px; background: var(--surface);
+  box-shadow: inset 0 1px 0 #FFFFFF14, 0 -20px 50px -10px #000000B3; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;
+  animation: rise 320ms cubic-bezier(0.32, 0.72, 0, 1); }
+#install .logo { width: 56px; height: 56px; filter: drop-shadow(0 14px 24px #D9480F59); }
+#install h2 { margin: 4px 0 0 0; font-size: 21px; font-weight: 700; letter-spacing: -0.02em; }
+#install p { margin: 0 0 10px 0; font-size: 15px; line-height: 1.5; color: var(--dim); max-width: 320px; }
+#install .row { width: 100%; }
+@keyframes fade { from { opacity: 0; } }
+@keyframes rise { from { transform: translateY(100%); } }
 </style>
 </head>
 <body>
@@ -157,7 +171,7 @@ input { font: inherit; height: 52px; border-radius: 14px; border: 2px solid var(
     <div class="intro">
       <svg class="logo"><use href="#logo"/></svg>
       <h1>RustTV Remote</h1>
-      <p id="scan-text">On the TV, open Settings → RustTV Remote → Pair a phone, then scan the code with this phone's camera.</p>
+      <p id="scan-text" data-t="scan_text"></p>
     </div>
   </div>
 </section>
@@ -168,19 +182,19 @@ input { font: inherit; height: 52px; border-radius: 14px; border: 2px solid var(
   <form id="pair-form" class="center">
     <div class="intro">
       <svg class="logo"><use href="#logo"/></svg>
-      <h1>Pair with your TV</h1>
-      <p>This phone will be able to press keys and type on the TV. It can never change settings or approve anything.</p>
+      <h1 data-t="pair_title"></h1>
+      <p data-t="pair_intro"></p>
     </div>
     <div class="field" id="name-field">
-      <label for="phone-name">Name for this phone</label>
+      <label for="phone-name" data-t="name_label"></label>
       <input id="phone-name" maxlength="40" autocomplete="off" autocapitalize="words" enterkeyhint="go">
-      <div class="help">You can change it later in the TV's Settings.</div>
+      <div class="help" data-t="name_help"></div>
     </div>
-    <button class="primary wide" id="pair-button" type="submit">Pair</button>
+    <button class="primary wide" id="pair-button" type="submit" data-t="pair"></button>
     <div class="code" id="pair-code" hidden>
-      <small>Check that the TV shows the same code</small>
+      <small data-t="code_check"></small>
       <b id="code"></b>
-      <span>Then press <strong>OK</strong> on the TV remote.<br>Back on the remote refuses.</span>
+      <span data-t="code_then"></span>
     </div>
     <div class="help" id="pair-status" style="text-align:center"></div>
   </form>
@@ -193,78 +207,88 @@ input { font: inherit; height: 52px; border-radius: 14px; border: 2px solid var(
     <svg class="logo"><use href="#logo"/></svg>
     <div class="who">
       <b>RustTV</b>
-      <div class="status"><span class="dot" id="dot"></span><span id="status">Connecting…</span></div>
+      <div class="status"><span class="dot" id="dot"></span><span id="status" data-t="connecting"></span></div>
     </div>
-    <button class="round" data-key="power" aria-label="Power">
+    <button class="round" data-key="power" data-t-label="power" data-other-apps hidden>
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 3.5v7.5"/><path d="M6.6 7a7.5 7.5 0 1 0 10.8 0"/></svg>
     </button>
   </header>
 
   <div class="bar" id="moving" hidden>
-    <div><b id="moving-title">Moving</b><small>Rest on an app to make a folder</small></div>
-    <button class="primary" data-key="ok">Done</button>
+    <div><b id="moving-title"></b><small data-t="moving_hint"></small></div>
+    <button class="primary" data-key="ok" data-t="done"></button>
   </div>
 
   <div id="apps">
-    <div class="hero"><h1 id="hero"></h1><p>Tap to open · hold for options · hold and drag to move</p></div>
+    <div class="hero"><h1 id="hero"></h1><p data-t="apps_hint"></p></div>
     <div class="grid" id="grid"></div>
   </div>
 
   <div id="touchpad" hidden>
-    <button id="wants" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5A524" stroke-width="1.75" stroke-linecap="round"><rect x="2.5" y="6" width="19" height="12" rx="3"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M8 14h8"/></svg><span id="wants-text"></span><em>Type</em></button>
+    <button id="wants" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5A524" stroke-width="1.75" stroke-linecap="round"><rect x="2.5" y="6" width="19" height="12" rx="3"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M8 14h8"/></svg><span id="wants-text"></span><em data-t="type"></em></button>
     <div id="pad">
-      <div class="padtop"><small>Touchpad</small><span class="mode" id="mode">Arrows</span></div>
+      <div class="padtop"><small data-t="touchpad"></small><span class="mode" id="mode"></span></div>
       <div id="flash"></div>
       <div class="hint" id="pad-hint"></div>
       <div id="touch"></div>
     </div>
-    <div class="keys">
-      <button class="key" data-key="home" aria-label="Home"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 11 12 4l8.5 7"/><path d="M6 9.5V20h12V9.5"/></svg></button>
-      <button class="key" data-key="play_pause" aria-label="Play or pause"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M5 5.5v13l7.5-6.5z"/><rect x="14.5" y="6" width="2.2" height="12" rx="1"/><rect x="18.5" y="6" width="2.2" height="12" rx="1"/></svg></button>
+    <div class="keys" data-other-apps hidden>
+      <button class="key" data-key="home" data-t-label="home"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 11 12 4l8.5 7"/><path d="M6 9.5V20h12V9.5"/></svg></button>
+      <button class="key" data-key="play_pause" data-t-label="play_pause"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M5 5.5v13l7.5-6.5z"/><rect x="14.5" y="6" width="2.2" height="12" rx="1"/><rect x="18.5" y="6" width="2.2" height="12" rx="1"/></svg></button>
       <div class="volume">
-        <button data-key="volume_down" aria-label="Volume down"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+        <button data-key="volume_down" data-t-label="volume_down"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6"/></svg>
-        <button data-key="volume_up" aria-label="Volume up"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
+        <button data-key="volume_up" data-t-label="volume_up"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
       </div>
     </div>
   </div>
 
   <nav aria-label="RustTV Remote">
-    <button data-key="back" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
-    <div class="tabs" role="tablist" aria-label="View">
-      <button role="tab" id="tab-apps" aria-selected="true">Apps</button>
-      <button role="tab" id="tab-touchpad" aria-selected="false">Touchpad</button>
-    </div>
-    <button id="keyboard" aria-label="Keyboard"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><rect x="2.5" y="6" width="19" height="12" rx="3"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M8 14h8"/></svg></button>
+    <button data-key="back" data-t-label="back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+    <button id="keyboard" data-t-label="keyboard" hidden><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><rect x="2.5" y="6" width="19" height="12" rx="3"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M8 14h8"/></svg></button>
   </nav>
 
   <div id="folder" hidden>
     <h2 id="folder-name"></h2>
     <div class="panel"><div class="grid" id="folder-grid"></div></div>
-    <p>Hold an app and drag it out of the panel to take it out of the folder. Back closes.</p>
+    <p data-t="folder_hint"></p>
   </div>
   <div class="ghost" id="ghost" hidden></div>
 </section>
+
+<!-- Not opened from the Home Screen yet: how to add it -->
+<div id="install" role="dialog" aria-modal="true" aria-labelledby="install-title" hidden>
+  <div class="sheet">
+    <svg class="logo"><use href="#logo"/></svg>
+    <h2 id="install-title" data-t="install_title"></h2>
+    <p id="install-text"></p>
+    <div class="row">
+      <button class="secondary" type="button" id="install-later" data-t="not_now"></button>
+      <button class="primary" type="button" id="install-ok" data-t="got_it"></button>
+    </div>
+  </div>
+</div>
 
 <!-- Typing -->
 <section id="typing" hidden>
   <header>
     <svg class="logo"><use href="#logo"/></svg>
     <div class="who"><b>RustTV</b></div>
-    <button class="round" id="typing-close" aria-label="Hide the keyboard"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+    <button class="round" id="typing-close" data-t-label="hide_keyboard"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
   </header>
   <form class="card" id="typing-form">
-    <div class="eyebrow" id="typing-eyebrow">The TV is asking for text</div>
-    <label for="typing-input" id="typing-label">Text</label>
+    <div class="eyebrow" id="typing-eyebrow" data-t="asking"></div>
+    <label for="typing-input" id="typing-label" data-t="text_label"></label>
     <input id="typing-input" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done">
-    <div class="help">Letters appear on the TV as you type.</div>
+    <div class="help" data-t="typing_help"></div>
     <div class="row">
-      <button class="secondary" type="button" id="typing-clear">Clear</button>
-      <button class="primary" type="submit">Done</button>
+      <button class="secondary" type="button" id="typing-clear" data-t="clear"></button>
+      <button class="primary" type="submit" data-t="done"></button>
     </div>
   </form>
 </section>
 
+<!--i18n.js-->
 <!--crypto.js-->
 <!--app.js-->
 </body>

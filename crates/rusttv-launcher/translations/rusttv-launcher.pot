@@ -1,323 +1,525 @@
-# RustTV launcher texts (crates/rusttv-launcher/ui/home.slint).
-# Template for translations/<lang>/LC_MESSAGES/rusttv-launcher.po; see translations/README.md.
+#
 msgid ""
 msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-10-25 18:42+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
 
+#: ui/home.slint:51
 msgid "Checking for updates…"
 msgstr ""
 
+#: ui/home.slint:52
 msgid "Up to date"
 msgstr ""
 
+#: ui/home.slint:53
 msgid "Version {} available — press OK to install"
 msgstr ""
 
+#: ui/home.slint:54
 msgid "Allow RustTV to install apps, then press OK to install {}"
 msgstr ""
 
+#: ui/home.slint:55
 msgid "Downloading {}%"
 msgstr ""
 
+#: ui/home.slint:56
 msgid "Installing…"
 msgstr ""
 
+#: ui/home.slint:57
 msgid "Update installed"
 msgstr ""
 
+#: ui/home.slint:58
 msgid "Update failed: {}"
 msgstr ""
 
+#: ui/home.slint:59
 msgid "Press OK to check for updates"
 msgstr ""
 
-msgid "Hide from Home"
-msgstr ""
-
-msgid "Move"
-msgstr ""
-
-msgid "Couldn't open {}"
-msgstr ""
-
-msgid "Couldn't load apps: {}"
-msgstr ""
-
-msgid "Couldn't load the licence notices: {}"
-msgstr ""
-
-msgid "Updates"
-msgstr ""
-
-msgid "History"
-msgstr ""
-
-msgid "Waiting for your computer"
-msgstr ""
-
-msgid "Animations"
-msgstr ""
-
-msgid "Faster (0.5×)"
-msgstr ""
-
-msgid "Off"
-msgstr ""
-
-msgid "Normal"
-msgstr ""
-
-msgid "On"
-msgstr ""
-
-msgid "Transition animations"
-msgstr ""
-
-msgid "Window animations"
-msgstr ""
-
-msgid "App animations"
-msgstr ""
-
-msgid "off"
-msgstr ""
-
-msgid "not seen"
-msgstr ""
-
-msgid "on"
-msgstr ""
-
-msgid "default"
-msgstr ""
-
-msgid "Your computer"
-msgstr ""
-
-msgid "Changed outside RustTV"
-msgstr ""
-
-msgid "Restored from your computer"
-msgstr ""
-
-msgid "This TV"
-msgstr ""
-
-msgid "time unknown"
-msgstr ""
-
-msgid "Apps reordered"
-msgstr ""
-
-msgid "Hid {}"
-msgstr ""
-
-msgid "Showed {}"
-msgstr ""
-
-msgid "Check for updates: {}"
-msgstr ""
-
-msgid "{}: {} → {}"
-msgstr ""
-
-msgid "Firmware updated"
-msgstr ""
-
-msgid "Home takeover: {}"
-msgstr ""
-
-msgid "No change"
-msgstr ""
-
-msgid "Your computer applies these: run rusttv history apply-pending within 2 hours"
-msgstr ""
-
-msgid "This TV changes now"
-msgstr ""
-
-msgid "To change this on the TV itself, run rusttv history allow-tv-settings on your computer once. Until then your computer applies it."
-msgstr ""
-
-msgid "Some apps may look odd without animations."
-msgstr ""
-
-msgid "No changes yet. Changes made here or from your computer appear here."
-msgstr ""
-
-msgid "{} (+{} more)"
-msgstr ""
-
-msgid "Restore this state"
-msgstr ""
-
-msgid "Check for updates automatically"
-msgstr ""
-
-msgid "{} min"
-msgstr ""
-
-msgid "{} h {} min"
-msgstr ""
-
-msgid "On your computer, run rusttv history apply-pending within {}."
-msgstr ""
-
-msgid "Applied."
-msgstr ""
-
-msgid "Saved for your computer. {}"
-msgstr ""
-
-msgid "Nothing changed: {}"
-msgstr ""
-
-msgid "Nothing changed: wrong code."
-msgstr ""
-
-msgid "Too many wrong codes. Approvals are locked for {}."
-msgstr ""
-
-msgid "Approvals are off in test builds."
-msgstr ""
-
-msgid "Busy — try again in a moment."
-msgstr ""
-
-msgid "Couldn't undo everything: {}. Fix it with rusttv history restore on your computer, or in Android Settings."
-msgstr ""
-
-msgid "This is the state now: nothing to restore."
-msgstr ""
-
-msgid "Your computer has a newer RustTV. Update RustTV on this TV."
-msgstr ""
-
-msgid "Reading history…"
-msgstr ""
-
-msgid "History couldn't be read: {}. Your computer's copy can put it back."
-msgstr ""
-
-msgid "Hidden apps"
-msgstr ""
-
-msgid "Settings"
-msgstr ""
-
-msgid "About"
-msgstr ""
-
-msgid "OK puts the app back on Home. Back returns."
-msgstr ""
-
-msgid "Version {} · MIT OR Apache-2.0"
-msgstr ""
-
-msgid "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0."
-msgstr ""
-
-msgid "Source: github.com/damienmiheev/rusttv"
-msgstr ""
-
-msgid "Up and Down scroll the notices. Back returns."
-msgstr ""
-
-msgid "Third-party notices"
-msgstr ""
-
-msgid "Up and Down choose, OK opens. Back returns."
-msgstr ""
-
-msgid "Review changes"
-msgstr ""
-
-msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
-msgstr ""
-
-msgid "Nothing changes until you hold OK. Back cancels."
-msgstr ""
-
-msgid "Approve"
-msgstr ""
-
-msgid "Press these arrows on the remote:"
-msgstr ""
-
-msgid "Now hold OK to apply."
-msgstr ""
-
-msgid "Fastest (0.25×)"
-msgstr ""
-
-msgid "Fast (0.75×)"
-msgstr ""
-
-msgid "Slower (1.5×)"
-msgstr ""
-
-msgid "Slowest (2×)"
-msgstr ""
-
-msgid "History started"
-msgstr ""
-
-msgid "Added {}"
-msgstr ""
-
-msgid "Removed {}"
-msgstr ""
-
+#: ui/home.slint:63
 msgid "Games"
 msgstr ""
 
+#: ui/home.slint:64
 msgid "Music"
 msgstr ""
 
+#: ui/home.slint:65
 msgid "Video"
 msgstr ""
 
+#: ui/home.slint:66
 msgid "Photos"
 msgstr ""
 
+#: ui/home.slint:67
 msgid "Social"
 msgstr ""
 
+#: ui/home.slint:68
 msgid "News"
 msgstr ""
 
+#: ui/home.slint:69
 msgid "Maps"
 msgstr ""
 
+#: ui/home.slint:70
 msgid "Productivity"
 msgstr ""
 
+#: ui/home.slint:71
 msgid "Accessibility"
 msgstr ""
 
+#: ui/home.slint:72
 msgid "Folder"
 msgstr ""
 
-msgid "Type a name, then press ✓. Back keeps the old one."
+#: ui/home.slint:76
+msgid "Hide from Home"
 msgstr ""
 
-msgid "Move past the edge to take the app out. OK drops it."
+#: ui/home.slint:77
+msgid "Move"
 msgstr ""
 
-msgid "Back closes the folder. Up reaches its name."
+#: ui/home.slint:80
+msgid "Couldn't open {}"
 msgstr ""
 
+#: ui/home.slint:83
+msgid "Couldn't load apps: {}"
+msgstr ""
+
+#: ui/home.slint:86
+msgid "Couldn't load the licence notices: {}"
+msgstr ""
+
+#: ui/home.slint:90
+msgid "Updates"
+msgstr ""
+
+#: ui/home.slint:91
+msgid "History"
+msgstr ""
+
+#: ui/home.slint:92
+msgid "Waiting for your computer"
+msgstr ""
+
+#: ui/home.slint:93
+msgid "RustTV Remote"
+msgstr ""
+
+#: ui/home.slint:94
+msgid "Animations"
+msgstr ""
+
+#: ui/home.slint:98 ui/home.slint:126
+msgid "Off"
+msgstr ""
+
+#: ui/home.slint:99
+msgid "Fastest (0.25×)"
+msgstr ""
+
+#: ui/home.slint:100
+msgid "Faster (0.5×)"
+msgstr ""
+
+#: ui/home.slint:101
+msgid "Fast (0.75×)"
+msgstr ""
+
+#: ui/home.slint:102
+msgid "Slower (1.5×)"
+msgstr ""
+
+#: ui/home.slint:103
+msgid "Slowest (2×)"
+msgstr ""
+
+#: ui/home.slint:104
+msgid "Normal"
+msgstr ""
+
+#: ui/home.slint:108
+msgid ""
+"Use a phone as a remote, keyboard and touchpad. It can press keys and type, "
+"but never change settings or approve anything."
+msgstr ""
+
+#: ui/home.slint:111 ui/home.slint:1379
+msgid "Pair a phone"
+msgstr ""
+
+#: ui/home.slint:114
+msgid "Shows a code to scan with the phone's camera"
+msgstr ""
+
+#: ui/home.slint:117
+msgid "Press OK again to remove it"
+msgstr ""
+
+#: ui/home.slint:117
+msgid "OK removes it"
+msgstr ""
+
+#: ui/home.slint:120
+msgid "RustTV Remote can't start: another app uses its network port (8484)."
+msgstr ""
+
+#: ui/home.slint:121
+msgid ""
+"This TV has no network address. Connect it to your network and try again."
+msgstr ""
+
+#: ui/home.slint:122
+msgid ""
+"Pairing stopped after three wrong tries. Back returns; open Pair a phone "
+"again for a new code."
+msgstr ""
+
+#: ui/home.slint:123
+msgid "Couldn't make the code."
+msgstr ""
+
+#: ui/home.slint:126
+msgid "On"
+msgstr ""
+
+#: ui/home.slint:130
+msgid "Transition animations"
+msgstr ""
+
+#: ui/home.slint:131
+msgid "Window animations"
+msgstr ""
+
+#: ui/home.slint:132
+msgid "App animations"
+msgstr ""
+
+#: ui/home.slint:136
+msgid "off"
+msgstr ""
+
+#: ui/home.slint:137
+msgid "not seen"
+msgstr ""
+
+#: ui/home.slint:138
+msgid "on"
+msgstr ""
+
+#: ui/home.slint:141
+msgid "default"
+msgstr ""
+
+#: ui/home.slint:145
+msgid "Your computer"
+msgstr ""
+
+#: ui/home.slint:146
+msgid "Changed outside RustTV"
+msgstr ""
+
+#: ui/home.slint:147
+msgid "Restored from your computer"
+msgstr ""
+
+#: ui/home.slint:148
+msgid "This TV"
+msgstr ""
+
+#: ui/home.slint:151
+msgid "time unknown"
+msgstr ""
+
+#: ui/home.slint:159
+msgid "Apps reordered"
+msgstr ""
+
+#: ui/home.slint:160
+msgid "Hid {}"
+msgstr ""
+
+#: ui/home.slint:161
+msgid "Showed {}"
+msgstr ""
+
+#: ui/home.slint:162
+msgid "Check for updates: {}"
+msgstr ""
+
+#: ui/home.slint:163
+msgid "{}: {} → {}"
+msgstr ""
+
+#: ui/home.slint:164
+msgid "Firmware updated"
+msgstr ""
+
+#: ui/home.slint:165
+msgid "Home takeover: {}"
+msgstr ""
+
+#: ui/home.slint:166
+msgid "Added {}"
+msgstr ""
+
+#: ui/home.slint:167
+msgid "Removed {}"
+msgstr ""
+
+#: ui/home.slint:168
 msgid "Made the folder {}"
 msgstr ""
 
+#: ui/home.slint:169
 msgid "Removed the folder {}"
 msgstr ""
 
+#: ui/home.slint:170
 msgid "Renamed the folder {} to {}"
 msgstr ""
 
+#: ui/home.slint:171
 msgid "Put {} in {}"
 msgstr ""
 
+#: ui/home.slint:172
 msgid "Took {} out of {}"
+msgstr ""
+
+#: ui/home.slint:173
+msgid "No change"
+msgstr ""
+
+#: ui/home.slint:177
+msgid ""
+"Your computer applies these: run rusttv history apply-pending within 2 hours"
+msgstr ""
+
+#: ui/home.slint:178
+msgid "This TV changes now"
+msgstr ""
+
+#: ui/home.slint:181
+msgid ""
+"To change this on the TV itself, run rusttv history allow-tv-settings on "
+"your computer once. Until then your computer applies it."
+msgstr ""
+
+#: ui/home.slint:184
+msgid "Some apps may look odd without animations."
+msgstr ""
+
+#: ui/home.slint:187
+msgid "No changes yet. Changes made here or from your computer appear here."
+msgstr ""
+
+#: ui/home.slint:190
+msgid "{} (+{} more)"
+msgstr ""
+
+#: ui/home.slint:193
+msgid "History started"
+msgstr ""
+
+#: ui/home.slint:196
+msgid "Restore this state"
+msgstr ""
+
+#: ui/home.slint:199
+msgid "Check for updates automatically"
+msgstr ""
+
+#: ui/home.slint:202
+msgid "{} min"
+msgstr ""
+
+#: ui/home.slint:203
+msgid "{} h {} min"
+msgstr ""
+
+#: ui/home.slint:206
+msgid "On your computer, run rusttv history apply-pending within {}."
+msgstr ""
+
+#: ui/home.slint:213
+msgid "Applied."
+msgstr ""
+
+#: ui/home.slint:214
+msgid "Saved for your computer. {}"
+msgstr ""
+
+#: ui/home.slint:215
+msgid "Nothing changed: {}"
+msgstr ""
+
+#: ui/home.slint:216
+msgid "Nothing changed: wrong code."
+msgstr ""
+
+#: ui/home.slint:217
+msgid "Too many wrong codes. Approvals are locked for {}."
+msgstr ""
+
+#: ui/home.slint:218
+msgid "Approvals are off in test builds."
+msgstr ""
+
+#: ui/home.slint:219
+msgid "Busy — try again in a moment."
+msgstr ""
+
+#: ui/home.slint:220
+msgid ""
+"Couldn't undo everything: {}. Fix it with rusttv history restore on your "
+"computer, or in Android Settings."
+msgstr ""
+
+#: ui/home.slint:221
+msgid "This is the state now: nothing to restore."
+msgstr ""
+
+#: ui/home.slint:222
+msgid "Your computer has a newer RustTV. Update RustTV on this TV."
+msgstr ""
+
+#: ui/home.slint:223
+msgid "Reading history…"
+msgstr ""
+
+#: ui/home.slint:224
+msgid "History couldn't be read: {}. Your computer's copy can put it back."
+msgstr ""
+
+#: ui/home.slint:225
+msgid "Removed {}. It can't control this TV any more."
+msgstr ""
+
+#: ui/home.slint:439
+msgid "About"
+msgstr ""
+
+#: ui/home.slint:439 ui/home.slint:523 ui/home.slint:983
+msgid "Hidden apps"
+msgstr ""
+
+#: ui/home.slint:439 ui/home.slint:523 ui/home.slint:1176
+msgid "Settings"
+msgstr ""
+
+#: ui/home.slint:879
+msgid "Type a name, then press ✓. Back keeps the old one."
+msgstr ""
+
+#: ui/home.slint:880
+msgid "Move past the edge to take the app out. OK drops it."
+msgstr ""
+
+#: ui/home.slint:881
+msgid "Back closes the folder. Up reaches its name."
+msgstr ""
+
+#: ui/home.slint:993
+msgid "OK puts the app back on Home. Back returns."
+msgstr ""
+
+#: ui/home.slint:1059
+msgid "Version {} · MIT OR Apache-2.0"
+msgstr ""
+
+#: ui/home.slint:1073
+msgid ""
+"Built with Slint under the Slint Royalty-free License 2.0. Also includes "
+"Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0."
+msgstr ""
+
+#: ui/home.slint:1080
+msgid "Source: github.com/damienmiheev/rusttv"
+msgstr ""
+
+#: ui/home.slint:1090
+msgid "Up and Down scroll the notices. Back returns."
+msgstr ""
+
+#: ui/home.slint:1111
+msgid "Third-party notices"
+msgstr ""
+
+#: ui/home.slint:1186
+msgid "Up and Down choose, OK opens. Back returns."
+msgstr ""
+
+#: ui/home.slint:1263
+msgid "Review changes"
+msgstr ""
+
+#: ui/home.slint:1274
+msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
+msgstr ""
+
+#: ui/home.slint:1275
+msgid "Nothing changes until you hold OK. Back cancels."
+msgstr ""
+
+#: ui/home.slint:1313
+msgid "Approve"
+msgstr ""
+
+#: ui/home.slint:1323
+msgid "Press these arrows on the remote:"
+msgstr ""
+
+#: ui/home.slint:1323
+msgid "Now hold OK to apply."
+msgstr ""
+
+#: ui/home.slint:1389
+msgid "OK allows this phone. Back refuses."
+msgstr ""
+
+#: ui/home.slint:1389
+msgid "Back returns."
+msgstr ""
+
+#: ui/home.slint:1417
+msgid ""
+"Scan this code with your phone's camera and open the link.\n\nThe phone must "
+"be on the same network as this TV. The code works once, for two minutes."
+msgstr ""
+
+#: ui/home.slint:1436
+msgid "Allow “{}”?"
+msgstr ""
+
+#: ui/home.slint:1447
+msgid "Check that the phone shows the same code:"
+msgstr ""
+
+#: ui/home.slint:1466
+msgid ""
+"It will be able to press keys and type on this TV. It can never change "
+"settings or approve anything."
+msgstr ""
+
+#: ui/home.slint:1476
+msgid "“{}” is paired."
 msgstr ""

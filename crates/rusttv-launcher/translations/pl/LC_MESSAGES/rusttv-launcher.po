@@ -328,3 +328,58 @@ msgstr "{} dodano do {}"
 
 msgid "Took {} out of {}"
 msgstr "{} wyjęto z {}"
+
+# RustTV Remote (REMOTE.md)
+msgid "RustTV Remote"
+msgstr "RustTV Remote"
+
+msgid "Use a phone as a remote, keyboard and touchpad. It can press keys and type, but never change settings or approve anything."
+msgstr "Telefon jako pilot, klawiatura i touchpad. Może naciskać przyciski i pisać, ale nigdy nie zmienia ustawień ani niczego nie zatwierdza."
+
+msgid "Pair a phone"
+msgstr "Sparuj telefon"
+
+msgid "Shows a code to scan with the phone's camera"
+msgstr "Pokazuje kod do zeskanowania aparatem telefonu"
+
+msgid "Press OK again to remove it"
+msgstr "Naciśnij OK jeszcze raz, aby usunąć"
+
+msgid "OK removes it"
+msgstr "OK usuwa"
+
+msgid "RustTV Remote can't start: another app uses its network port (8484)."
+msgstr "RustTV Remote nie może się uruchomić: inna aplikacja używa jego portu sieciowego (8484)."
+
+msgid "This TV has no network address. Connect it to your network and try again."
+msgstr "Ten telewizor nie ma adresu sieciowego. Połącz go z siecią i spróbuj ponownie."
+
+msgid "Pairing stopped after three wrong tries. Back returns; open Pair a phone again for a new code."
+msgstr "Parowanie przerwane po trzech błędnych próbach. Wstecz, aby wrócić; otwórz Sparuj telefon ponownie, aby dostać nowy kod."
+
+msgid "Couldn't make the code."
+msgstr "Nie udało się utworzyć kodu."
+
+msgid "Removed {}. It can't control this TV any more."
+msgstr "Usunięto {}. Nie może już sterować tym telewizorem."
+
+msgid "OK allows this phone. Back refuses."
+msgstr "OK zezwala na ten telefon. Wstecz odmawia."
+
+msgid "Back returns."
+msgstr "Wstecz, aby wrócić."
+
+msgid "Scan this code with your phone's camera and open the link.\n\nThe phone must be on the same network as this TV. The code works once, for two minutes."
+msgstr "Zeskanuj ten kod aparatem telefonu i otwórz link.\n\nTelefon musi być w tej samej sieci co telewizor. Kod działa raz, przez dwie minuty."
+
+msgid "Allow “{}”?"
+msgstr "Zezwolić na „{}”?"
+
+msgid "Check that the phone shows the same code:"
+msgstr "Sprawdź, czy telefon pokazuje ten sam kod:"
+
+msgid "It will be able to press keys and type on this TV. It can never change settings or approve anything."
+msgstr "Będzie mógł naciskać przyciski i pisać na tym telewizorze. Nigdy nie zmieni ustawień ani niczego nie zatwierdzi."
+
+msgid "“{}” is paired."
+msgstr "Sparowano „{}”."

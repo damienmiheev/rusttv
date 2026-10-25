@@ -328,3 +328,58 @@ msgstr "{} in {} gezet"
 
 msgid "Took {} out of {}"
 msgstr "{} uit {} gehaald"
+
+# RustTV Remote (REMOTE.md)
+msgid "RustTV Remote"
+msgstr "RustTV Remote"
+
+msgid "Use a phone as a remote, keyboard and touchpad. It can press keys and type, but never change settings or approve anything."
+msgstr "Gebruik een telefoon als afstandsbediening, toetsenbord en touchpad. Hij kan toetsen indrukken en typen, maar nooit instellingen wijzigen of iets goedkeuren."
+
+msgid "Pair a phone"
+msgstr "Telefoon koppelen"
+
+msgid "Shows a code to scan with the phone's camera"
+msgstr "Toont een code voor de camera van de telefoon"
+
+msgid "Press OK again to remove it"
+msgstr "Druk nogmaals op OK om te verwijderen"
+
+msgid "OK removes it"
+msgstr "OK verwijdert hem"
+
+msgid "RustTV Remote can't start: another app uses its network port (8484)."
+msgstr "RustTV Remote kan niet starten: een andere app gebruikt de netwerkpoort (8484)."
+
+msgid "This TV has no network address. Connect it to your network and try again."
+msgstr "Deze tv heeft geen netwerkadres. Verbind hem met je netwerk en probeer het opnieuw."
+
+msgid "Pairing stopped after three wrong tries. Back returns; open Pair a phone again for a new code."
+msgstr "Koppelen gestopt na drie foute pogingen. Terug om terug te gaan; open Telefoon koppelen opnieuw voor een nieuwe code."
+
+msgid "Couldn't make the code."
+msgstr "De code kon niet worden gemaakt."
+
+msgid "Removed {}. It can't control this TV any more."
+msgstr "{} verwijderd. Hij kan deze tv niet meer bedienen."
+
+msgid "OK allows this phone. Back refuses."
+msgstr "OK staat deze telefoon toe. Terug weigert."
+
+msgid "Back returns."
+msgstr "Terug om terug te gaan."
+
+msgid "Scan this code with your phone's camera and open the link.\n\nThe phone must be on the same network as this TV. The code works once, for two minutes."
+msgstr "Scan deze code met de camera van je telefoon en open de link.\n\nDe telefoon moet op hetzelfde netwerk zitten als de tv. De code werkt één keer, twee minuten lang."
+
+msgid "Allow “{}”?"
+msgstr "„{}” toestaan?"
+
+msgid "Check that the phone shows the same code:"
+msgstr "Controleer of de telefoon dezelfde code toont:"
+
+msgid "It will be able to press keys and type on this TV. It can never change settings or approve anything."
+msgstr "Hij kan op deze tv toetsen indrukken en typen. Hij kan nooit instellingen wijzigen of iets goedkeuren."
+
+msgid "“{}” is paired."
+msgstr "„{}” is gekoppeld."

@@ -739,11 +739,12 @@ impl Home {
         matches!(self.mode, Mode::Moving { .. })
     }
 
-    /// The phone remote's moving tile is over `target`: on Home it takes
-    /// that place and rests on the tile it pushed aside, as an arrow onto it
-    /// would (resting [`FOLDER_HOVER`] makes a folder); in a folder it takes
-    /// the place of the app it is over.
-    pub fn drag_over(&mut self, target: &TileId, now: Duration) {
+    /// The phone remote's moving tile is over `target`, as on a phone's home
+    /// screen: near the tile's edge (`rest` false) it takes that place; over
+    /// its middle (`rest`) it stays and rests on it, and resting
+    /// [`FOLDER_HOVER`] makes a folder. In a folder it takes the place of the
+    /// app it is over.
+    pub fn drag_over(&mut self, target: &TileId, rest: bool, now: Duration) {
         let Mode::Moving {
             place, last_input, ..
         } = &mut self.mode
@@ -760,15 +761,25 @@ impl Home {
                 if to == self.focus {
                     return;
                 }
+                if rest {
+                    // Over the tile's middle: stay, and rest on it.
+                    if let Mode::Moving { place, .. } = &mut self.mode {
+                        let already =
+                            matches!(place, Place::Home { over: Some((index, _)) } if *index == to);
+                        if !already {
+                            *place = Place::Home {
+                                over: Some((to, now)),
+                            };
+                        }
+                    }
+                    return;
+                }
                 let tile = self.tiles.remove(self.focus);
                 self.tiles.insert(to, tile);
-                let over = if self.focus < to { to - 1 } else { to + 1 };
                 self.focus = to;
                 self.update_scroll();
                 if let Mode::Moving { place, .. } = &mut self.mode {
-                    *place = Place::Home {
-                        over: Some((over, now)),
-                    };
+                    *place = Place::Home { over: None };
                 }
             }
             Place::Folder { id, index } => {
@@ -2550,15 +2561,21 @@ mod tests {
         let mut home = home(4); // a00 a01 a02 a03 About Settings
         assert!(home.pick_up(&id("a00"), ms(0)));
         assert_eq!(home.state(), State::Moving);
-        // Straight onto a02: a00 takes its place, resting on a02.
-        home.drag_over(&id("a02"), ms(100));
+        // Near a02's edge: a00 takes its place, no folder coming.
+        home.drag_over(&id("a02"), false, ms(100));
         assert_eq!(
             &home.tiles()[..4],
             [id("a01"), id("a02"), id("a00"), id("a03")]
         );
-        assert_eq!(home.moving_over(), Some(1));
-        assert_eq!(home.folder_due(), Some(ms(100) + FOLDER_HOVER));
-        home.handle(Input::Tick, ms(100) + FOLDER_HOVER);
+        assert_eq!(home.folder_due(), None);
+        // Over a01's middle: a00 stays where it is and rests on a01.
+        home.drag_over(&id("a01"), true, ms(200));
+        assert_eq!(&home.tiles()[..3], [id("a01"), id("a02"), id("a00")]);
+        assert_eq!(home.moving_over(), Some(0));
+        // Small moves within the middle don't restart the wait.
+        home.drag_over(&id("a01"), true, ms(300));
+        assert_eq!(home.folder_due(), Some(ms(200) + FOLDER_HOVER));
+        home.handle(Input::Tick, ms(200) + FOLDER_HOVER);
         assert_eq!(home.folders().len(), 1);
         assert_eq!(
             home.state(),
@@ -2579,8 +2596,12 @@ mod tests {
     fn a_phone_drag_onto_the_next_tile_and_resting_makes_a_folder() {
         let mut home = home(4);
         assert!(home.pick_up(&id("a00"), ms(0)));
-        home.drag_over(&id("a01"), ms(600));
-        assert_eq!(&home.tiles()[..2], [id("a01"), id("a00")]);
+        home.drag_over(&id("a01"), true, ms(600));
+        assert_eq!(
+            &home.tiles()[..2],
+            [id("a00"), id("a01")],
+            "resting doesn't move it"
+        );
         assert_eq!(home.folder_due(), Some(ms(600) + FOLDER_HOVER));
         home.handle(Input::Tick, ms(1300));
         assert_eq!(home.folders().len(), 1);
@@ -2601,7 +2622,7 @@ mod tests {
             .collect();
         assert_eq!(apps.len(), 2);
         assert!(home.pick_up(&id(&apps[1]), now));
-        home.drag_over(&id(&apps[0]), now);
+        home.drag_over(&id(&apps[0]), false, now);
         assert_eq!(folder_apps(&home, 1), [apps[1].as_str(), apps[0].as_str()]);
         home.handle(Input::OkPressed, now);
         assert_eq!(home.state(), State::Folder);
