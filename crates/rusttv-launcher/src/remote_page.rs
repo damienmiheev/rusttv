@@ -59,6 +59,14 @@ impl RemotePage {
 
     /// Applies one key; returns what ui.rs must do.
     pub fn handle(&mut self, input: Input) -> Option<Action> {
+        // Only keys that act count: OK's press, repeats and ticks come
+        // between two OKs and must not cancel the question.
+        if !matches!(
+            input,
+            Input::Up | Input::Down | Input::Back | Input::OkReleased
+        ) {
+            return None;
+        }
         // A second OK must come right after the first, on the same row.
         let removing = self.removing.take();
         match input {
@@ -99,6 +107,9 @@ mod tests {
         assert_eq!(page.handle(Input::OkReleased), Some(Action::PairPhone));
         page.handle(Input::Down);
         assert_eq!(page.handle(Input::OkReleased), None);
+        assert_eq!(page.removing(), Some(1));
+        // The second OK's press comes first, as from a real remote.
+        assert_eq!(page.handle(Input::OkPressed), None);
         assert_eq!(page.removing(), Some(1));
         assert_eq!(
             page.handle(Input::OkReleased),
