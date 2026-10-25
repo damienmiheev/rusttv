@@ -12,7 +12,9 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rusttv_remote::protocol::{FolderView, HomeMode, HomeView, TextField, TileView, TvMessage};
-use rusttv_remote::{Event, Options, PAGE, PORT, Phones, Remote, RemoteError};
+use rusttv_remote::{Event, Options, PAGE, Phones, Remote, RemoteError};
+
+use crate::settings::PhoneRow;
 
 use crate::model::{FOLDER_PAGE_SIZE, Home, State, TileId};
 use crate::order_file::name_of;
@@ -87,6 +89,7 @@ impl Link {
     /// must hand it to the UI thread.
     pub(crate) fn start(
         files: &Path,
+        port: u16,
         pairing: bool,
         deliver: impl Fn(Event) + Send + 'static,
     ) -> Option<Self> {
@@ -97,7 +100,7 @@ impl Link {
         }
         let mut remote = match Remote::start(
             Options {
-                port: PORT,
+                port,
                 page: PAGE,
                 random: Arc::new(random),
                 clock: Arc::new(now),
@@ -127,19 +130,38 @@ impl Link {
             log::warn!("RustTV Remote: no event thread: {error}");
             return None;
         }
-        if pairing {
-            let mut secret = [0; 32];
-            random(&mut secret);
-            remote.open_pairing(secret);
-            let hex: String = secret.iter().map(|byte| format!("{byte:02x}")).collect();
-            log::info!("RustTV Remote: pair at http://<this computer's address>:{PORT}/#p={hex}");
-        }
-        log::info!("RustTV Remote listening on port {PORT}");
+        log::info!(
+            "RustTV Remote listening on port {}",
+            remote.address().port()
+        );
         Some(Self {
             remote,
             phones_file,
             last: None,
         })
+    }
+
+    /// Opens pairing with a fresh secret for [`rusttv_remote::PAIRING_TIME`]
+    /// and returns the page's pairing link for `host` (the QR code's text).
+    pub(crate) fn open_pairing(&self, host: &str) -> String {
+        let mut secret = [0; 32];
+        random(&mut secret);
+        self.remote.open_pairing(secret);
+        let hex: String = secret.iter().map(|byte| format!("{byte:02x}")).collect();
+        format!("http://{host}:{}/#p={hex}", self.remote.address().port())
+    }
+
+    /// The paired phones, for Settings.
+    pub(crate) fn phone_rows(&self) -> Vec<PhoneRow> {
+        self.remote
+            .phones()
+            .iter()
+            .map(|phone| PhoneRow {
+                id: phone.id,
+                name: phone.name.clone(),
+                last_seen: phone.last_seen,
+            })
+            .collect()
     }
 
     pub(crate) fn remote(&self) -> &Remote {
@@ -170,6 +192,40 @@ impl Link {
             self.push(message);
         }
     }
+}
+
+/// This device's address on the home network: the source address of the
+/// route to the internet. Connecting a UDP socket sends nothing; it only
+/// asks the system which interface it would use.
+pub(crate) fn lan_address() -> Option<std::net::IpAddr> {
+    let socket = std::net::UdpSocket::bind(("0.0.0.0", 0)).ok()?;
+    socket.connect(("192.0.2.1", 9)).ok()?;
+    let address = socket.local_addr().ok()?.ip();
+    (!address.is_unspecified() && !address.is_loopback()).then_some(address)
+}
+
+/// A QR code for `text` as RGBA pixels: `scale` pixels per module, black on
+/// white, with the standard four-module quiet zone. The side length in
+/// pixels comes first.
+pub(crate) fn qr_pixels(text: &str, scale: usize) -> Option<(u32, Vec<u8>)> {
+    let code = qrcode::QrCode::new(text.as_bytes()).ok()?;
+    let modules = code.width();
+    let colors = code.to_colors();
+    let side = (modules + 8) * scale;
+    let mut pixels = vec![255_u8; side * side * 4];
+    for (index, color) in colors.iter().enumerate() {
+        if *color != qrcode::Color::Dark {
+            continue;
+        }
+        let (row, column) = (index / modules + 4, index % modules + 4);
+        for y in row * scale..(row + 1) * scale {
+            let start = (y * side + column * scale) * 4;
+            for pixel in pixels[start..start + scale * 4].as_chunks_mut::<4>().0 {
+                pixel[..3].fill(0);
+            }
+        }
+    }
+    Some((u32::try_from(side).ok()?, pixels))
 }
 
 /// What Home looks like, for the phones (REMOTE.md § 4).
@@ -324,6 +380,16 @@ mod tests {
         let folder = view.folder.expect("the new folder is open");
         assert_eq!(folder.id, "folder:1");
         assert!(view.focused.is_some());
+    }
+
+    #[test]
+    fn the_qr_code_has_a_quiet_zone_and_dark_modules() {
+        let (side, pixels) = qr_pixels("http://192.168.1.20:8484/#p=00", 4).unwrap();
+        assert_eq!(pixels.len(), (side * side * 4) as usize);
+        // The quiet zone is white; the top-left finder pattern starts dark.
+        assert_eq!(&pixels[..4], &[255, 255, 255, 255]);
+        let corner = ((4 * 4 * side + 4 * 4) * 4) as usize;
+        assert_eq!(&pixels[corner..corner + 4], &[0, 0, 0, 255]);
     }
 
     #[test]

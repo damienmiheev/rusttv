@@ -53,7 +53,18 @@ pub(crate) enum Section {
     Animations,
     Updates,
     History,
+    /// RustTV Remote (REMOTE.md § 2): pair a phone, the paired phones.
+    Remote,
     Waiting,
+}
+
+/// A paired phone, as the Remote section lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PhoneRow {
+    pub id: rusttv_remote::PhoneId,
+    pub name: String,
+    /// Unix seconds of its last connection.
+    pub last_seen: Option<u64>,
 }
 
 /// The animation choices, from off to slowest: every scale set to this
@@ -73,6 +84,10 @@ pub(crate) enum Action {
     /// Restore the state of this entry: ui.rs asks the history thread for
     /// the changes from now to it, then reviews them.
     Restore(EntryId),
+    /// Show the pairing screen (QR code, then "Allow?").
+    PairPhone,
+    /// Unpair this phone (OK twice on its row).
+    RemovePhone(rusttv_remote::PhoneId),
 }
 
 /// Changes waiting for review.
@@ -109,6 +124,10 @@ pub(crate) struct SettingsPage {
     section: usize,
     focus: Focus,
     right_to_left: bool,
+    /// The paired phones (from the remote, not the history).
+    phones: Vec<PhoneRow>,
+    /// The phone row whose first OK asked "remove?".
+    removing: Option<usize>,
 }
 
 impl SettingsPage {
@@ -119,7 +138,29 @@ impl SettingsPage {
             section: 0,
             focus: Focus::List,
             right_to_left,
+            phones: Vec::new(),
+            removing: None,
         }
+    }
+
+    /// The paired phones changed (paired, removed, connected).
+    pub fn set_phones(&mut self, phones: Vec<PhoneRow>) {
+        self.phones = phones;
+        self.removing = None;
+        let rows = self.rows();
+        if let Focus::Panel(row) = self.focus {
+            self.focus = Focus::Panel(row.min(rows.saturating_sub(1)));
+        }
+    }
+
+    /// The paired phones.
+    pub fn phones(&self) -> &[PhoneRow] {
+        &self.phones
+    }
+
+    /// The phone row waiting for a second OK to be removed.
+    pub fn removing(&self) -> Option<usize> {
+        self.removing
     }
 
     /// Replaces the data (after a change or a refresh), keeping focus where
@@ -142,7 +183,12 @@ impl SettingsPage {
 
     /// The sections, in order; "Waiting" only when something waits.
     pub fn sections(&self) -> Vec<Section> {
-        let mut sections = vec![Section::Animations, Section::Updates, Section::History];
+        let mut sections = vec![
+            Section::Animations,
+            Section::Updates,
+            Section::History,
+            Section::Remote,
+        ];
         if !self.overview.pending.is_empty() {
             sections.push(Section::Waiting);
         }
@@ -204,7 +250,7 @@ impl SettingsPage {
         match self.section() {
             Section::Animations => self.animation_choice().unwrap_or(NORMAL_ANIMATIONS),
             Section::Updates => usize::from(!self.overview.launcher.update_check),
-            Section::History | Section::Waiting => 0,
+            Section::History | Section::Remote | Section::Waiting => 0,
         }
     }
 
@@ -213,12 +259,15 @@ impl SettingsPage {
             Section::Animations => ANIMATION_CHOICES.len(),
             Section::Updates => 2,
             Section::History => self.overview.entries.len(),
+            Section::Remote => 1 + self.phones.len(),
             Section::Waiting => self.overview.pending.len(),
         }
     }
 
     /// Applies one key; returns what ui.rs must do.
     pub fn handle(&mut self, input: Input) -> Option<Action> {
+        // A second OK must come right after the first, on the same row.
+        let removing = self.removing.take();
         // The panel is on the end side: Right in left-to-right, Left in right-to-left.
         let (toward_panel, toward_list) = if self.right_to_left {
             (Input::Left, Input::Right)
@@ -241,7 +290,7 @@ impl SettingsPage {
                 Input::Down => self.focus = Focus::Panel((row + 1).min(self.rows() - 1)),
                 Input::Back => self.focus = Focus::List,
                 input if input == toward_list => self.focus = Focus::List,
-                Input::OkReleased => return self.activate(row),
+                Input::OkReleased => return self.activate(row, removing),
                 _ => {}
             },
             Focus::Detail(entry) => match input {
@@ -256,7 +305,7 @@ impl SettingsPage {
         None
     }
 
-    fn activate(&mut self, row: usize) -> Option<Action> {
+    fn activate(&mut self, row: usize, removing: Option<usize>) -> Option<Action> {
         match self.section() {
             Section::Animations => {
                 if self.animation_choice() == Some(row) {
@@ -290,6 +339,15 @@ impl SettingsPage {
             }
             Section::History => {
                 self.focus = Focus::Detail(row);
+                None
+            }
+            Section::Remote if row == 0 => Some(Action::PairPhone),
+            Section::Remote => {
+                let phone = self.phones.get(row - 1)?;
+                if removing == Some(row) {
+                    return Some(Action::RemovePhone(phone.id));
+                }
+                self.removing = Some(row);
                 None
             }
             Section::Waiting => None,
@@ -390,10 +448,46 @@ mod tests {
         assert_eq!(page.handle(Input::Back), Some(Action::Close));
     }
 
+    fn phone(byte: u8, name: &str) -> PhoneRow {
+        PhoneRow {
+            id: rusttv_remote::PhoneId([byte; 16]),
+            name: name.to_owned(),
+            last_seen: None,
+        }
+    }
+
+    #[test]
+    fn the_remote_section_pairs_and_removes_with_a_second_ok() {
+        let mut page = page();
+        page.set_phones(vec![phone(1, "iPhone"), phone(2, "Pixel")]);
+        for _ in 0..3 {
+            page.handle(Input::Down);
+        }
+        assert_eq!(page.section(), Section::Remote);
+        page.handle(Input::Right);
+        assert_eq!(page.panel_row(), Some(0));
+        assert_eq!(page.handle(Input::OkReleased), Some(Action::PairPhone));
+        page.handle(Input::Down);
+        assert_eq!(page.handle(Input::OkReleased), None);
+        assert_eq!(page.removing(), Some(1));
+        assert_eq!(
+            page.handle(Input::OkReleased),
+            Some(Action::RemovePhone(rusttv_remote::PhoneId([1; 16])))
+        );
+        // Moving away cancels the question.
+        page.handle(Input::OkReleased);
+        page.handle(Input::Down);
+        assert_eq!(page.removing(), None);
+        assert_eq!(page.handle(Input::OkReleased), None);
+        page.set_phones(vec![phone(1, "iPhone")]);
+        assert_eq!(page.panel_row(), Some(1));
+        assert_eq!(page.removing(), None);
+    }
+
     #[test]
     fn waiting_shows_only_with_pending_approvals() {
         let mut page = page();
-        assert_eq!(page.sections().len(), 3);
+        assert_eq!(page.sections().len(), 4);
         let mut overview = page.overview().clone();
         overview.pending.push(PendingApproval {
             hash: "a".repeat(64),

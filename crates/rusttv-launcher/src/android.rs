@@ -58,6 +58,7 @@ fn android_main(app: AndroidApp) {
         order_file: app.internal_data_path().map(|dir| dir.join("order.toml")),
         lifecycle,
         remote_pairing: false,
+        remote_port: None,
     };
     if let Err(error) = run(platform, options) {
         log::error!("the home screen stopped: {error}");

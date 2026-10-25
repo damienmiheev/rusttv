@@ -131,6 +131,18 @@ to its home screen.
 
 ## 2. Pairing and authentication
 
+- **As built (2026-10-25):** Settings → RustTV Remote lists "Pair a phone"
+  and the paired phones (OK, then OK again, removes one). "Pair a phone"
+  starts the listener if needed and opens a FLAG_SECURE screen with the QR
+  code (drawn by the launcher from `qrcode`'s modules) and the TV's address
+  (the source address of its route to the internet, found with a UDP
+  socket that sends nothing). A phone that asks shows "Allow “name”?" and
+  the code; only OK on the TV's remote allows it, Back refuses. Phone input
+  never reaches this screen, and in Settings a phone can only press Back.
+  With no phone left, the listener stops. Not yet: the history entry for
+  pairing and removing (needs the phones in the history snapshot, a format
+  change of its own) and an on/off switch. `rusttv-launcher-desktop
+  --demo-remote <dir>` renders the section and the pairing screen.
 - **Starting:** "Pair a phone" in Settings shows a QR code with
   `http://<ip>:8484/#p=<secret>`.
   - The secret is 32 random bytes from `SecureRandom`, valid for 2 minutes

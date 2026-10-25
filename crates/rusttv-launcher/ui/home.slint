@@ -90,6 +90,7 @@ export global Strings {
         if section == 1 { return @tr("Updates"); }
         if section == 2 { return @tr("History"); }
         if section == 3 { return @tr("Waiting for your computer"); }
+        if section == 4 { return @tr("RustTV Remote"); }
         return @tr("Animations");
     }
     // settings.rs ANIMATION_CHOICES: off to slowest.
@@ -101,6 +102,19 @@ export global Strings {
         if choice == 5 { return @tr("Slower (1.5×)"); }
         if choice == 6 { return @tr("Slowest (2×)"); }
         return @tr("Normal");
+    }
+    // RustTV Remote section (REMOTE.md § 2).
+    public pure function remote-note() -> string {
+        return @tr("Use a phone as a remote, keyboard and touchpad. It can press keys and type, but never change settings or approve anything.");
+    }
+    public pure function pair-phone() -> string {
+        return @tr("Pair a phone");
+    }
+    public pure function pair-phone-detail() -> string {
+        return @tr("Shows a code to scan with the phone's camera");
+    }
+    public pure function phone-detail(removing: bool) -> string {
+        return removing ? @tr("Press OK again to remove it") : @tr("OK removes it");
     }
     public pure function on-off(on: bool) -> string {
         return on ? @tr("On") : @tr("Off");
@@ -202,6 +216,7 @@ export global Strings {
         if kind == 10 { return @tr("Your computer has a newer RustTV. Update RustTV on this TV."); }
         if kind == 11 { return @tr("Reading history…"); }
         if kind == 12 { return @tr("History couldn't be read: {}. Your computer's copy can put it back.", detail); }
+        if kind == 13 { return @tr("Removed {}. It can't control this TV any more.", detail); }
         return "";
     }
 }
@@ -237,6 +252,7 @@ global Mode {
     out property <int> settings: 6;
     out property <int> review: 7;
     out property <int> folder: 8;
+    out property <int> pairing: 9;
 }
 
 // Picture or placeholder for one app, filling its parent.
@@ -619,6 +635,14 @@ export component HomeWindow inherits Window {
     in property <[int]> review-code;
     in property <int> review-entered;
     in property <bool> review-holding;
+    // The pairing screen (ui/remote_view.rs). Phase 0: the QR code is
+    // shown; 1: a phone asks ("Allow?" and the code); 2: paired; 3: failed.
+    in property <int> pairing-phase;
+    in property <image> pairing-qr;
+    in property <string> pairing-address;
+    in property <string> pairing-name;
+    in property <string> pairing-code;
+    in property <string> pairing-failure;
     // While an app moves on Home: the tile it is on top of, drawn under it
     // in its slot until the next key; -1 for none.
     in property <int> over-index: -1;
@@ -1331,6 +1355,121 @@ export component HomeWindow inherits Window {
                     easing: review-holding ? linear : ease-out;
                 }
             }
+        }
+    }
+    // Pairing a phone (REMOTE.md § 2): the QR code holds the page's address
+    // and a one-time secret; a phone that read it asks, and OK on the remote
+    // allows it. Phone input never reaches this screen. The window is
+    // FLAG_SECURE while it is open, so screen captures don't show the code.
+    if mode == Mode.pairing: Rectangle {
+        background: Theme.bg;
+
+        Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 90 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: @tr("Pair a phone");
+            font-size: 57 * u;
+            font-weight: 500;
+            color: Theme.text;
+        }
+        Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 176 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: pairing-phase == 1 ? @tr("OK allows this phone. Back refuses.") : @tr("Back returns.");
+            font-size: 25 * u;
+            color: Theme.text-dim;
+            overflow: elide;
+        }
+        // The code sits on white with a margin, as phone cameras expect.
+        if pairing-phase == 0: Rectangle {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 260 * u;
+            width: 600 * u;
+            height: 600 * u;
+            border-radius: 24 * u;
+            background: #FFFFFF;
+
+            Image {
+                x: 36 * u;
+                y: 36 * u;
+                width: 528 * u;
+                height: 528 * u;
+                source: pairing-qr;
+                image-rendering: pixelated;
+            }
+        }
+        if pairing-phase == 0: Text {
+            x: Dir.x(780 * u, self.width, parent.width);
+            y: 280 * u;
+            width: 1050 * u;
+            horizontal-alignment: Dir.start;
+            text: @tr("Scan this code with your phone's camera and open the link.\n\nThe phone must be on the same network as this TV. The code works once, for two minutes.");
+            font-size: 33 * u;
+            color: Theme.text;
+            wrap: word-wrap;
+        }
+        if pairing-phase == 0: Text {
+            x: Dir.x(780 * u, self.width, parent.width);
+            y: 820 * u;
+            width: 1050 * u;
+            horizontal-alignment: Dir.start;
+            text: pairing-address;
+            font-size: 25 * u;
+            color: Theme.text-dim;
+        }
+        if pairing-phase == 1: Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 300 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: @tr("Allow “{}”?", pairing-name);
+            font-size: 57 * u;
+            font-weight: 500;
+            color: Theme.text;
+            overflow: elide;
+        }
+        if pairing-phase == 1: Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 420 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: @tr("Check that the phone shows the same code:");
+            font-size: 33 * u;
+            color: Theme.text-dim;
+        }
+        if pairing-phase == 1: Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 490 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: pairing-code;
+            font-size: 180 * u;
+            font-weight: 700;
+            color: Theme.accent;
+        }
+        if pairing-phase == 1: Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 760 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: @tr("It will be able to press keys and type on this TV. It can never change settings or approve anything.");
+            font-size: 29 * u;
+            color: Theme.text;
+            wrap: word-wrap;
+        }
+        if pairing-phase >= 2: Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 300 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: pairing-phase == 2 ? @tr("“{}” is paired. Back returns to Settings.", pairing-name) : pairing-failure;
+            font-size: 41 * u;
+            color: Theme.text;
+            wrap: word-wrap;
         }
     }
 }
