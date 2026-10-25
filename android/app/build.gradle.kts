@@ -31,7 +31,7 @@ val cargoVersionCode: Int = run {
 // debug key so local and CI builds still install. A partial setup fails the
 // build rather than quietly falling back to the debug key. `-Prusttv.unsigned=true`
 // leaves release APKs unsigned (app-<abi>-release-unsigned.apk), for the release
-// workflow: the owner signs them locally (scripts/release-sign.sh).
+// workflow, signed afterwards by .github/workflows/release-sign.yml.
 val unsignedRelease = project.findProperty("rusttv.unsigned") == "true"
 val releaseSigning: Map<String, String>? = run {
     val props = Properties()
