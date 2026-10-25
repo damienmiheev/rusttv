@@ -1,5 +1,5 @@
-//! Reads and writes the tile order file, `order.toml`: the tile order, hidden
-//! apps and the last focused tile.
+//! Reads and writes the tile order file, `order.toml`: the tile order,
+//! folders, hidden apps and the last focused tile.
 //!
 //! The launcher's own private state, not a change to the TV, so it is outside
 //! the CLI safety engine.
@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::model::{KEY_STEP, Order, TileId};
+use crate::model::{Folder, KEY_STEP, Order, TileId};
 
 /// Name used for the About tile in the file. Component names always contain
 /// a `/`, so this cannot clash with an app.
@@ -22,6 +22,9 @@ const HIDDEN: &str = "hidden-apps";
 
 /// Name used for the Settings tile in the file.
 const SETTINGS: &str = "settings";
+
+/// Folders are named `folder:<number>` in the file (and in the history).
+const FOLDER: &str = "folder:";
 
 /// File contents. Fields added later are optional, so older files still load.
 #[derive(Debug, Deserialize)]
@@ -35,6 +38,17 @@ struct OrderFile {
     hidden: BTreeSet<String>,
     /// Tile name → order key.
     keys: BTreeMap<String, i64>,
+    /// Folder tile name (`folder:<number>`) → its name and apps.
+    #[serde(default)]
+    folders: BTreeMap<String, FolderEntry>,
+}
+
+/// One `[folders."folder:<number>"]` table.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FolderEntry {
+    name: String,
+    apps: Vec<String>,
 }
 
 /// The result of [`load`].
@@ -44,6 +58,8 @@ pub(crate) struct Loaded {
     pub order: Order,
     /// Component names of apps kept off Home.
     pub hidden: BTreeSet<String>,
+    /// Folders by number.
+    pub folders: BTreeMap<u32, Folder>,
     /// The tile to focus on start-up, if one was saved.
     pub focus: Option<TileId>,
     /// Set when the file existed but could not be used; it was kept as `.bak`.
@@ -61,6 +77,7 @@ pub(crate) fn load(path: &Path) -> Loaded {
             return Loaded {
                 order: Order::default(),
                 hidden: BTreeSet::new(),
+                folders: BTreeMap::new(),
                 focus: None,
                 warning: None,
             };
@@ -75,6 +92,7 @@ pub(crate) fn load(path: &Path) -> Loaded {
                     .map(|(name, key)| (tile_for_name(name), key)),
             ),
             hidden: file.hidden,
+            folders: folders_from(file.folders),
             focus: file.focus.map(tile_for_name),
             warning: None,
         },
@@ -83,23 +101,51 @@ pub(crate) fn load(path: &Path) -> Loaded {
 }
 
 /// The tile a name in the file stands for. [`TileId::Hidden`] in `keys` is
-/// dropped when the order meets the app list.
+/// dropped when the order meets the app list, and so is a folder without
+/// a `[folders]` entry.
 fn tile_for_name(name: String) -> TileId {
     match name.as_str() {
         ABOUT => TileId::About,
         SETTINGS => TileId::Settings,
         HIDDEN => TileId::Hidden,
-        _ => TileId::App(name),
+        _ => match folder_number(&name) {
+            Some(number) => TileId::Folder(number),
+            None => TileId::App(name),
+        },
     }
 }
 
-fn name_of(id: &TileId) -> &str {
+/// The number in `folder:<number>`. Component names always contain a `/`,
+/// so this cannot clash with an app.
+fn folder_number(name: &str) -> Option<u32> {
+    name.strip_prefix(FOLDER)?.parse().ok()
+}
+
+fn name_of(id: &TileId) -> String {
     match id {
-        TileId::App(component) => component,
-        TileId::About => ABOUT,
-        TileId::Settings => SETTINGS,
-        TileId::Hidden => HIDDEN,
+        TileId::App(component) => component.clone(),
+        TileId::About => ABOUT.to_owned(),
+        TileId::Settings => SETTINGS.to_owned(),
+        TileId::Hidden => HIDDEN.to_owned(),
+        TileId::Folder(number) => format!("{FOLDER}{number}"),
     }
+}
+
+/// Folders from their file (or history) names; entries with another name
+/// are dropped.
+fn folders_from(entries: impl IntoIterator<Item = (String, FolderEntry)>) -> BTreeMap<u32, Folder> {
+    entries
+        .into_iter()
+        .filter_map(|(name, entry)| {
+            Some((
+                folder_number(&name)?,
+                Folder {
+                    name: entry.name,
+                    apps: entry.apps,
+                },
+            ))
+        })
+        .collect()
 }
 
 /// A TOML string, which is also a valid quoted key.
@@ -116,6 +162,7 @@ fn set_aside(path: &Path, reason: &str) -> Loaded {
     Loaded {
         order: Order::default(),
         hidden: BTreeSet::new(),
+        folders: BTreeMap::new(),
         focus: None,
         warning: Some(format!(
             "ignoring tile order file {} ({reason}); {kept}",
@@ -124,17 +171,18 @@ fn set_aside(path: &Path, reason: &str) -> Loaded {
     }
 }
 
-/// Writes `order`, `hidden` and `focus` to `path` atomically: a temporary
-/// file next to it, then a rename.
+/// Writes `order`, `folders`, `hidden` and `focus` to `path` atomically: a
+/// temporary file next to it, then a rename.
 pub(crate) fn save(
     path: &Path,
     order: &Order,
+    folders: &BTreeMap<u32, Folder>,
     hidden: &BTreeSet<String>,
     focus: Option<&TileId>,
 ) -> io::Result<()> {
     let mut text = String::from("# RustTV launcher tile order. Lower keys come first.\n\n");
     if let Some(focus) = focus {
-        text.push_str(&format!("focus = {}\n", quoted(name_of(focus))));
+        text.push_str(&format!("focus = {}\n", quoted(&name_of(focus))));
     }
     if !hidden.is_empty() {
         let names: Vec<String> = hidden.iter().map(|name| quoted(name).to_string()).collect();
@@ -145,7 +193,19 @@ pub(crate) fn save(
     }
     text.push_str("[keys]\n");
     for (id, key) in order.keys() {
-        text.push_str(&format!("{} = {key}\n", quoted(name_of(id))));
+        text.push_str(&format!("{} = {key}\n", quoted(&name_of(id))));
+    }
+    for (number, folder) in folders {
+        let apps: Vec<String> = folder
+            .apps
+            .iter()
+            .map(|app| quoted(app).to_string())
+            .collect();
+        text.push_str(&format!(
+            "\n[folders.\"{FOLDER}{number}\"]\nname = {}\napps = [{}]\n",
+            quoted(&folder.name),
+            apps.join(", ")
+        ));
     }
 
     let temporary = with_suffix(path, ".tmp");
@@ -160,8 +220,9 @@ pub(crate) fn save(
 /// `Updater`, so both see the same switch from the first resume.
 pub(crate) const UPDATE_CHECK_OFF: &str = "update-check-off";
 
-/// The launcher's own state as history records it: tiles in order, hidden
-/// apps and the update switch. `dir` holds `order.toml` and the flag file.
+/// The launcher's own state as history records it: tiles in order,
+/// folders, hidden apps and the update switch. `dir` holds `order.toml` and
+/// the flag file.
 pub(crate) fn launcher_state(dir: &Path) -> rusttv_history::Launcher {
     let loaded = load(&dir.join("order.toml"));
     rusttv_history::Launcher {
@@ -169,7 +230,20 @@ pub(crate) fn launcher_state(dir: &Path) -> rusttv_history::Launcher {
             .order
             .keys()
             .iter()
-            .map(|(id, _)| name_of(id).to_owned())
+            .map(|(id, _)| name_of(id))
+            .collect(),
+        folders: loaded
+            .folders
+            .into_iter()
+            .map(|(number, folder)| {
+                (
+                    name_of(&TileId::Folder(number)),
+                    rusttv_history::Folder {
+                        name: folder.name,
+                        apps: folder.apps,
+                    },
+                )
+            })
             .collect(),
         hidden: loaded.hidden,
         update_check: !dir.join(UPDATE_CHECK_OFF).exists(),
@@ -188,7 +262,16 @@ pub(crate) fn write_launcher_state(dir: &Path, state: &rusttv_history::Launcher)
             .zip(1..)
             .map(|(name, index)| (tile_for_name(name.clone()), index * KEY_STEP)),
     );
-    save(&path, &order, &state.hidden, focus.as_ref())?;
+    let folders = folders_from(state.folders.iter().map(|(name, folder)| {
+        (
+            name.clone(),
+            FolderEntry {
+                name: folder.name.clone(),
+                apps: folder.apps.clone(),
+            },
+        )
+    }));
+    save(&path, &order, &folders, &state.hidden, focus.as_ref())?;
     let flag = dir.join(UPDATE_CHECK_OFF);
     if state.update_check {
         match fs::remove_file(&flag) {
@@ -245,7 +328,14 @@ mod tests {
     #[test]
     fn a_saved_order_loads_back() {
         let dir = TempDir::new("roundtrip");
-        save(&dir.file(), &sample(), &BTreeSet::new(), None).unwrap();
+        save(
+            &dir.file(),
+            &sample(),
+            &BTreeMap::new(),
+            &BTreeSet::new(),
+            None,
+        )
+        .unwrap();
         let loaded = load(&dir.file());
         assert_eq!(loaded.order, sample());
         assert_eq!(loaded.focus, None);
@@ -256,9 +346,23 @@ mod tests {
     #[test]
     fn saving_replaces_the_previous_order() {
         let dir = TempDir::new("replace");
-        save(&dir.file(), &sample(), &BTreeSet::new(), None).unwrap();
+        save(
+            &dir.file(),
+            &sample(),
+            &BTreeMap::new(),
+            &BTreeSet::new(),
+            None,
+        )
+        .unwrap();
         let shorter = Order::from_keys([(TileId::About, 1000)]);
-        save(&dir.file(), &shorter, &BTreeSet::new(), None).unwrap();
+        save(
+            &dir.file(),
+            &shorter,
+            &BTreeMap::new(),
+            &BTreeSet::new(),
+            None,
+        )
+        .unwrap();
         assert_eq!(load(&dir.file()).order, shorter);
     }
 
@@ -267,7 +371,14 @@ mod tests {
         let dir = TempDir::new("focus");
         let app = TileId::App("com.example.a/.Tv \"quoted\"".to_owned());
         for focus in [app, TileId::About, TileId::Hidden] {
-            save(&dir.file(), &sample(), &BTreeSet::new(), Some(&focus)).unwrap();
+            save(
+                &dir.file(),
+                &sample(),
+                &BTreeMap::new(),
+                &BTreeSet::new(),
+                Some(&focus),
+            )
+            .unwrap();
             let loaded = load(&dir.file());
             assert_eq!(loaded.focus, Some(focus));
             assert_eq!(loaded.order, sample());
@@ -282,7 +393,14 @@ mod tests {
             "com.example.d/.Tv \"quoted\"".to_owned(),
         ]);
         let focus = TileId::App("com.example.b/.Main".to_owned());
-        save(&dir.file(), &sample(), &hidden, Some(&focus)).unwrap();
+        save(
+            &dir.file(),
+            &sample(),
+            &BTreeMap::new(),
+            &hidden,
+            Some(&focus),
+        )
+        .unwrap();
         let loaded = load(&dir.file());
         assert!(loaded.warning.is_none());
         assert_eq!(loaded.hidden, hidden);
@@ -290,7 +408,14 @@ mod tests {
         assert_eq!(loaded.order, sample());
 
         // Showing them all again leaves no `hidden` line.
-        save(&dir.file(), &sample(), &BTreeSet::new(), None).unwrap();
+        save(
+            &dir.file(),
+            &sample(),
+            &BTreeMap::new(),
+            &BTreeSet::new(),
+            None,
+        )
+        .unwrap();
         assert!(!fs::read_to_string(dir.file()).unwrap().contains("hidden"));
         assert!(load(&dir.file()).hidden.is_empty());
     }

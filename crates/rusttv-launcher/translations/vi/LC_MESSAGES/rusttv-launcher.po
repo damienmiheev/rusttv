@@ -274,3 +274,57 @@ msgstr "Đã thêm {}"
 
 msgid "Removed {}"
 msgstr "Đã gỡ {}"
+
+msgid "Games"
+msgstr "Trò chơi"
+
+msgid "Music"
+msgstr "Âm nhạc"
+
+msgid "Video"
+msgstr "Video"
+
+msgid "Photos"
+msgstr "Ảnh"
+
+msgid "Social"
+msgstr "Mạng xã hội"
+
+msgid "News"
+msgstr "Tin tức"
+
+msgid "Maps"
+msgstr "Bản đồ"
+
+msgid "Productivity"
+msgstr "Năng suất"
+
+msgid "Accessibility"
+msgstr "Hỗ trợ tiếp cận"
+
+msgid "Folder"
+msgstr "Thư mục"
+
+msgid "Type a name, then press ✓. Back keeps the old one."
+msgstr "Nhập tên rồi nhấn ✓. Quay lại giữ tên cũ."
+
+msgid "Move past the edge to take the app out. OK drops it."
+msgstr "Đi qua mép để lấy ứng dụng ra. OK để thả."
+
+msgid "Back closes the folder. Up reaches its name."
+msgstr "Quay lại đóng thư mục. Lên để tới tên thư mục."
+
+msgid "Made the folder {}"
+msgstr "Đã tạo thư mục {}"
+
+msgid "Removed the folder {}"
+msgstr "Đã xoá thư mục {}"
+
+msgid "Renamed the folder {} to {}"
+msgstr "Đã đổi tên thư mục {} thành {}"
+
+msgid "Put {} in {}"
+msgstr "Đã đưa {} vào {}"
+
+msgid "Took {} out of {}"
+msgstr "Đã lấy {} ra khỏi {}"

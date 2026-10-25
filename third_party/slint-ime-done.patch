@@ -1,0 +1,15 @@
+--- i-slint-backend-android-activity-1.18.1/java/SlintAndroidJavaHelper.java
++++ i-slint-backend-android-activity-1.18.1/java/SlintAndroidJavaHelper.java
+@@ -178,6 +178,12 @@
+     public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
+         outAttrs.inputType = mInputType;
+         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI;
++        // RustTV patch (third_party/README.md): a single-line field asks for a
++        // Done key, so the keyboard sends Enter as a key (Slint's `accepted`)
++        // instead of committing a line break, which Slint turns into a space.
++        if ((mInputType & EditorInfo.TYPE_TEXT_FLAG_MULTI_LINE) == 0) {
++            outAttrs.imeOptions |= EditorInfo.IME_ACTION_DONE;
++        }
+         outAttrs.initialSelStart = mCursorPosition;
+         outAttrs.initialSelEnd = mAnchorPosition;
+         return new BaseInputConnection(this, true) {

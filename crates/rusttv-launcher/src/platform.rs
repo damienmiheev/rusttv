@@ -464,6 +464,8 @@ impl FakePlatform {
 
     /// Fourteen generic apps (three rows with About); two have only an icon, one has no artwork.
     pub fn sample() -> Self {
+        use crate::model::Category;
+
         const NAMES: [&str; 14] = [
             "Movies", "Series", "Music", "News", "Weather", "Photos", "Podcasts", "Sports", "Kids",
             "Fitness", "Radio", "Games", "Browser", "Files",
@@ -471,6 +473,14 @@ impl FakePlatform {
         let mut platform = Self::new(NAMES.iter().map(|name| App {
             id: format!("ai.rusttv.fake.{}/.Main", name.to_lowercase()),
             label: (*name).to_owned(),
+            category: match *name {
+                "Movies" | "Series" | "Kids" => Category::Video,
+                "Music" | "Podcasts" | "Radio" => Category::Audio,
+                "News" => Category::News,
+                "Photos" => Category::Image,
+                "Games" => Category::Game,
+                _ => Category::Other,
+            },
         }));
         for entry in &mut platform.apps {
             match entry.app.label.as_str() {
@@ -672,6 +682,7 @@ mod tests {
         App {
             id: id.to_owned(),
             label: id.to_uppercase(),
+            category: crate::model::Category::Other,
         }
     }
 
@@ -961,7 +972,12 @@ mod tests {
         let mut platform = FakePlatform::sample();
         let entries = platform.list_apps().unwrap();
         let apps: Vec<App> = entries.iter().map(|entry| entry.app.clone()).collect();
-        let mut home = Home::new(Order::default(), Default::default(), false);
+        let mut home = Home::new(
+            Order::default(),
+            Default::default(),
+            Default::default(),
+            false,
+        );
         home.set_apps(&apps);
 
         // 14 apps + About + Settings: three rows, the last one short.

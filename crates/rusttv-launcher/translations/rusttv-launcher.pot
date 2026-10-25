@@ -267,3 +267,57 @@ msgstr ""
 
 msgid "Removed {}"
 msgstr ""
+
+msgid "Games"
+msgstr ""
+
+msgid "Music"
+msgstr ""
+
+msgid "Video"
+msgstr ""
+
+msgid "Photos"
+msgstr ""
+
+msgid "Social"
+msgstr ""
+
+msgid "News"
+msgstr ""
+
+msgid "Maps"
+msgstr ""
+
+msgid "Productivity"
+msgstr ""
+
+msgid "Accessibility"
+msgstr ""
+
+msgid "Folder"
+msgstr ""
+
+msgid "Type a name, then press ✓. Back keeps the old one."
+msgstr ""
+
+msgid "Move past the edge to take the app out. OK drops it."
+msgstr ""
+
+msgid "Back closes the folder. Up reaches its name."
+msgstr ""
+
+msgid "Made the folder {}"
+msgstr ""
+
+msgid "Removed the folder {}"
+msgstr ""
+
+msgid "Renamed the folder {} to {}"
+msgstr ""
+
+msgid "Put {} in {}"
+msgstr ""
+
+msgid "Took {} out of {}"
+msgstr ""

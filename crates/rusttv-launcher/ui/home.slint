@@ -19,8 +19,10 @@ export struct TileData {
     label: string,
     image: image,
     // 0 banner, 1 icon only, 2 no artwork, 3 the built-in About tile, 4 loading,
-    // 5 the Hidden apps tile, 6 the Settings tile.
+    // 5 the Hidden apps tile, 6 the Settings tile, 7 a folder.
     kind: int,
+    // A folder's first four apps (banners or icons), drawn small on its tile.
+    minis: [image],
 }
 
 // One row of a Settings panel (ui.rs `settings_rows`).
@@ -55,6 +57,19 @@ export global Strings {
         if kind == 7 { return @tr("Update installed"); }
         if kind == 8 { return @tr("Update failed: {}", detail); }
         return @tr("Press OK to check for updates");
+    }
+    // model.rs `Category::ALL`: a new folder's first name.
+    public pure function folder-name(category: int) -> string {
+        if category == 0 { return @tr("Games"); }
+        if category == 1 { return @tr("Music"); }
+        if category == 2 { return @tr("Video"); }
+        if category == 3 { return @tr("Photos"); }
+        if category == 4 { return @tr("Social"); }
+        if category == 5 { return @tr("News"); }
+        if category == 6 { return @tr("Maps"); }
+        if category == 7 { return @tr("Productivity"); }
+        if category == 8 { return @tr("Accessibility"); }
+        return @tr("Folder");
     }
     // ui.rs `menu_label`: 0 move, 1 hide.
     public pure function menu-label(item: int) -> string {
@@ -117,7 +132,9 @@ export global Strings {
     }
     // ui.rs `change_line`: 0 reordered, 1 hid, 2 showed, 3 update check,
     // 4 setting, 5 package, 6 firmware, 7 Home takeover, 8 nothing,
-    // 9 added to Home (installed), 10 removed from Home.
+    // 9 added to Home (installed), 10 removed from Home, 11 folder made,
+    // 12 folder removed, 13 folder renamed (old → new), 14 app put in a
+    // folder (name; old: the folder), 15 app taken out of a folder.
     public pure function change-line(kind: int, name: string, old: string, new: string) -> string {
         if kind == 0 { return @tr("Apps reordered"); }
         if kind == 1 { return @tr("Hid {}", name); }
@@ -128,6 +145,11 @@ export global Strings {
         if kind == 7 { return @tr("Home takeover: {}", new); }
         if kind == 9 { return @tr("Added {}", name); }
         if kind == 10 { return @tr("Removed {}", name); }
+        if kind == 11 { return @tr("Made the folder {}", name); }
+        if kind == 12 { return @tr("Removed the folder {}", name); }
+        if kind == 13 { return @tr("Renamed the folder {} to {}", old, new); }
+        if kind == 14 { return @tr("Put {} in {}", name, old); }
+        if kind == 15 { return @tr("Took {} out of {}", name, old); }
         return @tr("No change");
     }
     // 0 changed on the TV now, 1 applied by the computer later.
@@ -214,6 +236,7 @@ global Mode {
     out property <int> hidden: 5;
     out property <int> settings: 6;
     out property <int> review: 7;
+    out property <int> folder: 8;
 }
 
 // Picture or placeholder for one app, filling its parent.
@@ -242,6 +265,29 @@ component Artwork inherits Rectangle {
         image-fit: contain;
         opacity: data.kind == 1 ? 1 : 0;
         animate opacity { duration: 300ms; easing: ease-out; }
+    }
+    // A folder: its first four apps in a 2 × 2 grid on the card, like a
+    // small Home.
+    if data.kind == 7: Rectangle {
+        property <length> pad: parent.width * 0.04;
+        property <length> gap: parent.width * 0.024;
+        property <length> cell-w: (parent.width - 2 * self.pad - self.gap) / 2;
+        property <length> cell-h: (parent.height - 2 * self.pad - self.gap) / 2;
+        for mini[k] in data.minis: Rectangle {
+            x: Dir.x(parent.pad + mod(k, 2) * (parent.cell-w + parent.gap), parent.cell-w, parent.width);
+            y: parent.pad + floor(k / 2) * (parent.cell-h + parent.gap);
+            width: parent.cell-w;
+            height: parent.cell-h;
+            border-radius: root.height * 0.045;
+            clip: true;
+            background: Theme.bg.with-alpha(0.5);
+            Image {
+                width: parent.width;
+                height: parent.height;
+                source: mini;
+                image-fit: cover;
+            }
+        }
     }
     if data.kind == 1 || data.kind == 2: Text {
         y: data.kind == 1 ? parent.height * 0.15 + 80 * u : 0;
@@ -573,8 +619,30 @@ export component HomeWindow inherits Window {
     in property <[int]> review-code;
     in property <int> review-entered;
     in property <bool> review-holding;
+    // While an app moves on Home: the tile it is on top of, drawn under it
+    // in its slot until the next key; -1 for none.
+    in property <int> over-index: -1;
+    // The open folder (ui.rs `render_folder`): its apps, the focused one
+    // (-1: its name), its name. `folder-tiles` stays filled while it closes.
+    in property <bool> folder-open;
+    in property <[TileData]> folder-tiles;
+    in property <int> folder-focus;
+    in property <string> folder-name;
+    // Renaming the open folder: the name field has focus instead of `keys`.
+    in property <bool> renaming;
+    in-out property <string> rename-text;
+    callback rename-done(string);
+    callback rename-cancelled();
     // Key text, pressed (false = released), repeat. Returns whether it was used.
     callback key(string, bool, bool) -> bool;
+
+    public function focus-rename() {
+        rename-input.focus();
+        rename-input.select-all();
+    }
+    public function focus-keys() {
+        keys.focus();
+    }
 
     property <length> u: self.width / 1920;
 
@@ -628,29 +696,177 @@ export component HomeWindow inherits Window {
         animate y { duration: 250ms; easing: ease-out; }
 
         for tile[i] in tiles: Tile {
-            x: Dir.x((90 + mod(i, 6) * 298) * u, 250 * u, root.width);
-            y: floor(i / 6) * 251 * u;
+            // The tile under a moving app is drawn in the app's slot; the
+            // app sits a little off it, so both show.
+            property <int> slot: i == over-index ? focused-index : i;
+            property <length> nudge: i == focused-index && over-index >= 0 ? 28 * u : 0;
+            x: Dir.x((90 + mod(self.slot, 6) * 298) * u + self.nudge, 250 * u, root.width);
+            y: floor(self.slot / 6) * 251 * u + self.nudge * 0.75;
+            // Tiles glide to their new place when a move reorders them.
+            animate x, y { duration: 250ms; easing: cubic-bezier(0.2, 0.9, 0.3, 1); }
             data: tile;
             u: root.u;
             index: i;
             focused: i == focused-index;
-            mode: root.mode;
-            pressed: root.pressed;
-            idle-phase: root.idle-phase;
+            mode: root.mode == Mode.folder ? Mode.browse : root.mode;
+            pressed: root.pressed && !root.folder-open;
+            idle-phase: root.folder-open ? 0 : root.idle-phase;
             badge: tile.kind == 3 && root.update-available;
+            // The open folder's own tile: the panel grew out of it.
+            opacity: root.folder-open && i == focused-index ? 0 : 1;
         }
     }
 
-    // Long-press menu, beside the focused tile: to its right in the first four
-    // columns, else to its left. Fades in; closes at once.
+    // An open folder: Home dims, and the folder grows out of its tile into a
+    // panel with its name above (the panel's geometry animates; its apps fade
+    // in once it has room). Closing shrinks it back into the tile.
+    folder-scrim := Rectangle {
+        background: Theme.bg.with-alpha(0.72);
+        opacity: folder-open ? 1 : 0;
+        animate opacity { duration: folder-open ? 300ms : 250ms; easing: ease-out; }
+    }
+    // Pages of 12 (model.rs FOLDER_PAGE), side by side; the panel shows the
+    // focused app's page and is as tall as its fullest page.
+    property <int> folder-rows: max(1, ceil(folder-tiles.length / 4));
+    property <int> folder-pages: max(1, ceil(folder-tiles.length / 12));
+    property <int> folder-page: floor(max(0, folder-focus) / 12);
+    property <length> panel-w: (56 * 2 + 4 * 250 + 3 * 48) * u;
+    property <length> panel-h: (56 * 2 + 141 + (min(3, folder-rows) - 1) * 251 + 44) * u;
+    property <length> panel-y: 270 * u;
+    // The folder's tile on Home, at its focused size.
+    property <length> home-tile-x: Dir.x((90 + mod(focused-index, 6) * 298 - 19) * u, 288 * u, root.width);
+    property <length> home-tile-y: (shelf ? 800 * u : (90 + (floor(focused-index / 6) - first-row) * 251) * u) - 11 * u;
+    folder-panel := Rectangle {
+        x: folder-open ? (root.width - root.panel-w) / 2 : root.home-tile-x;
+        y: folder-open ? root.panel-y : root.home-tile-y;
+        width: folder-open ? root.panel-w : 288 * u;
+        height: folder-open ? root.panel-h : 162 * u;
+        border-radius: (folder-open ? 28 : 12) * u;
+        background: Theme.surface;
+        opacity: folder-open ? 1 : 0;
+        drop-shadow-color: #00000080;
+        drop-shadow-blur: 80 * u;
+        drop-shadow-offset-y: 40 * u;
+        clip: true;
+        animate x, y, width, height, border-radius {
+            duration: folder-open ? 300ms : 250ms;
+            easing: cubic-bezier(0.2, 0.9, 0.3, 1);
+        }
+        animate opacity { duration: folder-open ? 100ms : 250ms; easing: ease-out; }
+
+        Rectangle {
+            opacity: folder-open ? 1 : 0;
+            animate opacity { duration: folder-open ? 200ms : 100ms; delay: folder-open ? 100ms : 0ms; }
+            Rectangle {
+                x: Dir.x(-root.folder-page * root.panel-w, root.panel-w, root.panel-w);
+                width: root.panel-w;
+                animate x { duration: 350ms; easing: cubic-bezier(0.2, 0.9, 0.3, 1); }
+                for tile[i] in folder-tiles: Tile {
+                    x: Dir.x(floor(i / 12) * root.panel-w + (56 + mod(i, 4) * 298) * u, 250 * u, root.panel-w);
+                    y: (56 + floor(mod(i, 12) / 4) * 251) * u;
+                    animate x, y { duration: 250ms; easing: cubic-bezier(0.2, 0.9, 0.3, 1); }
+                    data: tile;
+                    u: root.u;
+                    index: i;
+                    focused: root.folder-open && i == root.folder-focus;
+                    mode: root.mode == Mode.folder ? Mode.browse : root.mode;
+                    pressed: root.pressed;
+                    idle-phase: root.idle-phase;
+                }
+            }
+        }
+    }
+    // The name: a light pill while it has focus (OK renames), the name
+    // field while renaming.
     Rectangle {
-        property <int> column: mod(focused-index, 6);
-        property <length> tile-x: (90 + column * 298) * u;
-        property <length> tile-y: shelf ? 800 * u : (90 + (floor(focused-index / 6) - first-row) * 251) * u;
+        y: 150 * u;
+        height: 76 * u;
+        width: (renaming ? max(rename-input.preferred-width, 120 * u) : folder-title.preferred-width) + 56 * u;
+        x: (root.width - self.width) / 2;
+        border-radius: 12 * u;
+        background: (folder-focus < 0 || renaming) && folder-open ? Theme.text : Theme.text.with-alpha(0);
+        opacity: folder-open ? 1 : 0;
+        animate opacity { duration: folder-open ? 300ms : 150ms; easing: ease-out; }
+        animate background { duration: 120ms; }
+        folder-title := Text {
+            visible: !renaming;
+            text: folder-name;
+            font-size: 57 * u;
+            font-weight: 500;
+            color: folder-focus < 0 && folder-open ? Theme.bg : Theme.text;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            animate color { duration: 120ms; }
+        }
+        FocusScope {
+            visible: renaming;
+            enabled: renaming;
+            key-pressed(event) => {
+                if event.text == Key.Escape || event.text == "\u{F748}" {
+                    root.rename-cancelled();
+                    return accept;
+                }
+                reject
+            }
+            rename-input := TextInput {
+                x: 28 * u;
+                width: max(self.preferred-width, 120 * u);
+                height: parent.height;
+                text <=> root.rename-text;
+                single-line: true;
+                font-size: 57 * u;
+                font-weight: 500;
+                color: Theme.bg;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                accepted => {
+                    root.rename-done(self.text);
+                }
+            }
+        }
+    }
+    // Page dots, as on a phone: the current page light, the others dim.
+    if folder-open && folder-pages > 1: Rectangle {
+        y: root.panel-y + root.panel-h + 32 * u;
+        height: 12 * u;
+        width: (folder-pages * 28 - 16) * u;
+        x: (root.width - self.width) / 2;
+        for page[p] in folder-pages: Rectangle {
+            x: Dir.x(p * 28 * u, 12 * u, parent.width);
+            width: 12 * u;
+            height: 12 * u;
+            border-radius: 6 * u;
+            background: p == root.folder-page ? Theme.text : Theme.text-dim.with-alpha(0.4);
+            animate background { duration: 200ms; }
+        }
+    }
+    if folder-open: Text {
+        x: 0;
+        y: renaming ? 240 * u : root.panel-y + root.panel-h + (folder-pages > 1 ? 76 : 40) * u;
+        width: root.width;
+        horizontal-alignment: center;
+        text: renaming ? @tr("Type a name, then press ✓. Back keeps the old one.")
+            : mode == Mode.moving ? @tr("Move past the edge to take the app out. OK drops it.")
+            : @tr("Back closes the folder. Up reaches its name.");
+        font-size: 25 * u;
+        color: Theme.text-dim;
+    }
+
+    // Long-press menu, beside the focused tile: to its right in the first four
+    // columns, else to its left. Fades in; closes at once. In an open folder,
+    // beside the focused app in the panel.
+    Rectangle {
+        property <int> column: folder-open ? mod(max(0, folder-focus), 4) : mod(focused-index, 6);
+        property <length> tile-x: folder-open
+            ? (root.width - root.panel-w) / 2 + (56 + column * 298) * u
+            : (90 + column * 298) * u;
+        property <length> tile-y: folder-open
+            ? root.panel-y + (56 + floor(mod(max(0, folder-focus), 12) / 4) * 251) * u
+            : shelf ? 800 * u : (90 + (floor(focused-index / 6) - first-row) * 251) * u;
         width: 380 * u;
         height: (menu-items.length * 64 + 16) * u;
         // 19 is how far the focused tile grows past its slot on each side.
-        x: Dir.x(column < 4 ? self.tile-x + (250 + 19 + 24) * u : self.tile-x - (19 + 24) * u - self.width, self.width, root.width);
+        x: Dir.x(column < (folder-open ? 2 : 4) ? self.tile-x + (250 + 19 + 24) * u : self.tile-x - (19 + 24) * u - self.width, self.width, root.width);
         y: self.tile-y + (141 * u - self.height) / 2;
         opacity: mode == Mode.menu ? 1 : 0;
         animate opacity { duration: mode == Mode.menu ? 150ms : 0ms; easing: ease-out; }

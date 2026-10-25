@@ -274,3 +274,57 @@ msgstr "Додано {}"
 
 msgid "Removed {}"
 msgstr "Видалено {}"
+
+msgid "Games"
+msgstr "Ігри"
+
+msgid "Music"
+msgstr "Музика"
+
+msgid "Video"
+msgstr "Відео"
+
+msgid "Photos"
+msgstr "Фото"
+
+msgid "Social"
+msgstr "Соцмережі"
+
+msgid "News"
+msgstr "Новини"
+
+msgid "Maps"
+msgstr "Карти"
+
+msgid "Productivity"
+msgstr "Продуктивність"
+
+msgid "Accessibility"
+msgstr "Доступність"
+
+msgid "Folder"
+msgstr "Папка"
+
+msgid "Type a name, then press ✓. Back keeps the old one."
+msgstr "Введіть назву й натисніть ✓. Назад — залишити стару."
+
+msgid "Move past the edge to take the app out. OK drops it."
+msgstr "Ведіть за край, щоб вийняти застосунок. OK — покласти."
+
+msgid "Back closes the folder. Up reaches its name."
+msgstr "Назад закриває папку. Вгору — до її назви."
+
+msgid "Made the folder {}"
+msgstr "Створено папку {}"
+
+msgid "Removed the folder {}"
+msgstr "Видалено папку {}"
+
+msgid "Renamed the folder {} to {}"
+msgstr "Папку {} перейменовано на {}"
+
+msgid "Put {} in {}"
+msgstr "{} додано в {}"
+
+msgid "Took {} out of {}"
+msgstr "{} вийнято з {}"

@@ -274,3 +274,57 @@ msgstr "Добавлено: {}"
 
 msgid "Removed {}"
 msgstr "Удалено: {}"
+
+msgid "Games"
+msgstr "Игры"
+
+msgid "Music"
+msgstr "Музыка"
+
+msgid "Video"
+msgstr "Видео"
+
+msgid "Photos"
+msgstr "Фото"
+
+msgid "Social"
+msgstr "Соцсети"
+
+msgid "News"
+msgstr "Новости"
+
+msgid "Maps"
+msgstr "Карты"
+
+msgid "Productivity"
+msgstr "Продуктивность"
+
+msgid "Accessibility"
+msgstr "Спец. возможности"
+
+msgid "Folder"
+msgstr "Папка"
+
+msgid "Type a name, then press ✓. Back keeps the old one."
+msgstr "Введите название и нажмите ✓. Назад — оставить старое."
+
+msgid "Move past the edge to take the app out. OK drops it."
+msgstr "Ведите за край, чтобы вынуть приложение. OK — положить."
+
+msgid "Back closes the folder. Up reaches its name."
+msgstr "Назад закрывает папку. Вверх — к её названию."
+
+msgid "Made the folder {}"
+msgstr "Создана папка {}"
+
+msgid "Removed the folder {}"
+msgstr "Удалена папка {}"
+
+msgid "Renamed the folder {} to {}"
+msgstr "Папка {} переименована в {}"
+
+msgid "Put {} in {}"
+msgstr "{} добавлено в {}"
+
+msgid "Took {} out of {}"
+msgstr "{} вынуто из {}"

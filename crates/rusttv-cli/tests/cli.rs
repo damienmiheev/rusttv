@@ -41,7 +41,7 @@ fn rusttv_with_fake_adb(scenario: &str, args: &[&str]) -> Output {
 
 fn json_stdout(output: &Output) -> Value {
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["schema"], "rusttv.v8");
+    assert_eq!(value["schema"], "rusttv.v9");
     value
 }
 

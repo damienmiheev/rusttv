@@ -11,7 +11,7 @@ use jni::{JNIEnv, JavaVM};
 
 mod history;
 
-use crate::model::App;
+use crate::model::{App, Category};
 use crate::platform::{AppEntry, Artwork, Bitmap, Platform, PlatformError, UpdateStatus};
 use crate::ui::{Lifecycle, RunOptions, run};
 
@@ -170,17 +170,24 @@ impl Platform for AndroidPlatform {
                 let item = JString::from(env.get_object_array_element(&array, index)?);
                 let text: String = env.get_string(&item)?.into();
                 env.delete_local_ref(item)?;
-                // "component\nlabel"; the bridge never puts a newline in a component.
-                let Some((id, label)) = text.split_once('\n') else {
+                // "component\nlabel\ncategory"; the bridge never puts a
+                // newline in a component or a label.
+                let mut parts = text.splitn(3, '\n');
+                let (Some(id), Some(label)) = (parts.next(), parts.next()) else {
                     log::warn!("bridge returned a malformed app entry: {text:?}");
                     continue;
                 };
+                let category = parts
+                    .next()
+                    .and_then(|value| value.parse().ok())
+                    .map_or(Category::Other, Category::from_android);
                 // Drawing banners takes ~7 ms per app: they load after the
                 // first frame, through `artwork`.
                 apps.push(AppEntry {
                     app: App {
                         id: id.to_owned(),
                         label: label.to_owned(),
+                        category,
                     },
                     artwork: Artwork::Later,
                 });

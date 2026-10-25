@@ -152,14 +152,14 @@ delegation file (SECURITY.md § Delegated approval).
 
 ## Results
 
-A tool result's `structuredContent` is the CLI's `rusttv.v8` envelope
+A tool result's `structuredContent` is the CLI's `rusttv.v9` envelope
 (CLI.md § Output), and its first text content item is the same JSON as a
 string (`launcher_restore_plan` and `optimize_restore_plan` may add warnings as further text items, see
 § Plan tools):
 
 ```json
-{"schema":"rusttv.v8","ok":true,"data":{}}
-{"schema":"rusttv.v8","ok":false,"error":{"code":"NO_DEVICE","message":"no devices found; connect one with `rusttv device connect <address>`"}}
+{"schema":"rusttv.v9","ok":true,"data":{}}
+{"schema":"rusttv.v9","ok":false,"error":{"code":"NO_DEVICE","message":"no devices found; connect one with `rusttv device connect <address>`"}}
 ```
 
 - Success: `isError` is `false` and `data` is exactly what the CLI prints.

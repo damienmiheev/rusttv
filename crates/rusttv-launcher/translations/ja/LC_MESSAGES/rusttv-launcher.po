@@ -274,3 +274,57 @@ msgstr "{} を追加"
 
 msgid "Removed {}"
 msgstr "{} を削除"
+
+msgid "Games"
+msgstr "ゲーム"
+
+msgid "Music"
+msgstr "ミュージック"
+
+msgid "Video"
+msgstr "ビデオ"
+
+msgid "Photos"
+msgstr "写真"
+
+msgid "Social"
+msgstr "ソーシャル"
+
+msgid "News"
+msgstr "ニュース"
+
+msgid "Maps"
+msgstr "マップ"
+
+msgid "Productivity"
+msgstr "仕事効率化"
+
+msgid "Accessibility"
+msgstr "アクセシビリティ"
+
+msgid "Folder"
+msgstr "フォルダ"
+
+msgid "Type a name, then press ✓. Back keeps the old one."
+msgstr "名前を入力して ✓ を押します。戻るで元の名前のままです。"
+
+msgid "Move past the edge to take the app out. OK drops it."
+msgstr "端の外へ動かすとアプリを取り出せます。OKで置きます。"
+
+msgid "Back closes the folder. Up reaches its name."
+msgstr "戻るでフォルダを閉じます。上で名前に移動します。"
+
+msgid "Made the folder {}"
+msgstr "フォルダ{}を作成"
+
+msgid "Removed the folder {}"
+msgstr "フォルダ{}を削除"
+
+msgid "Renamed the folder {} to {}"
+msgstr "フォルダ{}の名前を{}に変更"
+
+msgid "Put {} in {}"
+msgstr "{}を{}に追加"
+
+msgid "Took {} out of {}"
+msgstr "{}を{}から取り出し"

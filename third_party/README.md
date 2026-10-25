@@ -64,5 +64,18 @@ frames during scripted navigation: under 0.1% with and without the limit
 (A/B/A/B, same place). Not reported upstream: Skia's default is a choice,
 not a bug, and the right limit depends on the device.
 
+## Slint 1.18.1: a Done key for single-line text fields
+
+`slint-ime-done.patch` (applied to
+`i-slint-backend-android-activity-1.18.1/java/SlintAndroidJavaHelper.java`).
+Slint's input view asked the on-screen keyboard for no action, so on the
+Google TV keyboard Enter committed a line break, which a single-line
+`TextInput` turns into a space: renaming a folder could not be confirmed
+from the keyboard. A field without `TYPE_TEXT_FLAG_MULTI_LINE` now asks for
+`IME_ACTION_DONE`; the keyboard shows a ✓ key and sends Enter as a key
+event, which reaches Slint as Return (`accepted`). Multi-line fields are
+unchanged. Checked on the Google TV emulator (API 34); not yet on the
+Philips. Not reported upstream yet.
+
 **Removing it.** Once a Slint release fixes the leak, delete
 this directory and the `[patch.crates-io]` section, and re-measure.

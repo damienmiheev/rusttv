@@ -274,3 +274,57 @@ msgstr "{} ditambahkan"
 
 msgid "Removed {}"
 msgstr "{} dihapus"
+
+msgid "Games"
+msgstr "Game"
+
+msgid "Music"
+msgstr "Musik"
+
+msgid "Video"
+msgstr "Video"
+
+msgid "Photos"
+msgstr "Foto"
+
+msgid "Social"
+msgstr "Sosial"
+
+msgid "News"
+msgstr "Berita"
+
+msgid "Maps"
+msgstr "Peta"
+
+msgid "Productivity"
+msgstr "Produktivitas"
+
+msgid "Accessibility"
+msgstr "Aksesibilitas"
+
+msgid "Folder"
+msgstr "Folder"
+
+msgid "Type a name, then press ✓. Back keeps the old one."
+msgstr "Ketik nama, lalu tekan ✓. Kembali mempertahankan yang lama."
+
+msgid "Move past the edge to take the app out. OK drops it."
+msgstr "Lewati tepi untuk mengeluarkan aplikasi. OK menaruhnya."
+
+msgid "Back closes the folder. Up reaches its name."
+msgstr "Kembali menutup folder. Atas menuju namanya."
+
+msgid "Made the folder {}"
+msgstr "Folder {} dibuat"
+
+msgid "Removed the folder {}"
+msgstr "Folder {} dihapus"
+
+msgid "Renamed the folder {} to {}"
+msgstr "Folder {} diganti nama menjadi {}"
+
+msgid "Put {} in {}"
+msgstr "{} dimasukkan ke {}"
+
+msgid "Took {} out of {}"
+msgstr "{} dikeluarkan dari {}"

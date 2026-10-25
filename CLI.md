@@ -235,12 +235,17 @@ Without `--json`: human-readable text on stdout, errors and hints on stderr.
 With `--json`, stdout carries exactly one JSON object, success or failure:
 
 ```json
-{"schema":"rusttv.v8","ok":true,"data":{}}
-{"schema":"rusttv.v8","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
+{"schema":"rusttv.v9","ok":true,"data":{}}
+{"schema":"rusttv.v9","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
 ```
 
-- `schema` identifies the contract version. Within `rusttv.v8`, fields are only
+- `schema` identifies the contract version. Within `rusttv.v9`, fields are only
   added, never renamed, removed or changed in meaning; anything else bumps it.
+  - `rusttv.v9`: [HistoryChange](#historychange) has new kinds for launcher
+    folders (`folder_added`, `folder_removed`, `folder_renamed`,
+    `in_folder`), and `history show`'s `state` may hold
+    `launcher.folders` (TV history snapshots in format 2, written only
+    once a folder exists). Everything else is unchanged.
   - `rusttv.v8`: new commands `history sync | log | show | diff | restore |
     restore-tv | apply-pending | allow-tv-settings | revoke-tv-settings`
     ([HistorySync](#historysync), [HistoryEntry](#historyentry),
@@ -543,7 +548,11 @@ device's clock, or null before 2024), `author` (`tv` \| `mac` \| `drift`
 
 ### HistoryChange
 
-`kind` and its fields: `reordered` (`moved`: tiles), `hidden` (`tile`,
+`kind` and its fields: `reordered` (`moved`: tiles, on Home or in a
+folder), `added` / `removed` (`tile`), `folder_added` / `folder_removed`
+(`folder`: `folder:<number>`, `name`), `folder_renamed` (`folder`, `old`,
+`new`), `in_folder` (`tile`, `folder`, `name`, `inside`: the app went into
+the folder, or out of it), `hidden` (`tile`,
 `hidden`), `update_check` (`on`), `setting` (`key`, `old`, `new`; null =
 unset), `package` (`package`, `old`, `new`: `enabled` \| `disabled`, null =
 not observed), `firmware` (`old`, `new`), `takeover` (`active`).

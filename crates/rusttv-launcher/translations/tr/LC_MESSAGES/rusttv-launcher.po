@@ -274,3 +274,57 @@ msgstr "{} eklendi"
 
 msgid "Removed {}"
 msgstr "{} kaldırıldı"
+
+msgid "Games"
+msgstr "Oyunlar"
+
+msgid "Music"
+msgstr "Müzik"
+
+msgid "Video"
+msgstr "Video"
+
+msgid "Photos"
+msgstr "Fotoğraflar"
+
+msgid "Social"
+msgstr "Sosyal"
+
+msgid "News"
+msgstr "Haberler"
+
+msgid "Maps"
+msgstr "Haritalar"
+
+msgid "Productivity"
+msgstr "Verimlilik"
+
+msgid "Accessibility"
+msgstr "Erişilebilirlik"
+
+msgid "Folder"
+msgstr "Klasör"
+
+msgid "Type a name, then press ✓. Back keeps the old one."
+msgstr "Bir ad yazın, sonra ✓ tuşuna basın. Geri eskisini korur."
+
+msgid "Move past the edge to take the app out. OK drops it."
+msgstr "Uygulamayı çıkarmak için kenarı geçin. OK bırakır."
+
+msgid "Back closes the folder. Up reaches its name."
+msgstr "Geri klasörü kapatır. Yukarı adına gider."
+
+msgid "Made the folder {}"
+msgstr "{} klasörü oluşturuldu"
+
+msgid "Removed the folder {}"
+msgstr "{} klasörü kaldırıldı"
+
+msgid "Renamed the folder {} to {}"
+msgstr "{} klasörünün adı {} oldu"
+
+msgid "Put {} in {}"
+msgstr "{} → {} içine kondu"
+
+msgid "Took {} out of {}"
+msgstr "{} → {} dışına alındı"
