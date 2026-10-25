@@ -3,7 +3,7 @@
 //! Time comes from the caller as a monotonic [`Duration`] (for example time
 //! since start-up), so the model is deterministic and testable on the host.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 /// Tiles per grid row.
@@ -38,6 +38,26 @@ pub const LAUNCH_TIMEOUT: Duration = Duration::from_secs(3);
 /// The caller sends [`Input::Tick`] once this has passed after the last input.
 pub const MOVE_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// How long a moving app must stay on top of another app (or a folder)
+/// before they make a folder (or it goes in).
+///
+/// An arrow pressed sooner passes over the tile; OK sooner drops the app in
+/// that place. The caller sends [`Input::Tick`] once this has passed after
+/// the move.
+pub const FOLDER_HOVER: Duration = Duration::from_millis(600);
+
+/// Apps per row in an open folder.
+///
+/// The folder panel (`home.slint`) is laid out for this value.
+const FOLDER_COLUMNS: usize = 4;
+
+/// Apps per page of an open folder: three rows. Pages sit side by side;
+/// Left and Right cross from one to the next.
+const FOLDER_PAGE: usize = 3 * FOLDER_COLUMNS;
+
+/// The longest folder name, in characters.
+pub const FOLDER_NAME_MAX: usize = 40;
+
 /// Gap between order keys when keys are assigned or renumbered.
 ///
 /// Sparse keys let a moved tile take a key between its neighbours without
@@ -56,6 +76,8 @@ pub enum TileId {
     /// Opens the hidden apps. Shown last, and only while an installed app is hidden;
     /// never part of the [`Order`].
     Hidden,
+    /// A folder of apps, by its number (the key of [`Home::folders`]).
+    Folder(u32),
 }
 
 /// A launchable app as reported by the platform.
@@ -65,6 +87,111 @@ pub struct App {
     pub id: String,
     /// User-visible name; used to sort apps on first run.
     pub label: String,
+    /// What kind of app it says it is; names a new folder.
+    pub category: Category,
+}
+
+/// An app's own category (Android's `ApplicationInfo.category`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Category {
+    /// Games.
+    Game,
+    /// Music, podcasts, radio.
+    Audio,
+    /// Films, TV, video.
+    Video,
+    /// Photos and pictures.
+    Image,
+    /// Social networks and messaging.
+    Social,
+    /// News and magazines.
+    News,
+    /// Maps and navigation.
+    Maps,
+    /// Productivity.
+    Productivity,
+    /// Accessibility.
+    Accessibility,
+    /// No category (most apps).
+    #[default]
+    Other,
+}
+
+impl Category {
+    /// Every category, in the order of [`Category::index`].
+    pub const ALL: [Self; 10] = [
+        Self::Game,
+        Self::Audio,
+        Self::Video,
+        Self::Image,
+        Self::Social,
+        Self::News,
+        Self::Maps,
+        Self::Productivity,
+        Self::Accessibility,
+        Self::Other,
+    ];
+
+    /// From Android's `ApplicationInfo.CATEGORY_*` value (0–8); anything
+    /// else, including `CATEGORY_UNDEFINED` (-1), is [`Category::Other`].
+    pub fn from_android(value: i32) -> Self {
+        usize::try_from(value)
+            .ok()
+            .and_then(|index| Self::ALL.get(index))
+            .copied()
+            .filter(|category| *category != Self::Other)
+            .unwrap_or(Self::Other)
+    }
+
+    /// Position in [`Category::ALL`]; [`FolderNames`] is indexed by it.
+    pub fn index(self) -> usize {
+        self as usize
+    }
+}
+
+/// The first name of a new folder for each [`Category`], in the UI's
+/// language; [`Category::Other`] is the plain "Folder".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FolderNames(pub [String; 10]);
+
+impl Default for FolderNames {
+    fn default() -> Self {
+        Self(
+            [
+                "Games",
+                "Music",
+                "Video",
+                "Photos",
+                "Social",
+                "News",
+                "Maps",
+                "Productivity",
+                "Accessibility",
+                "Folder",
+            ]
+            .map(String::from),
+        )
+    }
+}
+
+/// A folder on Home: its name and its apps (component names) in order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Folder {
+    /// What the person called it, or the first name it got.
+    pub name: String,
+    /// Component names, in the folder's order. Never empty on Home: a
+    /// folder goes when its last app leaves.
+    pub apps: Vec<String>,
+}
+
+/// An open folder: which one, and what has focus in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OpenFolder {
+    /// The folder's number.
+    pub id: u32,
+    /// The focused app's index in [`Folder::apps`]; `None` while the name
+    /// has focus.
+    pub focus: Option<usize>,
 }
 
 /// A key or lifecycle event for the home screen.
@@ -116,8 +243,11 @@ pub enum Effect {
     OpenSettings,
     /// A key while Settings is open: the Settings page handles it.
     Settings(Input),
-    /// Persist [`Home::order`] and [`Home::hidden`].
+    /// Persist [`Home::order`], [`Home::hidden`] and [`Home::folders`].
     SaveOrder,
+    /// OK on an open folder's name: let the person type a new one, then
+    /// call [`Home::rename_folder`].
+    RenameFolder(u32),
     /// Tell the user this app (component name) could not be opened.
     ShowLaunchError(String),
 }
@@ -151,6 +281,8 @@ pub enum State {
     Hidden,
     /// The Settings page (or its review screen) is open.
     Settings,
+    /// A folder is open over Home ([`Home::open_folder`]).
+    Folder,
 }
 
 /// User-defined tile order as sparse integer keys.
@@ -192,19 +324,22 @@ impl Order {
         self.keys.iter().map(|(id, _)| id.clone()).collect()
     }
 
-    /// Drops apps that are gone and appends new ones; returns whether anything changed.
+    /// Drops apps and folders that are gone and appends new ones; returns
+    /// whether anything changed.
     ///
-    /// New apps are appended sorted by label, before the built-in tiles
-    /// (About, then Settings) while those are at the end, so a first run
-    /// gives an alphabetical grid ending with About and Settings. A
-    /// built-in tile the user moved elsewhere stays where it is; a missing
-    /// one is added to the end block.
-    fn reconcile(&mut self, apps: &[App]) -> bool {
+    /// `apps` are the apps shown outside folders, `folders` the folders on
+    /// Home. New apps are appended sorted by label, then folders missing
+    /// from the order, before the built-in tiles (About, then Settings)
+    /// while those are at the end, so a first run gives an alphabetical
+    /// grid ending with About and Settings. A built-in tile the user moved
+    /// elsewhere stays where it is; a missing one is added to the end block.
+    fn reconcile(&mut self, apps: &[App], folders: &BTreeSet<u32>) -> bool {
         let before = self.keys.clone();
         self.keys.retain(|(id, _)| match id {
             TileId::App(component) => apps.iter().any(|app| app.id == *component),
             TileId::About | TileId::Settings => true,
             TileId::Hidden => false,
+            TileId::Folder(folder) => folders.contains(folder),
         });
         // The built-in tiles at the end stay at the end, in their order.
         let tail = self
@@ -234,6 +369,12 @@ impl Order {
 
         let mut ids: Vec<TileId> = self.keys.iter().map(|(id, _)| id.clone()).collect();
         ids.extend(new.into_iter().map(|app| TileId::App(app.id.clone())));
+        for folder in folders {
+            let id = TileId::Folder(*folder);
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
         ids.extend(tail.iter().map(|(id, _)| id.clone()));
         for builtin in [TileId::About, TileId::Settings] {
             if !ids.contains(&builtin) {
@@ -286,13 +427,16 @@ impl Order {
                 self.keys.push((id.clone(), key));
                 self.keys.sort_by_key(|&(_, key)| key);
             }
-            _ => {
-                self.keys = (1..)
-                    .zip(tiles)
-                    .map(|(n, id)| (id.clone(), n * KEY_STEP))
-                    .collect();
-            }
+            _ => self.renumber(tiles),
         }
+    }
+
+    /// Makes `tiles` the order, with fresh keys.
+    fn renumber(&mut self, tiles: &[TileId]) {
+        self.keys = (1..)
+            .zip(tiles)
+            .map(|(n, id)| (id.clone(), n * KEY_STEP))
+            .collect();
     }
 }
 
@@ -304,44 +448,76 @@ enum Direction {
     Right,
 }
 
+/// Home before a move, put back when it is cancelled.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Before {
+    /// The moving tile.
+    tile: TileId,
+    tiles: Vec<TileId>,
+    folders: BTreeMap<u32, Folder>,
+    /// The folder the app was picked up in, open again after a cancel.
+    folder: Option<u32>,
+}
+
+/// Where a moving app is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Place {
+    /// On Home at `Home::focus`. `over` is the tile it just passed onto and
+    /// when: drawn under the app until the next key, it makes a folder
+    /// with the app after [`FOLDER_HOVER`].
+    Home { over: Option<(usize, Duration)> },
+    /// In an open folder, at this index of its apps.
+    Folder { id: u32, index: usize },
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Mode {
     Browse,
-    /// `original` is the tile list before the pick-up, restored on cancel;
-    /// `last_input` is when the user last pressed a key in this mode.
+    /// `before` is put back on cancel; `last_input` is when the user last
+    /// pressed a key in this mode; `made` is a folder this move made, which
+    /// goes again if the app leaves it before the drop.
     Moving {
-        original: Vec<TileId>,
+        before: Box<Before>,
         last_input: Duration,
+        place: Place,
+        made: Option<u32>,
     },
+    /// `folder` is the open folder it was launched from, open again on return.
     Launching {
         app: String,
         since: Duration,
+        folder: Option<OpenFolder>,
     },
     About,
     Settings,
-    /// `selected` indexes [`menu_items`] of the focused tile.
+    /// `selected` indexes [`menu_items`] of the focused tile, or of the
+    /// focused app in `folder`.
     Menu {
         selected: usize,
+        folder: Option<OpenFolder>,
     },
     /// `focus` indexes `Home::hidden_apps`.
     Hidden {
         focus: usize,
     },
+    Folder(OpenFolder),
 }
 
 /// What the long-press menu offers for a tile; empty means no menu.
 fn menu_items(tile: Option<&TileId>) -> &'static [MenuItem] {
     match tile {
         Some(TileId::App(_)) => &[MenuItem::Move, MenuItem::Hide],
-        Some(TileId::About | TileId::Settings) => &[MenuItem::Move],
+        Some(TileId::About | TileId::Settings | TileId::Folder(_)) => &[MenuItem::Move],
         Some(TileId::Hidden) | None => &[],
     }
 }
 
-/// The home screen: tile order, hidden apps, focus, scroll position and mode.
+/// The home screen: tile order, folders, hidden apps, focus, scroll position and mode.
 #[derive(Debug, Clone)]
 pub struct Home {
     order: Order,
+    /// Folders on Home by number; each one is in `order` once.
+    folders: BTreeMap<u32, Folder>,
     /// Component names of apps kept off Home, installed or not.
     hidden: BTreeSet<String>,
     /// The last app list from the platform.
@@ -356,17 +532,26 @@ pub struct Home {
     mode: Mode,
     /// OK is physically down; further presses are key repeats.
     ok_held: bool,
-    /// When OK went down in browse mode; cleared once it launches, moves or is cancelled.
+    /// When OK went down in browse mode (or in a folder); cleared once it
+    /// launches, moves or is cancelled.
     ok_since: Option<Duration>,
     right_to_left: bool,
+    folder_names: FolderNames,
 }
 
 impl Home {
-    /// Creates a home screen with a stored order and hidden apps; call [`Home::set_apps`] next.
-    pub fn new(order: Order, hidden: BTreeSet<String>, right_to_left: bool) -> Self {
+    /// Creates a home screen with a stored order, folders and hidden apps;
+    /// call [`Home::set_apps`] next.
+    pub fn new(
+        order: Order,
+        folders: BTreeMap<u32, Folder>,
+        hidden: BTreeSet<String>,
+        right_to_left: bool,
+    ) -> Self {
         Self {
             tiles: order.ids(),
             order,
+            folders,
             hidden,
             apps: Vec::new(),
             hidden_apps: Vec::new(),
@@ -376,29 +561,35 @@ impl Home {
             ok_held: false,
             ok_since: None,
             right_to_left,
+            folder_names: FolderNames::default(),
         }
+    }
+
+    /// Sets the first names of new folders (in the UI's language).
+    pub fn set_folder_names(&mut self, names: FolderNames) {
+        self.folder_names = names;
     }
 
     /// Replaces the app list, keeping focus on the same tile; returns whether the order changed.
     pub fn set_apps(&mut self, apps: &[App]) -> bool {
         match self.mode {
             Mode::Moving { .. } => self.cancel_move(),
-            Mode::Menu { .. } => self.mode = Mode::Browse,
+            Mode::Menu { folder, .. } => self.mode = folder.map_or(Mode::Browse, Mode::Folder),
             _ => {}
         }
         self.apps = apps.to_vec();
         self.refresh()
     }
 
-    /// Rebuilds the tiles from the app list, hidden apps and order, keeping
-    /// focus on the same tile; returns whether the order changed.
+    /// Rebuilds the tiles from the app list, folders, hidden apps and order,
+    /// keeping focus on the same tile; returns whether the order or a folder
+    /// changed.
     fn refresh(&mut self) -> bool {
         let focused = self.focused().cloned();
         let (mut hidden, shown): (Vec<&App>, Vec<&App>) = self
             .apps
             .iter()
             .partition(|app| self.hidden.contains(&app.id));
-        let shown: Vec<App> = shown.into_iter().cloned().collect();
         hidden.sort_by(|a, b| {
             a.label
                 .to_lowercase()
@@ -408,7 +599,23 @@ impl Home {
         hidden.dedup_by(|a, b| a.id == b.id);
         self.hidden_apps = hidden.into_iter().map(|app| app.id.clone()).collect();
 
-        let changed = self.order.reconcile(&shown);
+        // Folders keep only shown apps, each once; an empty folder goes.
+        let folders_before = self.folders.clone();
+        let mut placed = BTreeSet::new();
+        for folder in self.folders.values_mut() {
+            folder
+                .apps
+                .retain(|id| shown.iter().any(|app| app.id == *id) && placed.insert(id.clone()));
+        }
+        self.folders.retain(|_, folder| !folder.apps.is_empty());
+        let top: Vec<App> = shown
+            .into_iter()
+            .filter(|app| !placed.contains(&app.id))
+            .cloned()
+            .collect();
+
+        let ids: BTreeSet<u32> = self.folders.keys().copied().collect();
+        let changed = self.order.reconcile(&top, &ids) || self.folders != folders_before;
         self.tiles = self.order.ids();
         if !self.hidden_apps.is_empty() {
             self.tiles.push(TileId::Hidden);
@@ -416,11 +623,18 @@ impl Home {
         self.focus = focused
             .and_then(|id| self.tiles.iter().position(|tile| *tile == id))
             .unwrap_or_else(|| self.focus.min(self.tiles.len().saturating_sub(1)));
-        if let Mode::Hidden { focus } = &mut self.mode {
-            match self.hidden_apps.len() {
+        match &mut self.mode {
+            Mode::Hidden { focus } => match self.hidden_apps.len() {
                 0 => self.mode = Mode::Browse,
                 len => *focus = (*focus).min(len - 1),
-            }
+            },
+            Mode::Folder(open) => match self.folders.get(&open.id) {
+                None => self.mode = Mode::Browse,
+                Some(folder) => {
+                    open.focus = open.focus.map(|focus| focus.min(folder.apps.len() - 1));
+                }
+            },
+            _ => {}
         }
         self.update_scroll();
         changed
@@ -458,6 +672,12 @@ impl Home {
         &self.order
     }
 
+    /// The folders on Home, by number. During a move this differs from what
+    /// is saved until the drop.
+    pub fn folders(&self) -> &BTreeMap<u32, Folder> {
+        &self.folders
+    }
+
     /// Component names of all hidden apps, including ones no longer installed.
     pub fn hidden(&self) -> &BTreeSet<String> {
         &self.hidden
@@ -476,10 +696,60 @@ impl Home {
         }
     }
 
+    /// The open folder, also while its menu is open or an app moves in it.
+    pub fn open_folder(&self) -> Option<OpenFolder> {
+        match self.mode {
+            Mode::Folder(open)
+            | Mode::Menu {
+                folder: Some(open), ..
+            }
+            | Mode::Launching {
+                folder: Some(open), ..
+            } => Some(open),
+            Mode::Moving {
+                place: Place::Folder { id, index },
+                ..
+            } => Some(OpenFolder {
+                id,
+                focus: Some(index),
+            }),
+            _ => None,
+        }
+    }
+
+    /// While an app moves on Home: the index in [`Home::tiles`] of the tile
+    /// it is on top of, drawn under it until the next key.
+    pub fn moving_over(&self) -> Option<usize> {
+        match self.mode {
+            Mode::Moving {
+                place: Place::Home {
+                    over: Some((index, _)),
+                },
+                ..
+            } => Some(index),
+            _ => None,
+        }
+    }
+
+    /// When the tile under the moving app makes a folder with it (or takes
+    /// it in): `None` when nothing will.
+    pub fn folder_due(&self) -> Option<Duration> {
+        match self.mode {
+            Mode::Moving {
+                place:
+                    Place::Home {
+                        over: Some((index, since)),
+                    },
+                ..
+            } if self.can_take(index) => Some(since + FOLDER_HOVER),
+            _ => None,
+        }
+    }
+
     /// The open long-press menu's items and the selected index.
     pub fn menu(&self) -> Option<(&'static [MenuItem], usize)> {
         match self.mode {
-            Mode::Menu { selected } => Some((menu_items(self.focused()), selected)),
+            Mode::Menu { selected, .. } => Some((menu_items(self.current().as_ref()), selected)),
             _ => None,
         }
     }
@@ -494,12 +764,46 @@ impl Home {
         }
     }
 
-    /// Replaces the order and hidden apps (the history rewrote them),
-    /// keeping focus on the same tile where it still exists.
-    pub fn replace_order(&mut self, order: Order, hidden: BTreeSet<String>) {
+    /// Replaces the order, folders and hidden apps (the history rewrote
+    /// them), keeping focus on the same tile where it still exists.
+    pub fn replace_order(
+        &mut self,
+        order: Order,
+        folders: BTreeMap<u32, Folder>,
+        hidden: BTreeSet<String>,
+    ) {
+        if matches!(self.mode, Mode::Moving { .. }) {
+            self.cancel_move();
+        }
         self.order = order;
+        self.folders = folders;
         self.hidden = hidden;
         self.refresh();
+    }
+
+    /// Gives folder `id` a new name; returns whether it changed (then save).
+    ///
+    /// Spaces at either end, control characters and bidi controls are
+    /// dropped and the name is cut to [`FOLDER_NAME_MAX`] characters; an
+    /// empty name keeps the old one.
+    pub fn rename_folder(&mut self, id: u32, name: &str) -> bool {
+        let name: String = name
+            .trim()
+            .chars()
+            .filter(|c| {
+                !c.is_control()
+                    && !matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+            })
+            .take(FOLDER_NAME_MAX)
+            .collect();
+        let name = name.trim_end();
+        match self.folders.get_mut(&id) {
+            Some(folder) if !name.is_empty() && folder.name != name => {
+                name.clone_into(&mut folder.name);
+                true
+            }
+            _ => false,
+        }
     }
 
     /// Leaves the Settings page (it decides when: Back on its section list).
@@ -519,6 +823,7 @@ impl Home {
             Mode::Settings => State::Settings,
             Mode::Menu { .. } => State::Menu,
             Mode::Hidden { .. } => State::Hidden,
+            Mode::Folder(_) => State::Folder,
         }
     }
 
@@ -536,13 +841,18 @@ impl Home {
         }
 
         match (&self.mode, input) {
+            // Back from an app opened in a folder: the folder is still open.
+            (Mode::Launching { folder, .. }, Input::Paused) => {
+                self.mode = folder.map_or(Mode::Browse, Mode::Folder);
+                None
+            }
             (
                 Mode::Moving { .. }
                 | Mode::About
                 | Mode::Settings
-                | Mode::Launching { .. }
                 | Mode::Menu { .. }
-                | Mode::Hidden { .. },
+                | Mode::Hidden { .. }
+                | Mode::Folder(_),
                 Input::Paused,
             ) => {
                 if matches!(self.mode, Mode::Moving { .. }) {
@@ -553,15 +863,15 @@ impl Home {
             }
             (Mode::Launching { app, .. }, Input::LaunchFailed) => {
                 let effect = Effect::ShowLaunchError(app.clone());
-                self.mode = Mode::Browse;
+                self.end_launch();
                 Some(effect)
             }
-            (Mode::Launching { app, since }, Input::Tick) => {
+            (Mode::Launching { app, since, .. }, Input::Tick) => {
                 if now.saturating_sub(*since) < LAUNCH_TIMEOUT {
                     return None;
                 }
                 let effect = Effect::ShowLaunchError(app.clone());
-                self.mode = Mode::Browse;
+                self.end_launch();
                 Some(effect)
             }
             (Mode::About, Input::Back) => {
@@ -573,8 +883,18 @@ impl Home {
             (Mode::Moving { .. }, _) => self.handle_moving(input, now),
             (Mode::Menu { .. }, _) => self.handle_menu(input, now),
             (Mode::Hidden { .. }, _) => self.handle_hidden(input),
+            (Mode::Folder(open), _) => {
+                let open = *open;
+                self.handle_folder(open, input, now)
+            }
             (Mode::Browse, _) => self.handle_browse(input, now),
             _ => None,
+        }
+    }
+
+    fn end_launch(&mut self) {
+        if let Mode::Launching { folder, .. } = self.mode {
+            self.mode = folder.map_or(Mode::Browse, Mode::Folder);
         }
     }
 
@@ -587,6 +907,19 @@ impl Home {
             }
             return None;
         }
+        match input {
+            Input::Back => {
+                self.focus %= COLUMNS;
+                self.update_scroll();
+                None
+            }
+            _ => self.handle_ok(input, now),
+        }
+    }
+
+    /// OK on the focused tile (or the focused app in an open folder): a
+    /// short press opens it, a long one opens its menu.
+    fn handle_ok(&mut self, input: Input, now: Duration) -> Option<Effect> {
         match input {
             Input::OkPressed => {
                 self.ok_since = Some(now);
@@ -609,31 +942,62 @@ impl Home {
                 }
                 None
             }
-            Input::Back => {
-                self.focus %= COLUMNS;
-                self.update_scroll();
-                None
-            }
             _ => None,
         }
     }
 
-    fn handle_moving(&mut self, input: Input, now: Duration) -> Option<Effect> {
-        if let Mode::Moving { last_input, .. } = &mut self.mode {
-            if input == Input::Tick {
-                if now.saturating_sub(*last_input) >= MOVE_IDLE_TIMEOUT {
-                    return self.drop_tile();
-                }
-                return None;
-            }
-            *last_input = now;
-        }
+    /// The D-pad moves within the folder (Up from its first row reaches the
+    /// name), OK opens an app or renames the folder, Back closes it.
+    fn handle_folder(&mut self, open: OpenFolder, input: Input, now: Duration) -> Option<Effect> {
+        let len = self
+            .folders
+            .get(&open.id)
+            .map_or(0, |folder| folder.apps.len());
         if let Some(direction) = self.direction(input) {
-            if let Some(target) = neighbour(self.focus, self.movable(), direction) {
-                let tile = self.tiles.remove(self.focus);
-                self.tiles.insert(target, tile);
-                self.focus = target;
-                self.update_scroll();
+            self.ok_since = None;
+            let focus = match (open.focus, direction) {
+                (None, Direction::Down) => Some(0),
+                (None, _) => None,
+                (Some(index), Direction::Up) if index % FOLDER_PAGE < FOLDER_COLUMNS => None,
+                (Some(index), _) => Some(folder_neighbour(index, len, direction).unwrap_or(index)),
+            };
+            self.mode = Mode::Folder(OpenFolder { focus, ..open });
+            return None;
+        }
+        match (open.focus, input) {
+            (_, Input::Back) => {
+                self.ok_since = None;
+                self.mode = Mode::Browse;
+                None
+            }
+            (None, Input::OkPressed) => Some(Effect::RenameFolder(open.id)),
+            (None, _) => None,
+            (Some(_), _) => self.handle_ok(input, now),
+        }
+    }
+
+    fn handle_moving(&mut self, input: Input, now: Duration) -> Option<Effect> {
+        let Mode::Moving {
+            last_input, place, ..
+        } = &mut self.mode
+        else {
+            return None;
+        };
+        if input == Input::Tick {
+            if now.saturating_sub(*last_input) >= MOVE_IDLE_TIMEOUT {
+                return self.drop_tile();
+            }
+            if self.folder_due().is_some_and(|due| now >= due) {
+                self.take_into_folder(now);
+            }
+            return None;
+        }
+        *last_input = now;
+        let place = *place;
+        if let Some(direction) = self.direction(input) {
+            match place {
+                Place::Home { .. } => self.move_on_home(direction, now),
+                Place::Folder { id, index } => self.move_in_folder(id, index, direction),
             }
             return None;
         }
@@ -647,22 +1011,171 @@ impl Home {
         }
     }
 
+    /// Moves the app on Home one tile in `direction`, onto that tile.
+    fn move_on_home(&mut self, direction: Direction, now: Duration) {
+        let over = neighbour(self.focus, self.movable(), direction).map(|target| {
+            let tile = self.tiles.remove(self.focus);
+            self.tiles.insert(target, tile);
+            // The tile that was there moved one step towards the gap.
+            let over = if self.focus < target {
+                target - 1
+            } else {
+                target + 1
+            };
+            self.focus = target;
+            self.update_scroll();
+            (over, now)
+        });
+        if let Mode::Moving { place, .. } = &mut self.mode {
+            *place = Place::Home { over };
+        }
+    }
+
+    /// Moves the app within its folder; past the folder's edge it leaves the
+    /// folder for Home, just after the folder's tile.
+    fn move_in_folder(&mut self, id: u32, index: usize, direction: Direction) {
+        let Some(folder) = self.folders.get_mut(&id) else {
+            return;
+        };
+        if let Some(target) = folder_neighbour(index, folder.apps.len(), direction) {
+            let app = folder.apps.remove(index);
+            folder.apps.insert(target, app);
+            if let Mode::Moving { place, .. } = &mut self.mode {
+                *place = Place::Folder { id, index: target };
+            }
+            return;
+        }
+        let app = folder.apps.remove(index);
+        let left = folder.apps.len();
+        let made = matches!(self.mode, Mode::Moving { made: Some(made), .. } if made == id);
+        let at = self.focus;
+        if left == 0 {
+            self.folders.remove(&id);
+            self.tiles.remove(at);
+            self.tiles.insert(at, TileId::App(app));
+        } else {
+            if made && left == 1 {
+                // A folder this move made goes again: the other app is back.
+                if let Some(other) = self
+                    .folders
+                    .remove(&id)
+                    .and_then(|f| f.apps.into_iter().next())
+                {
+                    self.tiles[at] = TileId::App(other);
+                }
+            }
+            self.tiles.insert(at + 1, TileId::App(app));
+            self.focus = at + 1;
+        }
+        self.update_scroll();
+        if let Mode::Moving { place, made, .. } = &mut self.mode {
+            *place = Place::Home { over: None };
+            if *made == Some(id) && !self.folders.contains_key(&id) {
+                *made = None;
+            }
+        }
+    }
+
+    /// The moving app has stayed on top of an app or a folder: they make a
+    /// folder in that tile's place (or it goes into that folder), which opens
+    /// with the app still moving, at its end.
+    fn take_into_folder(&mut self, now: Duration) {
+        let Some(over) = self.moving_over() else {
+            return;
+        };
+        let (TileId::App(app), Some(target)) = (
+            self.tiles[self.focus].clone(),
+            self.tiles.get(over).cloned(),
+        ) else {
+            return;
+        };
+        let (id, made) = match target {
+            TileId::Folder(id) => (id, false),
+            TileId::App(other) => {
+                let id = self.folders.keys().max().map_or(1, |max| max + 1);
+                let name = self.folder_name(&other, &app);
+                self.folders.insert(
+                    id,
+                    Folder {
+                        name,
+                        apps: vec![other],
+                    },
+                );
+                (id, true)
+            }
+            _ => return,
+        };
+        let Some(folder) = self.folders.get_mut(&id) else {
+            return;
+        };
+        folder.apps.push(app);
+        let index = folder.apps.len() - 1;
+        // The folder takes the place the tile under the app had: the app's.
+        self.tiles[self.focus] = TileId::Folder(id);
+        self.tiles.remove(over);
+        if over < self.focus {
+            self.focus -= 1;
+        }
+        self.update_scroll();
+        if let Mode::Moving {
+            place,
+            made: made_now,
+            last_input,
+            ..
+        } = &mut self.mode
+        {
+            *place = Place::Folder { id, index };
+            *last_input = now;
+            if made {
+                *made_now = Some(id);
+            }
+        }
+    }
+
+    /// A new folder's first name: the apps' shared category, else the
+    /// category of the app it was made on (`target`), else "Folder".
+    fn folder_name(&self, target: &str, moved: &str) -> String {
+        let category = |id: &str| {
+            self.apps
+                .iter()
+                .find(|app| app.id == id)
+                .map_or(Category::Other, |app| app.category)
+        };
+        let category = match (category(target), category(moved)) {
+            (Category::Other, _) => Category::Other,
+            (target, _) => target,
+        };
+        self.folder_names.0[category.index()].clone()
+    }
+
+    /// Whether the tile at `index` can take the moving app into a folder:
+    /// only an app can go into a folder, and only an app or a folder can
+    /// take it (no folders in folders).
+    fn can_take(&self, index: usize) -> bool {
+        matches!(self.tiles.get(self.focus), Some(TileId::App(_)))
+            && matches!(
+                self.tiles.get(index),
+                Some(TileId::App(_) | TileId::Folder(_))
+            )
+    }
+
     /// Up and Down pick an item, OK runs it (the release of the long press
     /// that opened the menu is ignored), Back closes the menu.
     fn handle_menu(&mut self, input: Input, now: Duration) -> Option<Effect> {
-        let items = menu_items(self.focused());
-        let Mode::Menu { selected } = &mut self.mode else {
+        let items = menu_items(self.current().as_ref());
+        let Mode::Menu { selected, folder } = &mut self.mode else {
             return None;
         };
+        let folder = *folder;
         match input {
             Input::Up => *selected = selected.saturating_sub(1),
             Input::Down => *selected = (*selected + 1).min(items.len().saturating_sub(1)),
             Input::OkPressed => match items.get(*selected) {
                 Some(MenuItem::Move) => self.start_move(now),
-                Some(MenuItem::Hide) => return self.hide_focused(),
-                None => self.mode = Mode::Browse,
+                Some(MenuItem::Hide) => return self.hide_current(),
+                None => self.mode = folder.map_or(Mode::Browse, Mode::Folder),
             },
-            Input::Back => self.mode = Mode::Browse,
+            Input::Back => self.mode = folder.map_or(Mode::Browse, Mode::Folder),
             _ => {}
         }
         None
@@ -699,12 +1212,33 @@ impl Home {
         }
     }
 
-    /// Hides the focused app; the next tile takes its place and focus.
-    fn hide_focused(&mut self) -> Option<Effect> {
-        self.mode = Mode::Browse;
-        let Some(TileId::App(id)) = self.focused().cloned() else {
+    /// The tile OK and the menu act on: the focused app of an open folder,
+    /// else the focused tile.
+    fn current(&self) -> Option<TileId> {
+        match self.open_folder() {
+            Some(OpenFolder {
+                id,
+                focus: Some(index),
+            }) => self
+                .folders
+                .get(&id)
+                .and_then(|folder| folder.apps.get(index))
+                .cloned()
+                .map(TileId::App),
+            Some(_) => None,
+            None => self.focused().cloned(),
+        }
+    }
+
+    /// Hides the app the menu is for; the next tile (or app in the folder)
+    /// takes its place and focus. A folder whose last app this was goes.
+    fn hide_current(&mut self) -> Option<Effect> {
+        let open = self.open_folder();
+        let Some(TileId::App(id)) = self.current() else {
+            self.mode = Mode::Browse;
             return None;
         };
+        self.mode = open.map_or(Mode::Browse, Mode::Folder);
         self.hidden.insert(id);
         self.refresh();
         Some(Effect::SaveOrder)
@@ -715,15 +1249,29 @@ impl Home {
         self.tiles.len() - usize::from(self.tiles.last() == Some(&TileId::Hidden))
     }
 
-    /// Ends move mode, keeping the tile where it is.
+    /// Ends move mode, keeping the app where it is: in an open folder, the
+    /// folder stays open.
     fn drop_tile(&mut self) -> Option<Effect> {
+        let Mode::Moving { before, place, .. } = std::mem::replace(&mut self.mode, Mode::Browse)
+        else {
+            return None;
+        };
+        if let Place::Folder { id, index } = place {
+            self.mode = Mode::Folder(OpenFolder {
+                id,
+                focus: Some(index),
+            });
+        }
         let movable = &self.tiles[..self.movable()];
-        let moved = movable != self.order.ids();
-        self.mode = Mode::Browse;
-        if !moved {
+        let folders_changed = self.folders != before.folders;
+        if movable == self.order.ids() && !folders_changed {
             return None;
         }
-        self.order.place(movable, self.focus);
+        if folders_changed {
+            self.order.renumber(movable);
+        } else {
+            self.order.place(movable, self.focus);
+        }
         Some(Effect::SaveOrder)
     }
 
@@ -738,12 +1286,13 @@ impl Home {
     }
 
     fn activate(&mut self, now: Duration) -> Option<Effect> {
-        match self.focused()? {
+        let folder = self.open_folder();
+        match self.current()? {
             TileId::App(component) => {
-                let component = component.clone();
                 self.mode = Mode::Launching {
                     app: component.clone(),
                     since: now,
+                    folder,
                 };
                 Some(Effect::Launch(component))
             }
@@ -759,33 +1308,82 @@ impl Home {
                 self.mode = Mode::Hidden { focus: 0 };
                 Some(Effect::OpenHidden)
             }
+            TileId::Folder(id) => {
+                self.mode = Mode::Folder(OpenFolder { id, focus: Some(0) });
+                None
+            }
         }
     }
 
     fn open_menu(&mut self) {
-        if !menu_items(self.focused()).is_empty() {
-            self.mode = Mode::Menu { selected: 0 };
-        }
-    }
-
-    fn start_move(&mut self, now: Duration) {
-        if self.focus < self.movable() {
-            self.mode = Mode::Moving {
-                original: self.tiles.clone(),
-                last_input: now,
+        if !menu_items(self.current().as_ref()).is_empty() {
+            self.mode = Mode::Menu {
+                selected: 0,
+                folder: self.open_folder(),
             };
         }
     }
 
-    fn cancel_move(&mut self) {
-        let Mode::Moving { original, .. } = std::mem::replace(&mut self.mode, Mode::Browse) else {
+    fn start_move(&mut self, now: Duration) {
+        let folder = self.open_folder();
+        let place = match folder {
+            Some(OpenFolder {
+                id,
+                focus: Some(index),
+            }) => Place::Folder { id, index },
+            Some(_) => return,
+            None if self.focus < self.movable() => Place::Home { over: None },
+            None => return,
+        };
+        let Some(tile) = self.current() else {
             return;
         };
-        let moving = self.focused().cloned();
-        self.tiles = original;
-        self.focus = moving
-            .and_then(|id| self.tiles.iter().position(|tile| *tile == id))
-            .unwrap_or(0);
+        self.mode = Mode::Moving {
+            before: Box::new(Before {
+                tile,
+                tiles: self.tiles.clone(),
+                folders: self.folders.clone(),
+                folder: folder.map(|open| open.id),
+            }),
+            last_input: now,
+            place,
+            made: None,
+        };
+    }
+
+    fn cancel_move(&mut self) {
+        let Mode::Moving { before, .. } = std::mem::replace(&mut self.mode, Mode::Browse) else {
+            return;
+        };
+        let Before {
+            tile,
+            tiles,
+            folders,
+            folder,
+        } = *before;
+        self.tiles = tiles;
+        self.folders = folders;
+        // Focus goes back to where the app (or its folder) was.
+        match folder {
+            Some(id) => {
+                self.focus_on(&TileId::Folder(id));
+                let index = self.folders.get(&id).and_then(|folder| {
+                    folder
+                        .apps
+                        .iter()
+                        .position(|app| TileId::App(app.clone()) == tile)
+                });
+                self.mode = Mode::Folder(OpenFolder {
+                    id,
+                    focus: Some(index.unwrap_or(0)),
+                });
+            }
+            None => {
+                if !self.focus_on(&tile) {
+                    self.focus = 0;
+                }
+            }
+        }
         self.update_scroll();
     }
 
@@ -804,19 +1402,53 @@ impl Home {
 ///
 /// No wrap-around. Moving down into a short last row lands on the last tile.
 fn neighbour(index: usize, len: usize, direction: Direction) -> Option<usize> {
+    neighbour_in(index, len, COLUMNS, direction)
+}
+
+/// The app reached from `index` in `direction` in an open folder of `len`
+/// apps: pages of [`FOLDER_PAGE`] side by side, Left and Right cross to the
+/// page beside, in the same row. No wrap-around.
+fn folder_neighbour(index: usize, len: usize, direction: Direction) -> Option<usize> {
     if index >= len {
         return None;
     }
-    let column = index % COLUMNS;
+    let page = index / FOLDER_PAGE;
+    let start = page * FOLDER_PAGE;
+    let at = index - start;
+    let (row, column) = (at / FOLDER_COLUMNS, at % FOLDER_COLUMNS);
+    match direction {
+        Direction::Up | Direction::Down => {
+            let on_page = (len - start).min(FOLDER_PAGE);
+            neighbour_in(at, on_page, FOLDER_COLUMNS, direction).map(|target| start + target)
+        }
+        Direction::Left if column > 0 => Some(index - 1),
+        // Pages before the last one are full.
+        Direction::Left => page
+            .checked_sub(1)
+            .map(|before| before * FOLDER_PAGE + row * FOLDER_COLUMNS + FOLDER_COLUMNS - 1),
+        Direction::Right if column + 1 < FOLDER_COLUMNS && index + 1 < len => Some(index + 1),
+        Direction::Right => {
+            let next = start + FOLDER_PAGE;
+            (next < len).then(|| (next + row * FOLDER_COLUMNS).min(len - 1))
+        }
+    }
+}
+
+/// [`neighbour`] in a grid `columns` wide.
+fn neighbour_in(index: usize, len: usize, columns: usize, direction: Direction) -> Option<usize> {
+    if index >= len {
+        return None;
+    }
+    let column = index % columns;
     match direction {
         Direction::Left => (column > 0).then(|| index - 1),
-        Direction::Right => (column + 1 < COLUMNS && index + 1 < len).then(|| index + 1),
-        Direction::Up => index.checked_sub(COLUMNS),
+        Direction::Right => (column + 1 < columns && index + 1 < len).then(|| index + 1),
+        Direction::Up => index.checked_sub(columns),
         Direction::Down => {
-            let below = index + COLUMNS;
+            let below = index + columns;
             if below < len {
                 Some(below)
-            } else if index / COLUMNS < (len - 1) / COLUMNS {
+            } else if index / columns < (len - 1) / columns {
                 Some(len - 1)
             } else {
                 None
@@ -827,7 +1459,7 @@ fn neighbour(index: usize, len: usize, direction: Direction) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
 
     use super::*;
 
@@ -842,6 +1474,7 @@ mod tests {
         App {
             id: id.to_owned(),
             label: label.to_owned(),
+            category: Category::Other,
         }
     }
 
@@ -858,7 +1491,7 @@ mod tests {
 
     /// A home screen with `count` apps plus About, focus on the first tile.
     fn home(count: usize) -> Home {
-        let mut home = Home::new(Order::default(), BTreeSet::new(), false);
+        let mut home = Home::new(Order::default(), BTreeMap::new(), BTreeSet::new(), false);
         home.set_apps(&apps(count));
         home
     }
@@ -941,7 +1574,7 @@ mod tests {
 
     #[test]
     fn right_to_left_swaps_left_and_right() {
-        let mut home = Home::new(Order::default(), BTreeSet::new(), true);
+        let mut home = Home::new(Order::default(), BTreeMap::new(), BTreeSet::new(), true);
         home.set_apps(&apps(5));
         press(&mut home, &[Input::Left]);
         assert_eq!(home.focus(), 1);
@@ -951,7 +1584,7 @@ mod tests {
 
     #[test]
     fn an_empty_home_ignores_every_input() {
-        let mut home = Home::new(Order::default(), BTreeSet::new(), false);
+        let mut home = Home::new(Order::default(), BTreeMap::new(), BTreeSet::new(), false);
         for input in [
             Input::Up,
             Input::Down,
@@ -1073,7 +1706,7 @@ mod tests {
     fn focus_can_be_restored_by_identity_before_and_after_the_app_list() {
         // Before the app list: the stored order already has the tile.
         let order = Order::from_keys([(id("a"), 1000), (id("b"), 2000), (TileId::About, 3000)]);
-        let mut home = Home::new(order, BTreeSet::new(), false);
+        let mut home = Home::new(order, BTreeMap::new(), BTreeSet::new(), false);
         assert!(home.focus_on(&id("b")));
         home.set_apps(&[app("a", "A"), app("b", "B")]);
         assert_eq!(component(&home), "b");
@@ -1097,7 +1730,10 @@ mod tests {
     #[test]
     fn first_run_sorts_by_label_ignoring_case_with_about_last() {
         let mut order = Order::default();
-        order.reconcile(&[app("c", "cinema"), app("a", "Bravo"), app("b", "alpha")]);
+        order.reconcile(
+            &[app("c", "cinema"), app("a", "Bravo"), app("b", "alpha")],
+            &BTreeSet::new(),
+        );
         assert_eq!(
             order.ids(),
             [id("b"), id("a"), id("c"), TileId::About, TileId::Settings]
@@ -1109,20 +1745,23 @@ mod tests {
     #[test]
     fn new_apps_go_after_the_last_tile_and_removed_apps_are_dropped() {
         let mut order = Order::from_keys([(TileId::About, 500), (id("b"), 1000)]);
-        assert!(order.reconcile(&[app("b", "B"), app("a", "A")]));
+        assert!(order.reconcile(&[app("b", "B"), app("a", "A")], &BTreeSet::new()));
         assert_eq!(
             order.ids(),
             [TileId::About, id("b"), id("a"), TileId::Settings]
         );
 
-        assert!(order.reconcile(&[app("a", "A")]));
+        assert!(order.reconcile(&[app("a", "A")], &BTreeSet::new()));
         assert_eq!(order.ids(), [TileId::About, id("a"), TileId::Settings]);
     }
 
     #[test]
     fn new_apps_go_before_about_when_it_is_last() {
         let mut order = Order::from_keys([(id("a"), 1000), (TileId::About, 2000)]);
-        assert!(order.reconcile(&[app("a", "A"), app("c", "C"), app("b", "B")]));
+        assert!(order.reconcile(
+            &[app("a", "A"), app("c", "C"), app("b", "B")],
+            &BTreeSet::new()
+        ));
         assert_eq!(
             order.ids(),
             [id("a"), id("b"), id("c"), TileId::About, TileId::Settings]
@@ -1134,7 +1773,7 @@ mod tests {
     #[test]
     fn duplicate_apps_from_the_platform_appear_once() {
         let mut order = Order::default();
-        order.reconcile(&[app("a", "A"), app("a", "A")]);
+        order.reconcile(&[app("a", "A"), app("a", "A")], &BTreeSet::new());
         assert_eq!(order.ids(), [id("a"), TileId::About, TileId::Settings]);
     }
 
@@ -1293,10 +1932,11 @@ mod tests {
 
     /// Holds OK on the focused tile until the menu opens, then picks Move.
     fn pick_up(home: &mut Home) {
+        let state = home.state();
         home.handle(Input::OkPressed, ms(0));
         home.handle(Input::OkPressed, ms(300)); // key repeat
         assert_eq!(home.handle(Input::Tick, LONG_PRESS - ms(1)), None);
-        assert_eq!(home.state(), State::Browse);
+        assert_eq!(home.state(), state);
         assert_eq!(home.handle(Input::Tick, LONG_PRESS), None);
         assert_eq!(home.state(), State::Menu);
         // The release of the long press does not pick anything.
@@ -1376,10 +2016,12 @@ mod tests {
 
     #[test]
     fn an_unattended_move_drops_and_saves_after_the_idle_timeout() {
-        let mut home = home(4);
+        // a00, About, Settings: on top of About, no folder forms.
+        let mut home = home(1);
         pick_up(&mut home);
         let last_key = ms(1000);
         home.handle(Input::Right, last_key);
+        assert_eq!(home.folder_due(), None);
         assert_eq!(
             home.handle(Input::Tick, last_key + MOVE_IDLE_TIMEOUT - ms(1)),
             None
@@ -1391,6 +2033,7 @@ mod tests {
         );
         assert_eq!(home.state(), State::Browse);
         assert_eq!(home.order().ids()[1], id("a00"));
+        assert!(home.folders().is_empty());
     }
 
     #[test]
@@ -1504,7 +2147,7 @@ mod tests {
     #[test]
     fn hidden_apps_stay_hidden_when_the_app_list_is_read_again() {
         let hidden = BTreeSet::from(["a01".to_owned()]);
-        let mut home = Home::new(Order::default(), hidden, false);
+        let mut home = Home::new(Order::default(), BTreeMap::new(), hidden, false);
         assert!(home.set_apps(&apps(3)));
         assert_eq!(
             home.tiles(),
@@ -1647,5 +2290,421 @@ mod tests {
             &[Input::OkPressed, Input::OkReleased, Input::Paused],
         );
         assert_eq!(home.state(), State::Browse);
+    }
+
+    // --- folders ----------------------------------------------------------
+
+    fn app_in(id: &str, category: Category) -> App {
+        App {
+            category,
+            ..app(id, &id.to_uppercase())
+        }
+    }
+
+    /// Picks up the focused app and leaves it on the tile in `direction`
+    /// until the folder forms; returns the time after.
+    fn make_folder(home: &mut Home, direction: Input) -> Duration {
+        pick_up(home);
+        home.handle(direction, ms(1000));
+        assert!(home.moving_over().is_some());
+        assert_eq!(home.folder_due(), Some(ms(1000) + FOLDER_HOVER));
+        assert_eq!(
+            home.handle(Input::Tick, ms(1000) + FOLDER_HOVER - ms(1)),
+            None
+        );
+        assert!(home.open_folder().is_none());
+        assert_eq!(home.handle(Input::Tick, ms(1000) + FOLDER_HOVER), None);
+        ms(1000) + FOLDER_HOVER
+    }
+
+    fn folder_apps(home: &Home, id: u32) -> Vec<&str> {
+        home.folders()[&id]
+            .apps
+            .iter()
+            .map(String::as_str)
+            .collect()
+    }
+
+    #[test]
+    fn staying_on_an_app_makes_a_folder_that_opens_with_the_app_still_moving() {
+        let mut home = home(4); // a00 a01 a02 a03 About Settings
+        let now = make_folder(&mut home, Input::Right);
+        // The folder took a01's place; the app is at its end, still moving.
+        assert_eq!(home.state(), State::Moving);
+        assert_eq!(
+            home.tiles(),
+            [
+                TileId::Folder(1),
+                id("a02"),
+                id("a03"),
+                TileId::About,
+                TileId::Settings
+            ]
+        );
+        assert_eq!(home.focus(), 0);
+        assert_eq!(folder_apps(&home, 1), ["a01", "a00"]);
+        assert_eq!(
+            home.open_folder(),
+            Some(OpenFolder {
+                id: 1,
+                focus: Some(1)
+            })
+        );
+        // Nothing is saved until the drop; then the folder stays open.
+        assert_eq!(home.order().ids()[0], id("a00"));
+        assert_eq!(
+            home.handle(Input::OkPressed, now + ms(100)),
+            Some(Effect::SaveOrder)
+        );
+        assert_eq!(home.state(), State::Folder);
+        assert_eq!(home.order().ids()[0], TileId::Folder(1));
+        assert_eq!(home.handle(Input::Back, now + ms(200)), None);
+        assert_eq!(home.state(), State::Browse);
+        assert_eq!(home.focused(), Some(&TileId::Folder(1)));
+    }
+
+    #[test]
+    fn an_arrow_before_the_hover_time_passes_over_and_ok_drops_in_place() {
+        let mut home = home(4);
+        pick_up(&mut home);
+        home.handle(Input::Right, ms(1000));
+        home.handle(Input::Tick, ms(1000) + FOLDER_HOVER - ms(1));
+        home.handle(Input::Right, ms(1000) + FOLDER_HOVER - ms(1));
+        // Now on top of a02; a01 went back into the gap.
+        assert_eq!(home.moving_over(), Some(1));
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed]),
+            Some(Effect::SaveOrder)
+        );
+        assert!(home.folders().is_empty());
+        assert_eq!(home.order().ids()[..3], [id("a01"), id("a02"), id("a00")]);
+    }
+
+    #[test]
+    fn about_settings_and_folders_never_go_into_a_folder() {
+        // a00 About Settings: About is not an app.
+        let mut home = home(1);
+        pick_up(&mut home);
+        home.handle(Input::Right, ms(1000));
+        assert_eq!(home.folder_due(), None);
+        home.handle(Input::Tick, ms(5000));
+        assert!(home.folders().is_empty());
+        press(&mut home, &[Input::Back]);
+
+        // A folder moved onto an app makes nothing: no folders in folders.
+        let mut home = home_with_folder();
+        press(&mut home, &[Input::Back, Input::Back]);
+        assert_eq!(home.focused(), Some(&TileId::Folder(1)));
+        pick_up(&mut home);
+        home.handle(Input::Right, ms(1000));
+        assert_eq!(home.folder_due(), None);
+    }
+
+    /// Home with folder 1 = [a01, a00], dropped and still open.
+    fn home_with_folder() -> Home {
+        let mut home = home(4);
+        let now = make_folder(&mut home, Input::Right);
+        home.handle(Input::OkPressed, now);
+        home.handle(Input::OkReleased, now);
+        home
+    }
+
+    #[test]
+    fn an_app_left_on_a_folder_goes_in_at_its_end() {
+        let mut home = home_with_folder();
+        press(&mut home, &[Input::Back]);
+        press(&mut home, &[Input::Right]); // a02
+        pick_up(&mut home);
+        home.handle(Input::Left, ms(1000));
+        home.handle(Input::Tick, ms(1000) + FOLDER_HOVER);
+        assert_eq!(folder_apps(&home, 1), ["a01", "a00", "a02"]);
+        assert_eq!(home.folders().len(), 1);
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed]),
+            Some(Effect::SaveOrder)
+        );
+        assert_eq!(
+            home.order().ids(),
+            [
+                TileId::Folder(1),
+                id("a03"),
+                TileId::About,
+                TileId::Settings
+            ]
+        );
+    }
+
+    #[test]
+    fn leaving_a_new_folder_before_the_drop_undoes_it() {
+        let mut home = home(4);
+        let now = make_folder(&mut home, Input::Right);
+        // In the folder at index 1; Right is its edge.
+        home.handle(Input::Right, now + ms(100));
+        assert!(home.folders().is_empty());
+        assert!(home.open_folder().is_none());
+        assert_eq!(home.tiles()[..2], [id("a01"), id("a00")]);
+        assert_eq!(component(&home), "a00");
+        assert_eq!(home.state(), State::Moving);
+    }
+
+    #[test]
+    fn moving_an_app_out_of_a_folder_keeps_the_folder_until_it_is_empty() {
+        let mut home = home_with_folder();
+        // Open on a00 (index 1); pick it up in the folder.
+        pick_up(&mut home);
+        assert_eq!(
+            home.open_folder(),
+            Some(OpenFolder {
+                id: 1,
+                focus: Some(1)
+            })
+        );
+        press(&mut home, &[Input::Left]);
+        assert_eq!(folder_apps(&home, 1), ["a00", "a01"]);
+        // Up from the first row leaves the folder, just after its tile.
+        press(&mut home, &[Input::Up]);
+        assert!(home.open_folder().is_none());
+        assert_eq!(home.tiles()[..2], [TileId::Folder(1), id("a00")]);
+        assert_eq!(folder_apps(&home, 1), ["a01"]);
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed]),
+            Some(Effect::SaveOrder)
+        );
+        press(&mut home, &[Input::OkReleased]);
+
+        // The last app out: the folder goes.
+        press(
+            &mut home,
+            &[Input::Left, Input::OkPressed, Input::OkReleased],
+        );
+        assert_eq!(home.state(), State::Folder);
+        pick_up(&mut home);
+        press(&mut home, &[Input::Down]);
+        assert!(home.folders().is_empty());
+        assert_eq!(home.tiles()[..2], [id("a01"), id("a00")]);
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed]),
+            Some(Effect::SaveOrder)
+        );
+        assert!(!home.order().ids().contains(&TileId::Folder(1)));
+    }
+
+    #[test]
+    fn back_cancels_a_move_that_made_a_folder() {
+        let mut home = home(4);
+        let before = home.tiles().to_vec();
+        let now = make_folder(&mut home, Input::Right);
+        assert_eq!(home.handle(Input::Back, now), None);
+        assert_eq!(home.state(), State::Browse);
+        assert_eq!(home.tiles(), before);
+        assert!(home.folders().is_empty());
+        assert_eq!(component(&home), "a00");
+    }
+
+    #[test]
+    fn in_an_open_folder_up_reaches_the_name_and_ok_renames() {
+        let mut home = home_with_folder();
+        press(&mut home, &[Input::Left]);
+        assert_eq!(home.open_folder().and_then(|open| open.focus), Some(0));
+        press(&mut home, &[Input::Up]);
+        assert_eq!(home.open_folder().map(|open| open.focus), Some(None));
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed]),
+            Some(Effect::RenameFolder(1))
+        );
+        assert!(home.rename_folder(1, "  Films \u{7}& TV  "));
+        assert_eq!(home.folders()[&1].name, "Films & TV");
+        assert!(!home.rename_folder(1, "   "));
+        assert!(!home.rename_folder(1, "Films & TV"));
+        assert!(home.rename_folder(1, &"x".repeat(60)));
+        assert_eq!(home.folders()[&1].name.chars().count(), FOLDER_NAME_MAX);
+        press(&mut home, &[Input::OkReleased, Input::Down]);
+        assert_eq!(home.open_folder().and_then(|open| open.focus), Some(0));
+    }
+
+    #[test]
+    fn ok_in_a_folder_launches_and_the_folder_is_open_again_on_return() {
+        let mut home = home_with_folder();
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed, Input::OkReleased]),
+            Some(Effect::Launch("a00".to_owned()))
+        );
+        press(&mut home, &[Input::Paused]);
+        assert_eq!(home.state(), State::Folder);
+        // Home while the folder is open closes it.
+        press(&mut home, &[Input::Paused]);
+        assert_eq!(home.state(), State::Browse);
+    }
+
+    #[test]
+    fn hiding_the_last_app_of_a_folder_removes_the_folder() {
+        let mut home = home_with_folder();
+        assert_eq!(hide(&mut home), Some(Effect::SaveOrder));
+        assert_eq!(home.state(), State::Folder);
+        assert_eq!(folder_apps(&home, 1), ["a01"]);
+        assert_eq!(hide(&mut home), Some(Effect::SaveOrder));
+        assert_eq!(home.state(), State::Browse);
+        assert!(home.folders().is_empty());
+        assert!(!home.tiles().contains(&TileId::Folder(1)));
+        // Shown again, they come back on Home, not in the folder.
+        assert_eq!(hidden_page(&home).len(), 2);
+    }
+
+    #[test]
+    fn uninstalled_apps_leave_their_folder_and_an_empty_folder_goes() {
+        let folders = BTreeMap::from([(
+            7,
+            Folder {
+                name: "Old".to_owned(),
+                apps: vec!["a00".to_owned(), "gone".to_owned()],
+            },
+        )]);
+        let order = Order::from_keys([(TileId::Folder(7), 1000), (id("a01"), 2000)]);
+        let mut home = Home::new(order, folders, BTreeSet::new(), false);
+        assert!(home.set_apps(&apps(2)));
+        assert_eq!(home.folders()[&7].apps, ["a00"]);
+        assert_eq!(home.tiles()[..2], [TileId::Folder(7), id("a01")]);
+        // a00 is not also on Home outside its folder.
+        assert_eq!(home.tiles().len(), 4);
+        home.set_apps(&apps(2)[1..]);
+        assert!(home.folders().is_empty());
+        assert_eq!(home.tiles(), [id("a01"), TileId::About, TileId::Settings]);
+    }
+
+    #[test]
+    fn a_folder_missing_from_the_order_is_added_and_an_unknown_one_dropped() {
+        let folders = BTreeMap::from([(
+            2,
+            Folder {
+                name: "F".to_owned(),
+                apps: vec!["a01".to_owned()],
+            },
+        )]);
+        let order = Order::from_keys([(TileId::Folder(9), 500), (id("a00"), 1000)]);
+        let mut home = Home::new(order, folders, BTreeSet::new(), false);
+        home.set_apps(&apps(2));
+        assert_eq!(
+            home.tiles(),
+            [
+                id("a00"),
+                TileId::Folder(2),
+                TileId::About,
+                TileId::Settings
+            ]
+        );
+    }
+
+    #[test]
+    fn a_new_folder_is_named_after_the_apps_category() {
+        let names = FolderNames::default();
+        for (target, moved, expected) in [
+            (Category::Game, Category::Game, "Games"),
+            (Category::Video, Category::Audio, "Video"),
+            (Category::Other, Category::Audio, "Folder"),
+            (Category::Other, Category::Other, "Folder"),
+        ] {
+            let mut home = Home::new(Order::default(), BTreeMap::new(), BTreeSet::new(), false);
+            home.set_folder_names(names.clone());
+            home.set_apps(&[app_in("a", moved), app_in("b", target)]);
+            pick_up(&mut home);
+            home.handle(Input::Right, ms(1000));
+            home.handle(Input::Tick, ms(1000) + FOLDER_HOVER);
+            let folder = home.folders().values().next().expect("a folder");
+            assert_eq!(folder.name, expected, "{target:?} + {moved:?}");
+        }
+        assert_eq!(Category::from_android(0), Category::Game);
+        assert_eq!(Category::from_android(8), Category::Accessibility);
+        assert_eq!(Category::from_android(-1), Category::Other);
+        assert_eq!(Category::from_android(42), Category::Other);
+    }
+
+    #[test]
+    fn random_keys_never_lose_or_duplicate_an_app() {
+        // Every app stays exactly once on Home, in a folder or hidden, whatever is pressed.
+        let keys = [
+            Input::Up,
+            Input::Down,
+            Input::Left,
+            Input::Right,
+            Input::OkPressed,
+            Input::OkReleased,
+            Input::Back,
+            Input::Tick,
+        ];
+        let mut seed: u64 = 0x2545_F491_4F6C_DD1D;
+        for _ in 0..200 {
+            let mut home = home(9);
+            let mut now = Duration::ZERO;
+            let mut pressed = Vec::new();
+            for _ in 0..60 {
+                seed ^= seed << 13;
+                seed ^= seed >> 7;
+                seed ^= seed << 17;
+                let input = keys[usize::try_from(seed % 8).unwrap()];
+                now += ms(seed % 900);
+                pressed.push((input, now.as_millis()));
+                home.handle(input, now);
+                let mut all: Vec<&str> = home
+                    .tiles()
+                    .iter()
+                    .filter_map(|tile| match tile {
+                        TileId::App(id) => Some(id.as_str()),
+                        _ => None,
+                    })
+                    .chain(
+                        home.folders()
+                            .values()
+                            .flat_map(|f| f.apps.iter().map(String::as_str)),
+                    )
+                    .chain(home.hidden_apps().iter().map(String::as_str))
+                    .collect();
+                all.sort_unstable();
+                let expected: Vec<String> = (0..9).map(|n| format!("a{n:02}")).collect();
+                assert_eq!(all, expected, "after {pressed:?}");
+                assert!(home.folders().values().all(|f| !f.apps.is_empty()));
+                for folder in home.folders().keys() {
+                    assert_eq!(
+                        home.tiles()
+                            .iter()
+                            .filter(|t| **t == TileId::Folder(*folder))
+                            .count(),
+                        1
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_big_folder_has_pages_of_twelve_side_by_side() {
+        let len = 27; // pages 0..12, 12..24, 24..27
+        assert_eq!(folder_neighbour(3, len, Direction::Right), Some(12));
+        assert_eq!(folder_neighbour(7, len, Direction::Right), Some(16));
+        assert_eq!(folder_neighbour(12, len, Direction::Left), Some(3));
+        assert_eq!(folder_neighbour(21, len, Direction::Left), Some(20));
+        assert_eq!(folder_neighbour(20, len, Direction::Left), Some(11));
+        assert_eq!(folder_neighbour(8, len, Direction::Down), None);
+        assert_eq!(folder_neighbour(12, len, Direction::Up), None);
+        // Into the short last page: the nearest app in that row, or the last.
+        assert_eq!(folder_neighbour(19, len, Direction::Right), Some(26));
+        assert_eq!(folder_neighbour(26, len, Direction::Right), None);
+        assert_eq!(folder_neighbour(24, len, Direction::Down), None);
+        assert_eq!(folder_neighbour(0, len, Direction::Left), None);
+        // Every app is reachable from the first.
+        for len in 1..=40 {
+            let mut seen = BTreeSet::from([0]);
+            let mut queue = vec![0];
+            while let Some(index) = queue.pop() {
+                for direction in ALL_DIRECTIONS {
+                    if let Some(next) = folder_neighbour(index, len, direction) {
+                        assert!(next < len);
+                        if seen.insert(next) {
+                            queue.push(next);
+                        }
+                    }
+                }
+            }
+            assert_eq!(seen.len(), len, "{len} apps");
+        }
     }
 }

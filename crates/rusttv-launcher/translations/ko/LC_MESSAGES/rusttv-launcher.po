@@ -277,3 +277,57 @@ msgstr "{} 추가됨"
 
 msgid "Removed {}"
 msgstr "{} 삭제됨"
+
+msgid "Games"
+msgstr "게임"
+
+msgid "Music"
+msgstr "음악"
+
+msgid "Video"
+msgstr "동영상"
+
+msgid "Photos"
+msgstr "사진"
+
+msgid "Social"
+msgstr "소셜"
+
+msgid "News"
+msgstr "뉴스"
+
+msgid "Maps"
+msgstr "지도"
+
+msgid "Productivity"
+msgstr "생산성"
+
+msgid "Accessibility"
+msgstr "접근성"
+
+msgid "Folder"
+msgstr "폴더"
+
+msgid "Type a name, then press ✓. Back keeps the old one."
+msgstr "이름을 입력하고 ✓를 누르세요. 뒤로는 이전 이름을 유지합니다."
+
+msgid "Move past the edge to take the app out. OK drops it."
+msgstr "가장자리 밖으로 옮기면 앱을 꺼냅니다. OK로 놓습니다."
+
+msgid "Back closes the folder. Up reaches its name."
+msgstr "뒤로는 폴더를 닫습니다. 위로는 이름으로 갑니다."
+
+msgid "Made the folder {}"
+msgstr "{} 폴더 만듦"
+
+msgid "Removed the folder {}"
+msgstr "{} 폴더 삭제됨"
+
+msgid "Renamed the folder {} to {}"
+msgstr "{} 폴더 이름을 {}(으)로 변경"
+
+msgid "Put {} in {}"
+msgstr "{}을(를) {}에 넣음"
+
+msgid "Took {} out of {}"
+msgstr "{}을(를) {}에서 꺼냄"

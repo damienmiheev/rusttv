@@ -8,7 +8,13 @@ use serde::{Deserialize, Serialize};
 use crate::HistoryError;
 
 /// Version of the snapshot format. Bump on any incompatible change.
-pub const STATE_FORMAT: u32 = 1;
+///
+/// 2 added `[launcher.folders]`. A snapshot without folders is still
+/// written as format 1, so older readers keep reading it.
+pub const STATE_FORMAT: u32 = 2;
+
+/// The longest folder name, in characters (the launcher's limit).
+const FOLDER_NAME_MAX: usize = 40;
 
 /// The allowlisted global settings, by name (the CLI's `SettingKey`).
 pub const SETTING_KEYS: [&str; 3] = [
@@ -20,8 +26,9 @@ pub const SETTING_KEYS: [&str; 3] = [
 /// What an unset animation scale means: Android's default, 1.
 const SETTING_DEFAULT: &str = "1";
 
-/// One snapshot. Parsed strictly: unknown fields are an error.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// One snapshot. Parsed strictly: unknown fields are an error. Two
+/// snapshots are equal when their contents are, whatever their `format`.
+#[derive(Debug, Clone, Default, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct State {
     /// [`STATE_FORMAT`] when written.
@@ -44,9 +51,13 @@ pub struct State {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Launcher {
-    /// Tile names in order: app component names, `about`, `settings`.
+    /// Tile names in order: app component names, `about`, `settings`,
+    /// `folder:<number>`.
     #[serde(default)]
     pub order: Vec<String>,
+    /// Folders by tile name (`folder:<number>`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub folders: BTreeMap<String, Folder>,
     /// Component names of apps kept off Home.
     #[serde(default)]
     pub hidden: BTreeSet<String>,
@@ -59,10 +70,21 @@ impl Default for Launcher {
     fn default() -> Self {
         Self {
             order: Vec::new(),
+            folders: BTreeMap::new(),
             hidden: BTreeSet::new(),
             update_check: true,
         }
     }
+}
+
+/// A folder on Home.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Folder {
+    /// Its name, as the person sees it.
+    pub name: String,
+    /// Component names of its apps, in order.
+    pub apps: Vec<String>,
 }
 
 fn yes() -> bool {
@@ -109,6 +131,15 @@ pub struct Device {
     pub takeover: Option<bool>,
 }
 
+impl PartialEq for State {
+    fn eq(&self, other: &Self) -> bool {
+        self.launcher == other.launcher
+            && self.settings == other.settings
+            && self.packages == other.packages
+            && self.device == other.device
+    }
+}
+
 impl State {
     /// An empty snapshot in the current format.
     pub fn new() -> Self {
@@ -138,19 +169,33 @@ impl State {
         Ok(state)
     }
 
-    /// The `state.toml` text. Only ever hashed as written, never re-made to
-    /// compare (HISTORY.md § 1).
+    /// The `state.toml` text, in the oldest format that holds it. Only ever
+    /// hashed as written, never re-made to compare (HISTORY.md § 1).
     pub fn to_toml(&self) -> Result<String, HistoryError> {
-        self.validate()?;
-        toml::to_string(self).map_err(|error| HistoryError::invalid(error.to_string()))
+        let state = Self {
+            format: self.needed_format(),
+            ..self.clone()
+        };
+        state.validate()?;
+        toml::to_string(&state).map_err(|error| HistoryError::invalid(error.to_string()))
+    }
+
+    /// The oldest format that can hold this snapshot.
+    pub fn needed_format(&self) -> u32 {
+        if self.launcher.folders.is_empty() {
+            1
+        } else {
+            2
+        }
     }
 
     /// Checks names and values against the allowlists.
     pub fn validate(&self) -> Result<(), HistoryError> {
-        if self.format != STATE_FORMAT {
+        if !(self.needed_format()..=STATE_FORMAT).contains(&self.format) {
             return Err(HistoryError::invalid(format!(
-                "state format {} (this build reads {STATE_FORMAT})",
-                self.format
+                "state format {} (this build reads up to {STATE_FORMAT}; these contents need {})",
+                self.format,
+                self.needed_format()
             )));
         }
         for (key, value) in &self.settings.global {
@@ -172,10 +217,32 @@ impl State {
                 )));
             }
         }
-        for name in self.launcher.order.iter().chain(&self.launcher.hidden) {
+        let folder_apps = self
+            .launcher
+            .folders
+            .values()
+            .flat_map(|folder| &folder.apps);
+        for name in self
+            .launcher
+            .order
+            .iter()
+            .chain(&self.launcher.hidden)
+            .chain(self.launcher.folders.keys())
+            .chain(folder_apps)
+        {
             if !is_tile_name(name) {
                 return Err(HistoryError::invalid(format!(
                     "{name:?} is not a tile name"
+                )));
+            }
+        }
+        for (key, folder) in &self.launcher.folders {
+            if !key.starts_with("folder:") {
+                return Err(HistoryError::invalid(format!("{key:?} is not a folder")));
+            }
+            if !is_folder_name(&folder.name) {
+                return Err(HistoryError::invalid(format!(
+                    "the name of {key} is not valid"
                 )));
             }
         }
@@ -239,13 +306,27 @@ pub fn is_package_name(name: &str) -> bool {
         })
 }
 
-/// A tile name: `about`, `settings`, `hidden-apps`, or a component
-/// `<package>/<class>`. Tile names are only shown, never run, so the package
-/// part is checked by its characters (not [`is_package_name`]'s stricter
-/// shape): one bad name must not stop the whole history.
+/// A folder's name: 1 to 40 characters, none of them control characters.
+/// Shown only, never run.
+pub fn is_folder_name(name: &str) -> bool {
+    !name.trim().is_empty()
+        && name.chars().count() <= FOLDER_NAME_MAX
+        && !name.chars().any(char::is_control)
+}
+
+/// A tile name: `about`, `settings`, `hidden-apps`, `folder:<number>`, or a
+/// component `<package>/<class>`. Tile names are only shown, never run, so
+/// the package part is checked by its characters (not
+/// [`is_package_name`]'s stricter shape): one bad name must not stop the
+/// whole history.
 pub fn is_tile_name(name: &str) -> bool {
     match name.split_once('/') {
-        None => matches!(name, "about" | "settings" | "hidden-apps"),
+        None => {
+            matches!(name, "about" | "settings" | "hidden-apps")
+                || name
+                    .strip_prefix("folder:")
+                    .is_some_and(|number| number.parse::<u32>().is_ok() && !number.starts_with('+'))
+        }
         Some((package, class)) => {
             !package.is_empty()
                 && package.len() <= 255
@@ -323,9 +404,56 @@ mod tests {
     #[test]
     fn a_newer_format_says_so() {
         assert!(matches!(
-            State::parse("format = 2\nsomething_new = true\n"),
-            Err(HistoryError::FormatNewer(2))
+            State::parse("format = 3\nsomething_new = true\n"),
+            Err(HistoryError::FormatNewer(3))
         ));
+    }
+
+    #[test]
+    fn folders_need_format_two_and_others_stay_at_one() {
+        let state = sample();
+        assert!(state.to_toml().unwrap().starts_with("format = 1\n"));
+
+        let mut with_folder = sample();
+        with_folder.launcher.order.push("folder:1".into());
+        with_folder.launcher.folders.insert(
+            "folder:1".into(),
+            Folder {
+                name: "Ігри \"2\"".into(),
+                apps: vec!["com.example.game/.Main".into()],
+            },
+        );
+        let text = with_folder.to_toml().unwrap();
+        assert!(text.starts_with("format = 2\n"), "{text}");
+        let parsed = State::parse(&text).unwrap();
+        assert_eq!(parsed.launcher, with_folder.launcher);
+        // Format 1 can't say it has folders.
+        let downgraded = text.replacen("format = 2", "format = 1", 1);
+        assert!(matches!(
+            State::parse(&downgraded),
+            Err(HistoryError::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn folder_names_and_keys_are_checked() {
+        for text in [
+            "format = 2\n[launcher.folders.\"folder:1\"]\nname = \"\"\napps = []\n",
+            "format = 2\n[launcher.folders.\"folder:1\"]\nname = \"a\\nb\"\napps = []\n",
+            "format = 2\n[launcher.folders.\"folder:x\"]\nname = \"a\"\napps = []\n",
+            "format = 2\n[launcher.folders.about]\nname = \"a\"\napps = []\n",
+            "format = 2\n[launcher.folders.\"folder:1\"]\nname = \"a\"\napps = [\"../../x\"]\n",
+        ] {
+            assert!(
+                matches!(State::parse(text), Err(HistoryError::Invalid(_))),
+                "{text}"
+            );
+        }
+        assert!(is_folder_name(&"я".repeat(40)));
+        assert!(!is_folder_name(&"я".repeat(41)));
+        assert!(is_tile_name("folder:12"));
+        assert!(!is_tile_name("folder:+1"));
+        assert!(!is_tile_name("folder:"));
     }
 
     #[test]

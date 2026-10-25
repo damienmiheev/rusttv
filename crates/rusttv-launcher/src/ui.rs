@@ -15,8 +15,8 @@ use slint::{
 use crate::history::History;
 use crate::i18n;
 use crate::model::{
-    App, Effect, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT, MenuItem, Scroll,
-    State, TileId,
+    App, Category, Effect, FolderNames, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT,
+    MenuItem, Scroll, State, TileId,
 };
 use crate::order_file;
 use crate::platform::{AppEntry, Artwork, Bitmap, Platform, PlatformError, UpdateStatus};
@@ -95,6 +95,10 @@ const MARQUEE_HOLD: Duration = Duration::from_secs(1);
 /// update step runs. One cheap bridge call; the window changes only when the
 /// status does, so the home screen gets no extra frames.
 const UPDATE_POLL: Duration = Duration::from_millis(500);
+
+/// How long after Enter in the name field the name is read: the TV
+/// keyboard commits the word it is composing just after its Done key.
+const RENAME_SETTLE: Duration = Duration::from_millis(100);
 
 /// Settings for [`run`].
 #[derive(Debug, Clone, Default)]
@@ -284,6 +288,20 @@ fn start(
         weak.upgrade()
             .is_some_and(|controller| controller.borrow_mut().key(&text, pressed, repeat))
     });
+    let weak = Rc::downgrade(&controller);
+    window.on_rename_done(move |_| {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow().finish_rename_soon();
+        }
+    });
+    let weak = Rc::downgrade(&controller);
+    window.on_rename_cancelled(move || {
+        if let Some(controller) = weak.upgrade() {
+            let mut this = controller.borrow_mut();
+            this.end_rename();
+            this.render();
+        }
+    });
     Ok((window, controller))
 }
 
@@ -322,6 +340,13 @@ struct Controller {
     /// Apps on the hidden apps page while it is open, and the window's model of them.
     hidden_shown: Vec<TileId>,
     hidden_tiles: Rc<VecModel<TileData>>,
+    /// Apps of the open folder (kept while it closes), and the window's model of them.
+    folder_shown: Vec<TileId>,
+    folder_tiles: Rc<VecModel<TileData>>,
+    /// The folder being renamed; keys go to the name field meanwhile.
+    renaming: Option<u32>,
+    /// Confirms a rename once the keyboard's last word is in the field.
+    rename_timer: Timer,
     /// The long-press menu's item names; empty while it is closed.
     menu_items: Rc<VecModel<SharedString>>,
     hero: Option<TileId>,
@@ -380,6 +405,8 @@ impl Controller {
         window.set_tiles(ModelRc::from(tiles.clone()));
         let hidden_tiles = Rc::new(VecModel::default());
         window.set_hidden_tiles(ModelRc::from(hidden_tiles.clone()));
+        let folder_tiles = Rc::new(VecModel::default());
+        window.set_folder_tiles(ModelRc::from(folder_tiles.clone()));
         let menu_items = Rc::new(VecModel::default());
         window.set_menu_items(ModelRc::from(menu_items.clone()));
         let settings_sections = Rc::new(VecModel::default());
@@ -393,7 +420,7 @@ impl Controller {
         window.set_version(env!("CARGO_PKG_VERSION").into());
         window.set_update_status(update_line(window, &UpdateStatus::Idle));
 
-        let (order, hidden, saved_focus) =
+        let (order, folders, hidden, saved_focus) =
             options
                 .order_file
                 .as_deref()
@@ -402,10 +429,16 @@ impl Controller {
                     if let Some(warning) = loaded.warning {
                         log::warn!("{warning}");
                     }
-                    (loaded.order, loaded.hidden, loaded.focus)
+                    (loaded.order, loaded.folders, loaded.hidden, loaded.focus)
                 });
         // Focus is restored before the app list arrives, which keeps it by identity.
-        let mut home = Home::new(order, hidden, options.right_to_left);
+        let mut home = Home::new(order, folders, hidden, options.right_to_left);
+        let strings = window.global::<Strings>();
+        home.set_folder_names(FolderNames(Category::ALL.map(|category| {
+            strings
+                .invoke_folder_name(i32::try_from(category.index()).unwrap_or(i32::MAX))
+                .to_string()
+        })));
         if let Some(id) = &saved_focus {
             home.focus_on(id);
         }
@@ -420,6 +453,10 @@ impl Controller {
                 tiles,
                 hidden_shown: Vec::new(),
                 hidden_tiles,
+                folder_shown: Vec::new(),
+                folder_tiles,
+                renaming: None,
+                rename_timer: Timer::default(),
                 menu_items,
                 hero: None,
                 hero_a_front: true,
@@ -521,11 +558,20 @@ impl Controller {
     }
 
     /// Queues the artwork of these tiles that is still to be loaded. Only shown
-    /// tiles are queued, so hidden apps cost nothing until their page opens.
+    /// tiles are queued, so hidden apps cost nothing until their page opens;
+    /// a folder's tile needs the first four of its apps.
     fn queue_artwork(&mut self, tiles: &[TileId]) {
-        for tile in tiles {
-            if let TileId::App(id) = tile
-                && self.apps.get(id).is_some_and(AppView::is_pending)
+        let apps = tiles.iter().flat_map(|tile| match tile {
+            TileId::App(id) => std::slice::from_ref(id),
+            TileId::Folder(number) => self
+                .home
+                .folders()
+                .get(number)
+                .map_or(&[][..], |folder| &folder.apps[..folder.apps.len().min(4)]),
+            _ => &[],
+        });
+        for id in apps {
+            if self.apps.get(id).is_some_and(AppView::is_pending)
                 && !self.pending_artwork.contains(id)
             {
                 self.pending_artwork.push_back(id.clone());
@@ -572,6 +618,23 @@ impl Controller {
             if let Some(index) = self.hidden_shown.iter().position(|shown| *shown == tile) {
                 self.hidden_tiles.set_row_data(index, self.tile_data(&tile));
             }
+            if let Some(index) = self.folder_shown.iter().position(|shown| *shown == tile) {
+                self.folder_tiles.set_row_data(index, self.tile_data(&tile));
+            }
+            // A folder shows its first apps small.
+            let folder = self.home.folders().iter().find_map(|(number, folder)| {
+                folder
+                    .apps
+                    .iter()
+                    .take(4)
+                    .any(|app| matches!(&tile, TileId::App(shown) if shown == app))
+                    .then_some(*number)
+            });
+            if let Some(folder) = folder.map(TileId::Folder)
+                && let Some(index) = self.shown.iter().position(|shown| *shown == folder)
+            {
+                self.tiles.set_row_data(index, self.tile_data(&folder));
+            }
             if self.hero.as_ref() == Some(&tile) {
                 // Redraw the hero with the picture (it fades in like a tile).
                 self.hero = None;
@@ -604,7 +667,8 @@ impl Controller {
     fn input(&mut self, input: Input) {
         let effect = self.home.handle(input, (self.clock)());
         if input != Input::Tick {
-            self.pressed = input == Input::OkPressed && self.home.state() == State::Browse;
+            self.pressed = input == Input::OkPressed
+                && matches!(self.home.state(), State::Browse | State::Folder);
             self.restart_idle();
         }
         match effect {
@@ -631,6 +695,7 @@ impl Controller {
                 self.refresh_update();
             }
             Some(Effect::Update) => self.update_action(),
+            Some(Effect::RenameFolder(id)) => self.start_rename(id),
             // `render` fills the page and queues its artwork.
             Some(Effect::OpenHidden) | None => {}
         }
@@ -642,6 +707,7 @@ impl Controller {
         if input == Input::Paused {
             self.close_settings_view();
             self.schedule_pack();
+            self.end_rename();
         }
         if let Some(notices) = &mut self.notices {
             match input {
@@ -744,8 +810,18 @@ impl Controller {
         if History::get().is_some_and(History::busy) {
             return;
         }
+        // Mid-move, the folders are not what the order says yet: the drop saves.
+        if self.home.state() == State::Moving {
+            return;
+        }
         let focus = self.home.focused();
-        match order_file::save(path, self.home.order(), self.home.hidden(), focus) {
+        match order_file::save(
+            path,
+            self.home.order(),
+            self.home.folders(),
+            self.home.hidden(),
+            focus,
+        ) {
             Ok(()) => self.saved_focus = focus.cloned(),
             Err(error) => log::warn!(
                 "saving the tile order to {} failed: {error}",
@@ -776,8 +852,16 @@ impl Controller {
         let delay = match self.home.state() {
             State::Browse if self.pressed => LONG_PRESS,
             State::Launching => LAUNCH_TIMEOUT,
-            State::Moving => MOVE_IDLE_TIMEOUT,
-            State::Browse | State::About | State::Menu | State::Hidden | State::Settings => {
+            State::Folder if self.pressed => LONG_PRESS,
+            State::Moving => self.home.folder_due().map_or(MOVE_IDLE_TIMEOUT, |due| {
+                due.saturating_sub((self.clock)()).min(MOVE_IDLE_TIMEOUT)
+            }),
+            State::Browse
+            | State::About
+            | State::Menu
+            | State::Hidden
+            | State::Settings
+            | State::Folder => {
                 self.tick_timer.stop();
                 return;
             }
@@ -901,6 +985,7 @@ impl Controller {
         if let Some(focus) = self.home.hidden_focus() {
             window.set_hidden_focus(i32::try_from(focus).unwrap_or(i32::MAX));
         }
+        self.render_folder(&window);
         let (items, selected) = self.home.menu().unwrap_or_default();
         let labels: Vec<SharedString> = items
             .iter()
@@ -1001,9 +1086,120 @@ impl Controller {
         Some(glow)
     }
 
+    /// The open folder: its apps, focus and name, and the tile a moving app
+    /// is on top of. A closed folder's apps stay in the window's model, so
+    /// the panel still shows them while it shrinks away.
+    fn render_folder(&mut self, window: &HomeWindow) {
+        let to_i32 = |value: usize| i32::try_from(value).unwrap_or(i32::MAX);
+        window.set_over_index(self.home.moving_over().map_or(-1, to_i32));
+        let open = self.home.open_folder();
+        window.set_folder_open(open.is_some());
+        let Some(open) = open else {
+            return;
+        };
+        let Some(folder) = self.home.folders().get(&open.id) else {
+            return;
+        };
+        window.set_folder_name(folder.name.as_str().into());
+        window.set_folder_focus(open.focus.map_or(-1, to_i32));
+        let tiles: Vec<TileId> = folder.apps.iter().cloned().map(TileId::App).collect();
+        if tiles != self.folder_shown {
+            self.folder_shown = tiles;
+            let rows: Vec<TileData> = self
+                .folder_shown
+                .iter()
+                .map(|id| self.tile_data(id))
+                .collect();
+            self.folder_tiles.set_vec(rows);
+            self.queue_artwork(&self.folder_shown.clone());
+        }
+    }
+
+    /// OK on an open folder's name: the name field takes the keys (and on a
+    /// TV, the on-screen keyboard opens).
+    fn start_rename(&mut self, id: u32) {
+        let Some(window) = self.window.upgrade() else {
+            return;
+        };
+        let Some(folder) = self.home.folders().get(&id) else {
+            return;
+        };
+        self.renaming = Some(id);
+        window.set_rename_text(folder.name.as_str().into());
+        window.set_renaming(true);
+        window.invoke_focus_rename();
+    }
+
+    /// Enter in the name field. The TV keyboard sends its Done key before
+    /// the word it is composing reaches the field, so the name is read a
+    /// moment later.
+    fn finish_rename_soon(&self) {
+        let me = self.me.clone();
+        self.rename_timer
+            .start(TimerMode::SingleShot, RENAME_SETTLE, move || {
+                let Some(controller) = me.upgrade() else {
+                    return;
+                };
+                let mut this = controller.borrow_mut();
+                let text = this
+                    .window
+                    .upgrade()
+                    .map(|window| window.get_rename_text())
+                    .unwrap_or_default();
+                this.rename_done(&text);
+            });
+    }
+
+    /// The name field was confirmed: keeps a changed name.
+    fn rename_done(&mut self, text: &str) {
+        if let Some(id) = self.renaming
+            && self.home.rename_folder(id, text)
+        {
+            self.save_order();
+            if let Some(history) = History::get() {
+                history.launcher_edited();
+            }
+            // The folder's tile and the hero show its name too.
+            self.shown.clear();
+            self.hero = None;
+        }
+        self.end_rename();
+        self.render();
+    }
+
+    /// Gives the keys back to the home screen.
+    fn end_rename(&mut self) {
+        self.rename_timer.stop();
+        if self.renaming.take().is_none() {
+            return;
+        }
+        if let Some(window) = self.window.upgrade() {
+            window.set_renaming(false);
+            window.invoke_focus_keys();
+        }
+    }
+
     fn tile_data(&self, id: &TileId) -> TileData {
         let component = match id {
             TileId::App(component) => component,
+            TileId::Folder(number) => {
+                let folder = self.home.folders().get(number);
+                let minis: Vec<slint::Image> = folder
+                    .into_iter()
+                    .flat_map(|folder| &folder.apps)
+                    .take(4)
+                    .filter_map(|app| self.apps.get(app).map(|view| view.image.clone()))
+                    .collect();
+                return TileData {
+                    label: folder
+                        .map(|folder| folder.name.as_str())
+                        .unwrap_or_default()
+                        .into(),
+                    kind: 7,
+                    minis: ModelRc::new(VecModel::from(minis)),
+                    ..TileData::default()
+                };
+            }
             TileId::About => {
                 return TileData {
                     kind: 3,
@@ -1036,6 +1232,7 @@ impl Controller {
             // A cheap handle: the tile and the hero share one image and texture.
             image: app.image.clone(),
             kind: app.kind,
+            ..TileData::default()
         }
     }
 }
@@ -1155,6 +1352,7 @@ fn mode_value(state: State) -> i32 {
         State::Menu => 4,
         State::Hidden => 5,
         State::Settings => 6,
+        State::Folder => 8,
     }
 }
 
@@ -1323,6 +1521,7 @@ mod tests {
         FakePlatform::new(["a", "b", "c"].map(|name| App {
             id: format!("{name}/.Main"),
             label: name.to_uppercase(),
+            category: Category::Other,
         }))
     }
 

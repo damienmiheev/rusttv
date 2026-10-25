@@ -57,7 +57,7 @@ object Bridge {
     @JvmStatic
     fun takeAppsChanged(): Boolean = appsChanged.getAndSet(false)
 
-    /** Launchable TV apps as "component\nlabel", without this launcher. */
+    /** Launchable TV apps as "component\nlabel\ncategory", without this launcher. */
     @JvmStatic
     fun listApps(context: Context): Array<String> {
         val pm = context.packageManager
@@ -68,7 +68,8 @@ object Bridge {
             .map { info ->
                 val component = ComponentName(info.packageName, info.name).flattenToShortString()
                 val label = info.loadLabel(pm).toString().replace('\n', ' ')
-                "$component\n$label"
+                // ApplicationInfo.CATEGORY_*: names a new folder (API 26+).
+                "$component\n$label\n${info.applicationInfo.category}"
             }
             .toTypedArray()
     }

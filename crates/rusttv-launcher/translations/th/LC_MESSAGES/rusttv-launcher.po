@@ -277,3 +277,57 @@ msgstr "เพิ่ม {}"
 
 msgid "Removed {}"
 msgstr "นำ {} ออก"
+
+msgid "Games"
+msgstr "เกม"
+
+msgid "Music"
+msgstr "เพลง"
+
+msgid "Video"
+msgstr "วิดีโอ"
+
+msgid "Photos"
+msgstr "รูปภาพ"
+
+msgid "Social"
+msgstr "โซเชียล"
+
+msgid "News"
+msgstr "ข่าว"
+
+msgid "Maps"
+msgstr "แผนที่"
+
+msgid "Productivity"
+msgstr "การทำงาน"
+
+msgid "Accessibility"
+msgstr "การช่วยเหลือพิเศษ"
+
+msgid "Folder"
+msgstr "โฟลเดอร์"
+
+msgid "Type a name, then press ✓. Back keeps the old one."
+msgstr "พิมพ์ชื่อ แล้วกด ✓ กลับจะคงชื่อเดิม"
+
+msgid "Move past the edge to take the app out. OK drops it."
+msgstr "เลื่อนเลยขอบเพื่อนำแอปออก OK เพื่อวาง"
+
+msgid "Back closes the folder. Up reaches its name."
+msgstr "กลับเพื่อปิดโฟลเดอร์ ขึ้นเพื่อไปที่ชื่อ"
+
+msgid "Made the folder {}"
+msgstr "สร้างโฟลเดอร์ {} แล้ว"
+
+msgid "Removed the folder {}"
+msgstr "ลบโฟลเดอร์ {} แล้ว"
+
+msgid "Renamed the folder {} to {}"
+msgstr "เปลี่ยนชื่อโฟลเดอร์ {} เป็น {}"
+
+msgid "Put {} in {}"
+msgstr "ใส่ {} ใน {}"
+
+msgid "Took {} out of {}"
+msgstr "นำ {} ออกจาก {}"

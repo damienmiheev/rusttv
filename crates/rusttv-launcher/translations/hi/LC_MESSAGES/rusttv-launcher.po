@@ -277,3 +277,57 @@ msgstr "{} जोड़ा गया"
 
 msgid "Removed {}"
 msgstr "{} हटाया गया"
+
+msgid "Games"
+msgstr "गेम"
+
+msgid "Music"
+msgstr "संगीत"
+
+msgid "Video"
+msgstr "वीडियो"
+
+msgid "Photos"
+msgstr "फ़ोटो"
+
+msgid "Social"
+msgstr "सोशल"
+
+msgid "News"
+msgstr "समाचार"
+
+msgid "Maps"
+msgstr "मैप"
+
+msgid "Productivity"
+msgstr "उत्पादकता"
+
+msgid "Accessibility"
+msgstr "सुलभता"
+
+msgid "Folder"
+msgstr "फ़ोल्डर"
+
+msgid "Type a name, then press ✓. Back keeps the old one."
+msgstr "नाम लिखें, फिर ✓ दबाएं। वापस पुराना नाम रखता है।"
+
+msgid "Move past the edge to take the app out. OK drops it."
+msgstr "ऐप निकालने के लिए किनारे से आगे जाएं। OK उसे रखता है।"
+
+msgid "Back closes the folder. Up reaches its name."
+msgstr "वापस फ़ोल्डर बंद करता है। ऊपर उसके नाम पर जाता है।"
+
+msgid "Made the folder {}"
+msgstr "फ़ोल्डर {} बनाया"
+
+msgid "Removed the folder {}"
+msgstr "फ़ोल्डर {} हटाया"
+
+msgid "Renamed the folder {} to {}"
+msgstr "फ़ोल्डर {} का नाम {} किया"
+
+msgid "Put {} in {}"
+msgstr "{} को {} में रखा"
+
+msgid "Took {} out of {}"
+msgstr "{} को {} से निकाला"

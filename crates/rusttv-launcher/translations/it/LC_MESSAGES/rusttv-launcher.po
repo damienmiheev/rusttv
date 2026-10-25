@@ -277,3 +277,57 @@ msgstr "Aggiunta {}"
 
 msgid "Removed {}"
 msgstr "Rimossa {}"
+
+msgid "Games"
+msgstr "Giochi"
+
+msgid "Music"
+msgstr "Musica"
+
+msgid "Video"
+msgstr "Video"
+
+msgid "Photos"
+msgstr "Foto"
+
+msgid "Social"
+msgstr "Social"
+
+msgid "News"
+msgstr "Notizie"
+
+msgid "Maps"
+msgstr "Mappe"
+
+msgid "Productivity"
+msgstr "Produttività"
+
+msgid "Accessibility"
+msgstr "Accessibilità"
+
+msgid "Folder"
+msgstr "Cartella"
+
+msgid "Type a name, then press ✓. Back keeps the old one."
+msgstr "Scrivi un nome, poi premi ✓. Indietro mantiene quello vecchio."
+
+msgid "Move past the edge to take the app out. OK drops it."
+msgstr "Supera il bordo per togliere l’app. OK la lascia."
+
+msgid "Back closes the folder. Up reaches its name."
+msgstr "Indietro chiude la cartella. Su porta al nome."
+
+msgid "Made the folder {}"
+msgstr "Cartella {} creata"
+
+msgid "Removed the folder {}"
+msgstr "Cartella {} rimossa"
+
+msgid "Renamed the folder {} to {}"
+msgstr "Cartella {} rinominata in {}"
+
+msgid "Put {} in {}"
+msgstr "{} messa in {}"
+
+msgid "Took {} out of {}"
+msgstr "{} tolta da {}"

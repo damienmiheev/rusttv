@@ -98,6 +98,23 @@ pub(crate) enum ChangeView {
     Added { tile: String },
     /// A tile left Home (an app removed).
     Removed { tile: String },
+    /// A folder made on Home.
+    FolderAdded { folder: String, name: String },
+    /// A folder gone from Home.
+    FolderRemoved { folder: String, name: String },
+    /// A folder's new name.
+    FolderRenamed {
+        folder: String,
+        old: String,
+        new: String,
+    },
+    /// An app put into a folder or taken out of it.
+    InFolder {
+        tile: String,
+        folder: String,
+        name: String,
+        inside: bool,
+    },
     /// An app hidden or shown again.
     Hidden { tile: String, hidden: bool },
     /// The launcher's update switch.
@@ -132,6 +149,30 @@ impl ChangeView {
             },
             Change::Added { tile } => Self::Added { tile: tile.clone() },
             Change::Removed { tile } => Self::Removed { tile: tile.clone() },
+            Change::FolderAdded { folder, name } => Self::FolderAdded {
+                folder: folder.clone(),
+                name: name.clone(),
+            },
+            Change::FolderRemoved { folder, name } => Self::FolderRemoved {
+                folder: folder.clone(),
+                name: name.clone(),
+            },
+            Change::FolderRenamed { folder, old, new } => Self::FolderRenamed {
+                folder: folder.clone(),
+                old: old.clone(),
+                new: new.clone(),
+            },
+            Change::InFolder {
+                tile,
+                folder,
+                name,
+                inside,
+            } => Self::InFolder {
+                tile: tile.clone(),
+                folder: folder.clone(),
+                name: name.clone(),
+                inside: *inside,
+            },
             Change::Hidden { tile, hidden } => Self::Hidden {
                 tile: tile.clone(),
                 hidden: *hidden,
@@ -171,6 +212,20 @@ pub(crate) fn change(change: &Change) -> String {
         Change::Reordered { moved } => format!("Moved on Home: {}", moved.join(", ")),
         Change::Added { tile } => format!("Added to Home: {tile}"),
         Change::Removed { tile } => format!("Removed from Home: {tile}"),
+        Change::FolderAdded { name, .. } => format!("Made the folder \"{name}\""),
+        Change::FolderRemoved { name, .. } => format!("Removed the folder \"{name}\""),
+        Change::FolderRenamed { old, new, .. } => {
+            format!("Renamed the folder \"{old}\" to \"{new}\"")
+        }
+        Change::InFolder {
+            tile,
+            name,
+            inside: true,
+            ..
+        } => format!("Put {tile} in the folder \"{name}\""),
+        Change::InFolder { tile, name, .. } => {
+            format!("Took {tile} out of the folder \"{name}\"")
+        }
         Change::Hidden { tile, hidden: true } => format!("Hid {tile}"),
         Change::Hidden {
             tile,

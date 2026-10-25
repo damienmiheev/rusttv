@@ -17,8 +17,8 @@ pub mod tv;
 pub use diff::{Change, diff};
 pub use entry::{ApprovedBy, Author, Entry, EntryId, Meta};
 pub use state::{
-    Device, Launcher, PackageState, SETTING_KEYS, STATE_FORMAT, Settings, State, is_package_name,
-    is_setting_value, is_tile_name,
+    Device, Folder, Launcher, PackageState, SETTING_KEYS, STATE_FORMAT, Settings, State,
+    is_folder_name, is_package_name, is_setting_value, is_tile_name,
 };
 pub use store::{EXPORT_PART_COMMITS, Export, HistoryId, Limits, PackOutcome, Store};
 

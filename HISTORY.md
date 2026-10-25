@@ -43,9 +43,13 @@ commands.
 format = 1
 
 [launcher]                     # the launcher's own state; only the TV writes it
-order = ["com.netflix.ninja/.MainActivity", "about", "settings"]
+order = ["com.netflix.ninja/.MainActivity", "folder:1", "about", "settings"]
 hidden = ["com.example/.Main"]
 update_check = true
+
+[launcher.folders."folder:1"]  # format 2; only when a folder exists
+name = "Video"
+apps = ["com.example.films/.Main", "com.example.series/.Main"]
 
 [settings.global]              # SettingKey allowlist; absent key = unset
 animator_duration_scale = "0.5"
@@ -62,6 +66,16 @@ takeover = "active"
   equality compares parsed values; all values are strings.
 - **`[launcher]`:** tile names in order, hidden apps, the update switch; no
   focus. Uninstalled apps' names are kept (as the order file does).
+- **Folders** (*added 2026-10-25*): a folder is the tile `folder:<number>`
+  in `order`, and `[launcher.folders."folder:<number>"]` holds its name (1–40
+  characters, no control characters; shown only, never run) and its apps in
+  order. An app is in `order` or in one folder, never both; there are no
+  folders in folders. A snapshot with a folder is written as `format = 2`;
+  one without is still `format = 1`, so builds that read only format 1 keep
+  reading a history until the first folder (then they say
+  `HISTORY_FORMAT_NEWER`). The changes it adds: a folder made, removed or
+  renamed, and an app put in or taken out of a folder; an app moving into a
+  folder is not "removed from Home".
 - **`[settings.global]`:** the `SettingKey` keys, values
   `[0-9]{1,2}(\.[0-9]{1,3})?`. For these three keys **absent ≡ "1"**
   (Android's default), so the TV restores "absent" by writing "1" and
@@ -105,7 +119,7 @@ RustTV-Approved-By: tv-code sha256:… | terminal | delegation | upgrade | none
 
 | Change | On the TV |
 |---|---|
-| Move, hide, unhide (the launcher's direct edits, as today) | recorded as `tv` entries without a code |
+| Move, hide, unhide, folders (make, rename, apps in and out; the launcher's direct edits, as today) | recorded as `tv` entries without a code |
 | Settings, the update switch, any restore | review + code + hold OK (§ 6) |
 | Packages | review + code + hold OK → pending for the Mac |
 

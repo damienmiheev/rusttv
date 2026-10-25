@@ -26,7 +26,8 @@ class LauncherActivity : NativeActivity() {
         // NativeActivity.onCreate sets STATE_UNSPECIFIED (overriding the
         // manifest), and its content view reports itself as a text editor, so
         // Android auto-showed the keyboard on focus until Slint hid it again.
-        // The home screen has no text input: keep it hidden.
+        // Keep it hidden until a text field asks for it (renaming a folder
+        // shows it through Slint's input view).
         window.setSoftInputMode(
             WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN or
                 WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING

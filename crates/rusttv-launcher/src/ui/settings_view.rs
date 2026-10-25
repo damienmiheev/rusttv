@@ -322,13 +322,14 @@ impl Controller {
             });
     }
 
-    /// Reloads the tile order and hidden apps after the history rewrote them.
+    /// Reloads the tile order, folders and hidden apps after the history rewrote them.
     pub(super) fn reload_launcher_state(&mut self) {
         let Some(path) = &self.options.order_file else {
             return;
         };
         let loaded = order_file::load(path);
-        self.home.replace_order(loaded.order, loaded.hidden);
+        self.home
+            .replace_order(loaded.order, loaded.folders, loaded.hidden);
         self.shown.clear();
         self.render();
     }
@@ -679,6 +680,19 @@ fn change_line(
         }
         Change::Package { name, old, new } => (5, name.as_str().into(), package(old), package(new)),
         Change::Added { tile } => (9, label(tile).into(), "".into(), "".into()),
+        Change::FolderAdded { name, .. } => (11, name.as_str().into(), "".into(), "".into()),
+        Change::FolderRemoved { name, .. } => (12, name.as_str().into(), "".into(), "".into()),
+        Change::FolderRenamed { old, new, .. } => {
+            (13, "".into(), old.as_str().into(), new.as_str().into())
+        }
+        Change::InFolder {
+            tile, name, inside, ..
+        } => (
+            if *inside { 14 } else { 15 },
+            label(tile).into(),
+            name.as_str().into(),
+            "".into(),
+        ),
         Change::Removed { tile } => (10, label(tile).into(), "".into(), "".into()),
         Change::Firmware { .. } => (6, "".into(), "".into(), "".into()),
         Change::Takeover { active } => (7, "".into(), "".into(), strings.invoke_on_off(*active)),

@@ -277,3 +277,57 @@ msgstr "أُضيف {}"
 
 msgid "Removed {}"
 msgstr "أُزيل {}"
+
+msgid "Games"
+msgstr "ألعاب"
+
+msgid "Music"
+msgstr "موسيقى"
+
+msgid "Video"
+msgstr "فيديو"
+
+msgid "Photos"
+msgstr "صور"
+
+msgid "Social"
+msgstr "تواصل اجتماعي"
+
+msgid "News"
+msgstr "أخبار"
+
+msgid "Maps"
+msgstr "خرائط"
+
+msgid "Productivity"
+msgstr "إنتاجية"
+
+msgid "Accessibility"
+msgstr "تسهيل الاستخدام"
+
+msgid "Folder"
+msgstr "مجلد"
+
+msgid "Type a name, then press ✓. Back keeps the old one."
+msgstr "اكتب اسمًا ثم اضغط ✓. رجوع يُبقي الاسم القديم."
+
+msgid "Move past the edge to take the app out. OK drops it."
+msgstr "تجاوز الحافة لإخراج التطبيق. OK يضعه."
+
+msgid "Back closes the folder. Up reaches its name."
+msgstr "رجوع يغلق المجلد. أعلى ينتقل إلى اسمه."
+
+msgid "Made the folder {}"
+msgstr "تم إنشاء المجلد {}"
+
+msgid "Removed the folder {}"
+msgstr "تمت إزالة المجلد {}"
+
+msgid "Renamed the folder {} to {}"
+msgstr "تمت إعادة تسمية المجلد {} إلى {}"
+
+msgid "Put {} in {}"
+msgstr "تمت إضافة {} إلى {}"
+
+msgid "Took {} out of {}"
+msgstr "تم إخراج {} من {}"

@@ -3,13 +3,14 @@
 
 use std::collections::BTreeSet;
 
-use crate::state::{PackageState, SETTING_KEYS, State};
+use crate::state::{Launcher, PackageState, SETTING_KEYS, State};
 
 /// One difference between two snapshots.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Change {
-    /// The tile order changed (tiles that moved, in their new order).
+    /// The tile order changed, on Home or in a folder (tiles that moved,
+    /// in their new order).
     Reordered {
         /// Tiles whose position changed.
         moved: Vec<String>,
@@ -24,6 +25,40 @@ pub enum Change {
     Removed {
         /// The tile's name.
         tile: String,
+    },
+    /// A folder was made.
+    FolderAdded {
+        /// Its tile name (`folder:<number>`).
+        folder: String,
+        /// Its name.
+        name: String,
+    },
+    /// A folder went (its last app left it).
+    FolderRemoved {
+        /// Its tile name.
+        folder: String,
+        /// Its name.
+        name: String,
+    },
+    /// A folder got a new name.
+    FolderRenamed {
+        /// Its tile name.
+        folder: String,
+        /// Before.
+        old: String,
+        /// After.
+        new: String,
+    },
+    /// An app on Home went into a folder or came out of one.
+    InFolder {
+        /// The app's component name.
+        tile: String,
+        /// The folder's tile name.
+        folder: String,
+        /// The folder's name.
+        name: String,
+        /// Whether the app is in the folder now.
+        inside: bool,
     },
     /// An app was hidden or shown again.
     Hidden {
@@ -74,36 +109,88 @@ pub enum Change {
 /// packages, device. Animation scales compare as numbers, unset = "1".
 pub fn diff(old: &State, new: &State) -> Vec<Change> {
     let mut changes = Vec::new();
+    let (was, now) = (&old.launcher, &new.launcher);
 
-    let common: Vec<&String> = new
-        .launcher
-        .order
-        .iter()
-        .filter(|tile| old.launcher.order.contains(tile))
-        .collect();
-    let before: Vec<&String> = old
-        .launcher
-        .order
-        .iter()
-        .filter(|tile| new.launcher.order.contains(tile))
-        .collect();
-    if common != before {
-        let moved = common
-            .iter()
-            .zip(&before)
-            .filter(|(now, was)| now != was)
-            .map(|(now, _)| (*now).clone())
-            .collect();
-        changes.push(Change::Reordered { moved });
-    }
-    for tile in &new.launcher.order {
-        if !old.launcher.order.contains(tile) {
-            changes.push(Change::Added { tile: tile.clone() });
+    let mut moved = moved_tiles(&was.order, &now.order);
+    for (folder, then) in &now.folders {
+        if let Some(before) = was.folders.get(folder) {
+            moved.extend(moved_tiles(&before.apps, &then.apps));
         }
     }
-    for tile in &old.launcher.order {
-        if !new.launcher.order.contains(tile) {
-            changes.push(Change::Removed { tile: tile.clone() });
+    if !moved.is_empty() {
+        changes.push(Change::Reordered { moved });
+    }
+    // Apps and built-in tiles on Home, in folders or not; folders aren't tiles here.
+    let on_home = |launcher: &Launcher| -> Vec<String> {
+        launcher
+            .order
+            .iter()
+            .filter(|tile| !launcher.folders.contains_key(*tile))
+            .chain(launcher.folders.values().flat_map(|folder| &folder.apps))
+            .cloned()
+            .collect()
+    };
+    let (before, after) = (on_home(was), on_home(now));
+    for tile in after.iter().filter(|tile| !before.contains(tile)) {
+        changes.push(Change::Added { tile: tile.clone() });
+    }
+    for tile in before.iter().filter(|tile| !after.contains(tile)) {
+        changes.push(Change::Removed { tile: tile.clone() });
+    }
+    for (folder, then) in &now.folders {
+        if !was.folders.contains_key(folder) {
+            changes.push(Change::FolderAdded {
+                folder: folder.clone(),
+                name: then.name.clone(),
+            });
+        }
+    }
+    let folder_of = |launcher: &Launcher, tile: &String| {
+        launcher
+            .folders
+            .iter()
+            .find(|(_, folder)| folder.apps.contains(tile))
+            .map(|(id, folder)| (id.clone(), folder.name.clone()))
+    };
+    for tile in after.iter().filter(|tile| before.contains(tile)) {
+        let (from, to) = (folder_of(was, tile), folder_of(now, tile));
+        if from.as_ref().map(|(id, _)| id) == to.as_ref().map(|(id, _)| id) {
+            continue;
+        }
+        if let Some((folder, name)) = from {
+            changes.push(Change::InFolder {
+                tile: tile.clone(),
+                folder,
+                name,
+                inside: false,
+            });
+        }
+        if let Some((folder, name)) = to {
+            changes.push(Change::InFolder {
+                tile: tile.clone(),
+                folder,
+                name,
+                inside: true,
+            });
+        }
+    }
+    for (folder, then) in &now.folders {
+        if let Some(before) = was.folders.get(folder)
+            && before.name != then.name
+        {
+            changes.push(Change::FolderRenamed {
+                folder: folder.clone(),
+                old: before.name.clone(),
+                new: then.name.clone(),
+            });
+        }
+    }
+    for (folder, before) in &was.folders {
+        if !now.folders.contains_key(folder) {
+            changes.push(Change::FolderRemoved {
+                folder: folder.clone(),
+                name: before.name.clone(),
+            });
         }
     }
     let hidden: BTreeSet<&String> = old
@@ -159,6 +246,18 @@ pub fn diff(old: &State, new: &State) -> Vec<Change> {
     changes
 }
 
+/// Tiles in both lists whose place among the tiles they share changed, in
+/// their new order.
+fn moved_tiles(old: &[String], new: &[String]) -> Vec<String> {
+    let common = new.iter().filter(|tile| old.contains(tile));
+    let before = old.iter().filter(|tile| new.contains(tile));
+    common
+        .zip(before)
+        .filter(|(now, was)| now != was)
+        .map(|(now, _)| now.clone())
+        .collect()
+}
+
 /// A one-line English summary, for `git log` on the Mac (HISTORY.md § 2).
 /// People see words made from the [`Change`]s in their own language instead.
 pub(crate) fn summary(changes: &[Change]) -> String {
@@ -172,6 +271,19 @@ pub(crate) fn summary(changes: &[Change]) -> String {
         Change::Hidden { tile, hidden } => {
             let app = tile.split('/').next().unwrap_or(tile);
             format!("{} {app}", if *hidden { "Hid" } else { "Showed" })
+        }
+        Change::FolderAdded { name, .. } => format!("Made folder {name}"),
+        Change::FolderRemoved { name, .. } => format!("Removed folder {name}"),
+        Change::FolderRenamed { old, new, .. } => format!("Renamed folder {old} to {new}"),
+        Change::InFolder {
+            tile, name, inside, ..
+        } => {
+            let app = tile.split('/').next().unwrap_or(tile);
+            if *inside {
+                format!("Put {app} in {name}")
+            } else {
+                format!("Took {app} out of {name}")
+            }
         }
         Change::UpdateCheck { on } => {
             format!("Update check {}", if *on { "on" } else { "off" })
@@ -252,6 +364,98 @@ mod tests {
             vec![Change::Removed {
                 tile: "e.f/.New".into()
             }]
+        );
+    }
+
+    fn folder(name: &str, apps: &[&str]) -> crate::state::Folder {
+        crate::state::Folder {
+            name: name.into(),
+            apps: apps.iter().map(|app| (*app).to_owned()).collect(),
+        }
+    }
+
+    #[test]
+    fn making_a_folder_puts_apps_in_it_without_adding_or_removing_them() {
+        let mut old = State::new();
+        old.launcher.order = ["a.b/.A", "c.d/.C", "e.f/.E", "about"]
+            .map(String::from)
+            .to_vec();
+        let mut new = State::new();
+        new.launcher.order = ["folder:1", "e.f/.E", "about"].map(String::from).to_vec();
+        new.launcher
+            .folders
+            .insert("folder:1".into(), folder("Games", &["c.d/.C", "a.b/.A"]));
+        let changes = diff(&old, &new);
+        let inside = |tile: &str| Change::InFolder {
+            tile: tile.into(),
+            folder: "folder:1".into(),
+            name: "Games".into(),
+            inside: true,
+        };
+        assert_eq!(
+            changes,
+            vec![
+                Change::FolderAdded {
+                    folder: "folder:1".into(),
+                    name: "Games".into()
+                },
+                inside("c.d/.C"),
+                inside("a.b/.A"),
+            ]
+        );
+        assert_eq!(summary(&changes), "Made folder Games and 2 more");
+
+        // Back out: the folder goes, the apps come out.
+        let back = diff(&new, &old);
+        assert_eq!(back.len(), 3, "{back:?}");
+        assert!(back.contains(&Change::FolderRemoved {
+            folder: "folder:1".into(),
+            name: "Games".into()
+        }));
+    }
+
+    #[test]
+    fn moving_between_folders_renaming_and_reordering_inside_are_reported() {
+        let mut old = State::new();
+        old.launcher.order = ["folder:1", "folder:2"].map(String::from).to_vec();
+        old.launcher.folders.insert(
+            "folder:1".into(),
+            folder("A", &["a.b/.A", "c.d/.C", "x.y/.X"]),
+        );
+        old.launcher
+            .folders
+            .insert("folder:2".into(), folder("B", &["e.f/.E"]));
+        let mut new = old.clone();
+        new.launcher
+            .folders
+            .insert("folder:1".into(), folder("Films", &["c.d/.C", "a.b/.A"]));
+        new.launcher
+            .folders
+            .insert("folder:2".into(), folder("B", &["e.f/.E", "x.y/.X"]));
+        assert_eq!(
+            diff(&old, &new),
+            vec![
+                Change::Reordered {
+                    moved: vec!["c.d/.C".into(), "a.b/.A".into()]
+                },
+                Change::InFolder {
+                    tile: "x.y/.X".into(),
+                    folder: "folder:1".into(),
+                    name: "A".into(),
+                    inside: false
+                },
+                Change::InFolder {
+                    tile: "x.y/.X".into(),
+                    folder: "folder:2".into(),
+                    name: "B".into(),
+                    inside: true
+                },
+                Change::FolderRenamed {
+                    folder: "folder:1".into(),
+                    old: "A".into(),
+                    new: "Films".into()
+                },
+            ]
         );
     }
 

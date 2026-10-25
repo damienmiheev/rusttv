@@ -4,6 +4,24 @@ All notable changes to RustTV. Versions follow [Semantic Versioning](https://sem
 before 1.0.0 a minor version may break the CLI/JSON contract (the `schema`
 field in `--json` output says which contract you get, CLI.md).
 
+## Unreleased
+
+### Launcher
+
+- Folders, like on a phone's Home, worked with the remote: in move mode,
+  leave an app on top of another app (or a folder) for 0.6 s to make a
+  folder (or put it in); the folder opens over a dimmed Home with pages of
+  12, Up reaches its name and OK renames it with the TV's keyboard, Back
+  closes it. Apps move out past the folder's edge; an empty folder goes. The
+  first name comes from the apps' category, in all 21 languages. Folders are
+  kept in `order.toml` and in the TV's history.
+
+### CLI
+
+- Schema `rusttv.v9`: history changes have the new kinds `folder_added`,
+  `folder_removed`, `folder_renamed` and `in_folder`, and `history show` may
+  include `launcher.folders` (CLI.md).
+
 ## 0.1.0 (2026-10-24)
 
 First public release (ROADMAP Phase 6).

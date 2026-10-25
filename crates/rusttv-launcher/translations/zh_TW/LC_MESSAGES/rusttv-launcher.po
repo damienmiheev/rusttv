@@ -277,3 +277,57 @@ msgstr "已新增 {}"
 
 msgid "Removed {}"
 msgstr "已移除 {}"
+
+msgid "Games"
+msgstr "遊戲"
+
+msgid "Music"
+msgstr "音樂"
+
+msgid "Video"
+msgstr "影片"
+
+msgid "Photos"
+msgstr "相片"
+
+msgid "Social"
+msgstr "社群"
+
+msgid "News"
+msgstr "新聞"
+
+msgid "Maps"
+msgstr "地圖"
+
+msgid "Productivity"
+msgstr "生產力"
+
+msgid "Accessibility"
+msgstr "無障礙"
+
+msgid "Folder"
+msgstr "資料夾"
+
+msgid "Type a name, then press ✓. Back keeps the old one."
+msgstr "輸入名稱，然後按 ✓。按返回保留原名稱。"
+
+msgid "Move past the edge to take the app out. OK drops it."
+msgstr "移過邊緣即可將應用程式移出。按 OK 放下。"
+
+msgid "Back closes the folder. Up reaches its name."
+msgstr "按返回關閉資料夾。按上移到名稱。"
+
+msgid "Made the folder {}"
+msgstr "已建立資料夾 {}"
+
+msgid "Removed the folder {}"
+msgstr "已移除資料夾 {}"
+
+msgid "Renamed the folder {} to {}"
+msgstr "已將資料夾 {} 重新命名為 {}"
+
+msgid "Put {} in {}"
+msgstr "已將 {} 放入 {}"
+
+msgid "Took {} out of {}"
+msgstr "已將 {} 移出 {}"

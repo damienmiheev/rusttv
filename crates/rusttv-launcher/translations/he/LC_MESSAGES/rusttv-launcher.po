@@ -277,3 +277,57 @@ msgstr "נוסף {}"
 
 msgid "Removed {}"
 msgstr "הוסר {}"
+
+msgid "Games"
+msgstr "משחקים"
+
+msgid "Music"
+msgstr "מוזיקה"
+
+msgid "Video"
+msgstr "וידאו"
+
+msgid "Photos"
+msgstr "תמונות"
+
+msgid "Social"
+msgstr "רשתות חברתיות"
+
+msgid "News"
+msgstr "חדשות"
+
+msgid "Maps"
+msgstr "מפות"
+
+msgid "Productivity"
+msgstr "פרודוקטיביות"
+
+msgid "Accessibility"
+msgstr "נגישות"
+
+msgid "Folder"
+msgstr "תיקייה"
+
+msgid "Type a name, then press ✓. Back keeps the old one."
+msgstr "יש להקליד שם ואז ללחוץ על ✓. חזרה משאירה את הישן."
+
+msgid "Move past the edge to take the app out. OK drops it."
+msgstr "יש לעבור את הקצה כדי להוציא את האפליקציה. OK מניח אותה."
+
+msgid "Back closes the folder. Up reaches its name."
+msgstr "חזרה סוגרת את התיקייה. למעלה מגיע לשמה."
+
+msgid "Made the folder {}"
+msgstr "נוצרה התיקייה {}"
+
+msgid "Removed the folder {}"
+msgstr "הוסרה התיקייה {}"
+
+msgid "Renamed the folder {} to {}"
+msgstr "שם התיקייה {} שונה ל-{}"
+
+msgid "Put {} in {}"
+msgstr "{} נוסף אל {}"
+
+msgid "Took {} out of {}"
+msgstr "{} הוצא מ-{}"

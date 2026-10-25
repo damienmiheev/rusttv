@@ -277,3 +277,57 @@ msgstr "{} ajoutée"
 
 msgid "Removed {}"
 msgstr "{} retirée"
+
+msgid "Games"
+msgstr "Jeux"
+
+msgid "Music"
+msgstr "Musique"
+
+msgid "Video"
+msgstr "Vidéo"
+
+msgid "Photos"
+msgstr "Photos"
+
+msgid "Social"
+msgstr "Réseaux sociaux"
+
+msgid "News"
+msgstr "Actualités"
+
+msgid "Maps"
+msgstr "Cartes"
+
+msgid "Productivity"
+msgstr "Productivité"
+
+msgid "Accessibility"
+msgstr "Accessibilité"
+
+msgid "Folder"
+msgstr "Dossier"
+
+msgid "Type a name, then press ✓. Back keeps the old one."
+msgstr "Saisissez un nom, puis ✓. Retour garde l’ancien."
+
+msgid "Move past the edge to take the app out. OK drops it."
+msgstr "Dépassez le bord pour sortir l’app. OK la dépose."
+
+msgid "Back closes the folder. Up reaches its name."
+msgstr "Retour ferme le dossier. Haut mène à son nom."
+
+msgid "Made the folder {}"
+msgstr "Dossier {} créé"
+
+msgid "Removed the folder {}"
+msgstr "Dossier {} supprimé"
+
+msgid "Renamed the folder {} to {}"
+msgstr "Dossier {} renommé en {}"
+
+msgid "Put {} in {}"
+msgstr "{} mis dans {}"
+
+msgid "Took {} out of {}"
+msgstr "{} sorti de {}"
