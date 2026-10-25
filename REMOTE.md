@@ -253,7 +253,14 @@ echoed.
   - `text { insert | delete | submit }`;
   - `open { app }`, a component from the list the TV sent;
   - `tile { id, gesture: tap | long_press }`;
-  - `drag { id, over, phase }`;
+  - `drag { id, over, phase }`: `start` picks the tile up as Move in its
+    menu would (`Home::pick_up`); each `move` puts it on the tile under the
+    finger as arrows would (`Home::drag_over`; `over` is the dragged tile
+    itself while nothing else is under the finger, `null` only outside an
+    open folder's panel, which takes the app out, `Home::drag_out`);
+    resting there for the launcher's 0.6 s makes a folder, on the
+    launcher's own timer; `end` drops it where the last move put it;
+    `cancel` puts it back;
   - `pointer { dx, dy, click | scroll }`;
   - `name { phone_id, text }`, during pairing only.
 - **TV → phone:**
