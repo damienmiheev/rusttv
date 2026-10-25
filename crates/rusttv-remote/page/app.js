@@ -347,7 +347,7 @@
   function onTileDown(event) {
     const tile = event.target.closest(".tile");
     if (!tile || !session) return;
-    gesture = { id: tile.dataset.id, element: tile, x: event.clientX, y: event.clientY, held: false, over: null, pointer: event.pointerId };
+    gesture = { id: tile.dataset.id, element: tile, x: event.clientX, y: event.clientY, held: false, over: tile.dataset.id, pointer: event.pointerId };
     gesture.timer = setTimeout(() => {
       if (!gesture) return;
       gesture.held = true;
@@ -378,11 +378,19 @@
       const ghost = $("ghost");
       ghost.style.left = `${event.clientX - ghost.offsetWidth / 2}px`;
       ghost.style.top = `${event.clientY - ghost.offsetHeight / 2}px`;
-      let over = tileAt(event.clientX, event.clientY);
-      if (over === gesture.id) over = null;
+      // The tile under the finger; the dragged tile itself while nothing
+      // else is; null only outside an open folder's panel (the app leaves
+      // the folder).
+      let over = tileAt(event.clientX, event.clientY) || gesture.id;
+      if (!$("folder").hidden) {
+        const panel = document.querySelector("#folder .panel").getBoundingClientRect();
+        const inside = event.clientX >= panel.left && event.clientX <= panel.right
+          && event.clientY >= panel.top && event.clientY <= panel.bottom;
+        if (!inside) over = null;
+      }
       if (over !== gesture.over) {
         document.querySelector(".tile.over")?.classList.remove("over");
-        if (over) document.querySelector(`.tile[data-id="${CSS.escape(over)}"]`)?.classList.add("over");
+        if (over && over !== gesture.id) document.querySelector(`.tile[data-id="${CSS.escape(over)}"]`)?.classList.add("over");
         gesture.over = over;
         send({ type: "drag", id: gesture.id, over, phase: "move" });
       }

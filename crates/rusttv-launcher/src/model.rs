@@ -705,6 +705,109 @@ impl Home {
         }
     }
 
+    /// The phone remote picks a tile up to move it (REMOTE.md § 4), as Move
+    /// in its menu would: on Home, or an app in the open folder. Returns
+    /// whether it is moving now.
+    pub fn pick_up(&mut self, id: &TileId, now: Duration) -> bool {
+        match self.mode {
+            Mode::Browse => {
+                let Some(index) = self.tiles.iter().position(|tile| tile == id) else {
+                    return false;
+                };
+                self.focus = index;
+            }
+            Mode::Folder(open) => {
+                let TileId::App(component) = id else {
+                    return false;
+                };
+                let Some(index) = self
+                    .folders
+                    .get(&open.id)
+                    .and_then(|folder| folder.apps.iter().position(|app| app == component))
+                else {
+                    return false;
+                };
+                self.mode = Mode::Folder(OpenFolder {
+                    focus: Some(index),
+                    ..open
+                });
+            }
+            _ => return false,
+        }
+        self.ok_since = None;
+        self.start_move(now);
+        matches!(self.mode, Mode::Moving { .. })
+    }
+
+    /// The phone remote's moving tile is over `target`: on Home it takes
+    /// that place and rests on the tile it pushed aside, as an arrow onto it
+    /// would (resting [`FOLDER_HOVER`] makes a folder); in a folder it takes
+    /// the place of the app it is over.
+    pub fn drag_over(&mut self, target: &TileId, now: Duration) {
+        let Mode::Moving {
+            place, last_input, ..
+        } = &mut self.mode
+        else {
+            return;
+        };
+        *last_input = now;
+        match *place {
+            Place::Home { .. } => {
+                let movable = self.movable();
+                let Some(to) = self.tiles[..movable].iter().position(|tile| tile == target) else {
+                    return;
+                };
+                if to == self.focus {
+                    return;
+                }
+                let tile = self.tiles.remove(self.focus);
+                self.tiles.insert(to, tile);
+                let over = if self.focus < to { to - 1 } else { to + 1 };
+                self.focus = to;
+                self.update_scroll();
+                if let Mode::Moving { place, .. } = &mut self.mode {
+                    *place = Place::Home {
+                        over: Some((over, now)),
+                    };
+                }
+            }
+            Place::Folder { id, index } => {
+                let TileId::App(component) = target else {
+                    return;
+                };
+                let Some(folder) = self.folders.get_mut(&id) else {
+                    return;
+                };
+                let Some(to) = folder.apps.iter().position(|app| app == component) else {
+                    return;
+                };
+                if to == index {
+                    return;
+                }
+                let app = folder.apps.remove(index);
+                folder.apps.insert(to, app);
+                if let Mode::Moving { place, .. } = &mut self.mode {
+                    *place = Place::Folder { id, index: to };
+                }
+            }
+        }
+    }
+
+    /// The phone remote's moving app went outside its folder's panel: it
+    /// leaves the folder, as moving past the folder's edge does.
+    pub fn drag_out(&mut self, now: Duration) {
+        if let Mode::Moving {
+            place: Place::Folder { id, index },
+            ..
+        } = self.mode
+        {
+            self.leave_folder(id, index);
+            if let Mode::Moving { last_input, .. } = &mut self.mode {
+                *last_input = now;
+            }
+        }
+    }
+
     /// Tiles in display order.
     pub fn tiles(&self) -> &[TileId] {
         &self.tiles
@@ -1096,6 +1199,18 @@ impl Home {
             if let Mode::Moving { place, .. } = &mut self.mode {
                 *place = Place::Folder { id, index: target };
             }
+            return;
+        }
+        self.leave_folder(id, index);
+    }
+
+    /// The moving app leaves its folder for Home, just after the folder's
+    /// tile (or in its place, if it was the last app).
+    fn leave_folder(&mut self, id: u32, index: usize) {
+        let Some(folder) = self.folders.get_mut(&id) else {
+            return;
+        };
+        if index >= folder.apps.len() {
             return;
         }
         let app = folder.apps.remove(index);
@@ -2428,6 +2543,72 @@ mod tests {
         home.handle(Input::Paused, now);
         home.point(&TileId::Folder(1), false, now);
         assert_eq!(home.point(&id("a03"), false, now), None);
+    }
+
+    #[test]
+    fn a_phone_drag_moves_a_tile_and_resting_makes_a_folder() {
+        let mut home = home(4); // a00 a01 a02 a03 About Settings
+        assert!(home.pick_up(&id("a00"), ms(0)));
+        assert_eq!(home.state(), State::Moving);
+        // Straight onto a02: a00 takes its place, resting on a02.
+        home.drag_over(&id("a02"), ms(100));
+        assert_eq!(
+            &home.tiles()[..4],
+            [id("a01"), id("a02"), id("a00"), id("a03")]
+        );
+        assert_eq!(home.moving_over(), Some(1));
+        assert_eq!(home.folder_due(), Some(ms(100) + FOLDER_HOVER));
+        home.handle(Input::Tick, ms(100) + FOLDER_HOVER);
+        assert_eq!(home.folders().len(), 1);
+        assert_eq!(
+            home.state(),
+            State::Moving,
+            "the folder opens, still moving"
+        );
+        // Out of the folder again, then dropped.
+        home.drag_out(ms(800));
+        assert!(
+            home.folders().is_empty(),
+            "a folder this move made goes again"
+        );
+        home.handle(Input::OkPressed, ms(900));
+        assert_eq!(home.state(), State::Browse);
+    }
+
+    #[test]
+    fn a_phone_drag_onto_the_next_tile_and_resting_makes_a_folder() {
+        let mut home = home(4);
+        assert!(home.pick_up(&id("a00"), ms(0)));
+        home.drag_over(&id("a01"), ms(600));
+        assert_eq!(&home.tiles()[..2], [id("a01"), id("a00")]);
+        assert_eq!(home.folder_due(), Some(ms(600) + FOLDER_HOVER));
+        home.handle(Input::Tick, ms(1300));
+        assert_eq!(home.folders().len(), 1);
+    }
+
+    #[test]
+    fn a_phone_drag_reorders_inside_a_folder_and_nothing_moves_elsewhere() {
+        let mut home = home(4);
+        assert!(!home.pick_up(&id("zz"), ms(0)));
+        assert!(!home.pick_up(&TileId::Hidden, ms(0)));
+        let now = make_folder(&mut home, Input::Right);
+        // The folder is open with the app still moving at its end.
+        home.handle(Input::OkPressed, now);
+        home.handle(Input::OkReleased, now);
+        let apps: Vec<String> = folder_apps(&home, 1)
+            .iter()
+            .map(|a| (*a).to_owned())
+            .collect();
+        assert_eq!(apps.len(), 2);
+        assert!(home.pick_up(&id(&apps[1]), now));
+        home.drag_over(&id(&apps[0]), now);
+        assert_eq!(folder_apps(&home, 1), [apps[1].as_str(), apps[0].as_str()]);
+        home.handle(Input::OkPressed, now);
+        assert_eq!(home.state(), State::Folder);
+        // Not in Settings.
+        home.handle(Input::Back, now);
+        home.point(&TileId::Settings, false, now);
+        assert!(!home.pick_up(&id("a03"), now));
     }
 
     fn folder_apps(home: &Home, id: u32) -> Vec<&str> {
