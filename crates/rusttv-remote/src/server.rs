@@ -65,6 +65,11 @@ const PONG_DEADLINE: Duration = Duration::from_secs(45);
 pub const PAIRING_TIME: Duration = Duration::from_secs(120);
 /// Failed pairings in a row that close the pairing screen.
 const MAX_PAIRING_FAILURES: u8 = 3;
+/// How long a handover token works (REMOTE.md § 1 "Add to Home Screen"):
+/// a Home Screen icon is usually opened right after it is added.
+const HANDOVER_TIME: Duration = Duration::from_secs(24 * 3600);
+/// Handover tokens kept per phone, newest first: each page load makes one.
+const HANDOVERS_PER_PHONE: usize = 3;
 
 /// Fills a buffer with secure random bytes (Kotlin's `SecureRandom` on the
 /// TV).
@@ -232,6 +237,15 @@ struct State {
     pending: usize,
     attempts: VecDeque<Instant>,
     silent_until: Option<Instant>,
+    /// Handover tokens, in memory only: a restart forgets them.
+    handovers: Vec<Handover>,
+}
+
+/// A one-time token a phone's Home Screen icon may trade for its keys.
+struct Handover {
+    phone: PhoneId,
+    token: [u8; 32],
+    until: Instant,
 }
 
 struct Pairing {
@@ -435,6 +449,7 @@ impl Remote {
         for connection in state.connections.iter().filter(|c| c.phone == *id) {
             let _ = connection.outbox.send(Outgoing::Close);
         }
+        state.handovers.retain(|handover| handover.phone != *id);
         state.phones.remove(id)
     }
 
@@ -883,6 +898,25 @@ fn authenticate(
         // The person took time to press OK; the phone now authenticates as
         // usual.
         message = read_text(socket, Instant::now() + HANDSHAKE_TIME)?;
+    } else if let PhoneMessage::Redeem {
+        phone_id,
+        phone_nonce,
+        proof,
+    } = &message
+    {
+        let Some((token, keys)) = redeem(shared, phone_id, &phone_nonce.0, &proof.0) else {
+            return Err(RemoteError::Decrypt);
+        };
+        let reply = TvMessage::Keys {
+            auth: crate::protocol::Bytes32(keys.auth),
+            key: crate::protocol::Bytes32(keys.key),
+        }
+        .to_bytes()?;
+        let frame = Session::tv(&auth::handover_key(&token, &phone_nonce.0))
+            .seal(&reply, shared.random())?;
+        socket.send(Message::binary(frame)).map_err(ws)?;
+        // The icon now has the keys and authenticates as usual.
+        message = read_text(socket, deadline)?;
     }
     let PhoneMessage::Hello { phone_id } = message else {
         return Err(RemoteError::Invalid("expected hello".to_owned()));
@@ -906,6 +940,50 @@ fn authenticate(
         return Err(RemoteError::Decrypt);
     }
     Ok((phone_id, keys, challenge))
+}
+
+/// Spends the handover token the proof is for; the token and the phone's
+/// keys, `None` if no live token of this phone matches.
+fn redeem(
+    shared: &Shared,
+    phone: &PhoneId,
+    phone_nonce: &[u8; 32],
+    proof: &[u8; 32],
+) -> Option<([u8; 32], PhoneKeys)> {
+    let now = Instant::now();
+    let mut state = shared.lock();
+    state.handovers.retain(|handover| handover.until > now);
+    let index = state.handovers.iter().position(|handover| {
+        handover.phone == *phone
+            && auth::verify_handover_proof(&handover.token, phone_nonce, phone, proof)
+    })?;
+    let token = state.handovers.remove(index).token;
+    let keys = state.phones.get(phone)?.keys.clone();
+    Some((token, keys))
+}
+
+/// Keeps a phone's new handover token, dropping its oldest past
+/// [`HANDOVERS_PER_PHONE`].
+fn keep_handover(shared: &Shared, phone: PhoneId, token: [u8; 32]) {
+    let now = Instant::now();
+    let mut state = shared.lock();
+    state
+        .handovers
+        .retain(|handover| handover.until > now && handover.token != token);
+    state.handovers.push(Handover {
+        phone,
+        token,
+        until: now + HANDOVER_TIME,
+    });
+    let mine = state.handovers.iter().filter(|h| h.phone == phone).count();
+    if let Some(excess) = mine.checked_sub(HANDOVERS_PER_PHONE).filter(|&n| n > 0) {
+        let mut dropped = 0;
+        state.handovers.retain(|handover| {
+            let drop = handover.phone == phone && dropped < excess;
+            dropped += usize::from(drop);
+            !drop
+        });
+    }
 }
 
 /// Checks a pairing request and waits for the person's answer; the new
@@ -1035,15 +1113,14 @@ fn talk(
                 }
                 let plaintext = session.open(&frame, MAX_PHONE_MESSAGE)?;
                 let message = parse_phone(&plaintext)?;
-                if matches!(
-                    message,
+                match message {
                     PhoneMessage::Pair { .. }
-                        | PhoneMessage::Hello { .. }
-                        | PhoneMessage::Auth { .. }
-                ) {
-                    return close(socket);
+                    | PhoneMessage::Hello { .. }
+                    | PhoneMessage::Auth { .. }
+                    | PhoneMessage::Redeem { .. } => return close(socket),
+                    PhoneMessage::Handover { token } => keep_handover(shared, phone, token.0),
+                    message => shared.emit(Event::Input { phone, message }),
                 }
-                shared.emit(Event::Input { phone, message });
             }
             Ok(Message::Pong(_)) => last_pong = Instant::now(),
             Ok(Message::Ping(_) | Message::Frame(_)) => {}

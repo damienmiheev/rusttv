@@ -26,8 +26,8 @@ to its home screen.
    After pairing, the long-term secret never crosses the network.
 5. **Pairing a phone:** the TV asks "Allow *this phone*?" and shows a 2-digit
    match code, which the phone shows too. OK on the TV remote pairs, and the
-   pairing is recorded as a `tv` entry in the history. It can be revoked in
-   Settings.
+   pairing is recorded as a `tv` entry in the history. It can be revoked on
+   the RustTV Remote page.
 6. **Address:** a fixed IP, with no mDNS. If the address changes, scan the QR
    again. Settings recommends a DHCP reservation in the router.
 7. **New crates:**
@@ -68,12 +68,12 @@ to its home screen.
     - Everywhere else, swipes become arrow keys and a tap is OK.
     - The pointer needs a **narrow accessibility service**
       (§ 5 The pointer), off until the person switches it on.
-15. **Name:** "RustTV Remote", used for the Settings row, the page title and
+15. **Name:** "RustTV Remote", used for its Home tile, its page's title and
     the home-screen icon.
 16. **The phone's name** is typed on the phone during pairing, pre-filled
     from what the browser reports (for example "iPhone (Safari)"). It is 1–40
     characters, with control characters and bidi marks removed (the same rule
-    as folder names). It can be changed later in Settings.
+    as folder names). It can be changed later on the RustTV Remote page.
 17. **Two phones share one view:** every phone and the TV show the same focus
     and mode. The last action wins, as with two remotes.
 
@@ -93,9 +93,9 @@ to its home screen.
   first of `navigator.languages` among the launcher's 20, else English;
   right to left for Arabic and Hebrew), from `page/i18n.js`, checked by
   `page/i18n.test.mjs` in CI. Tiles show the apps' own banners (or icons),
-  see Storage. Not yet: pictures for the built-in tiles (About, Settings,
-  Hidden apps), renaming a folder from the phone (typing works), a
-  home-screen icon.
+  see Storage; the built-in tiles (About, Settings, RustTV Remote, Hidden
+  apps) show their banners too. Not yet: renaming a folder from the phone
+  (typing works).
 - **Look:** the launcher's colours, Inter, the RustTV icon and the built-in
   tile images.
   - Focus is shown as on the TV: the focused tile grows slightly, with a soft
@@ -120,9 +120,28 @@ to its home screen.
   and on an iPad, about 6 on a computer, like the TV. Sheets and cards keep
   a phone's width on wide screens, and nothing sits under a notch.
 - **Add to Home Screen:** once paired, a phone browser that didn't open the
-  page from the Home Screen suggests adding it (iOS: Share → Add to Home
-  Screen; Android: the browser menu). "Got it" ends the suggestion, "Not
-  now" for a week. Never while the pairing link is in the address.
+  page from the Home Screen suggests adding it (iOS: Share, in Safari's
+  toolbar or other browsers' address bar, then Add to Home Screen;
+  Android: the browser menu). "Got it" ends the suggestion, "Not now" for
+  a week; a button in the header opens it again any time. Never while the
+  pairing link is in the address.
+  - **The icon starts paired (iOS):** iOS gives every Home Screen web app
+    storage of its own, shared with no browser, and a QR code always opens
+    in the browser, so an icon could never pair. In a browser on iOS the
+    address therefore always carries a one-time **handover token**
+    (`#h=<phone id>.<token>`): 32 random bytes the page registers with the
+    TV over its sealed session on each connection. An icon without keys
+    sends `redeem` with a fresh nonce and an HMAC proof of the token
+    (`rusttv-remote/1/handover`); the TV answers with the phone's keys
+    sealed under a key from the token and that nonce
+    (`rusttv-remote/1/handover-key`), forgets the token, and the icon signs
+    in as usual. The TV keeps a phone's 3 newest tokens for 24 hours, in
+    memory only (a restart forgets them), and drops them when the phone is
+    removed. A browser can't learn anything that names the phone (no MAC
+    address or device id), and its address on the network is no proof, so
+    the token is the only way across. Android's icons open in the browser,
+    with its storage, and need none. An icon that gets nothing says to add
+    it again from the browser.
 - **No secure context on plain HTTP:**
   - What's missing: Web Crypto, clipboard reads, service workers, and so a
     real install on Android Chrome. Its "Add to Home screen" still makes a
@@ -162,19 +181,25 @@ to its home screen.
 
 ## 2. Pairing and authentication
 
-- **As built (2026-10-25):** Settings → RustTV Remote lists "Pair a phone"
-  and the paired phones (OK, then OK again, removes one). "Pair a phone"
+- **As built (2026-10-25):** RustTV Remote is a page of its own (owner
+  decision 2026-10-25), opened from its own built-in Home tile (`remote`,
+  after About and Settings; it moves like them, and its banner is the
+  remote from the phone's home-screen icon). The page shows that banner
+  and what a phone may do, then "Pair a phone" and the paired phones (OK,
+  then OK again, removes one). "Pair a phone"
   starts the listener if needed and opens a FLAG_SECURE screen with the QR
   code (drawn by the launcher from `qrcode`'s modules) and the TV's address
   (the source address of its route to the internet, found with a UDP
   socket that sends nothing). A phone that asks shows "Allow “name”?" and
   the code; only OK on the TV's remote allows it, Back refuses. Phone input
-  never reaches this screen, and in Settings a phone can only press Back.
+  never reaches this screen, and on the page a phone can only press Back.
   With no phone left, the listener stops. Not yet: the history entry for
   pairing and removing (needs the phones in the history snapshot, a format
   change of its own) and an on/off switch. `rusttv-launcher-desktop
-  --demo-remote <dir>` renders the section and the pairing screen.
-- **Starting:** "Pair a phone" in Settings shows a QR code with
+  --demo-remote <dir>` renders the page and the pairing screen. The tile
+  is not in the history snapshot: every Home has it, and RustTV builds that
+  don't know its name must still read the history (HISTORY.md § 1).
+- **Starting:** "Pair a phone" on the RustTV Remote page shows a QR code with
   `http://<ip>:8484/#p=<secret>`.
   - The secret is 32 random bytes from `SecureRandom`, valid for 2 minutes
     and for one use, and only while that screen is open.
@@ -214,7 +239,7 @@ to its home screen.
     that direction, which neither side sends: a message can't be replayed,
     reordered, dropped or reflected without failing to open.
   - Tile pictures travel the same way, one message each.
-- **Revoking:** in Settings, a phone can be revoked or renamed (each one a
+- **Revoking:** on the RustTV Remote page, a phone can be revoked or renamed (each one a
   `tv` history entry). When the last phone is revoked, the listener stops.
 
 ### Trusting the TV (HTTPS)
@@ -240,7 +265,16 @@ plain page as before.
   your TV" → Set up. The TV opens a "Trust this TV" screen with the phone's
   name, the certificate's name and a **check code**: the first 6 bytes of
   the certificate's SHA-256 fingerprint ("C5 8B 5F 12 9A 0E"). The phone
-  downloads `/tv.crt` and shows short steps for its platform. Before
+  downloads `/tv.crt` and shows short steps for its platform. On iOS only
+  Safari hands a certificate to Settings: in any other browser (Chrome,
+  Firefox, Edge…) Download opens Safari with `x-safari-https://`, the only
+  form iOS allows, so Safari warns once that the TV's HTTPS isn't trusted
+  yet, and the step says what to tap; it also names the plain address to
+  open by hand. Android installs it from its own Settings whichever
+  browser downloaded it; Firefox for Android keeps its own store and stays
+  on plain HTTP (where it still has the motion sensors). "Not now" holds
+  for a week and for that pairing only, and a lock button in the header
+  opens the setup again any time. Before
   installing, the person compares the code with the fingerprint the phone's
   own Settings show (iOS: the profile's More Details; Android: Trusted
   credentials): a tampered page can't fake that screen, and 48 bits can't
@@ -375,13 +409,31 @@ echoed.
   - on the hidden apps page, a tap on an app puts it back on Home, as OK
     does.
 
-  Settings and About show on the phone only as their name; there, as
-  before, a phone can only press Back. The phone shows Back only where the
-  TV's Back does something (a folder, the menu, a move, the hidden apps
-  page, Settings, About, typing).
+  Settings, About and the RustTV Remote page show on the phone only as
+  their name; there, as before, a phone can only press Back. The phone
+  shows Back only where the TV's Back does something (a folder, the menu,
+  a move, the hidden apps page, Settings, About, the RustTV Remote page,
+  typing).
 
   The review/approval screen **drops every phone input**: phone keys arrive
   through RustTV's own socket, so they can be told apart from the remote.
+
+- **Waking up (2026-10-26):** the page retries a lost connection after
+  0.5, 1, 2, then every 3 seconds, so a TV back from standby is found within
+  3 seconds. Back from the background after more than 5 seconds, it always
+  connects again (iOS freezes pages, and a socket that looks open may be
+  dead); a tap while the connection is down retries at once.
+- **Screensavers (owner decision 2026-10-26: not supported).** A phone
+  doesn't wake the TV from a screensaver. Tested on the Philips: an app can
+  start an activity over Google's Ambient mode (Android allows it for this
+  launcher), but "turn the screen on" doesn't end a screensaver on a screen
+  that is already on, and only system code can end it. The Philips OLED
+  logo is not an Android screensaver at all (`ImageStickingService` in
+  `org.droidtv.tv.tpvvideomanager`). Only a real key press ends either, so
+  the only route would be a `KEYCODE_WAKEUP` through the TV's Remote Service
+  (phase 2); the owner chose not to. While a screensaver shows, the phone
+  sees "another app in front" and gets the touchpad; when the person wakes
+  the TV with its remote, the phone gets Home back at once.
 
 ## 5. Other apps
 
@@ -447,7 +499,7 @@ talks to. Its protocol is documented by open-source clients such as
   - pair or revoke phones;
   - write to the history store;
   - pass the review screen.
-- **The person's own Settings actions:** pairing a phone, revoking one, and
+- **The person's own actions on the RustTV Remote page:** pairing a phone, revoking one, and
   pairing with the Remote Service. Each one:
   - shows a preview ("This phone will be able to press keys and type on this
     TV");
@@ -469,7 +521,7 @@ talks to. Its protocol is documented by open-source clients such as
 - **Phase 1 — the mirror and the keyboard inside RustTV:**
   - the `rusttv-remote` crate: protocol, auth, encryption, server, page;
   - the remote thread;
-  - the Settings section and the pairing prompt;
+  - the RustTV Remote page (its own Home tile) and the pairing prompt;
   - the `HomeView` push and banner transfer;
   - phone editing;
   - history entries.

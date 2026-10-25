@@ -19,7 +19,8 @@ export struct TileData {
     label: string,
     image: image,
     // 0 banner, 1 icon only, 2 no artwork, 3 the built-in About tile, 4 loading,
-    // 5 the Hidden apps tile, 6 the Settings tile, 7 a folder.
+    // 5 the Hidden apps tile, 6 the Settings tile, 7 a folder, 8 the RustTV
+    // Remote tile.
     kind: int,
     // A folder's first four apps (banners or icons), drawn small on its tile.
     minis: [image],
@@ -90,7 +91,6 @@ export global Strings {
         if section == 1 { return @tr("Updates"); }
         if section == 2 { return @tr("History"); }
         if section == 3 { return @tr("Waiting for your computer"); }
-        if section == 4 { return @tr("RustTV Remote"); }
         return @tr("Animations");
     }
     // settings.rs ANIMATION_CHOICES: off to slowest.
@@ -103,7 +103,7 @@ export global Strings {
         if choice == 6 { return @tr("Slowest (2×)"); }
         return @tr("Normal");
     }
-    // RustTV Remote section (REMOTE.md § 2).
+    // The RustTV Remote page (REMOTE.md § 2).
     public pure function remote-note() -> string {
         return @tr("Use a phone as a remote, keyboard and touchpad. It can press keys and type, but never change settings or approve anything.");
     }
@@ -259,6 +259,7 @@ global Mode {
     out property <int> review: 7;
     out property <int> folder: 8;
     out property <int> pairing: 9;
+    out property <int> remote: 10;
 }
 
 // Picture or placeholder for one app, filling its parent.
@@ -268,14 +269,14 @@ component Artwork inherits Rectangle {
     background: Theme.surface;
 
     // Pictures fade in: on a TV they arrive after the first frame (kind 4,
-    // loading, is an empty card until then). The built-in tiles (3, 5, 6) have
+    // loading, is an empty card until then). The built-in tiles (3, 5, 6, 8) have
     // banners too.
     Image {
         width: parent.width;
         height: parent.height;
         source: data.image;
         image-fit: cover;
-        opacity: data.kind == 0 || data.kind == 3 || data.kind == 5 || data.kind == 6 ? 1 : 0;
+        opacity: data.kind == 0 || data.kind == 3 || data.kind == 5 || data.kind == 6 || data.kind == 8 ? 1 : 0;
         animate opacity { duration: 300ms; easing: ease-out; }
     }
     Image {
@@ -436,7 +437,7 @@ component Tile inherits Rectangle {
         x: 0;
         y: parent.height + 24 * u + 2 * u;
         width: parent.width;
-        text: data.kind == 3 ? @tr("About") : data.kind == 5 ? @tr("Hidden apps") : data.kind == 6 ? @tr("Settings") : data.label;
+        text: data.kind == 3 ? @tr("About") : data.kind == 5 ? @tr("Hidden apps") : data.kind == 6 ? @tr("Settings") : data.kind == 8 ? @tr("RustTV Remote") : data.label;
         font-size: 25 * u;
         font-weight: 500;
         color: #00000066;
@@ -520,7 +521,7 @@ component HeroLayer inherits Rectangle {
         y: 640 * u;
         width: 1740 * u;
         horizontal-alignment: Dir.start;
-        text: data.kind == 3 ? "RustTV" : data.kind == 5 ? @tr("Hidden apps") : data.kind == 6 ? @tr("Settings") : data.label;
+        text: data.kind == 3 ? "RustTV" : data.kind == 5 ? @tr("Hidden apps") : data.kind == 6 ? @tr("Settings") : data.kind == 8 ? @tr("RustTV Remote") : data.label;
         font-size: 57 * u;
         font-weight: 500;
         color: Theme.text;
@@ -630,6 +631,12 @@ export component HomeWindow inherits Window {
     // The first row shown (long lists scroll by rows).
     in property <int> settings-first-row;
     in property <string> settings-status;
+    // The RustTV Remote page (ui.rs `render_remote_page`): "Pair a phone",
+    // then the paired phones. `remote-row` is the focused row.
+    in property <[SettingsRow]> remote-rows;
+    in property <int> remote-row;
+    in property <int> remote-first-row;
+    in property <image> remote-banner;
     // The review screen (ui.rs `render_review`). Phase 0: reading, the row
     // after the last line is Approve; 1: the code; 2: hold OK.
     in property <[ReviewLine]> review-lines;
@@ -1245,6 +1252,83 @@ export component HomeWindow inherits Window {
                     dim: row.dim;
                     selected: i == settings-row;
                     visible: i >= settings-first-row;
+                }
+            }
+        }
+    }
+
+    // RustTV Remote (REMOTE.md § 2), from its Home tile: Settings' header,
+    // the tile's banner and what a phone may do on the left, the rows on
+    // the right. Appears at once, like Settings.
+    if mode == Mode.remote: Rectangle {
+        background: Theme.bg;
+
+        Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 90 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: @tr("RustTV Remote");
+            font-size: 57 * u;
+            font-weight: 500;
+            color: Theme.text;
+        }
+        Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 176 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: settings-status != "" ? settings-status : @tr("Up and Down choose, OK opens. Back returns.");
+            font-size: 25 * u;
+            color: settings-status != "" ? Theme.text : Theme.text-dim;
+            overflow: elide;
+        }
+        Rectangle {
+            x: Dir.x(90 * u, self.width, root.width);
+            y: 260 * u;
+            width: 480 * u;
+            height: 270 * u;
+            border-radius: 16 * u;
+            clip: true;
+            Image {
+                width: parent.width;
+                height: parent.height;
+                source: remote-banner;
+                image-fit: cover;
+            }
+        }
+        Text {
+            x: Dir.x(90 * u, self.width, root.width);
+            y: 566 * u;
+            width: 480 * u;
+            horizontal-alignment: Dir.start;
+            text: Strings.remote-note();
+            font-size: 25 * u;
+            color: Theme.text-dim;
+            wrap: word-wrap;
+        }
+        Rectangle {
+            x: Dir.x(720 * u, self.width, root.width);
+            y: 260 * u;
+            width: 1110 * u;
+            height: 760 * u;
+            border-radius: 16 * u;
+            background: Theme.surface;
+            clip: true;
+
+            Rectangle {
+                y: 24 * u;
+                height: parent.height - 48 * u;
+                clip: true;
+                for row[i] in remote-rows: MenuRow {
+                    x: 24 * u;
+                    y: (i - remote-first-row) * 104 * u;
+                    width: parent.width - 48 * u;
+                    u: root.u;
+                    text: row.title;
+                    detail: row.detail;
+                    selected: i == remote-row;
+                    visible: i >= remote-first-row;
                 }
             }
         }

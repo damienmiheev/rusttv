@@ -288,5 +288,7 @@
     }),
     authResponse: (auth, challenge, phoneId) => mac(auth, "rusttv-remote/1/auth", challenge, phoneId),
     sessionKey: (key, challenge) => mac(key, "rusttv-remote/1/session", challenge),
+    handoverProof: (token, nonce, phoneId) => mac(token, "rusttv-remote/1/handover", nonce, phoneId),
+    handoverKey: (token, nonce) => mac(token, "rusttv-remote/1/handover-key", nonce),
   };
 })(globalThis);

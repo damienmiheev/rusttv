@@ -65,7 +65,10 @@ takeover = "active"
 - **Hashes are git's, over the stored bytes;** never re-serialized. State
   equality compares parsed values; all values are strings.
 - **`[launcher]`:** tile names in order, hidden apps, the update switch; no
-  focus. Uninstalled apps' names are kept (as the order file does).
+  focus. Uninstalled apps' names are kept (as the order file does). The
+  RustTV Remote tile (`remote`) is left out: every Home has it, and builds
+  that don't know the name must keep reading the history; a restored order
+  gets it back at its end.
 - **Folders** (*added 2026-10-25*): a folder is the tile `folder:<number>`
   in `order`, and `[launcher.folders."folder:<number>"]` holds its name (1–40
   characters, no control characters; shown only, never run) and its apps in

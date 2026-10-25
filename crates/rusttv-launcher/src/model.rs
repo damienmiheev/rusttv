@@ -75,6 +75,9 @@ pub enum TileId {
     About,
     /// The built-in Settings tile (HISTORY.md § 8).
     Settings,
+    /// The built-in RustTV Remote tile: pair a phone, the paired phones
+    /// (REMOTE.md § 2).
+    Remote,
     /// Opens the hidden apps. Shown last, and only while an installed app is hidden;
     /// never part of the [`Order`].
     Hidden,
@@ -245,6 +248,10 @@ pub enum Effect {
     OpenSettings,
     /// A key while Settings is open: the Settings page handles it.
     Settings(Input),
+    /// Show the RustTV Remote page.
+    OpenRemote,
+    /// A key while the RustTV Remote page is open: that page handles it.
+    Remote(Input),
     /// Persist [`Home::order`], [`Home::hidden`] and [`Home::folders`].
     SaveOrder,
     /// OK on an open folder's name: let the person type a new one, then
@@ -283,6 +290,8 @@ pub enum State {
     Hidden,
     /// The Settings page (or its review screen) is open.
     Settings,
+    /// The RustTV Remote page (or its pairing screen) is open.
+    Remote,
     /// A folder is open over Home ([`Home::open_folder`]).
     Folder,
 }
@@ -331,15 +340,15 @@ impl Order {
     ///
     /// `apps` are the apps shown outside folders, `folders` the folders on
     /// Home. New apps are appended sorted by label, then folders missing
-    /// from the order, before the built-in tiles (About, then Settings)
-    /// while those are at the end, so a first run gives an alphabetical
-    /// grid ending with About and Settings. A built-in tile the user moved
+    /// from the order, before the built-in tiles (About, Settings, then
+    /// RustTV Remote) while those are at the end, so a first run gives an
+    /// alphabetical grid ending with them. A built-in tile the user moved
     /// elsewhere stays where it is; a missing one is added to the end block.
     fn reconcile(&mut self, apps: &[App], folders: &BTreeSet<u32>) -> bool {
         let before = self.keys.clone();
         self.keys.retain(|(id, _)| match id {
             TileId::App(component) => apps.iter().any(|app| app.id == *component),
-            TileId::About | TileId::Settings => true,
+            TileId::About | TileId::Settings | TileId::Remote => true,
             TileId::Hidden => false,
             TileId::Folder(folder) => folders.contains(folder),
         });
@@ -348,7 +357,7 @@ impl Order {
             .keys
             .iter()
             .rev()
-            .take_while(|(id, _)| matches!(id, TileId::About | TileId::Settings))
+            .take_while(|(id, _)| matches!(id, TileId::About | TileId::Settings | TileId::Remote))
             .count();
         let tail: Vec<(TileId, i64)> = self.keys.split_off(self.keys.len() - tail);
 
@@ -378,7 +387,7 @@ impl Order {
             }
         }
         ids.extend(tail.iter().map(|(id, _)| id.clone()));
-        for builtin in [TileId::About, TileId::Settings] {
+        for builtin in [TileId::About, TileId::Settings, TileId::Remote] {
             if !ids.contains(&builtin) {
                 ids.push(builtin);
             }
@@ -492,6 +501,7 @@ enum Mode {
     },
     About,
     Settings,
+    Remote,
     /// `selected` indexes [`menu_items`] of the focused tile, or of the
     /// focused app in `folder`.
     Menu {
@@ -509,7 +519,9 @@ enum Mode {
 fn menu_items(tile: Option<&TileId>) -> &'static [MenuItem] {
     match tile {
         Some(TileId::App(_)) => &[MenuItem::Move, MenuItem::Hide],
-        Some(TileId::About | TileId::Settings | TileId::Folder(_)) => &[MenuItem::Move],
+        Some(TileId::About | TileId::Settings | TileId::Remote | TileId::Folder(_)) => {
+            &[MenuItem::Move]
+        }
         Some(TileId::Hidden) | None => &[],
     }
 }
@@ -1014,6 +1026,13 @@ impl Home {
         }
     }
 
+    /// Leaves the RustTV Remote page (it decides when: Back).
+    pub fn close_remote(&mut self) {
+        if matches!(self.mode, Mode::Remote) {
+            self.mode = Mode::Browse;
+        }
+    }
+
     /// Current state.
     pub fn state(&self) -> State {
         match self.mode {
@@ -1022,6 +1041,7 @@ impl Home {
             Mode::Launching { .. } => State::Launching,
             Mode::About => State::About,
             Mode::Settings => State::Settings,
+            Mode::Remote => State::Remote,
             Mode::Menu { .. } => State::Menu,
             Mode::Hidden { .. } => State::Hidden,
             Mode::Folder(_) => State::Folder,
@@ -1051,6 +1071,7 @@ impl Home {
                 Mode::Moving { .. }
                 | Mode::About
                 | Mode::Settings
+                | Mode::Remote
                 | Mode::Menu { .. }
                 | Mode::Hidden { .. }
                 | Mode::Folder(_),
@@ -1081,6 +1102,7 @@ impl Home {
             }
             (Mode::About, Input::OkPressed) => Some(Effect::Update),
             (Mode::Settings, input) => Some(Effect::Settings(input)),
+            (Mode::Remote, input) => Some(Effect::Remote(input)),
             (Mode::Moving { .. }, _) => self.handle_moving(input, now),
             (Mode::Menu { .. }, _) => self.handle_menu(input, now),
             (Mode::Hidden { .. }, _) => self.handle_hidden(input),
@@ -1517,6 +1539,10 @@ impl Home {
                 self.mode = Mode::Settings;
                 Some(Effect::OpenSettings)
             }
+            TileId::Remote => {
+                self.mode = Mode::Remote;
+                Some(Effect::OpenRemote)
+            }
             TileId::Hidden => {
                 self.mode = Mode::Hidden { focus: 0 };
                 Some(Effect::OpenHidden)
@@ -1910,8 +1936,8 @@ mod tests {
         press(&mut home, &[Input::Down, Input::Right, Input::Right]);
         assert_eq!(home.focus(), 8);
         home.set_apps(&apps(3));
-        assert_eq!(home.focused(), Some(&TileId::Settings));
-        assert_eq!(home.focus(), 4);
+        assert_eq!(home.focused(), Some(&TileId::Remote));
+        assert_eq!(home.focus(), 5);
         assert_eq!(home.scroll(), Scroll::Shelf);
     }
 
@@ -1949,7 +1975,14 @@ mod tests {
         );
         assert_eq!(
             order.ids(),
-            [id("b"), id("a"), id("c"), TileId::About, TileId::Settings]
+            [
+                id("b"),
+                id("a"),
+                id("c"),
+                TileId::About,
+                TileId::Settings,
+                TileId::Remote
+            ]
         );
         let keys: Vec<i64> = order.keys().iter().map(|&(_, key)| key).collect();
         assert!(keys.windows(2).all(|pair| pair[1] - pair[0] == KEY_STEP));
@@ -1961,11 +1994,20 @@ mod tests {
         assert!(order.reconcile(&[app("b", "B"), app("a", "A")], &BTreeSet::new()));
         assert_eq!(
             order.ids(),
-            [TileId::About, id("b"), id("a"), TileId::Settings]
+            [
+                TileId::About,
+                id("b"),
+                id("a"),
+                TileId::Settings,
+                TileId::Remote
+            ]
         );
 
         assert!(order.reconcile(&[app("a", "A")], &BTreeSet::new()));
-        assert_eq!(order.ids(), [TileId::About, id("a"), TileId::Settings]);
+        assert_eq!(
+            order.ids(),
+            [TileId::About, id("a"), TileId::Settings, TileId::Remote]
+        );
     }
 
     #[test]
@@ -1977,7 +2019,14 @@ mod tests {
         ));
         assert_eq!(
             order.ids(),
-            [id("a"), id("b"), id("c"), TileId::About, TileId::Settings]
+            [
+                id("a"),
+                id("b"),
+                id("c"),
+                TileId::About,
+                TileId::Settings,
+                TileId::Remote
+            ]
         );
         let keys: Vec<i64> = order.keys().iter().map(|&(_, key)| key).collect();
         assert!(keys.windows(2).all(|pair| pair[0] < pair[1]));
@@ -1987,7 +2036,10 @@ mod tests {
     fn duplicate_apps_from_the_platform_appear_once() {
         let mut order = Order::default();
         order.reconcile(&[app("a", "A"), app("a", "A")], &BTreeSet::new());
-        assert_eq!(order.ids(), [id("a"), TileId::About, TileId::Settings]);
+        assert_eq!(
+            order.ids(),
+            [id("a"), TileId::About, TileId::Settings, TileId::Remote]
+        );
     }
 
     #[test]
@@ -2260,7 +2312,7 @@ mod tests {
 
     #[test]
     fn a_moved_tile_cannot_leave_the_grid() {
-        let mut home = home(4);
+        let mut home = home(3);
         pick_up(&mut home);
         press(&mut home, &[Input::Left, Input::Up, Input::Down]);
         assert_eq!(home.focus(), 0);
@@ -2329,6 +2381,7 @@ mod tests {
                 id("a02"),
                 TileId::About,
                 TileId::Settings,
+                TileId::Remote,
                 TileId::Hidden
             ]
         );
@@ -2369,12 +2422,16 @@ mod tests {
                 id("a02"),
                 TileId::About,
                 TileId::Settings,
+                TileId::Remote,
                 TileId::Hidden
             ]
         );
         // An uninstalled hidden app is not listed, and the tile goes with the last one.
         home.set_apps(&[app("a00", "App 00")]);
-        assert_eq!(home.tiles(), [id("a00"), TileId::About, TileId::Settings]);
+        assert_eq!(
+            home.tiles(),
+            [id("a00"), TileId::About, TileId::Settings, TileId::Remote]
+        );
         assert!(home.hidden().contains("a01"));
     }
 
@@ -2382,24 +2439,18 @@ mod tests {
     fn the_hidden_apps_tile_cannot_be_moved_or_passed_by_a_moving_tile() {
         let mut home = home(3);
         hide(&mut home);
-        // a01, a02, About, Settings, Hidden apps.
-        press(
-            &mut home,
-            &[Input::Right, Input::Right, Input::Right, Input::Right],
-        );
+        // a01, a02, About, Settings, RustTV Remote, Hidden apps.
+        press(&mut home, &[Input::Right; 5]);
         assert_eq!(home.focused(), Some(&TileId::Hidden));
         home.handle(Input::OkPressed, ms(0));
         home.handle(Input::Tick, LONG_PRESS);
         assert_eq!(home.state(), State::Browse);
         home.handle(Input::OkReleased, LONG_PRESS);
 
-        press(
-            &mut home,
-            &[Input::Left, Input::Left, Input::Left, Input::Left],
-        );
+        press(&mut home, &[Input::Left; 5]);
         pick_up(&mut home);
-        press(&mut home, &[Input::Right; 5]);
-        assert_eq!(home.focus(), 3);
+        press(&mut home, &[Input::Right; 6]);
+        assert_eq!(home.focus(), 4);
         assert_eq!(
             press(&mut home, &[Input::OkPressed]),
             Some(Effect::SaveOrder)
@@ -2410,13 +2461,20 @@ mod tests {
                 id("a02"),
                 TileId::About,
                 TileId::Settings,
+                TileId::Remote,
                 id("a01"),
                 TileId::Hidden
             ]
         );
         assert_eq!(
             home.order().ids(),
-            [id("a02"), TileId::About, TileId::Settings, id("a01")]
+            [
+                id("a02"),
+                TileId::About,
+                TileId::Settings,
+                TileId::Remote,
+                id("a01")
+            ]
         );
     }
 
@@ -2429,7 +2487,7 @@ mod tests {
         assert_eq!(hidden_page(&home), ["a00", "a02"]);
 
         // Open the page from the last tile.
-        press(&mut home, &[Input::Right, Input::Right, Input::Right]);
+        press(&mut home, &[Input::Right; 4]);
         assert_eq!(home.focused(), Some(&TileId::Hidden));
         assert_eq!(
             press(&mut home, &[Input::OkPressed, Input::OkReleased]),
@@ -2455,6 +2513,7 @@ mod tests {
                 id("a02"),
                 TileId::About,
                 TileId::Settings,
+                TileId::Remote,
                 TileId::Hidden
             ]
         );
@@ -2475,7 +2534,8 @@ mod tests {
                 id("a02"),
                 id("a00"),
                 TileId::About,
-                TileId::Settings
+                TileId::Settings,
+                TileId::Remote
             ]
         );
         assert_eq!(component(&home), "a00");
@@ -2489,10 +2549,7 @@ mod tests {
         assert_eq!(home.state(), State::Browse);
 
         hide(&mut home);
-        press(
-            &mut home,
-            &[Input::Right, Input::Right, Input::Right, Input::Right],
-        );
+        press(&mut home, &[Input::Right; 5]);
         press(&mut home, &[Input::OkPressed, Input::OkReleased]);
         assert_eq!(home.state(), State::Hidden);
         press(&mut home, &[Input::Back]);
@@ -2532,7 +2589,7 @@ mod tests {
 
     #[test]
     fn pointing_at_a_tile_opens_it_or_its_menu() {
-        let mut home = home(4); // a00 a01 a02 a03 About Settings
+        let mut home = home(4); // a00 a01 a02 a03 About Settings Remote
         assert_eq!(
             home.point(&id("a02"), false, ms(5)),
             Some(Effect::Launch("a02".into()))
@@ -2592,7 +2649,7 @@ mod tests {
 
     #[test]
     fn a_phone_drag_moves_a_tile_and_resting_makes_a_folder() {
-        let mut home = home(4); // a00 a01 a02 a03 About Settings
+        let mut home = home(4); // a00 a01 a02 a03 About Settings Remote
         assert!(home.pick_up(&id("a00"), ms(0)));
         assert_eq!(home.state(), State::Moving);
         // Near a02's edge: a00 takes its place, no folder coming.
@@ -2676,7 +2733,7 @@ mod tests {
 
     #[test]
     fn staying_on_an_app_makes_a_folder_that_opens_with_the_app_still_moving() {
-        let mut home = home(4); // a00 a01 a02 a03 About Settings
+        let mut home = home(4); // a00 a01 a02 a03 About Settings Remote
         let now = make_folder(&mut home, Input::Right);
         // The folder took a01's place; the app is at its end, still moving.
         assert_eq!(home.state(), State::Moving);
@@ -2687,7 +2744,8 @@ mod tests {
                 id("a02"),
                 id("a03"),
                 TileId::About,
-                TileId::Settings
+                TileId::Settings,
+                TileId::Remote
             ]
         );
         assert_eq!(home.focus(), 0);
@@ -2818,7 +2876,8 @@ mod tests {
                 TileId::Folder(1),
                 id("a03"),
                 TileId::About,
-                TileId::Settings
+                TileId::Settings,
+                TileId::Remote
             ]
         );
     }
@@ -2954,10 +3013,13 @@ mod tests {
         assert_eq!(home.folders()[&7].apps, ["a00"]);
         assert_eq!(home.tiles()[..2], [TileId::Folder(7), id("a01")]);
         // a00 is not also on Home outside its folder.
-        assert_eq!(home.tiles().len(), 4);
+        assert_eq!(home.tiles().len(), 5);
         home.set_apps(&apps(2)[1..]);
         assert!(home.folders().is_empty());
-        assert_eq!(home.tiles(), [id("a01"), TileId::About, TileId::Settings]);
+        assert_eq!(
+            home.tiles(),
+            [id("a01"), TileId::About, TileId::Settings, TileId::Remote]
+        );
     }
 
     #[test]
@@ -2978,7 +3040,8 @@ mod tests {
                 id("a00"),
                 TileId::Folder(2),
                 TileId::About,
-                TileId::Settings
+                TileId::Settings,
+                TileId::Remote
             ]
         );
     }

@@ -21,7 +21,7 @@ use rusttv_remote::tls::Authority;
 use rusttv_remote::{Event, Options, Outlet, PAGE, PhoneId, Phones, Remote, RemoteError};
 
 use crate::platform::Pictures;
-use crate::settings::PhoneRow;
+use crate::remote_page::PhoneRow;
 
 use crate::model::{FOLDER_PAGE_SIZE, Home, MenuItem, State, TileId};
 use crate::order_file::name_of;
@@ -418,7 +418,7 @@ pub(crate) fn home_view(
             State::Moving => HomeMode::Moving,
             State::Menu => HomeMode::Menu,
             State::Hidden => HomeMode::Hidden,
-            State::Settings | State::About => HomeMode::Settings,
+            State::Settings | State::About | State::Remote => HomeMode::Settings,
             State::Browse | State::Launching | State::Folder => HomeMode::Browse,
         }
     };

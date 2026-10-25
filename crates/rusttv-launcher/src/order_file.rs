@@ -23,6 +23,9 @@ const HIDDEN: &str = "hidden-apps";
 /// Name used for the Settings tile in the file.
 const SETTINGS: &str = "settings";
 
+/// Name used for the RustTV Remote tile in the file.
+const REMOTE: &str = "remote";
+
 /// Folders are named `folder:<number>` in the file (and in the history).
 const FOLDER: &str = "folder:";
 
@@ -107,6 +110,7 @@ pub(crate) fn tile_for_name(name: String) -> TileId {
     match name.as_str() {
         ABOUT => TileId::About,
         SETTINGS => TileId::Settings,
+        REMOTE => TileId::Remote,
         HIDDEN => TileId::Hidden,
         _ => match folder_number(&name) {
             Some(number) => TileId::Folder(number),
@@ -126,6 +130,7 @@ pub(crate) fn name_of(id: &TileId) -> String {
         TileId::App(component) => component.clone(),
         TileId::About => ABOUT.to_owned(),
         TileId::Settings => SETTINGS.to_owned(),
+        TileId::Remote => REMOTE.to_owned(),
         TileId::Hidden => HIDDEN.to_owned(),
         TileId::Folder(number) => format!("{FOLDER}{number}"),
     }
@@ -226,10 +231,14 @@ pub(crate) const UPDATE_CHECK_OFF: &str = "update-check-off";
 pub(crate) fn launcher_state(dir: &Path) -> rusttv_history::Launcher {
     let loaded = load(&dir.join("order.toml"));
     rusttv_history::Launcher {
+        // Not the RustTV Remote tile: every Home has it, and older RustTV
+        // builds don't know its name, so a history with it would be one
+        // they can't read. Written back, the order gets it at its end.
         order: loaded
             .order
             .keys()
             .iter()
+            .filter(|(id, _)| *id != TileId::Remote)
             .map(|(id, _)| name_of(id))
             .collect(),
         folders: loaded
@@ -323,6 +332,33 @@ mod tests {
             (TileId::App("com.example.a/.Tv \"quoted\"".to_owned()), 1500),
             (TileId::About, 2000),
         ])
+    }
+
+    #[test]
+    fn history_never_sees_the_rusttv_remote_tile() {
+        let dir = TempDir::new("remote-tile");
+        let order = Order::from_keys([
+            (TileId::App("com.example.b/.Main".to_owned()), 1000),
+            (TileId::Remote, 1500),
+            (TileId::About, 2000),
+        ]);
+        save(
+            &dir.file(),
+            &order,
+            &BTreeMap::new(),
+            &BTreeSet::new(),
+            None,
+        )
+        .unwrap();
+        let state = launcher_state(&dir.0);
+        assert_eq!(state.order, ["com.example.b/.Main", "about"]);
+        // Older RustTV builds still read it.
+        assert!(
+            state
+                .order
+                .iter()
+                .all(|name| rusttv_history::is_tile_name(name))
+        );
     }
 
     #[test]

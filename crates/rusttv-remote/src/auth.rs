@@ -114,6 +114,36 @@ impl PhoneKeys {
     }
 }
 
+/// A new Home Screen icon's proof that it holds a handover token
+/// (REMOTE.md § 1 "Add to Home Screen"): binds its nonce and the phone.
+pub fn handover_proof(token: &[u8; 32], phone_nonce: &[u8; 32], phone_id: &PhoneId) -> [u8; 32] {
+    compute(
+        token,
+        "rusttv-remote/1/handover",
+        &[phone_nonce, &phone_id.0],
+    )
+}
+
+/// Whether `proof` is [`handover_proof`] for these values, in constant time.
+pub fn verify_handover_proof(
+    token: &[u8; 32],
+    phone_nonce: &[u8; 32],
+    phone_id: &PhoneId,
+    proof: &[u8; 32],
+) -> bool {
+    verify(
+        token,
+        "rusttv-remote/1/handover",
+        &[phone_nonce, &phone_id.0],
+        proof,
+    )
+}
+
+/// The key the TV seals a phone's keys with for a redeemed handover token.
+pub fn handover_key(token: &[u8; 32], phone_nonce: &[u8; 32]) -> [u8; 32] {
+    compute(token, "rusttv-remote/1/handover-key", &[phone_nonce])
+}
+
 /// The phone's answer to a challenge.
 pub fn auth_response(auth: &[u8; 32], challenge: &[u8; 32], phone_id: &PhoneId) -> [u8; 32] {
     compute(auth, "rusttv-remote/1/auth", &[challenge, &phone_id.0])
@@ -374,6 +404,23 @@ mod tests {
         assert_eq!(
             hex::encode(&session_key(&keys.key, &CHALLENGE)),
             "0d42934d0f8d09a23873d11d8a56cd1f8a9bf3d9604f0c2e96f18074661d735f"
+        );
+        // A handover token's proof and key (the token in SECRET's place).
+        let proof = handover_proof(&SECRET, &NONCE, &ID);
+        assert_eq!(
+            hex::encode(&proof),
+            "24fe519bc7c508e33d69669a79d3824fc9b03837fd75866f8806175b53fb621c"
+        );
+        assert!(verify_handover_proof(&SECRET, &NONCE, &ID, &proof));
+        assert!(!verify_handover_proof(
+            &SECRET,
+            &NONCE,
+            &PhoneId([0x45; 16]),
+            &proof
+        ));
+        assert_eq!(
+            hex::encode(&handover_key(&SECRET, &NONCE)),
+            "3db785d4f42218527494c55f3b5543ba7fa14668388f011e92a62d6dbaeb74cc"
         );
     }
 
