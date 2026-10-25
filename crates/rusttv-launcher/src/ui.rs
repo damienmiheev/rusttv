@@ -68,6 +68,13 @@ const TOAST_TIME: Duration = Duration::from_secs(3);
 /// Size of the small copy of each banner kept to compute its hero glow.
 const GLOW_SOURCE_SIZE: (u32, u32) = (48, 27);
 
+/// Size of the built-in tiles' banners (build.rs decodes them from
+/// assets/tiles, rendered by scripts/brand/render.sh).
+const BUILTIN_BANNER_SIZE: (u32, u32) = (320, 180);
+const ABOUT_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/about.rgba"));
+const SETTINGS_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/settings.rgba"));
+const HIDDEN_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/hidden.rgba"));
+
 /// HCT tone of the backdrop base: near black, like Material's dark surfaces.
 const BACKDROP_BASE_TONE: f64 = 12.0;
 
@@ -316,6 +323,8 @@ struct Controller {
     apps: HashMap<String, AppView>,
     /// Hero glows per app id, computed on first focus.
     glows: HashMap<String, generated::Glow>,
+    /// The About, Settings and Hidden apps tiles' banners and glows.
+    builtins: Builtins,
     /// Tiles currently in the window's model, to rebuild it only when they change.
     shown: Vec<TileId>,
     tiles: Rc<VecModel<TileData>>,
@@ -416,6 +425,7 @@ impl Controller {
                 options,
                 apps: HashMap::new(),
                 glows: HashMap::new(),
+                builtins: Builtins::new(),
                 shown: Vec::new(),
                 tiles,
                 hidden_shown: Vec::new(),
@@ -966,7 +976,8 @@ impl Controller {
             .unwrap_or_default();
         let glow = match &focused {
             Some(TileId::App(component)) => self.glow(component),
-            _ => None,
+            Some(builtin) => self.builtins.view(builtin).map(|view| view.glow.clone()),
+            None => None,
         }
         .unwrap_or_default();
         // Fill the hidden layer, then make it the front one.
@@ -988,15 +999,7 @@ impl Controller {
             return Some(cached.clone());
         }
         let source = self.apps.get(component)?.glow_source.as_ref()?;
-        let glow = source.glow(BACKDROP_BASE_TONE, BACKDROP_GLOW_TONE);
-        let colour = |[red, green, blue]: [u8; 3]| slint::Color::from_rgb_u8(red, green, blue);
-        let glow = generated::Glow {
-            base: colour(glow.base),
-            color: colour(glow.colour),
-            x: glow.x,
-            y: glow.y,
-            strength: glow.strength,
-        };
+        let glow = hero_glow(source);
         self.glows.insert(component.to_owned(), glow.clone());
         Some(glow)
     }
@@ -1006,6 +1009,7 @@ impl Controller {
             TileId::App(component) => component,
             TileId::About => {
                 return TileData {
+                    image: self.builtins.about.image.clone(),
                     kind: 3,
                     ..TileData::default()
                 };
@@ -1013,12 +1017,13 @@ impl Controller {
             TileId::Hidden => {
                 return TileData {
                     label: "Hidden apps".into(),
+                    image: self.builtins.hidden.image.clone(),
                     kind: 5,
-                    ..TileData::default()
                 };
             }
             TileId::Settings => {
                 return TileData {
+                    image: self.builtins.settings.image.clone(),
                     kind: 6,
                     ..TileData::default()
                 };
@@ -1049,7 +1054,7 @@ struct AppView {
     label: String,
     image: slint::Image,
     /// The `kind` of `TileData`: 0 banner, 1 icon only, 2 no artwork, 4 loading
-    /// (3 and 5 are the About and Hidden apps tiles).
+    /// (3, 5 and 6 are the About, Hidden apps and Settings tiles).
     kind: i32,
     glow_source: Option<Bitmap>,
 }
@@ -1083,6 +1088,56 @@ impl AppView {
     /// Whether the artwork is still to be loaded ([`Artwork::Later`]).
     fn is_pending(&self) -> bool {
         self.kind == 4
+    }
+}
+
+/// The banner and hero glow of one of the launcher's own tiles.
+#[derive(Default)]
+struct BuiltinView {
+    image: slint::Image,
+    glow: generated::Glow,
+}
+
+impl BuiltinView {
+    /// Wraps a banner's RGBA bytes ([`BUILTIN_BANNER_SIZE`]).
+    fn new(rgba: &[u8]) -> Self {
+        let (width, height) = BUILTIN_BANNER_SIZE;
+        // build.rs checks the size, so this is always `Some`.
+        let Some(bitmap) = Bitmap::new(width, height, rgba.to_vec()) else {
+            log::warn!("a built-in tile banner has the wrong size");
+            return Self::default();
+        };
+        Self {
+            image: image(&bitmap),
+            glow: hero_glow(&bitmap.shrink(GLOW_SOURCE_SIZE.0, GLOW_SOURCE_SIZE.1)),
+        }
+    }
+}
+
+/// The About, Settings and Hidden apps tiles' banners and glows, made once.
+struct Builtins {
+    about: BuiltinView,
+    settings: BuiltinView,
+    hidden: BuiltinView,
+}
+
+impl Builtins {
+    fn new() -> Self {
+        Self {
+            about: BuiltinView::new(ABOUT_BANNER),
+            settings: BuiltinView::new(SETTINGS_BANNER),
+            hidden: BuiltinView::new(HIDDEN_BANNER),
+        }
+    }
+
+    /// The view of a built-in tile; `None` for an app.
+    fn view(&self, id: &TileId) -> Option<&BuiltinView> {
+        match id {
+            TileId::About => Some(&self.about),
+            TileId::Settings => Some(&self.settings),
+            TileId::Hidden => Some(&self.hidden),
+            TileId::App(_) => None,
+        }
     }
 }
 
@@ -1204,6 +1259,19 @@ fn input_for_key(text: &str, pressed: bool) -> Option<Input> {
         _ => return None,
     };
     Some(input)
+}
+
+/// The hero glow for artwork, from its small copy (see [`GLOW_SOURCE_SIZE`]).
+fn hero_glow(source: &Bitmap) -> generated::Glow {
+    let glow = source.glow(BACKDROP_BASE_TONE, BACKDROP_GLOW_TONE);
+    let colour = |[red, green, blue]: [u8; 3]| slint::Color::from_rgb_u8(red, green, blue);
+    generated::Glow {
+        base: colour(glow.base),
+        color: colour(glow.colour),
+        x: glow.x,
+        y: glow.y,
+        strength: glow.strength,
+    }
 }
 
 fn image(bitmap: &Bitmap) -> slint::Image {
@@ -1437,6 +1505,30 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn built_in_tiles_show_their_banners_and_an_amber_glow() {
+        let screen = screen(None);
+        let tiles = screen.window.get_tiles();
+        for tile in tiles.iter().filter(|tile| tile.kind == 3 || tile.kind == 6) {
+            let size = tile.image.size();
+            assert_eq!((size.width, size.height), (320, 180));
+        }
+        for _ in 0..3 {
+            screen.tap(RIGHT);
+        }
+        screen.wait(HERO_DELAY.as_millis() as u64 + 50);
+        let (hero, glow) = if screen.window.get_hero_a_front() {
+            (screen.window.get_hero_a(), screen.window.get_hero_a_glow())
+        } else {
+            (screen.window.get_hero_b(), screen.window.get_hero_b_glow())
+        };
+        assert_eq!(hero.kind, 3);
+        let size = hero.image.size();
+        assert_eq!((size.width, size.height), (320, 180));
+        assert!(glow.strength > 0.5);
+        assert!(glow.color.red() > glow.color.blue());
     }
 
     #[test]

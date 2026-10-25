@@ -42,6 +42,7 @@ i-slint-backend-testing.workspace = true
 
 [build-dependencies]
 slint-build.workspace = true
+png.workspace = true
 
 [[bin]]
 name = "rusttv-launcher-desktop"
