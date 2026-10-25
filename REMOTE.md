@@ -163,12 +163,21 @@ to its home screen.
 
 ## 3. The listener
 
-- **Shape:** one thread in Home's process, like the history thread. It owns a
-  std `TcpListener` bound to `0.0.0.0:8484`. HTTP/1.1 is parsed with
-  `httparse` and the WebSocket upgrade handled by `tungstenite`, with no
-  tokio.
-  - The UI picks events up on its existing short timer.
-  - The thread pushes the `HomeView` after every model change.
+- **Shape:** in Home's process, on std sockets with no tokio:
+  - one accept thread on a `TcpListener` bound to `0.0.0.0:8484`, blocked
+    while nobody connects;
+  - one short-lived thread per admitted connection (at most 4 phones plus
+    1 still authenticating).
+
+  HTTP/1.1 is parsed with `httparse`. The upgrade answer is computed with
+  `sha1dc` (already in the tree), and WebSocket frames are handled by
+  `tungstenite` without its handshake feature.
+  - A connection reads with a 100 ms timeout, so it can also send the latest
+    view the launcher pushed. Its wakeups are measured with the budgets.
+  - The UI picks events up on its existing short timer and pushes the
+    `HomeView` after every model change.
+  - `/ws` is refused unless `Origin` is the page itself, so another site
+    open in the phone's browser can't open the socket.
 - **When it runs:**
   - It starts only once a phone is paired, and again on each later process
     start if `phones.toml` lists phones.
