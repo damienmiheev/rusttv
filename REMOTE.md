@@ -418,6 +418,18 @@ echoed.
   The review/approval screen **drops every phone input**: phone keys arrive
   through RustTV's own socket, so they can be told apart from the remote.
 
+- **Screensavers (owner decision 2026-10-26: not supported).** A phone
+  doesn't wake the TV from a screensaver. Tested on the Philips: an app can
+  start an activity over Google's Ambient mode (Android allows it for this
+  launcher), but "turn the screen on" doesn't end a screensaver on a screen
+  that is already on, and only system code can end it. The Philips OLED
+  logo is not an Android screensaver at all (`ImageStickingService` in
+  `org.droidtv.tv.tpvvideomanager`). Only a real key press ends either, so
+  the only route would be a `KEYCODE_WAKEUP` through the TV's Remote Service
+  (phase 2); the owner chose not to. While a screensaver shows, the phone
+  sees "another app in front" and gets the touchpad; when the person wakes
+  the TV with its remote, the phone gets Home back at once.
+
 ## 5. Other apps
 
 ### The Android TV Remote Service
