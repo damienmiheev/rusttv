@@ -48,8 +48,10 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # contents: write only because GitHub shows draft releases to tokens that
+    # can write. This job runs main's code and holds no keys; it changes nothing.
     permissions:
-      contents: read
+      contents: write
       actions: read
     outputs:
       public-key: ${{ steps.check.outputs.public-key }}
