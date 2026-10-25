@@ -6,13 +6,17 @@
 #![allow(unsafe_code)]
 
 use android_activity::{AndroidApp, MainEvent, PollEvent};
-use jni::objects::{GlobalRef, JClass, JIntArray, JObject, JObjectArray, JString, JValue};
+use jni::objects::{
+    GlobalRef, JByteArray, JClass, JIntArray, JObject, JObjectArray, JString, JValue,
+};
 use jni::{JNIEnv, JavaVM};
 
 mod history;
 
+use rusttv_remote::protocol::PictureKind;
+
 use crate::model::{App, Category};
-use crate::platform::{AppEntry, Artwork, Bitmap, Platform, PlatformError, UpdateStatus};
+use crate::platform::{AppEntry, Artwork, Bitmap, Pictures, Platform, PlatformError, UpdateStatus};
 use crate::ui::{Lifecycle, RunOptions, run};
 
 /// Size banners are drawn at: the Leanback banner size (320×180, 16:9).
@@ -20,6 +24,10 @@ const BANNER_SIZE: (i32, i32) = (320, 180);
 
 /// Size square icons are drawn at, for apps without a banner.
 const ICON_SIZE: i32 = 96;
+
+/// Size icons are drawn at for the phones' tiles (shown at about 64 px on a
+/// 3× phone screen).
+const PICTURE_ICON_SIZE: i32 = 192;
 
 const BRIDGE_CLASS: &str = "ai.rusttv.launcher.Bridge";
 
@@ -134,6 +142,44 @@ impl AndroidPlatform {
         // (from `loadClass`), held by `self` for as long as this borrow.
         let bridge = unsafe { JClass::from_raw(self.bridge.as_obj().as_raw()) };
         java(operation, &mut env, |env| f(env, &bridge, &activity))
+    }
+
+    /// `Bridge.tilePicture`: the app's banner, else its icon, as WebP.
+    fn picture(&self, id: &str) -> Option<(PictureKind, Vec<u8>)> {
+        let bytes = self
+            .with_bridge("tile picture", |env, bridge, activity| {
+                let component = env.new_string(id)?;
+                let (width, height) = BANNER_SIZE;
+                let array = env
+                    .call_static_method(
+                        bridge,
+                        "tilePicture",
+                        "(Landroid/content/Context;Ljava/lang/String;III)[B",
+                        &[
+                            JValue::Object(activity),
+                            JValue::Object(&component),
+                            JValue::Int(width),
+                            JValue::Int(height),
+                            JValue::Int(PICTURE_ICON_SIZE),
+                        ],
+                    )?
+                    .l()?;
+                if array.is_null() {
+                    return Ok(None);
+                }
+                env.convert_byte_array(JByteArray::from(array)).map(Some)
+            })
+            .unwrap_or_else(|error| {
+                log::warn!("{error}");
+                None
+            })?;
+        let (&kind, webp) = bytes.split_first()?;
+        let kind = if kind == 0 {
+            PictureKind::Banner
+        } else {
+            PictureKind::Icon
+        };
+        Some((kind, webp.to_vec()))
     }
 
     /// Calls `Bridge.<method>(context): Unit`.
@@ -307,6 +353,22 @@ impl Platform for AndroidPlatform {
         code.unwrap_or_else(|error| {
             log::warn!("{error}");
             [0; 4]
+        })
+    }
+
+    fn pictures(&self) -> Option<Pictures> {
+        // SAFETY: the same process-wide `JavaVM*` as `self.vm`, valid for the
+        // lifetime of the app.
+        let vm = unsafe { JavaVM::from_raw(self.vm.get_java_vm_pointer()) }.ok()?;
+        let bridge = std::sync::Arc::new(AndroidPlatform {
+            app: self.app.clone(),
+            vm,
+            bridge: self.bridge.clone(),
+        });
+        let freeing = std::sync::Arc::clone(&bridge);
+        Some(Pictures {
+            draw: Box::new(move |id: &str| bridge.picture(id)),
+            done: Box::new(move || freeing.artwork_loaded()),
         })
     }
 

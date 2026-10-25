@@ -13,7 +13,9 @@ use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::Duration;
 
 use rusttv_remote::auth::{self, PhoneKeys};
-use rusttv_remote::protocol::{Bytes32, HomeView, Key, KeyAction, PhoneMessage, TvMessage};
+use rusttv_remote::protocol::{
+    Bytes32, HomeView, Key, KeyAction, PhoneMessage, Picture, PictureKind, TvMessage,
+};
 use rusttv_remote::{Event, Options, PAGE, PhoneId, Phones, Remote, RemoteError, Session};
 use tungstenite::protocol::Role;
 use tungstenite::{Message, WebSocket};
@@ -205,6 +207,34 @@ fn pairs_authenticates_and_carries_sealed_messages() {
     // The same frame again is a replay: the connection closes.
     client.send(Message::binary(frame)).unwrap();
     assert_eq!(remote.wait_event(WAIT), Some(Event::Disconnected(id)));
+}
+
+#[test]
+fn pictures_reach_only_their_phone_all_of_them_in_order() {
+    let remote = start(Phones::default());
+    let mut client = connect(&remote);
+    let id = pair(&remote, &mut client);
+    let mut session = authenticate(&remote, &mut client, id);
+    let picture = |name: &str| {
+        TvMessage::Banner(Picture {
+            id: format!("{name}/.Main"),
+            kind: PictureKind::Banner,
+            webp: "UklGRg==".into(),
+        })
+    };
+    let outlet = remote.outlet();
+    // Unlike views, which only the latest of is sent, each one arrives.
+    outlet
+        .send_to(&PhoneId([9; 16]), &picture("other"))
+        .unwrap();
+    outlet.send_to(&id, &picture("a")).unwrap();
+    outlet.send_to(&id, &picture("b")).unwrap();
+    assert_eq!(receive_sealed(&mut client, &mut session), picture("a"));
+    assert_eq!(receive_sealed(&mut client, &mut session), picture("b"));
+    // Another phone's picture never came: the next message is this view.
+    let view = TvMessage::Home(HomeView::default());
+    remote.push(&view).unwrap();
+    assert_eq!(receive_sealed(&mut client, &mut session), view);
 }
 
 #[test]

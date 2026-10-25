@@ -124,6 +124,32 @@ impl std::fmt::Debug for Remote {
     }
 }
 
+/// Sends messages to single phones ([`Remote::outlet`]); usable from any
+/// thread, and harmless after the listener stops.
+#[derive(Clone)]
+pub struct Outlet {
+    shared: Arc<Shared>,
+}
+
+impl std::fmt::Debug for Outlet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Outlet").finish_non_exhaustive()
+    }
+}
+
+impl Outlet {
+    /// Sends `message` to `phone`'s connections, after the views and
+    /// messages before it; nothing if it isn't connected.
+    pub fn send_to(&self, phone: &PhoneId, message: &TvMessage) -> Result<(), RemoteError> {
+        let bytes = message.to_bytes()?;
+        let state = self.shared.lock();
+        for connection in state.connections.iter().filter(|c| c.phone == *phone) {
+            let _ = connection.outbox.send(Outgoing::Once(bytes.clone()));
+        }
+        Ok(())
+    }
+}
+
 struct Shared {
     state: Mutex<State>,
     events: Mutex<Sender<Event>>,
@@ -161,7 +187,10 @@ struct Connection {
 }
 
 enum Outgoing {
+    /// The latest view: a newer one replaces it before it is sent.
     View(Arc<Vec<u8>>),
+    /// A message for this phone only, sent in order (tile pictures).
+    Once(Vec<u8>),
     Close,
 }
 
@@ -292,6 +321,13 @@ impl Remote {
             let _ = connection.outbox.send(Outgoing::View(Arc::clone(&bytes)));
         }
         Ok(())
+    }
+
+    /// Sends to single phones from another thread.
+    pub fn outlet(&self) -> Outlet {
+        Outlet {
+            shared: Arc::clone(&self.shared),
+        }
     }
 
     /// The paired phones now (with `last_seen`), for the phones file.
@@ -571,7 +607,7 @@ impl Page {
             html = html.replace(marker, &format!("<script>{script}</script>"));
             hashes.push(format!(
                 "'sha256-{}'",
-                base64(&Sha256::digest(script.as_bytes()))
+                crate::hex::base64(&Sha256::digest(script.as_bytes()))
             ));
         }
         Self {
@@ -636,25 +672,7 @@ pub(crate) fn accept_key(key: &str) -> Result<String, RemoteError> {
     let digest: [u8; 20] = sha1dc::digest(&input)
         .map_err(|_| RemoteError::Invalid("websocket key".to_owned()))?
         .into();
-    Ok(base64(&digest))
-}
-
-fn base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut text = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let n = (u32::from(chunk[0]) << 16)
-            | (u32::from(chunk.get(1).copied().unwrap_or(0)) << 8)
-            | u32::from(chunk.get(2).copied().unwrap_or(0));
-        for i in 0..4 {
-            if i <= chunk.len() {
-                text.push(char::from(ALPHABET[((n >> (18 - 6 * i)) & 63) as usize]));
-            } else {
-                text.push('=');
-            }
-        }
-    }
-    text
+    Ok(crate::hex::base64(&digest))
 }
 
 /// Pairing (if the phone pairs), then the challenge. The phone, its keys and
@@ -771,6 +789,7 @@ fn talk(
 ) -> Result<(), RemoteError> {
     socket.get_mut().set_read_timeout(Some(POLL)).map_err(io)?;
     let mut pending = shared.lock().view.clone();
+    let mut once = VecDeque::new();
     let mut window = (Instant::now(), 0_u32);
     let mut last_ping = Instant::now();
     let mut last_pong = Instant::now();
@@ -778,6 +797,7 @@ fn talk(
         loop {
             match inbox.try_recv() {
                 Ok(Outgoing::View(view)) => pending = Some(view),
+                Ok(Outgoing::Once(message)) => once.push_back(message),
                 Ok(Outgoing::Close) | Err(mpsc::TryRecvError::Disconnected) => {
                     return close(socket);
                 }
@@ -789,6 +809,10 @@ fn talk(
         }
         if let Some(view) = pending.take() {
             let frame = session.seal(&view, shared.random())?;
+            socket.send(Message::binary(frame)).map_err(ws)?;
+        }
+        while let Some(message) = once.pop_front() {
+            let frame = session.seal(&message, shared.random())?;
             socket.send(Message::binary(frame)).map_err(ws)?;
         }
         let now = Instant::now();
@@ -937,14 +961,5 @@ mod tests {
         // Silent for a minute, even though nothing else is pending.
         assert!(!admit(&shared));
         assert!(shared.lock().silent_until.is_some());
-    }
-
-    #[test]
-    fn base64_pads() {
-        assert_eq!(base64(b""), "");
-        assert_eq!(base64(b"f"), "Zg==");
-        assert_eq!(base64(b"fo"), "Zm8=");
-        assert_eq!(base64(b"foo"), "Zm9v");
-        assert_eq!(base64(b"foobar"), "Zm9vYmFy");
     }
 }

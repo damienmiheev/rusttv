@@ -845,6 +845,17 @@ impl Home {
         &self.folders
     }
 
+    /// Whether the app is on Home or in a folder: never a hidden one.
+    pub fn shows_app(&self, id: &str) -> bool {
+        self.tiles
+            .iter()
+            .any(|tile| matches!(tile, TileId::App(app) if app == id))
+            || self
+                .folders
+                .values()
+                .any(|folder| folder.apps.iter().any(|app| app == id))
+    }
+
     /// Component names of all hidden apps, including ones no longer installed.
     pub fn hidden(&self) -> &BTreeSet<String> {
         &self.hidden
@@ -2713,6 +2724,19 @@ mod tests {
         pick_up(&mut home);
         home.handle(Input::Right, ms(1000));
         assert_eq!(home.folder_due(), None);
+    }
+
+    #[test]
+    fn shows_apps_on_home_and_in_folders_but_not_hidden_ones() {
+        let mut home = home_with_folder();
+        assert!(home.shows_app("a00"), "in the folder");
+        assert!(home.shows_app("a02"), "on Home");
+        assert!(!home.shows_app("folder:1"));
+        let hidden = BTreeSet::from(["a01".to_owned()]);
+        home = Home::new(Order::default(), BTreeMap::new(), hidden, false);
+        home.set_apps(&apps(3));
+        assert!(!home.shows_app("a01"));
+        assert!(!home.shows_app("not-installed/.Main"));
     }
 
     /// Home with folder 1 = [a01, a00], dropped and still open.

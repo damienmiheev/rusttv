@@ -99,6 +99,42 @@ object Bridge {
         return drawable?.let { pixels(it, width, height) }
     }
 
+    /**
+     * The app's tile picture for RustTV Remote's phones (REMOTE.md § 4), as
+     * WebP: a kind byte (0 banner, 1 icon) then the file, or null with
+     * neither. Drawn again for each phone that asks, on the launcher's
+     * picture thread, so nothing is kept in memory for it.
+     */
+    @JvmStatic
+    fun tilePicture(context: Context, component: String, width: Int, height: Int, iconSize: Int): ByteArray? {
+        val pm = context.packageManager
+        val name = ComponentName.unflattenFromString(component) ?: return null
+        val banner = try {
+            pm.getActivityBanner(name) ?: pm.getApplicationBanner(name.packageName)
+        } catch (e: PackageManager.NameNotFoundException) {
+            null
+        }
+        val (kind, drawable) = when {
+            banner != null -> 0 to banner
+            else -> 1 to (try {
+                pm.getActivityIcon(name)
+            } catch (e: PackageManager.NameNotFoundException) {
+                return null
+            })
+        }
+        val (w, h) = if (kind == 0) width to height else iconSize to iconSize
+        val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        drawable.setBounds(0, 0, w, h)
+        drawable.draw(Canvas(bitmap))
+        val out = java.io.ByteArrayOutputStream()
+        out.write(kind)
+        @Suppress("DEPRECATION") // WEBP_LOSSY needs API 30; WEBP is lossy below 100.
+        val format = if (android.os.Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
+        bitmap.compress(format, 80, out)
+        bitmap.recycle()
+        return out.toByteArray()
+    }
+
     /** Starts the TV activity; false if it no longer exists. */
     @JvmStatic
     fun launch(context: Context, component: String): Boolean {

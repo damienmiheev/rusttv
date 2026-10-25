@@ -1111,7 +1111,8 @@ impl Controller {
             return;
         };
         let port = self.options.remote_port.unwrap_or(rusttv_remote::PORT);
-        self.remote = crate::remote::Link::start(files, port, force, |event| {
+        let pictures = self.platform.pictures();
+        self.remote = crate::remote::Link::start(files, port, force, pictures, |event| {
             // Fails only once the event loop has stopped.
             let _ = slint::invoke_from_event_loop(move || {
                 settings_view::with_controller(|controller| controller.remote_event(event));
@@ -1193,6 +1194,10 @@ impl Controller {
                     page.set_phones(link.phone_rows());
                 }
             }
+            RemoteEvent::Input {
+                phone,
+                message: PhoneMessage::Banner { id },
+            } => self.phone_picture(phone, id),
             // Never into the review or pairing screens; in Settings only
             // Back, so a phone can't pair, remove or approve anything.
             RemoteEvent::Input { message, .. }
@@ -1211,6 +1216,16 @@ impl Controller {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// A phone asks for an app's tile picture: only for apps on Home or in
+    /// a folder, never for hidden ones (phones aren't told about those).
+    fn phone_picture(&mut self, phone: rusttv_remote::PhoneId, id: String) {
+        if self.home.shows_app(&id)
+            && let Some(link) = &self.remote
+        {
+            link.ask_picture(phone, id);
         }
     }
 
