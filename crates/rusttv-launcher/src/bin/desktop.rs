@@ -10,6 +10,9 @@
 //! `RUSTTV_REMOTE_PAIR=1` starts RustTV Remote with pairing open and prints
 //! the pairing link; every phone that asks is allowed (REMOTE.md).
 //!
+//! `--demo-remote <dir>` does the same for RustTV Remote's Settings section
+//! and pairing screen.
+//!
 //! `--demo <dir>` instead plays a fixed key script and writes a BMP snapshot
 //! after each step into `<dir>`, then quits. Needs no screen-capture permission.
 
@@ -190,6 +193,32 @@ fn demo_script() -> Vec<DemoStep> {
     ]
 }
 
+/// RustTV Remote in Settings (REMOTE.md § 2): the section, then the pairing
+/// code. Settings is the last tile: Sports, Weather, About, Settings.
+fn remote_script() -> Vec<DemoStep> {
+    use DemoStep::{Snapshot, Tap};
+    vec![
+        ms(800),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(RIGHT),
+        Tap(RIGHT),
+        Tap(RIGHT),
+        Tap(OK),
+        ms(600),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(RIGHT),
+        ms(300),
+        Snapshot("remote-1-settings"),
+        Tap(OK),
+        ms(300),
+        Snapshot("remote-2-pairing-code"),
+        Tap(BACK),
+    ]
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     if log::set_logger(&Stderr).is_ok() {
         log::set_max_level(log::LevelFilter::Info);
@@ -203,7 +232,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         lifecycle: Default::default(),
         // RUSTTV_REMOTE_PAIR=1 starts the phone remote with pairing open.
         remote_pairing: std::env::var_os("RUSTTV_REMOTE_PAIR").is_some(),
+        remote_port: None,
     };
+    let mut script = demo_script();
     let mut args = std::env::args().skip(1);
     let Some(flag) = args.next() else {
         // History needs a place for its files: a fresh temporary one.
@@ -227,7 +258,16 @@ fn main() -> Result<(), Box<dyn Error>> {
             return Ok(run(FakePlatform::sample(), options)?);
         }
         ("--demo", Some(dir)) => PathBuf::from(dir),
-        _ => return Err("usage: rusttv-launcher-desktop [--order <file> | --demo <dir>]".into()),
+        ("--demo-remote", Some(dir)) => {
+            script = remote_script();
+            PathBuf::from(dir)
+        }
+        _ => {
+            return Err(
+                "usage: rusttv-launcher-desktop [--order <file> | --demo <dir> | --demo-remote <dir>]"
+                    .into(),
+            );
+        }
     };
     std::fs::create_dir_all(&dir)?;
     // A fresh history and order file for each demo run.
@@ -241,7 +281,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     platform.fail_launches_of(FAILING_APP);
     let failures: Rc<RefCell<Vec<String>>> = Rc::default();
     let record = failures.clone();
-    run_demo(platform, options, &demo_script(), move |name, picture| {
+    run_demo(platform, options, &script, move |name, picture| {
         let path = dir.join(format!("{name}.bmp"));
         let result = picture
             .map_err(|error| error.to_string())

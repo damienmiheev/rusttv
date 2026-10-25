@@ -104,7 +104,11 @@ mod status {
     pub const FORMAT_NEWER: i32 = 10;
     pub const READING: i32 = 11;
     pub const UNREADABLE: i32 = 12;
+    pub const REMOVED_PHONE: i32 = 13;
 }
+
+/// "Removed {phone}" under the title (ui/remote_view.rs).
+pub(super) const REMOVED_PHONE: i32 = status::REMOVED_PHONE;
 
 impl Controller {
     /// OK on the Settings tile.
@@ -114,6 +118,7 @@ impl Controller {
             self.options.right_to_left,
         ));
         self.settings_status = (status::READING, String::new());
+        self.phones_changed();
         self.refresh_settings_data();
     }
 
@@ -150,6 +155,10 @@ impl Controller {
 
     /// A key while Settings (or its review screen) is open.
     pub(super) fn settings_input(&mut self, input: Input) {
+        if self.pairing.is_some() {
+            self.pairing_input(input);
+            return;
+        }
         if self.review.is_some() {
             self.review_input(input);
             return;
@@ -172,6 +181,8 @@ impl Controller {
                 self.home.close_settings();
             }
             Some(Action::Review(draft)) => self.open_review(draft),
+            Some(Action::PairPhone) => self.open_pairing(),
+            Some(Action::RemovePhone(id)) => self.remove_phone(id),
             Some(Action::Restore(id)) => {
                 let Some(history) = History::get() else {
                     return;
@@ -312,6 +323,7 @@ impl Controller {
     /// The launcher left the screen: drafts and reviews are dropped.
     pub(super) fn close_settings_view(&mut self) {
         self.close_review();
+        self.close_pairing();
         self.settings = None;
         self.settings_status = (status::NONE, String::new());
     }
@@ -547,6 +559,24 @@ impl Controller {
                             })
                             .collect()
                     }
+                    Section::Remote => {
+                        note.push(strings.invoke_remote_note().to_string());
+                        let mut rows = vec![SettingsRow {
+                            title: strings.invoke_pair_phone(),
+                            detail: strings.invoke_pair_phone_detail(),
+                            current: false,
+                            dim: false,
+                        }];
+                        rows.extend(page.phones().iter().enumerate().map(|(i, phone)| {
+                            SettingsRow {
+                                title: phone.name.as_str().into(),
+                                detail: strings.invoke_phone_detail(page.removing() == Some(i + 1)),
+                                current: false,
+                                dim: false,
+                            }
+                        }));
+                        rows
+                    }
                     Section::Waiting => overview
                         .pending
                         .iter()
@@ -614,6 +644,7 @@ fn section_value(section: Section) -> i32 {
         Section::Updates => 1,
         Section::History => 2,
         Section::Waiting => 3,
+        Section::Remote => 4,
     }
 }
 

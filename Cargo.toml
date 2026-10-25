@@ -81,6 +81,10 @@ sha1dc = "0.1.5"
 # the TV and the desktop (already in the tree through tungstenite's rand).
 # MIT OR Apache-2.0.
 getrandom = "0.4.3"
+# The pairing QR code in the launcher's Settings (REMOTE.md § 2, owner OK
+# 2026-10-25). No default features: no image or SVG rendering, the launcher
+# draws the modules itself. MIT OR Apache-2.0.
+qrcode = { version = "0.14.1", default-features = false }
 
 [workspace.lints.rust]
 # Only the future JNI bridge crate may opt out of this.

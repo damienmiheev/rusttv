@@ -43,6 +43,7 @@ mod generated {
 }
 use generated::{Dir, HomeWindow, ReviewLine, SettingsRow, Strings, TileData};
 
+mod remote_view;
 mod settings_view;
 
 /// Idle time before the focused tile starts to sway (it fades in, so this can
@@ -135,6 +136,9 @@ pub struct RunOptions {
     /// let every phone pair (the link is logged). Never on a TV, where the
     /// person pairs a phone in Settings.
     pub remote_pairing: bool,
+    /// The phone remote's port: `None` is [`rusttv_remote::PORT`]; tests use
+    /// `Some(0)` for any free port.
+    pub remote_port: Option<u16>,
 }
 
 /// Reports activity lifecycle events to a running home screen.
@@ -414,6 +418,8 @@ struct Controller {
     review_code: Rc<VecModel<i32>>,
     /// The phone remote, while a phone is paired (REMOTE.md).
     remote: Option<crate::remote::Link>,
+    /// The pairing screen in Settings.
+    pairing: Option<remote_view::Pairing>,
     /// Another app is on screen (Android paused the launcher): phones get
     /// the touchpad, not the Home mirror.
     away: bool,
@@ -514,6 +520,7 @@ impl Controller {
                 review_lines,
                 review_code,
                 remote: None,
+                pairing: None,
                 away: false,
             })
         });
@@ -1045,10 +1052,13 @@ impl Controller {
         }
         window.set_mode(if self.review.is_some() {
             7
+        } else if self.pairing.is_some() {
+            9
         } else {
             mode_value(self.home.state())
         });
         self.render_settings(&window);
+        self.render_pairing(&window);
         window.set_pressed(self.pressed);
         if self.home.state() != State::About && self.notices.take().is_some() {
             // Closed: free the text until the page opens again.
@@ -1075,6 +1085,20 @@ impl Controller {
     /// Starts the phone remote if a phone is paired (REMOTE.md § 3). Its
     /// events reach [`Controller::remote_event`] on the UI thread.
     fn start_remote(&mut self) {
+        self.start_remote_now(self.options.remote_pairing);
+        if self.options.remote_pairing
+            && let Some(link) = &self.remote
+        {
+            let host = crate::remote::lan_address().map_or_else(
+                || "<this computer's address>".to_owned(),
+                |ip| ip.to_string(),
+            );
+            log::info!("RustTV Remote: pair at {}", link.open_pairing(&host));
+        }
+    }
+
+    /// Starts the listener: with a paired phone, or when `force`d (pairing).
+    fn start_remote_now(&mut self, force: bool) {
         let Some(files) = self
             .options
             .order_file
@@ -1083,7 +1107,8 @@ impl Controller {
         else {
             return;
         };
-        self.remote = crate::remote::Link::start(files, self.options.remote_pairing, |event| {
+        let port = self.options.remote_port.unwrap_or(rusttv_remote::PORT);
+        self.remote = crate::remote::Link::start(files, port, force, |event| {
             // Fails only once the event loop has stopped.
             let _ = slint::invoke_from_event_loop(move || {
                 settings_view::with_controller(|controller| controller.remote_event(event));
@@ -1146,27 +1171,41 @@ impl Controller {
                 request,
                 name,
                 code,
-            } => {
-                // Until Settings asks the person, only the desktop dev mode
-                // pairs, and it allows every phone.
-                let allow = self.options.remote_pairing;
-                log::info!("RustTV Remote: {name} asks to pair (code {code:02}); allowed: {allow}");
-                if let Some(link) = &self.remote {
-                    link.remote().answer_pairing(request, allow);
-                }
-            }
+            } => self.pair_request(request, name, code),
             RemoteEvent::Paired(_) => {
                 if let Some(link) = &self.remote {
                     link.save_phones();
                 }
+                self.phones_changed();
+                self.render();
             }
+            RemoteEvent::PairingClosed => self.pairing_closed(),
             RemoteEvent::Connected(_) => {
                 if let Some(link) = &mut self.remote {
                     link.resend();
                 }
+                if let Some(page) = &mut self.settings
+                    && let Some(link) = &self.remote
+                {
+                    page.set_phones(link.phone_rows());
+                }
             }
-            RemoteEvent::Input { message, .. } if self.review.is_none() => {
-                self.phone_input(message)
+            // Never into the review or pairing screens; in Settings only
+            // Back, so a phone can't pair, remove or approve anything.
+            RemoteEvent::Input { message, .. }
+                if self.review.is_none() && self.pairing.is_none() =>
+            {
+                let in_settings = self.home.state() == State::Settings;
+                let back = matches!(
+                    message,
+                    PhoneMessage::Key {
+                        name: PhoneKey::Back,
+                        ..
+                    }
+                );
+                if !in_settings || back {
+                    self.phone_input(message);
+                }
             }
             _ => {}
         }
@@ -1759,6 +1798,10 @@ mod tests {
             self.platform.borrow_mut().install_update()
         }
 
+        fn set_secure(&mut self, on: bool) {
+            self.platform.borrow_mut().set_secure(on);
+        }
+
         fn random_code(&mut self) -> [u32; 4] {
             self.platform.borrow_mut().random_code()
         }
@@ -1790,6 +1833,33 @@ mod tests {
             label: name.to_uppercase(),
             category: Category::Other,
         }))
+    }
+
+    /// A screen whose phone remote listens on any free port.
+    fn screen_with_remote(order_file: PathBuf) -> Screen {
+        thread_local!(static BACKEND: () = i_slint_backend_testing::init_no_event_loop());
+        BACKEND.with(|_| {});
+        let shared = Shared {
+            platform: Rc::new(RefCell::new(abc())),
+            ..Shared::default()
+        };
+        let lifecycle = Lifecycle::default();
+        let options = RunOptions {
+            order_file: Some(order_file),
+            lifecycle: lifecycle.clone(),
+            remote_port: Some(0),
+            ..RunOptions::default()
+        };
+        let clock: Clock =
+            Box::new(|| Duration::from_millis(i_slint_backend_testing::get_mocked_time()));
+        let (window, controller) = start(shared.clone(), options, clock).unwrap();
+        window.show().unwrap();
+        Screen {
+            window,
+            _controller: controller,
+            shared,
+            lifecycle,
+        }
     }
 
     fn screen_with(platform: FakePlatform, order_file: Option<PathBuf>) -> Screen {
@@ -2505,6 +2575,68 @@ mod tests {
     }
 
     #[test]
+    fn pairing_a_phone_shows_the_code_and_only_the_remote_allows_it() {
+        let dir = std::env::temp_dir().join(format!("rusttv-ui-pairing-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let screen = screen_with_remote(dir.join("order.toml"));
+        // A, B, C, About, Settings; then the RustTV Remote section.
+        for _ in 0..4 {
+            screen.tap(RIGHT);
+        }
+        screen.tap(OK);
+        for _ in 0..3 {
+            screen.tap(DOWN);
+        }
+        screen.tap(RIGHT);
+        assert_eq!(screen.window.get_settings_row(), 0, "on Pair a phone");
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), 9, "the pairing screen opens");
+        assert!(
+            screen.shared.platform.borrow().secure(),
+            "kept out of captures"
+        );
+        if screen.window.get_pairing_phase() == 3 {
+            // A machine without a network route: nothing else to check.
+            assert!(
+                screen
+                    .window
+                    .get_pairing_failure()
+                    .contains("network address")
+            );
+            return;
+        }
+        assert_eq!(screen.window.get_pairing_phase(), 0);
+        assert!(screen.window.get_pairing_qr().size().width > 100);
+        assert!(screen.window.get_pairing_address().starts_with("http://"));
+
+        let event = |event| screen._controller.borrow_mut().remote_event(event);
+        event(RemoteEvent::PairRequest {
+            request: 7,
+            name: "Pixel 7".into(),
+            code: 5,
+        });
+        assert_eq!(screen.window.get_pairing_phase(), 1);
+        assert_eq!(screen.window.get_pairing_name(), "Pixel 7");
+        assert_eq!(screen.window.get_pairing_code(), "05");
+        // A phone's OK never answers: only the TV's remote does.
+        event(RemoteEvent::Input {
+            phone: rusttv_remote::PhoneId([1; 16]),
+            message: PhoneMessage::Key {
+                name: PhoneKey::Ok,
+                action: KeyAction::Press,
+            },
+        });
+        assert_eq!(screen.window.get_pairing_phase(), 1);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_pairing_phase(), 2, "paired");
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        assert!(!screen.shared.platform.borrow().secure());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn faster_animations_are_reviewed_approved_with_the_code_and_recorded() {
         let dir = history_dir();
         let screen = screen(Some(dir.join("order.toml")));
@@ -2515,7 +2647,8 @@ mod tests {
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
         settle(&screen);
-        assert_eq!(screen.window.get_settings_sections().row_count(), 3);
+        // Animations, Updates, History, RustTV Remote.
+        assert_eq!(screen.window.get_settings_sections().row_count(), 4);
         assert_eq!(screen.window.get_settings_rows().row_count(), 7);
         screen.tap(RIGHT); // focus on Normal, the current choice
         assert_eq!(screen.window.get_settings_row(), 4);

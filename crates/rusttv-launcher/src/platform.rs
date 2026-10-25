@@ -444,6 +444,8 @@ pub struct FakePlatform {
     update: UpdateStatus,
     update_checks: usize,
     update_installs: usize,
+    /// What `set_secure` last set (the review and pairing screens).
+    secure: bool,
 }
 
 #[cfg(any(test, feature = "test-util"))]
@@ -460,6 +462,11 @@ impl FakePlatform {
                 .collect(),
             ..Self::default()
         }
+    }
+
+    /// Whether the window is kept out of screen captures now.
+    pub fn secure(&self) -> bool {
+        self.secure
     }
 
     /// Fourteen generic apps (three rows with About); two have only an icon, one has no artwork.
@@ -625,6 +632,10 @@ impl Platform for FakePlatform {
     }
 
     /// A fixed code (← ↑ → ↓), so tests and the desktop demo know it.
+    fn set_secure(&mut self, on: bool) {
+        self.secure = on;
+    }
+
     fn random_code(&mut self) -> [u32; 4] {
         [2, 0, 3, 1]
     }
