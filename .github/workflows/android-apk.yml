@@ -1,7 +1,7 @@
 # Builds the launcher APKs (android/build.sh). Called by ci.yml on every push
 # and pull request, and by release-build.yml, which also uploads the APKs.
-# CI has no release key, so these APKs are signed with the runner's debug key
-# (RELEASE.md "Signing").
+# CI has no release key, so these APKs are signed with the runner's debug key,
+# or left unsigned for a release, which the owner signs locally (RELEASE.md).
 name: Android APK
 
 on:
@@ -9,6 +9,10 @@ on:
     inputs:
       upload:
         description: Upload the APKs and their SHA-256 sums as a workflow artifact
+        type: boolean
+        default: false
+      unsigned:
+        description: Leave the APKs unsigned (for a release)
         type: boolean
         default: false
 
@@ -44,13 +48,17 @@ jobs:
       # build.sh checks each ABI's Skia binary against its pinned SHA-256 before using it.
       - name: Build the launcher APK
         run: android/build.sh
+        env:
+          RUSTTV_UNSIGNED: ${{ inputs.unsigned && '1' || '' }}
       - name: Name the APKs after the version and write checksums
         if: inputs.upload
         run: |
           version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "rusttv-core") | .version')"
+          suffix=${{ inputs.unsigned && 'release-unsigned' || 'release' }}
+          name=${{ inputs.unsigned && '-unsigned' || '' }}
           mkdir dist
           for abi in arm64-v8a armeabi-v7a x86_64; do
-            cp "android/app/build/outputs/apk/release/app-$abi-release.apk" "dist/rusttv-launcher-$version-$abi.apk"
+            cp "android/app/build/outputs/apk/release/app-$abi-$suffix.apk" "dist/rusttv-launcher-$version-$abi$name.apk"
           done
           cd dist && sha256sum -- *.apk > SHA256SUMS-apk.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

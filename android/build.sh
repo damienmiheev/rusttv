@@ -53,11 +53,16 @@ cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 --platform 26 -o app/src/main/jn
 # Third-party notices; Gradle copies them into every APK as
 # assets/licenses/THIRD_PARTY_NOTICES.txt and fails if they are missing.
 ../scripts/licenses.sh
-./gradlew -q assembleRelease
+# RUSTTV_UNSIGNED=1: unsigned APKs for the release workflow (RELEASE.md).
+if [ "${RUSTTV_UNSIGNED:-}" = 1 ]; then
+    ./gradlew -q assembleRelease -Prusttv.unsigned=true
+    suffix=release-unsigned
+else
+    ./gradlew -q assembleRelease
+    suffix=release
+fi
 # Only SecureSettings may write a system setting (HISTORY.md § 7).
 for abi in arm64-v8a armeabi-v7a x86_64; do
-    ./check-dex.sh "app/build/outputs/apk/release/app-$abi-release.apk"
+    ./check-dex.sh "app/build/outputs/apk/release/app-$abi-$suffix.apk"
 done
-ls -la app/build/outputs/apk/release/app-arm64-v8a-release.apk \
-    app/build/outputs/apk/release/app-armeabi-v7a-release.apk \
-    app/build/outputs/apk/release/app-x86_64-release.apk
+ls -la app/build/outputs/apk/release/app-*-$suffix.apk

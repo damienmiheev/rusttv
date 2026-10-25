@@ -19,7 +19,7 @@ memory_total_mib = 2786
 data_storage_total_mib = 5063
 
 [tested]
-rusttv_version = "0.0.0"
+rusttv_version = "0.1.0"
 notes = """
 Philips 65OLED818/12, tested 2026-10-23 over wireless debugging (pairing code).
 32-bit userspace only: use the armeabi-v7a APK.
@@ -43,7 +43,13 @@ Second round the same day: 10 more (frameworklogger, customautologservice,
 Samba ACR, Play auto-installs, both CTS shims, Demo me, Control4 app and
 service, Alexa) with `--allow-untested`: live TV, HDMI, apps, the remote and
 Settings worked, all 22 stayed disabled after a reboot, restore re-enabled the
-10, and they were re-applied as tested."""
+10, and they were re-applied as tested.
+Re-tested 2026-10-24 with the 0.1.0 launcher and CLI (debug-signed build of
+the release code): `launcher upgrade` with a takeover active (restore, install,
+takeover), the takeover's overlay check, the history door with the launcher
+stopped (`history sync`), and an A/B/A benchmark against the previous build
+(benchmarks/raw/philips-65oled818/2026-10-24/history/).
+"""
 
 # Reduced animations (R2) measured A–B–A on 2026-10-23: apply with
 # --allow-untested and restore both worked; open app −34 %, Home −42 %.

@@ -31,11 +31,12 @@ pub const RELEASES_LATEST_URL: &str =
 /// The release signing key's public half, in minisign's base64 form (the
 /// second line of `~/.rusttv-release/rusttv-release.pub`, starting `RW`).
 ///
-/// `None` until the owner creates the key (RELEASE.md § Update signing key):
-/// then this build can check for updates but refuses to install or replace
-/// anything (`UPDATE_VERIFY_FAILED`). To set it, replace `None` with
-/// `Some("RW...")`. Tests never override it: see [`release_signing_key`].
-pub const RELEASE_SIGNING_KEY: Option<&str> = None;
+/// Key id `C1DB81DC9704FCB0`, created 2026-10-25 (RELEASE.md § Update signing
+/// key). With `None` a build can check for updates but refuses to install or
+/// replace anything (`UPDATE_VERIFY_FAILED`). Tests never override it: see
+/// [`release_signing_key`].
+pub const RELEASE_SIGNING_KEY: Option<&str> =
+    Some("RWSw/ASX3IHbwWo2E165vf8VLUVfDBY0Ptf2flvZ8Jna7dWbfYMmFMRX");
 
 /// Environment variable with a test signing key, honoured only by debug
 /// builds with the `test-util` feature (the CLI's integration tests), never

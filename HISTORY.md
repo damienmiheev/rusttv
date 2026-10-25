@@ -408,7 +408,8 @@ surface panel showing the selected section. Up/Down move; Right or OK enter
 the panel; Left or Back return; Back on the list leaves Settings.
 
 ### 8.3 Sections
-- **Animations:** rows Normal / Faster (0.5×) / Off; the current one has the
+- **Animations:** seven rows, Off (0×), Fastest (0.25×), Faster (0.5×),
+  Fast (0.75×), Normal (1×), Slower (1.5×), Slowest (2×); the current one has the
   update-dot accent dot. "Off" adds the dim line "Some apps may look odd
   without animations." Without the grant, a dim line "To change this on the
   TV: `rusttv history allow-tv-settings` on your computer"; choosing still
@@ -460,7 +461,7 @@ run-to-run noise blocks the step.
 | Commit after a confirmed change | off the UI thread |
 | Packing | background, only while paused, never delays resume |
 | History page | first rows ≤ 100 ms (walk: 19 ms per 1,000 packed entries) |
-| APK | ≤ +1.5 MB (measured +1.09 MB gix, +~80 KB pack writer) |
+| APK | ≤ +1.5 MB. Measured (armeabi-v7a): +1.60 MB APK, +1.52 MB native library, of which gix and its pack writer +1.17 MB; slightly over, accepted for v1 (`benchmarks/raw/philips-65oled818/2026-10-24/history/`) |
 | Provider-only process (Mac call, launcher not running) | measured; never starts the UI |
 
 ## 10. Build order
@@ -490,6 +491,10 @@ run-to-run noise blocks the step.
    the code + hold on the Philips with the real remote.
 
 ## Spike results (Philips 65OLED818, 2026-10-24)
+
+One-off spike runs to choose the design; their raw data was not kept, so
+they are not performance claims (BENCHMARK_PLAN.md). The measured results of
+the finished build are in `benchmarks/raw/philips-65oled818/2026-10-24/history/`.
 
 - `gix` 0.90 (`sha1` only), armv7 release: **+1.09 MB** library.
 - 1,000 commits of a ~5 KB `state.toml`: **1.9 ms** per commit (first
