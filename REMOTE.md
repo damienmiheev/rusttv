@@ -217,6 +217,46 @@ to its home screen.
 - **Revoking:** in Settings, a phone can be revoked or renamed (each one a
   `tv` history entry). When the last phone is revoked, the listener stops.
 
+### Trusting the TV (HTTPS)
+
+*Owner decisions 2026-10-25.* Browsers give the motion sensors (the magic
+remote) only to secure pages, and show a warning for a self-signed
+certificate. So a phone can trust the TV once, after which the page opens
+over HTTPS with no warning. It's optional: an untrusting phone keeps the
+plain page as before.
+
+- **The TV's certificate authority** (`rusttv_remote::tls`, `rustls` with
+  `ring`, `rcgen`): made on first use and kept in the launcher's private
+  storage (`files/remote/tls/`), named "RustTV" and a short fingerprint. Its
+  name constraints let it vouch only for home network addresses (10/8,
+  172.16/12, 192.168/16), so even a leaked key can't impersonate a website
+  (tested: a phone refuses a certificate it made for a public address). The
+  certificate for an address is issued when a phone first connects to it,
+  so a new address after a reboot needs nothing from the person.
+- **HTTPS** on port 8485 (TLS 1.3), next to the plain page on 8484. The
+  plain page learns the port from a `<meta>` and may ask `https://…:8485/ok`
+  whether the phone trusts the TV (a fetch only succeeds then).
+- **Setting it up** (on the phone, after pairing): "Make this phone trust
+  your TV" → Set up. The TV opens a "Trust this TV" screen with the phone's
+  name, the certificate's name and a **check code**: the first 6 bytes of
+  the certificate's SHA-256 fingerprint ("C5 8B 5F 12 9A 0E"). The phone
+  downloads `/tv.crt` and shows short steps for its platform. Before
+  installing, the person compares the code with the fingerprint the phone's
+  own Settings show (iOS: the profile's More Details; Android: Trusted
+  credentials): a tampered page can't fake that screen, and 48 bits can't
+  be matched by making certificates until one fits. Phone input can't close
+  the TV's screen; Back or 3 minutes does.
+- **Switching:** when the phone comes back and the HTTPS page answers, the
+  plain page moves to `https://…:8485/#k=<phone id>.<auth>.<key>`; the HTTPS
+  page stores the keys (its storage is its own) and removes them from the
+  address at once. A fragment is never sent to the TV.
+- **Home Screen icon:** `/icon.png`, the remote on the RustTV tile
+  (`scripts/brand/remote-icon.html`), full square as phones round it.
+- **What it doesn't stop:** someone who rewrites the plain page on the
+  network at the moment of setup could offer their own certificate; the
+  code check catches that only if the person compares it. SECURITY.md has
+  the full model.
+
 ## 3. The listener
 
 - **Shape:** in Home's process, on std sockets with no tokio:

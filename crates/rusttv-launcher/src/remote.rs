@@ -17,6 +17,7 @@ use rusttv_remote::protocol::{
     FolderView, HomeMode, HomeView, MenuChoice, MenuView, Picture, TextField, TileView, TvMessage,
     picture_data,
 };
+use rusttv_remote::tls::Authority;
 use rusttv_remote::{Event, Options, Outlet, PAGE, PhoneId, Phones, Remote, RemoteError};
 
 use crate::platform::Pictures;
@@ -27,6 +28,10 @@ use crate::order_file::name_of;
 
 /// Where the paired phones are kept, under the launcher's files directory.
 const PHONES_FILE: &str = "remote/phones.toml";
+/// The TV's certificate authority (REMOTE.md § 2 "Trusting the TV"): its
+/// certificate and private key, under the launcher's files directory.
+const AUTHORITY_CERTIFICATE: &str = "remote/tls/authority.der";
+const AUTHORITY_KEY: &str = "remote/tls/authority-key.der";
 
 /// The running listener and what was last sent to the phones.
 pub(crate) struct Link {
@@ -35,6 +40,8 @@ pub(crate) struct Link {
     last: Option<TvMessage>,
     /// Requests for the picture thread, while it runs.
     pictures: Option<Sender<(PhoneId, String)>>,
+    /// The TV's certificate authority, when HTTPS runs.
+    authority: Option<Arc<Authority>>,
 }
 
 impl std::fmt::Debug for Link {
@@ -79,6 +86,46 @@ fn load_phones(path: &Path) -> Phones {
     })
 }
 
+/// The TV's certificate authority, made on first use and kept with the
+/// phones. A damaged one is replaced (phones then trust the TV again); none
+/// at all only means no HTTPS.
+fn load_authority(files: &Path) -> Option<Authority> {
+    let (certificate, key) = (files.join(AUTHORITY_CERTIFICATE), files.join(AUTHORITY_KEY));
+    if let (Ok(der), Ok(key)) = (std::fs::read(&certificate), std::fs::read(&key)) {
+        match Authority::load(der, &key, now()) {
+            Ok(authority) => return Some(authority),
+            Err(error) => {
+                log::warn!("the TV's certificate authority is damaged ({error}); making a new one")
+            }
+        }
+    }
+    let authority = Authority::create(now())
+        .map_err(|error| log::warn!("RustTV Remote: no HTTPS: {error}"))
+        .ok()?;
+    let written = (|| -> std::io::Result<()> {
+        if let Some(dir) = key.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        write_atomically(&key, &authority.key_der())?;
+        write_atomically(&certificate, authority.certificate_der())
+    })();
+    match written {
+        Ok(()) => Some(authority),
+        // Not kept, it would change at every start: no HTTPS rather than
+        // phones losing their trust.
+        Err(error) => {
+            log::warn!("RustTV Remote: can't keep the TV's certificate authority: {error}");
+            None
+        }
+    }
+}
+
+fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let partial = path.with_extension("partial");
+    std::fs::write(&partial, bytes)?;
+    std::fs::rename(&partial, path)
+}
+
 /// Writes the phones file atomically (a new file, then a rename).
 fn save_phones(path: &Path, phones: &Phones) -> Result<(), String> {
     let text = phones.to_toml().map_err(|error| error.to_string())?;
@@ -107,9 +154,12 @@ impl Link {
         if phones.is_empty() && !pairing {
             return None;
         }
+        let authority = load_authority(files).map(Arc::new);
         let mut remote = match Remote::start(
             Options {
                 port,
+                secure_port: if port == 0 { 0 } else { port.wrapping_add(1) },
+                authority: authority.clone(),
                 page: PAGE,
                 random: Arc::new(random),
                 clock: Arc::new(now),
@@ -144,11 +194,13 @@ impl Link {
             remote.address().port()
         );
         let pictures = pictures.and_then(|draw| picture_thread(&remote, draw));
+        let authority = authority.filter(|_| remote.secure_port().is_some());
         Some(Self {
             remote,
             phones_file,
             last: None,
             pictures,
+            authority,
         })
     }
 
@@ -203,6 +255,14 @@ impl Link {
         if let Some(pictures) = &self.pictures {
             let _ = pictures.send((phone, id));
         }
+    }
+
+    /// The TV's certificate: its name and the check code phones compare,
+    /// when HTTPS runs.
+    pub(crate) fn certificate(&self) -> Option<(String, String)> {
+        self.authority
+            .as_ref()
+            .map(|authority| (authority.name(), authority.check_code()))
     }
 
     /// A phone connected: it gets the current view again.

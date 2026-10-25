@@ -717,6 +717,14 @@ impl Controller {
     }
 
     fn input(&mut self, input: Input) {
+        // The pairing and trust screens take the remote's keys wherever they
+        // were opened (trust can open over Home).
+        if self.pairing.is_some()
+            && !matches!(input, Input::Tick | Input::Paused | Input::LaunchFailed)
+        {
+            self.pairing_input(input);
+            return;
+        }
         let effect = self.home.handle(input, (self.clock)());
         if input != Input::Tick {
             self.pressed = input == Input::OkPressed
@@ -1210,6 +1218,10 @@ impl Controller {
                 phone,
                 message: PhoneMessage::Banner { id },
             } => self.phone_picture(phone, id),
+            RemoteEvent::Input {
+                phone,
+                message: PhoneMessage::Trust,
+            } => self.open_trust(phone),
             // Never into the review or pairing screens; in Settings only
             // Back, so a phone can't pair, remove or approve anything.
             RemoteEvent::Input { message, .. }
@@ -2716,6 +2728,60 @@ mod tests {
             ]
         );
         assert_eq!(controller.home.state(), State::Browse);
+    }
+
+    #[test]
+    fn a_phone_setting_up_trust_shows_the_tv_s_check_code_until_back() {
+        let dir = std::env::temp_dir().join(format!("rusttv-ui-trust-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let screen = screen_with_remote(dir.join("order.toml"));
+        screen._controller.borrow_mut().start_remote_now(true);
+        let (name, code) = {
+            let controller = screen._controller.borrow();
+            let link = controller.remote.as_ref().expect("the listener runs");
+            link.certificate().expect("HTTPS runs on a private address")
+        };
+        let trust = || {
+            screen
+                ._controller
+                .borrow_mut()
+                .remote_event(RemoteEvent::Input {
+                    phone: rusttv_remote::PhoneId([1; 16]),
+                    message: PhoneMessage::Trust,
+                });
+        };
+        trust();
+        assert_eq!(screen.window.get_mode(), 9, "the trust screen opens");
+        assert_eq!(screen.window.get_pairing_phase(), 4);
+        assert_eq!(screen.window.get_pairing_code(), code.as_str());
+        assert_eq!(screen.window.get_pairing_address(), name.as_str());
+        assert!(
+            name.starts_with("RustTV ") && code.len() == 17,
+            "{name} {code}"
+        );
+        // The phone can't close it; the remote's Back does.
+        screen
+            ._controller
+            .borrow_mut()
+            .remote_event(RemoteEvent::Input {
+                phone: rusttv_remote::PhoneId([1; 16]),
+                message: PhoneMessage::Key {
+                    name: PhoneKey::Back,
+                    action: KeyAction::Press,
+                },
+            });
+        assert_eq!(screen.window.get_pairing_phase(), 4);
+        screen.tap(BACK);
+        assert_ne!(screen.window.get_mode(), 9);
+        // The same authority after a restart: phones keep trusting the TV.
+        let again = crate::remote::Link::start(&dir, 0, true, None, |_| {}).unwrap();
+        assert_eq!(again.certificate(), Some((name, code)));
+        // Not while another app is in front.
+        screen._controller.borrow_mut().away = true;
+        trust();
+        assert_ne!(screen.window.get_mode(), 9);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

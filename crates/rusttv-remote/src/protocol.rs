@@ -76,6 +76,9 @@ pub enum PhoneMessage {
     Open { app: String },
     /// A tap or long press on a tile of the Home mirror.
     Tile { id: String, gesture: Gesture },
+    /// The person is setting up this phone to trust the TV: the TV shows
+    /// its check code (REMOTE.md § 2 "Trusting the TV").
+    Trust,
     /// A choice in the open long-press menu.
     Menu { choice: MenuChoice },
     /// The picture of an app's tile, by component, or of a built-in tile

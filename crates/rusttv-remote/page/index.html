@@ -9,7 +9,9 @@
 <meta name="apple-mobile-web-app-title" content="RustTV Remote">
 <meta name="theme-color" content="#0E1014">
 <meta name="referrer" content="no-referrer">
-<link rel="icon" href="data:,">
+<meta name="rusttv-secure-port" content="">
+<link rel="icon" href="/icon.png">
+<link rel="apple-touch-icon" href="/icon.png">
 <title>RustTV Remote</title>
 <style>
 :root {
@@ -156,19 +158,22 @@ input { font: inherit; height: 52px; border-radius: 14px; border: 2px solid var(
 #hidden-page p, #screen p { margin: 0 0 14px 0; font-size: 13px; line-height: 1.5; color: var(--dim); }
 
 /* Wide screens (tablets, computers): sheets and cards keep a phone's width */
-#menu, #install { justify-content: center; }
-#menu .sheet, #install .sheet { max-width: 440px; }
+#menu, #install, #trust { justify-content: center; }
+#menu .sheet, #install .sheet, #trust .sheet { max-width: 440px; }
 #typing > *, #folder > * { width: 100%; max-width: 640px; align-self: center; }
 
 /* Add to Home Screen */
-#install { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; background: #0E1014A6; animation: fade 200ms ease-out; }
-#install .sheet { width: 100%; margin: 0 8px calc(var(--bottom) + 8px) 8px; padding: 26px 20px 20px 20px; border-radius: 32px; background: var(--surface);
+#install, #trust { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; background: #0E1014A6; animation: fade 200ms ease-out; }
+#install .sheet, #trust .sheet { width: 100%; margin: 0 8px calc(var(--bottom) + 8px) 8px; padding: 26px 20px 20px 20px; border-radius: 32px; background: var(--surface);
   box-shadow: inset 0 1px 0 #FFFFFF14, 0 -20px 50px -10px #000000B3; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center;
   animation: rise 320ms cubic-bezier(0.32, 0.72, 0, 1); }
-#install .logo { width: 56px; height: 56px; filter: drop-shadow(0 14px 24px #D9480F59); }
-#install h2 { margin: 4px 0 0 0; font-size: 21px; font-weight: 700; letter-spacing: -0.02em; }
-#install p { margin: 0 0 10px 0; font-size: 15px; line-height: 1.5; color: var(--dim); max-width: 320px; }
-#install .row { width: 100%; }
+#install .logo, #trust .logo { width: 56px; height: 56px; filter: drop-shadow(0 14px 24px #D9480F59); }
+#install h2, #trust h2 { margin: 4px 0 0 0; font-size: 21px; font-weight: 700; letter-spacing: -0.02em; }
+#install p, #trust p { margin: 0 0 10px 0; font-size: 15px; line-height: 1.5; color: var(--dim); max-width: 320px; }
+#install .row, #trust .row { width: 100%; }
+#trust ol { margin: 0 0 6px 0; padding-inline-start: 22px; text-align: start; font-size: 15px; line-height: 1.5; display: flex; flex-direction: column; gap: 8px; }
+#trust .wide { width: 100%; display: flex; align-items: center; justify-content: center; text-decoration: none; }
+#trust small { font-size: 13px; color: var(--dim); }
 @keyframes fade { from { opacity: 0; } }
 @keyframes rise { from { transform: translateY(100%); } }
 </style>
@@ -294,6 +299,22 @@ input { font: inherit; height: 52px; border-radius: 14px; border: 2px solid var(
   </div>
   <div class="ghost" id="ghost" hidden></div>
 </section>
+
+<!-- Paired over plain HTTP: make the phone trust the TV (REMOTE.md § 2) -->
+<div id="trust" role="dialog" aria-modal="true" aria-labelledby="trust-title" hidden>
+  <div class="sheet">
+    <svg class="logo"><use href="#logo"/></svg>
+    <h2 id="trust-title" data-t="trust_title"></h2>
+    <p id="trust-intro" data-t="trust_intro"></p>
+    <ol id="trust-steps" hidden></ol>
+    <a class="primary wide" id="trust-download" href="/tv.crt" hidden data-t="trust_download"></a>
+    <small id="trust-waiting" hidden data-t="trust_waiting"></small>
+    <div class="row">
+      <button class="secondary" type="button" id="trust-later" data-t="not_now"></button>
+      <button class="primary" type="button" id="trust-start" data-t="trust_start"></button>
+    </div>
+  </div>
+</div>
 
 <!-- Not opened from the Home Screen yet: how to add it -->
 <div id="install" role="dialog" aria-modal="true" aria-labelledby="install-title" hidden>

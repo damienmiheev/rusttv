@@ -383,3 +383,15 @@ msgstr "Będzie mógł naciskać przyciski i pisać na tym telewizorze. Nigdy ni
 
 msgid "“{}” is paired."
 msgstr "Sparowano „{}”."
+
+msgid "Trust this TV"
+msgstr "Zaufaj temu telewizorowi"
+
+msgid "“{}” is installing this TV's certificate, “{}”."
+msgstr "„{}” instaluje certyfikat tego telewizora, „{}”."
+
+msgid "Before installing, check on the phone that its SHA-256 fingerprint starts with:"
+msgstr "Przed instalacją sprawdź na telefonie, czy odcisk SHA-256 zaczyna się od:"
+
+msgid "If it doesn't match, don't install it: someone on your network may be interfering."
+msgstr "Jeśli się nie zgadza, nie instaluj go: ktoś w Twojej sieci może ingerować."

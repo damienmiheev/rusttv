@@ -383,3 +383,15 @@ msgstr "यह इस टीवी पर बटन दबा सकेगा �
 
 msgid "“{}” is paired."
 msgstr "“{}” जुड़ गया।"
+
+msgid "Trust this TV"
+msgstr "इस टीवी पर भरोसा करें"
+
+msgid "“{}” is installing this TV's certificate, “{}”."
+msgstr "“{}” इस टीवी का प्रमाणपत्र “{}” इंस्टॉल कर रहा है।"
+
+msgid "Before installing, check on the phone that its SHA-256 fingerprint starts with:"
+msgstr "इंस्टॉल करने से पहले फ़ोन पर जांचें कि उसका SHA-256 फ़िंगरप्रिंट इससे शुरू होता है:"
+
+msgid "If it doesn't match, don't install it: someone on your network may be interfering."
+msgstr "अगर मेल नहीं खाता, तो इंस्टॉल न करें: आपके नेटवर्क पर कोई दखल दे रहा हो सकता है।"

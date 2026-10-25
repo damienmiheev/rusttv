@@ -383,3 +383,15 @@ msgstr "Hij kan op deze tv toetsen indrukken en typen. Hij kan nooit instellinge
 
 msgid "“{}” is paired."
 msgstr "„{}” is gekoppeld."
+
+msgid "Trust this TV"
+msgstr "Deze tv vertrouwen"
+
+msgid "“{}” is installing this TV's certificate, “{}”."
+msgstr "‘{}’ installeert het certificaat van deze tv, ‘{}’."
+
+msgid "Before installing, check on the phone that its SHA-256 fingerprint starts with:"
+msgstr "Controleer vóór het installeren op de telefoon dat de SHA-256-vingerafdruk begint met:"
+
+msgid "If it doesn't match, don't install it: someone on your network may be interfering."
+msgstr "Klopt het niet, installeer het dan niet: iemand op je netwerk kan zich ermee bemoeien."

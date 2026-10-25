@@ -13,6 +13,8 @@ use crate::remote;
 
 /// How long "paired" shows before the screen goes back to Settings.
 const PAIRED_SHOWN: Duration = Duration::from_secs(2);
+/// How long the check code shows while a phone sets up trust.
+const TRUST_SHOWN: Duration = Duration::from_secs(180);
 
 /// Pixels per QR module; Slint scales the image to the screen without
 /// smoothing.
@@ -40,6 +42,13 @@ enum Phase {
     /// `Strings.pairing-failure` kinds: 1 port taken, 2 no address, 3 no
     /// code, 4 three wrong tries.
     Failed(i32),
+    /// A paired phone sets up trust in the TV's certificate: the code to
+    /// compare on the phone before installing (REMOTE.md § 2).
+    Trust {
+        name: String,
+        certificate: String,
+        code: String,
+    },
 }
 
 impl Controller {
@@ -74,6 +83,50 @@ impl Controller {
         // The code carries a pairing secret: keep it out of screen captures.
         self.platform.set_secure(true);
         self.pairing = Some(pairing);
+        self.render();
+    }
+
+    /// A paired phone is setting up trust: shows the TV's check code, over
+    /// whatever RustTV shows, until Back or [`TRUST_SHOWN`]. Not while
+    /// another app is in front, pairing runs or the review screen is open.
+    pub(super) fn open_trust(&mut self, phone: rusttv_remote::PhoneId) {
+        if self.away || self.pairing.is_some() || self.review.is_some() {
+            return;
+        }
+        let Some(link) = &self.remote else {
+            return;
+        };
+        let Some((certificate, code)) = link.certificate() else {
+            return;
+        };
+        let name = link
+            .phone_rows()
+            .into_iter()
+            .find(|row| row.id == phone)
+            .map(|row| row.name)
+            .unwrap_or_default();
+        self.pairing = Some(Pairing {
+            phase: Phase::Trust {
+                name,
+                certificate,
+                code,
+            },
+            qr: Image::default(),
+            address: String::new(),
+        });
+        let me = self.me.clone();
+        Timer::single_shot(TRUST_SHOWN, move || {
+            if let Some(controller) = me.upgrade() {
+                let mut controller = controller.borrow_mut();
+                if controller
+                    .pairing
+                    .as_ref()
+                    .is_some_and(|pairing| matches!(pairing.phase, Phase::Trust { .. }))
+                {
+                    controller.close_pairing();
+                }
+            }
+        });
         self.render();
     }
 
@@ -199,10 +252,15 @@ impl Controller {
             Phase::Asking { name, code, .. } => (1, name.as_str(), format!("{code:02}"), 0),
             Phase::Paired { name } => (2, name.as_str(), String::new(), 0),
             Phase::Failed(kind) => (3, "", String::new(), *kind),
+            Phase::Trust { name, code, .. } => (4, name.as_str(), code.clone(), 0),
         };
         window.set_pairing_phase(phase);
         window.set_pairing_qr(pairing.qr.clone());
-        window.set_pairing_address(pairing.address.as_str().into());
+        let address = match &pairing.phase {
+            Phase::Trust { certificate, .. } => certificate.as_str(),
+            _ => pairing.address.as_str(),
+        };
+        window.set_pairing_address(address.into());
         window.set_pairing_name(name.into());
         window.set_pairing_code(code.into());
         window.set_pairing_failure(failure);

@@ -81,6 +81,14 @@ sha1dc = "0.1.5"
 # the TV and the desktop (already in the tree through tungstenite's rand).
 # MIT OR Apache-2.0.
 getrandom = "0.4.3"
+# HTTPS for the phone page (REMOTE.md § 2 "Trusting the TV", owner OK
+# 2026-10-25): the TV is its own small certificate authority, limited to home
+# network addresses, and phones trust it once. rustls serves TLS 1.3 only
+# with ring's cryptography; rcgen makes the authority and its certificates.
+# rustls: Apache-2.0 OR ISC OR MIT; ring: Apache-2.0 AND ISC; rcgen: MIT OR
+# Apache-2.0.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rcgen = { version = "0.14", default-features = false, features = ["ring"] }
 # The pairing QR code in the launcher's Settings (REMOTE.md § 2, owner OK
 # 2026-10-25). No default features: no image or SVG rendering, the launcher
 # draws the modules itself. MIT OR Apache-2.0.

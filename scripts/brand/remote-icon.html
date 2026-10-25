@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>RustTV Remote icon</title>
+<link rel="stylesheet" href="brand.css">
+<style>
+  /* RustTV Remote's Home Screen icon on phones: the RustTV tile, full square
+     (phones round it themselves; iOS fills transparent corners with black),
+     with a remote and its ring D-pad instead of the screen. */
+  body { width: 512px; height: 512px; }
+  .remote {
+    width: calc(var(--s) * 0.36); height: calc(var(--s) * 0.66);
+    border-radius: calc(var(--s) * 0.15); background: var(--ink); box-sizing: border-box;
+    box-shadow: inset 0 0 0 calc(var(--s) * 0.0033) rgba(255,255,255,0.10),
+                0 calc(var(--s) * 0.0467) calc(var(--s) * 0.1) rgba(120,40,0,0.35);
+    display: flex; flex-direction: column; align-items: center;
+    padding-top: calc(var(--s) * 0.07); gap: calc(var(--s) * 0.075);
+  }
+  .ring {
+    width: calc(var(--s) * 0.25); height: calc(var(--s) * 0.25); border-radius: 50%; box-sizing: border-box;
+    border: calc(var(--s) * 0.04) solid #FFFFFF; display: flex; align-items: center; justify-content: center;
+  }
+  .ring::after { content: ""; width: 34%; height: 34%; border-radius: 50%; background: var(--amber); }
+  .dots { display: flex; gap: calc(var(--s) * 0.045); }
+  .dots i { width: calc(var(--s) * 0.055); height: calc(var(--s) * 0.055); border-radius: 50%; background: rgba(255,255,255,0.55); }
+</style>
+</head><body>
+<div class="tile bleed" style="--s: 512px"><div class="remote"><div class="ring"></div><div class="dots"><i></i><i></i></div></div></div>
+</body></html>

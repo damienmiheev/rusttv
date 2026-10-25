@@ -383,3 +383,15 @@ msgstr "Ponsel ini akan bisa menekan tombol dan mengetik di TV ini. Ponsel tidak
 
 msgid "“{}” is paired."
 msgstr "“{}” sudah terpasang."
+
+msgid "Trust this TV"
+msgstr "Percayai TV ini"
+
+msgid "“{}” is installing this TV's certificate, “{}”."
+msgstr "“{}” sedang memasang sertifikat TV ini, “{}”."
+
+msgid "Before installing, check on the phone that its SHA-256 fingerprint starts with:"
+msgstr "Sebelum memasang, periksa di ponsel bahwa sidik jari SHA-256-nya diawali dengan:"
+
+msgid "If it doesn't match, don't install it: someone on your network may be interfering."
+msgstr "Jika tidak cocok, jangan pasang: seseorang di jaringan Anda mungkin mengganggu."

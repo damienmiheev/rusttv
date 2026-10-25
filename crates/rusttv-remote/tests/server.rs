@@ -30,6 +30,8 @@ fn start(phones: Phones) -> Remote {
     Remote::start(
         Options {
             port: 0,
+            secure_port: 0,
+            authority: None,
             page: PAGE,
             random: Arc::new(move |bytes: &mut [u8]| {
                 bytes.fill(counter.fetch_add(1, Ordering::Relaxed));
@@ -161,6 +163,14 @@ fn serves_the_page_and_refuses_the_rest() {
     assert!(page.contains("Content-Security-Policy"));
     assert!(page.contains("RustTV Remote"));
     assert!(http(&remote, "GET /secret HTTP/1.1\r\n\r\n").starts_with("HTTP/1.1 404"));
+    let mut stream = TcpStream::connect(local(&remote)).unwrap();
+    stream.write_all(b"GET /icon.png HTTP/1.1\r\n\r\n").unwrap();
+    let mut icon = Vec::new();
+    stream.set_read_timeout(Some(WAIT)).unwrap();
+    let _ = stream.read_to_end(&mut icon);
+    assert!(icon.starts_with(b"HTTP/1.1 200 OK"));
+    assert!(icon.ends_with(rusttv_remote::ICON), "the Home Screen icon");
+    assert!(page.contains(r#"<link rel="apple-touch-icon" href="/icon.png">"#));
     assert!(http(&remote, "POST / HTTP/1.1\r\n\r\n").starts_with("HTTP/1.1 405"));
     // Another site's page can't open the socket.
     let cross = http(
@@ -169,6 +179,52 @@ fn serves_the_page_and_refuses_the_rest() {
          Connection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
     );
     assert!(cross.starts_with("HTTP/1.1 400"), "{cross}");
+}
+
+#[test]
+fn with_an_authority_the_page_offers_https_and_the_certificate() {
+    let authority = Arc::new(rusttv_remote::tls::Authority::create(1_792_938_447).unwrap());
+    let remote = Remote::start(
+        Options {
+            port: 0,
+            secure_port: 0,
+            authority: Some(Arc::clone(&authority)),
+            page: PAGE,
+            random: Arc::new(|_: &mut [u8]| {}),
+            clock: Arc::new(|| 1_792_938_447),
+        },
+        Phones::default(),
+    )
+    .unwrap();
+    let port = remote.secure_port().unwrap();
+    let page = http(&remote, "GET / HTTP/1.1\r\nHost: 192.168.1.20:8484\r\n\r\n");
+    assert!(page.contains(&format!(
+        r#"<meta name="rusttv-secure-port" content="{port}">"#
+    )));
+    // The plain page may ask the HTTPS page whether the phone trusts the TV.
+    assert!(page.contains(&format!(
+        "connect-src ws://192.168.1.20:8484 https://192.168.1.20:{port};"
+    )));
+    // The certificate to install, as a download iOS offers as a profile.
+    let mut stream = TcpStream::connect(local(&remote)).unwrap();
+    stream.write_all(b"GET /tv.crt HTTP/1.1\r\n\r\n").unwrap();
+    let mut response = Vec::new();
+    stream.set_read_timeout(Some(WAIT)).unwrap();
+    let _ = stream.read_to_end(&mut response);
+    let split = response.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+    let head = String::from_utf8_lossy(&response[..split]);
+    assert!(
+        head.contains("Content-Type: application/x-x509-ca-cert"),
+        "{head}"
+    );
+    assert!(head.contains(&format!(r#"filename="{}.crt""#, authority.name())));
+    assert_eq!(&response[split..], authority.certificate_der());
+    // Without an authority there is neither.
+    let plain = start(Phones::default());
+    assert!(plain.secure_port().is_none());
+    assert!(http(&plain, "GET /tv.crt HTTP/1.1\r\n\r\n").starts_with("HTTP/1.1 404"));
+    let page = http(&plain, "GET / HTTP/1.1\r\nHost: tv\r\n\r\n");
+    assert!(page.contains(r#"<meta name="rusttv-secure-port" content="">"#));
 }
 
 #[test]
@@ -394,6 +450,8 @@ fn a_taken_port_is_reported() {
     let taken = Remote::start(
         Options {
             port: first.address().port(),
+            secure_port: 0,
+            authority: None,
             page: PAGE,
             random: Arc::new(|_: &mut [u8]| {}),
             clock: Arc::new(|| 0),

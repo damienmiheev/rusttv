@@ -44,13 +44,13 @@ fn main() {
     let remote = Remote::start(
         Options {
             port,
+            // HTTPS on the next port, with an authority kept between runs
+            // (as the TV keeps its own), so a phone trusts it once.
+            secure_port: port + 1,
+            authority: Some(Arc::new(authority())),
             page: PAGE,
             random: Arc::new(random),
-            clock: Arc::new(|| {
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map_or(0, |d| d.as_secs())
-            }),
+            clock: Arc::new(now),
         },
         Phones::default(),
     )
@@ -179,4 +179,29 @@ fn main() {
         };
         remote.push(&reply).unwrap();
     }
+}
+
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+/// The demo's certificate authority, kept in the temp folder.
+fn authority() -> rusttv_remote::tls::Authority {
+    use rusttv_remote::tls::Authority;
+    let dir = std::env::temp_dir();
+    let (certificate, key) = (
+        dir.join("rusttv-demo-authority.der"),
+        dir.join("rusttv-demo-authority-key.der"),
+    );
+    if let (Ok(der), Ok(bytes)) = (std::fs::read(&certificate), std::fs::read(&key))
+        && let Ok(authority) = Authority::load(der, &bytes, now())
+    {
+        return authority;
+    }
+    let authority = Authority::create(now()).unwrap();
+    std::fs::write(&certificate, authority.certificate_der()).unwrap();
+    std::fs::write(&key, authority.key_der()).unwrap();
+    authority
 }

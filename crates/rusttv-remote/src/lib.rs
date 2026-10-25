@@ -20,6 +20,7 @@ mod crypto;
 mod hex;
 pub mod protocol;
 mod server;
+pub mod tls;
 
 /// Entry points for `fuzz/` (`cargo +nightly fuzz`); not part of the API.
 #[cfg(feature = "fuzzing")]
@@ -28,8 +29,10 @@ pub mod fuzzing {
     /// A request head, as the listener reads it, and the upgrade's accept
     /// key when it is one.
     pub fn request_head(head: &[u8]) {
-        if let Ok(crate::server::Route::Upgrade(key)) = crate::server::classify(head) {
-            let _ = crate::server::accept_key(&key);
+        for secure in [false, true] {
+            if let Ok(crate::server::Route::Upgrade(key)) = crate::server::classify(head, secure) {
+                let _ = crate::server::accept_key(&key);
+            }
         }
     }
 }
@@ -37,7 +40,7 @@ pub mod fuzzing {
 pub use auth::{Phone, PhoneId, Phones};
 pub use crypto::{Direction, NONCE_LEN, Session, TAG_LEN};
 pub use server::{
-    Clock, Event, MAX_CONNECTED, Options, Outlet, PAIRING_TIME, PORT, Random, Remote,
+    Clock, Event, MAX_CONNECTED, Options, Outlet, PAIRING_TIME, PORT, Random, Remote, SECURE_PORT,
 };
 
 /// The phone page, served at `/` ([`Options::page`]).
@@ -48,6 +51,9 @@ pub const CRYPTO_JS: &str = include_str!("../page/crypto.js");
 /// The page's texts in the phone's language, inlined into the page; checked
 /// by `page/i18n.test.mjs`.
 pub const I18N_JS: &str = include_str!("../page/i18n.js");
+/// The Home Screen icon (180×180 PNG, from scripts/brand/render.sh), served
+/// at `/icon.png`.
+pub const ICON: &[u8] = include_bytes!("../page/icon.png");
 /// The page's logic, inlined into the page.
 pub const APP_JS: &str = include_str!("../page/app.js");
 

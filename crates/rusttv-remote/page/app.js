@@ -42,6 +42,14 @@
     },
   };
 
+  // Arriving on the HTTPS page from the plain one: the phone's keys come
+  // in the address's fragment, which browsers never send, and leave it at
+  // once (REMOTE.md § 2 "Trusting the TV").
+  const moved = location.hash.match(/^#k=([0-9a-f]{32})\.([0-9a-f]{64})\.([0-9a-f]{64})$/);
+  if (moved && window.isSecureContext) {
+    history.replaceState(null, "", location.pathname);
+    store.set({ phone_id: moved[1], auth: moved[2], key: moved[3] });
+  }
   let credentials = store.get();
   let pairing = null; // { secret, nonce, name } while pairing
   let socket = null, session = null, challenge = null;
@@ -116,7 +124,8 @@
   function connect() {
     clearTimeout(retryTimer);
     if (socket) return;
-    socket = new WebSocket(`ws://${location.host}/ws`);
+    // Over HTTPS the socket is TLS too (a secure page can't open ws://).
+    socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
     socket.binaryType = "arraybuffer";
     socket.onopen = () => {
       if (pairing?.nonce) {
@@ -178,7 +187,7 @@
       challenge = null;
       retry = 0;
       setStatus(true, t("connected"));
-      suggestInstall();
+      checkTrust();
     } else if (message.type === "denied") {
       if (pairing?.nonce) {
         failPairing(t("refused"));
@@ -256,10 +265,17 @@
   const pictures = new Map(); // id -> { kind, url, at }
   const asked = new Set();
   const db = new Promise((resolve) => {
+    // Without the cache within 2 s (another tab or the browser holds it
+    // blocked), the page fetches pictures each time rather than none.
+    setTimeout(() => resolve(null), 2000);
     try {
       const open = indexedDB.open("rusttv-remote", 1);
       open.onupgradeneeded = () => open.result.createObjectStore("pictures", { keyPath: "id" });
-      open.onsuccess = () => resolve(open.result);
+      open.onsuccess = () => {
+        // Let go when another tab or the browser wants to change it.
+        open.result.onversionchange = () => open.result.close();
+        resolve(open.result);
+      };
       open.onerror = () => resolve(null);
     } catch {
       resolve(null); // No IndexedDB (private browsing): fetch each time.
@@ -267,7 +283,12 @@
   });
   const picturesLoaded = db.then((store) => new Promise((resolve) => {
     if (!store) return resolve();
-    const all = store.transaction("pictures").objectStore("pictures").getAll();
+    let all;
+    try {
+      all = store.transaction("pictures").objectStore("pictures").getAll();
+    } catch {
+      return resolve(); // Closed meanwhile: no cache this time.
+    }
     all.onsuccess = () => {
       for (const { id, kind, blob, at } of all.result) {
         pictures.set(id, { kind, url: URL.createObjectURL(blob), at });
@@ -841,6 +862,71 @@
   }
   $("install-ok").addEventListener("click", () => closeInstall(true));
   $("install-later").addEventListener("click", () => closeInstall(false));
+
+  // --- Trusting the TV (REMOTE.md § 2) ------------------------------------------
+  // Over plain HTTP, a paired phone is offered to trust the TV's certificate
+  // once; from then on the HTTPS page takes over, with the phone's keys.
+  // Whether the phone trusts it: the HTTPS page answers only then.
+  const SECURE_PORT = document.querySelector('meta[name="rusttv-secure-port"]')?.content || "";
+  const TRUST = "rusttv-remote-trust";
+  let trustOffered = false, trustStarted = false;
+  async function phoneTrustsTv() {
+    try {
+      await fetch(`https://${location.hostname}:${SECURE_PORT}/ok`, { mode: "no-cors", cache: "no-store" });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  async function checkTrust() {
+    if (window.isSecureContext || !SECURE_PORT || !credentials) {
+      suggestInstall();
+      return;
+    }
+    if (await phoneTrustsTv()) {
+      const { phone_id: id, auth, key } = credentials;
+      location.replace(`https://${location.hostname}:${SECURE_PORT}/#k=${id}.${auth}.${key}`);
+      return;
+    }
+    let seen = null;
+    try {
+      seen = JSON.parse(localStorage.getItem(TRUST));
+    } catch {
+      // Unreadable: offer again.
+    }
+    if (seen && Date.now() - seen.at < WEEK) {
+      suggestInstall();
+    } else if (!trustOffered) {
+      trustOffered = true;
+      $("trust").hidden = false;
+    }
+  }
+  $("trust-start").addEventListener("click", () => {
+    trustStarted = true;
+    // The TV shows the code to compare before installing.
+    send({ type: "trust" });
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
+    $("trust-steps").replaceChildren(...t(ios ? "trust_ios" : "trust_android").split("\n").map((step) => {
+      const item = document.createElement("li");
+      item.textContent = step;
+      return item;
+    }));
+    for (const id of ["trust-steps", "trust-download", "trust-waiting"]) $(id).hidden = false;
+    $("trust-intro").hidden = true;
+    $("trust-start").hidden = true;
+  });
+  $("trust-later").addEventListener("click", () => {
+    $("trust").hidden = true;
+    try {
+      localStorage.setItem(TRUST, JSON.stringify({ at: Date.now() }));
+    } catch {
+      // Private browsing: offered again next time.
+    }
+  });
+  // Back from the phone's Settings: if it trusts the TV now, move.
+  document.addEventListener("visibilitychange", async () => {
+    if (!document.hidden && trustStarted && credentials && (await phoneTrustsTv())) checkTrust();
+  });
 
   start();
 })();

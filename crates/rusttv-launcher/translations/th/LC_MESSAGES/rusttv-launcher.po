@@ -383,3 +383,15 @@ msgstr "จะกดปุ่มและพิมพ์บนทีวีนี
 
 msgid "“{}” is paired."
 msgstr "จับคู่ “{}” แล้ว"
+
+msgid "Trust this TV"
+msgstr "เชื่อถือทีวีเครื่องนี้"
+
+msgid "“{}” is installing this TV's certificate, “{}”."
+msgstr "“{}” กำลังติดตั้งใบรับรองของทีวีเครื่องนี้ “{}”"
+
+msgid "Before installing, check on the phone that its SHA-256 fingerprint starts with:"
+msgstr "ก่อนติดตั้ง ให้ตรวจสอบบนโทรศัพท์ว่าลายนิ้วมือ SHA-256 ขึ้นต้นด้วย:"
+
+msgid "If it doesn't match, don't install it: someone on your network may be interfering."
+msgstr "หากไม่ตรงกัน อย่าติดตั้ง: อาจมีคนในเครือข่ายของคุณกำลังแทรกแซง"
