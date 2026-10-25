@@ -642,7 +642,9 @@ export component HomeWindow inherits Window {
     in property <int> review-entered;
     in property <bool> review-holding;
     // The pairing screen (ui/remote_view.rs). Phase 0: the QR code is
-    // shown; 1: a phone asks ("Allow?" and the code); 2: paired; 3: failed.
+    // shown; 1: a phone asks ("Allow?" and the code); 2: paired; 3: failed;
+    // 4: a phone sets up trust (`pairing-address` is then the certificate's
+    // name, `pairing-code` its check code).
     in property <int> pairing-phase;
     in property <image> pairing-qr;
     in property <string> pairing-address;
@@ -1376,7 +1378,7 @@ export component HomeWindow inherits Window {
             y: 90 * u;
             width: 1740 * u;
             horizontal-alignment: Dir.start;
-            text: @tr("Pair a phone");
+            text: pairing-phase == 4 ? @tr("Trust this TV") : @tr("Pair a phone");
             font-size: 57 * u;
             font-weight: 500;
             color: Theme.text;
@@ -1468,7 +1470,48 @@ export component HomeWindow inherits Window {
             color: Theme.text;
             wrap: word-wrap;
         }
-        if pairing-phase >= 2: Text {
+        if pairing-phase == 4: Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 280 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: @tr("“{}” is installing this TV's certificate, “{}”.", pairing-name, pairing-address);
+            font-size: 41 * u;
+            color: Theme.text;
+            wrap: word-wrap;
+        }
+        if pairing-phase == 4: Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 420 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: @tr("Before installing, check on the phone that its SHA-256 fingerprint starts with:");
+            font-size: 33 * u;
+            color: Theme.text-dim;
+            wrap: word-wrap;
+        }
+        if pairing-phase == 4: Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 500 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: pairing-code;
+            font-size: 120 * u;
+            font-weight: 700;
+            letter-spacing: 6 * u;
+            color: Theme.accent;
+        }
+        if pairing-phase == 4: Text {
+            x: Dir.x(90 * u, self.width, parent.width);
+            y: 700 * u;
+            width: 1740 * u;
+            horizontal-alignment: Dir.start;
+            text: @tr("If it doesn't match, don't install it: someone on your network may be interfering.");
+            font-size: 29 * u;
+            color: Theme.text;
+            wrap: word-wrap;
+        }
+        if pairing-phase == 2 || pairing-phase == 3: Text {
             x: Dir.x(90 * u, self.width, parent.width);
             y: 300 * u;
             width: 1740 * u;

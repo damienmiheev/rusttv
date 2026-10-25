@@ -163,6 +163,14 @@ fn serves_the_page_and_refuses_the_rest() {
     assert!(page.contains("Content-Security-Policy"));
     assert!(page.contains("RustTV Remote"));
     assert!(http(&remote, "GET /secret HTTP/1.1\r\n\r\n").starts_with("HTTP/1.1 404"));
+    let mut stream = TcpStream::connect(local(&remote)).unwrap();
+    stream.write_all(b"GET /icon.png HTTP/1.1\r\n\r\n").unwrap();
+    let mut icon = Vec::new();
+    stream.set_read_timeout(Some(WAIT)).unwrap();
+    let _ = stream.read_to_end(&mut icon);
+    assert!(icon.starts_with(b"HTTP/1.1 200 OK"));
+    assert!(icon.ends_with(rusttv_remote::ICON), "the Home Screen icon");
+    assert!(page.contains(r#"<link rel="apple-touch-icon" href="/icon.png">"#));
     assert!(http(&remote, "POST / HTTP/1.1\r\n\r\n").starts_with("HTTP/1.1 405"));
     // Another site's page can't open the socket.
     let cross = http(

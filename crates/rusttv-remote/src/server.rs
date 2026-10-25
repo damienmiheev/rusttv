@@ -651,6 +651,8 @@ pub(crate) enum Route {
     /// An empty answer: over HTTPS, it tells the page the phone trusts the
     /// TV (`/ok`).
     Ok,
+    /// The Home Screen icon (`/icon.png`).
+    Icon,
     BadRequest,
     NotFound,
     NotAllowed,
@@ -706,6 +708,7 @@ pub(crate) fn classify(head: &[u8], secure: bool) -> Result<Route, RemoteError> 
         }
         Some("/tv.crt") => Route::Certificate,
         Some("/ok") => Route::Ok,
+        Some("/icon.png") => Route::Icon,
         _ => Route::NotFound,
     })
 }
@@ -796,7 +799,7 @@ fn route(stream: &mut Conn, shared: &Shared, head: &[u8]) -> Result<Option<Strin
                 (false, None) => format!("ws://{host}"),
             };
             let policy = format!(
-                "default-src 'none'; script-src {}; style-src 'unsafe-inline'; img-src data: blob:; \
+                "default-src 'none'; script-src {}; style-src 'unsafe-inline'; img-src 'self' data: blob:; \
                  connect-src {connect}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
                 shared.page.script_hashes
             );
@@ -831,6 +834,7 @@ fn route(stream: &mut Conn, shared: &Shared, head: &[u8]) -> Result<Option<Strin
             None => respond(stream, "404 Not Found", "text/plain", none, "", b"")?,
         },
         Route::Ok => respond(stream, "204 No Content", "text/plain", none, "", b"")?,
+        Route::Icon => respond(stream, "200 OK", "image/png", none, "", crate::ICON)?,
         Route::BadRequest => respond(stream, "400 Bad Request", "text/plain", none, "", b"")?,
         Route::NotFound => respond(stream, "404 Not Found", "text/plain", none, "", b"")?,
         Route::NotAllowed => respond(

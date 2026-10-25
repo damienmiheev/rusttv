@@ -108,6 +108,21 @@ impl Authority {
         self.key.serialize_der()
     }
 
+    /// The code the TV shows while a phone sets up trust: the first six
+    /// bytes of the certificate's SHA-256 fingerprint, as iOS and Android
+    /// show it in the certificate's details ("C5 8B 5F 12 9A 0E"). The person
+    /// compares it there, on the phone's own screen, before installing: a
+    /// tampered page can't fake that, and 48 bits can't be matched by
+    /// making certificates until one fits.
+    pub fn check_code(&self) -> String {
+        let digest = Sha256::digest(&self.certificate);
+        digest[..6]
+            .iter()
+            .map(|byte| format!("{byte:02X}"))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     /// The name phones show for the certificate: "RustTV" and a short
     /// fingerprint, so two TVs are told apart.
     pub fn name(&self) -> String {
@@ -348,5 +363,14 @@ mod tests {
         let config = loaded.config(IpAddr::from([10, 0, 0, 7])).unwrap();
         handshake(authority.certificate_der(), config, [10, 0, 0, 7]).unwrap();
         assert!(Authority::load(vec![1, 2, 3], b"not a key", now()).is_err());
+        // The check code is the fingerprint's start, the same after loading.
+        let code = authority.check_code();
+        assert_eq!(code, loaded.check_code());
+        let fingerprint = Sha256::digest(authority.certificate_der());
+        assert_eq!(
+            code.replace(' ', ""),
+            crate::hex::encode(&fingerprint[..6]).to_uppercase()
+        );
+        assert_eq!(code.len(), 17);
     }
 }

@@ -51,6 +51,9 @@ pub const CRYPTO_JS: &str = include_str!("../page/crypto.js");
 /// The page's texts in the phone's language, inlined into the page; checked
 /// by `page/i18n.test.mjs`.
 pub const I18N_JS: &str = include_str!("../page/i18n.js");
+/// The Home Screen icon (180×180 PNG, from scripts/brand/render.sh), served
+/// at `/icon.png`.
+pub const ICON: &[u8] = include_bytes!("../page/icon.png");
 /// The page's logic, inlined into the page.
 pub const APP_JS: &str = include_str!("../page/app.js");
 

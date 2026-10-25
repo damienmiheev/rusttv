@@ -1210,6 +1210,10 @@ impl Controller {
                 phone,
                 message: PhoneMessage::Banner { id },
             } => self.phone_picture(phone, id),
+            RemoteEvent::Input {
+                phone,
+                message: PhoneMessage::Trust,
+            } => self.open_trust(phone),
             // Never into the review or pairing screens; in Settings only
             // Back, so a phone can't pair, remove or approve anything.
             RemoteEvent::Input { message, .. }
