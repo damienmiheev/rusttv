@@ -20,6 +20,10 @@ httparse.workspace = true
 tungstenite.workspace = true
 sha1dc.workspace = true
 
+[features]
+# Exposes `fuzzing` for the fuzz targets in `fuzz/`.
+fuzzing = []
+
 [dev-dependencies]
 proptest.workspace = true
 serde_json.workspace = true

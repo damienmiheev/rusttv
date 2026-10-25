@@ -21,6 +21,19 @@ mod hex;
 pub mod protocol;
 mod server;
 
+/// Entry points for `fuzz/` (`cargo +nightly fuzz`); not part of the API.
+#[cfg(feature = "fuzzing")]
+#[doc(hidden)]
+pub mod fuzzing {
+    /// A request head, as the listener reads it, and the upgrade's accept
+    /// key when it is one.
+    pub fn request_head(head: &[u8]) {
+        if let Ok(crate::server::Route::Upgrade(key)) = crate::server::classify(head) {
+            let _ = crate::server::accept_key(&key);
+        }
+    }
+}
+
 pub use auth::{Phone, PhoneId, Phones};
 pub use crypto::{Direction, NONCE_LEN, Session, TAG_LEN};
 pub use server::{Clock, Event, MAX_CONNECTED, Options, PAIRING_TIME, PORT, Random, Remote};
