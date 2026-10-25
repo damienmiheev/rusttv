@@ -15,6 +15,7 @@ publish = false
 [workspace.dependencies]
 rusttv-core = { path = "crates/rusttv-core" }
 rusttv-history = { path = "crates/rusttv-history" }
+rusttv-remote = { path = "crates/rusttv-remote" }
 clap = { version = "4.6.7", features = ["derive"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
@@ -61,6 +62,13 @@ proptest = { version = "1.12.0", default-features = false, features = ["std"] }
 # (`generate`) and indexes received ones (`streaming-input`). MIT OR Apache-2.0.
 gix = { version = "0.90.0", default-features = false, features = ["sha1"] }
 gix-pack = { version = "0.77.0", default-features = false, features = ["generate", "streaming-input", "sha1"] }
+
+# RustTV Remote (REMOTE.md, owner OK 2026-10-25): HMAC-SHA256 for pairing and
+# challenge-response (constant-time verify), XChaCha20-Poly1305 for the
+# session. Pure Rust, no default features (no OS randomness: nonces come
+# from the caller). MIT OR Apache-2.0.
+hmac = "0.13.0"
+chacha20poly1305 = { version = "0.11.0", default-features = false, features = ["alloc"] }
 
 [workspace.lints.rust]
 # Only the future JNI bridge crate may opt out of this.

@@ -33,7 +33,7 @@ rusttv/
 │   ├── rusttv-cli/         # binary `rusttv`: clap, output formatting
 │   ├── rusttv-mcp/         # binary `rusttv-mcp`: read-only MCP server over stdio (rmcp + tokio)
 │   ├── rusttv-history/     # TV history in git (gix): snapshots, store, door protocol, TV side (HISTORY.md)
-│   ├── rusttv-remote/      # planned: RustTV Remote, phone page, pairing, encrypted WebSocket server (REMOTE.md)
+│   ├── rusttv-remote/      # RustTV Remote: protocol, pairing, HMAC auth, session encryption; server and page next (REMOTE.md)
 │   └── rusttv-launcher/    # home screen: model, Slint UI, JNI bridge; cdylib + desktop dev mode
 ├── android/                # Gradle app ai.rusttv.launcher: Kotlin shim, manifest, build.sh, check-dex.sh
 ├── benchmarks/raw/         # measurements per device and date (BENCHMARK_PLAN.md)
