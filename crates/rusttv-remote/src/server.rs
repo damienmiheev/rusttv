@@ -29,9 +29,12 @@ use crate::RemoteError;
 use crate::auth::{self, Phone, PhoneId, PhoneKeys, Phones};
 use crate::crypto::{NONCE_LEN, Session, TAG_LEN};
 use crate::protocol::{MAX_PHONE_MESSAGE, PhoneMessage, TvMessage, parse_phone};
+use crate::tls::Authority;
 
 /// The fixed port (owner decision 9).
 pub const PORT: u16 = 8484;
+/// The page over HTTPS, for phones that trust the TV.
+pub const SECURE_PORT: u16 = 8485;
 /// Most phones connected at once.
 pub const MAX_CONNECTED: usize = 4;
 /// Most connections still authenticating at once.
@@ -73,6 +76,11 @@ pub type Clock = Arc<dyn Fn() -> u64 + Send + Sync>;
 pub struct Options {
     /// [`PORT`] on the TV; 0 in tests for any free port.
     pub port: u16,
+    /// [`SECURE_PORT`] on the TV, for HTTPS; 0 in tests.
+    pub secure_port: u16,
+    /// The TV's certificate authority: with it, the page is also served over
+    /// HTTPS on `secure_port` (REMOTE.md § 2 "Trusting the TV").
+    pub authority: Option<Arc<Authority>>,
     /// The page served at `/` ([`PAGE`](crate::PAGE)): its `<!--i18n.js-->`,
     /// `<!--crypto.js-->` and `<!--app.js-->` markers become inline scripts,
     /// allowed by their hashes in the page's Content-Security-Policy.
@@ -85,6 +93,7 @@ impl std::fmt::Debug for Options {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Options")
             .field("port", &self.port)
+            .field("secure_port", &self.secure_port)
             .finish_non_exhaustive()
     }
 }
@@ -120,6 +129,50 @@ pub struct Remote {
     shared: Arc<Shared>,
     events: Receiver<Event>,
     address: SocketAddr,
+}
+
+/// A connection, plain or over TLS.
+enum Conn {
+    Plain(TcpStream),
+    Secure(Box<rustls::StreamOwned<rustls::ServerConnection, TcpStream>>),
+}
+
+impl Conn {
+    fn tcp(&self) -> &TcpStream {
+        match self {
+            Self::Plain(stream) => stream,
+            Self::Secure(stream) => &stream.sock,
+        }
+    }
+
+    fn is_secure(&self) -> bool {
+        matches!(self, Self::Secure(_))
+    }
+}
+
+impl Read for Conn {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Plain(stream) => stream.read(buffer),
+            Self::Secure(stream) => stream.read(buffer),
+        }
+    }
+}
+
+impl Write for Conn {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Plain(stream) => stream.write(bytes),
+            Self::Secure(stream) => stream.write(bytes),
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self {
+            Self::Plain(stream) => stream.flush(),
+            Self::Secure(stream) => stream.flush(),
+        }
+    }
 }
 
 impl std::fmt::Debug for Remote {
@@ -162,6 +215,9 @@ struct Shared {
     random: Random,
     clock: Clock,
     page: Page,
+    authority: Option<Arc<Authority>>,
+    /// The HTTPS listener's port, when there is one.
+    secure_port: Option<u16>,
     stopped: AtomicBool,
     next_id: AtomicU64,
 }
@@ -238,6 +294,24 @@ impl Remote {
         let address = listener
             .local_addr()
             .map_err(|error| RemoteError::Io(error.to_string()))?;
+        // HTTPS is extra: without it (no authority, or its port is taken)
+        // phones use the page over plain HTTP as before.
+        let secure = options.authority.as_ref().and_then(|_| {
+            match TcpListener::bind(("0.0.0.0", options.secure_port)) {
+                Ok(listener) => Some(listener),
+                Err(error) => {
+                    log::warn!(
+                        "RustTV Remote: no HTTPS on port {}: {error}",
+                        options.secure_port
+                    );
+                    None
+                }
+            }
+        });
+        let secure_port = secure
+            .as_ref()
+            .and_then(|listener| listener.local_addr().ok())
+            .map(|address| address.port());
         let (sender, events) = mpsc::channel();
         let shared = Arc::new(Shared {
             state: Mutex::new(State {
@@ -248,14 +322,23 @@ impl Remote {
             random: options.random,
             clock: options.clock,
             page: Page::build(options.page),
+            authority: options.authority.filter(|_| secure_port.is_some()),
+            secure_port,
             stopped: AtomicBool::new(false),
             next_id: AtomicU64::new(1),
         });
         let accepting = Arc::clone(&shared);
         thread::Builder::new()
             .name("rusttv-remote".to_owned())
-            .spawn(move || accept(&listener, &accepting))
+            .spawn(move || accept(&listener, &accepting, false))
             .map_err(|error| RemoteError::Io(error.to_string()))?;
+        if let Some(listener) = secure {
+            let accepting = Arc::clone(&shared);
+            thread::Builder::new()
+                .name("rusttv-remote-tls".to_owned())
+                .spawn(move || accept(&listener, &accepting, true))
+                .map_err(|error| RemoteError::Io(error.to_string()))?;
+        }
         Ok(Self {
             shared,
             events,
@@ -266,6 +349,11 @@ impl Remote {
     /// The bound address (the port matters in tests).
     pub fn address(&self) -> SocketAddr {
         self.address
+    }
+
+    /// The HTTPS listener's port, when it runs.
+    pub fn secure_port(&self) -> Option<u16> {
+        self.shared.secure_port
     }
 
     /// Hands the events to a thread that waits on them (the launcher
@@ -364,15 +452,19 @@ impl Drop for Remote {
             let _ = connection.outbox.send(Outgoing::Close);
         }
         drop(state);
-        // Wake the accept thread so it sees the flag.
-        let _ = TcpStream::connect_timeout(
-            &SocketAddr::from(([127, 0, 0, 1], self.address.port())),
-            Duration::from_millis(200),
-        );
+        // Wake the accept threads so they see the flag.
+        let ports = [Some(self.address.port()), self.shared.secure_port];
+        for port in ports.into_iter().flatten() {
+            let _ = TcpStream::connect_timeout(
+                &SocketAddr::from(([127, 0, 0, 1], port)),
+                Duration::from_millis(200),
+            );
+        }
     }
 }
 
-fn accept(listener: &TcpListener, shared: &Arc<Shared>) {
+/// Serves `listener`'s connections; `secure`: over TLS.
+fn accept(listener: &TcpListener, shared: &Arc<Shared>, secure: bool) {
     for stream in listener.incoming() {
         if shared.stopped() {
             return;
@@ -391,7 +483,7 @@ fn accept(listener: &TcpListener, shared: &Arc<Shared>) {
                     pending: true,
                 };
                 // Every error just ends this connection.
-                let _ = serve(stream, &mut guard);
+                let _ = serve(stream, secure, &mut guard);
             });
         if spawned.is_err() {
             shared.lock().pending -= 1;
@@ -472,14 +564,29 @@ impl Drop for Admitted<'_> {
     }
 }
 
-type Socket = WebSocket<TcpStream>;
+type Socket = WebSocket<Conn>;
 
-fn serve(mut stream: TcpStream, guard: &mut Admitted<'_>) -> Result<(), RemoteError> {
+fn serve(stream: TcpStream, secure: bool, guard: &mut Admitted<'_>) -> Result<(), RemoteError> {
     let deadline = Instant::now() + HANDSHAKE_TIME;
     stream.set_nodelay(true).map_err(io)?;
     stream.set_write_timeout(Some(WRITE_TIME)).map_err(io)?;
+    let mut stream = if secure {
+        // The certificate for the address the phone connected to; the
+        // handshake runs with the first read, under the deadline.
+        let authority = guard
+            .shared
+            .authority
+            .as_ref()
+            .ok_or(RemoteError::Invalid("no tls".to_owned()))?;
+        let config = authority.config(stream.local_addr().map_err(io)?.ip())?;
+        let connection = rustls::ServerConnection::new(config)
+            .map_err(|error| RemoteError::Invalid(format!("tls: {error}")))?;
+        Conn::Secure(Box::new(rustls::StreamOwned::new(connection, stream)))
+    } else {
+        Conn::Plain(stream)
+    };
     let (head, rest) = read_head(&mut stream, deadline)?;
-    let Some(key) = route(&mut stream, &guard.shared.page, &head)? else {
+    let Some(key) = route(&mut stream, guard.shared, &head)? else {
         return Ok(());
     };
     let answer = format!(
@@ -508,7 +615,7 @@ fn serve(mut stream: TcpStream, guard: &mut Admitted<'_>) -> Result<(), RemoteEr
 }
 
 /// The request head (up to the blank line) and any bytes after it.
-fn read_head(stream: &mut TcpStream, deadline: Instant) -> Result<(Vec<u8>, Vec<u8>), RemoteError> {
+fn read_head(stream: &mut Conn, deadline: Instant) -> Result<(Vec<u8>, Vec<u8>), RemoteError> {
     let mut buffer = Vec::with_capacity(1024);
     let mut chunk = [0; 1024];
     loop {
@@ -516,7 +623,7 @@ fn read_head(stream: &mut TcpStream, deadline: Instant) -> Result<(Vec<u8>, Vec<
             .checked_duration_since(Instant::now())
             .filter(|left| !left.is_zero())
             .ok_or(RemoteError::Io("handshake timed out".to_owned()))?;
-        stream.set_read_timeout(Some(left)).map_err(io)?;
+        stream.tcp().set_read_timeout(Some(left)).map_err(io)?;
         let read = stream.read(&mut chunk).map_err(io)?;
         if read == 0 {
             return Err(RemoteError::Io("closed".to_owned()));
@@ -539,13 +646,19 @@ pub(crate) enum Route {
     Page(String),
     /// A valid WebSocket upgrade from the page itself, with its key.
     Upgrade(String),
+    /// The TV's certificate, for phones to trust it (`/tv.crt`).
+    Certificate,
+    /// An empty answer: over HTTPS, it tells the page the phone trusts the
+    /// TV (`/ok`).
+    Ok,
     BadRequest,
     NotFound,
     NotAllowed,
 }
 
-/// Reads a request head (pure, so it can be fuzzed).
-pub(crate) fn classify(head: &[u8]) -> Result<Route, RemoteError> {
+/// Reads a request head (pure, so it can be fuzzed); `secure`: it came over
+/// HTTPS.
+pub(crate) fn classify(head: &[u8], secure: bool) -> Result<Route, RemoteError> {
     if head.len() > MAX_HEAD {
         return Err(RemoteError::TooLong("request head"));
     }
@@ -581,7 +694,8 @@ pub(crate) fn classify(head: &[u8]) -> Result<Route, RemoteError> {
             });
             // Only the page itself may open the socket: another site's page
             // in the phone's browser has another Origin.
-            let same_origin = header("Origin") == Some(format!("http://{host}").as_str());
+            let scheme = if secure { "https" } else { "http" };
+            let same_origin = header("Origin") == Some(format!("{scheme}://{host}").as_str());
             let version = header("Sec-WebSocket-Version") == Some("13");
             match header("Sec-WebSocket-Key") {
                 Some(key) if upgrade && connection && same_origin && version && key.len() <= 64 => {
@@ -590,6 +704,8 @@ pub(crate) fn classify(head: &[u8]) -> Result<Route, RemoteError> {
                 _ => Route::BadRequest,
             }
         }
+        Some("/tv.crt") => Route::Certificate,
+        Some("/ok") => Route::Ok,
         _ => Route::NotFound,
     })
 }
@@ -633,39 +749,98 @@ fn is_host(host: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '[' | ']'))
 }
 
+/// Where the page learns the HTTPS port (its `content`), filled in per
+/// request; scripts are hashed, the HTML isn't.
+const SECURE_PORT_META: &str = r#"<meta name="rusttv-secure-port" content="">"#;
+
+fn respond(
+    stream: &mut Conn,
+    status: &str,
+    kind: &str,
+    policy: &str,
+    extra: &str,
+    body: &[u8],
+) -> Result<(), RemoteError> {
+    let head = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nCache-Control: no-store\r\n\
+         X-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n\
+         Content-Security-Policy: {policy}\r\n{extra}Connection: close\r\n\r\n",
+        body.len()
+    );
+    stream.write_all(head.as_bytes()).map_err(io)?;
+    stream.write_all(body).map_err(io)?;
+    stream.flush().map_err(io)
+}
+
+/// The host part of a `Host` header, without the port.
+fn host_name(host: &str) -> &str {
+    match host.rfind(':') {
+        Some(colon) if !host[colon..].contains(']') => &host[..colon],
+        _ => host,
+    }
+}
+
 /// Answers a page request itself; for a WebSocket upgrade returns the key.
-fn route(stream: &mut TcpStream, page: &Page, head: &[u8]) -> Result<Option<String>, RemoteError> {
-    let respond = |stream: &mut TcpStream, status: &str, kind: &str, policy: &str, body: &str| {
-        let response = format!(
-            "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nCache-Control: no-store\r\n\
-             X-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n\
-             Content-Security-Policy: {policy}\r\nConnection: close\r\n\r\n{body}",
-            body.len()
-        );
-        stream.write_all(response.as_bytes()).map_err(io)
-    };
+fn route(stream: &mut Conn, shared: &Shared, head: &[u8]) -> Result<Option<String>, RemoteError> {
     let none = "default-src 'none'";
-    match classify(head)? {
+    let secure = stream.is_secure();
+    match classify(head, secure)? {
         Route::Upgrade(key) => return Ok(Some(key)),
         Route::Page(host) => {
             // Only the inlined scripts run; the page may only open its own
-            // socket.
+            // socket, and over plain HTTP ask the HTTPS page whether the
+            // phone trusts the TV.
+            let connect = match (secure, shared.secure_port) {
+                (true, _) => format!("wss://{host}"),
+                (false, Some(port)) => format!("ws://{host} https://{}:{port}", host_name(&host)),
+                (false, None) => format!("ws://{host}"),
+            };
             let policy = format!(
                 "default-src 'none'; script-src {}; style-src 'unsafe-inline'; img-src data: blob:; \
-                 connect-src ws://{host}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-                page.script_hashes
+                 connect-src {connect}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+                shared.page.script_hashes
             );
+            let port = shared
+                .secure_port
+                .map(|port| port.to_string())
+                .unwrap_or_default();
+            let meta = SECURE_PORT_META.replace(r#"content="""#, &format!(r#"content="{port}""#));
+            let html = shared.page.html.replacen(SECURE_PORT_META, &meta, 1);
             respond(
                 stream,
                 "200 OK",
                 "text/html; charset=utf-8",
                 &policy,
-                &page.html,
+                "",
+                html.as_bytes(),
             )?;
         }
-        Route::BadRequest => respond(stream, "400 Bad Request", "text/plain", none, "")?,
-        Route::NotFound => respond(stream, "404 Not Found", "text/plain", none, "")?,
-        Route::NotAllowed => respond(stream, "405 Method Not Allowed", "text/plain", none, "")?,
+        Route::Certificate => match &shared.authority {
+            // A certificate download makes iOS offer it as a profile.
+            Some(authority) => respond(
+                stream,
+                "200 OK",
+                "application/x-x509-ca-cert",
+                none,
+                &format!(
+                    "Content-Disposition: attachment; filename=\"{}.crt\"\r\n",
+                    authority.name()
+                ),
+                authority.certificate_der(),
+            )?,
+            None => respond(stream, "404 Not Found", "text/plain", none, "", b"")?,
+        },
+        Route::Ok => respond(stream, "204 No Content", "text/plain", none, "", b"")?,
+        Route::BadRequest => respond(stream, "400 Bad Request", "text/plain", none, "", b"")?,
+        Route::NotFound => respond(stream, "404 Not Found", "text/plain", none, "", b"")?,
+        Route::NotAllowed => respond(
+            stream,
+            "405 Method Not Allowed",
+            "text/plain",
+            none,
+            "",
+            b"",
+        )?,
     }
     Ok(None)
 }
@@ -793,7 +968,11 @@ fn talk(
     session: &mut Session,
     inbox: &Receiver<Outgoing>,
 ) -> Result<(), RemoteError> {
-    socket.get_mut().set_read_timeout(Some(POLL)).map_err(io)?;
+    socket
+        .get_mut()
+        .tcp()
+        .set_read_timeout(Some(POLL))
+        .map_err(io)?;
     let mut poll = POLL;
     let mut busy_until = Instant::now();
     let mut pending = shared.lock().view.clone();
@@ -835,6 +1014,7 @@ fn talk(
         if wanted != poll {
             socket
                 .get_mut()
+                .tcp()
                 .set_read_timeout(Some(wanted))
                 .map_err(io)?;
             poll = wanted;
@@ -878,7 +1058,11 @@ fn read_text(socket: &mut Socket, deadline: Instant) -> Result<PhoneMessage, Rem
             .checked_duration_since(Instant::now())
             .filter(|left| !left.is_zero())
             .ok_or(RemoteError::Io("handshake timed out".to_owned()))?;
-        socket.get_mut().set_read_timeout(Some(left)).map_err(io)?;
+        socket
+            .get_mut()
+            .tcp()
+            .set_read_timeout(Some(left))
+            .map_err(io)?;
         match socket.read() {
             Ok(Message::Text(text)) => return parse_phone(text.as_bytes()),
             Ok(Message::Ping(_) | Message::Pong(_) | Message::Frame(_)) => {}
@@ -922,6 +1106,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_socket_opens_only_from_the_page_of_the_same_scheme() {
+        let upgrade = |origin: &str| {
+            format!(
+                "GET /ws HTTP/1.1\r\nHost: tv:8485\r\nOrigin: {origin}\r\nUpgrade: websocket\r\n\
+                 Connection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: a2V5\r\n\r\n"
+            )
+        };
+        let https = upgrade("https://tv:8485");
+        let http = upgrade("http://tv:8485");
+        assert!(matches!(
+            classify(https.as_bytes(), true),
+            Ok(Route::Upgrade(_))
+        ));
+        assert_eq!(
+            classify(https.as_bytes(), false).unwrap(),
+            Route::BadRequest
+        );
+        assert!(matches!(
+            classify(http.as_bytes(), false),
+            Ok(Route::Upgrade(_))
+        ));
+        assert_eq!(classify(http.as_bytes(), true).unwrap(), Route::BadRequest);
+        assert_eq!(host_name("192.168.1.20:8484"), "192.168.1.20");
+        assert_eq!(host_name("[fd00::1]:8484"), "[fd00::1]");
+        assert_eq!(host_name("[fd00::1]"), "[fd00::1]");
+        assert_eq!(host_name("tv"), "tv");
+    }
+
+    #[test]
     fn accept_key_matches_rfc_6455() {
         // RFC 6455 § 1.3.
         assert_eq!(
@@ -938,6 +1151,8 @@ mod tests {
             random: Arc::new(|_: &mut [u8]| {}),
             clock: Arc::new(|| 0),
             page: Page::build(""),
+            authority: None,
+            secure_port: None,
             stopped: AtomicBool::new(false),
             next_id: AtomicU64::new(1),
         }

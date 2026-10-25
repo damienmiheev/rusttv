@@ -44,13 +44,14 @@ fn main() {
     let remote = Remote::start(
         Options {
             port,
+            // HTTPS on the next port, with a fresh authority each run.
+            secure_port: port + 1,
+            authority: Some(Arc::new(
+                rusttv_remote::tls::Authority::create(now()).unwrap(),
+            )),
             page: PAGE,
             random: Arc::new(random),
-            clock: Arc::new(|| {
-                SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map_or(0, |d| d.as_secs())
-            }),
+            clock: Arc::new(now),
         },
         Phones::default(),
     )
@@ -179,4 +180,10 @@ fn main() {
         };
         remote.push(&reply).unwrap();
     }
+}
+
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
 }
