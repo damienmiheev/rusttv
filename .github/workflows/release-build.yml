@@ -1,8 +1,9 @@
 # Builds everything a release ships: the CLI and MCP server for macOS and Linux
-# (arm64 and x86_64) with licence notices and SHA-256 sums, and the unsigned
-# launcher APKs, as workflow artifacts. On a tag it also creates a draft
-# GitHub release with the CLI archives and the CHANGELOG section, then starts
-# Release sign, which waits for the owner's approval. It never signs or
+# (arm64 and x86_64) with licence notices, CycloneDX SBOMs and SHA-256 sums,
+# the launcher SBOMs and the unsigned launcher APKs, as workflow artifacts. On
+# a tag it also attests the build provenance of the files in SHA256SUMS,
+# creates a draft GitHub release with them and the CHANGELOG section, then
+# starts Release sign, which waits for the owner's approval. It never signs or
 # publishes itself: the owner publishes the draft (RELEASE.md).
 name: Release build
 
@@ -66,9 +67,53 @@ jobs:
           path: THIRD_PARTY_NOTICES.txt
           if-no-files-found: error
 
+  sbom:
+    name: SBOMs
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: sbom
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install cargo-cyclonedx
+        run: cargo install cargo-cyclonedx --version 0.5.9 --locked
+      # One SBOM per shipped binary and target, from Cargo.lock and the
+      # target's dependencies. cargo-cyclonedx writes <crate>.cdx.json next to
+      # every workspace crate. The CLI targets match the `cli` matrix (a
+      # missing file fails its Package step); the Android ones match the ABIs.
+      - name: Write the SBOMs
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          mkdir -p sbom/cli sbom/launcher
+          for target in aarch64-apple-darwin x86_64-apple-darwin x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+            cargo cyclonedx -q --format json --spec-version 1.5 --target "$target"
+            mv crates/rusttv-cli/rusttv-cli.cdx.json "sbom/cli/rusttv-$target.cdx.json"
+            mv crates/rusttv-mcp/rusttv-mcp.cdx.json "sbom/cli/rusttv-mcp-$target.cdx.json"
+          done
+          for abi in arm64-v8a:aarch64-linux-android armeabi-v7a:armv7-linux-androideabi x86_64:x86_64-linux-android; do
+            cargo cyclonedx -q --format json --spec-version 1.5 --target "${abi#*:}"
+            mv crates/rusttv-launcher/rusttv-launcher.cdx.json "sbom/launcher/rusttv-launcher-$VERSION-${abi%%:*}.cdx.json"
+          done
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-cli
+          path: sbom/cli/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-launcher
+          path: sbom/launcher/
+          if-no-files-found: error
+
   cli:
     name: CLI (${{ matrix.target }})
-    needs: [version, notices]
+    needs: [version, notices, sbom]
     strategy:
       fail-fast: false
       matrix:
@@ -93,13 +138,20 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: notices
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sbom-cli
+          path: sbom
       - name: Package
         env:
           NAME: rusttv-${{ needs.version.outputs.version }}-${{ matrix.target }}
+          TARGET: ${{ matrix.target }}
         run: |
           mkdir -p "dist/$NAME"
-          cp target/${{ matrix.target }}/release/rusttv target/${{ matrix.target }}/release/rusttv-mcp \
+          cp "target/$TARGET/release/rusttv" "target/$TARGET/release/rusttv-mcp" \
             README.md CLI.md MCP.md SECURITY.md LICENSE-MIT LICENSE-APACHE THIRD_PARTY_NOTICES.txt "dist/$NAME/"
+          cp "sbom/rusttv-$TARGET.cdx.json" "dist/$NAME/rusttv.cdx.json"
+          cp "sbom/rusttv-mcp-$TARGET.cdx.json" "dist/$NAME/rusttv-mcp.cdx.json"
           tar -C dist -czf "dist/$NAME.tar.gz" "$NAME"
           cd dist && shasum -a 256 "$NAME.tar.gz" > "$NAME.tar.gz.sha256"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -112,7 +164,7 @@ jobs:
 
   checksums:
     name: SHA256SUMS
-    needs: cli
+    needs: [cli, sbom]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -120,12 +172,36 @@ jobs:
         with:
           pattern: cli-*
           merge-multiple: true
-      - run: cat -- *.sha256 | sort -k2 > SHA256SUMS && cat SHA256SUMS
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sbom-launcher
+      - run: '{ cat -- *.sha256; sha256sum -- *.cdx.json; } | sort -k2 > SHA256SUMS && cat SHA256SUMS'
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: SHA256SUMS
           path: SHA256SUMS
           if-no-files-found: error
+
+  # Signed by Sigstore through GitHub's OIDC token, which only this job can
+  # request: it builds nothing and runs no repository code. Tags only, so test
+  # runs leave no attestations. `gh attestation verify <file> --repo
+  # damienmiheev/rusttv` checks one.
+  attest:
+    name: Attest provenance
+    if: github.ref_type == 'tag'
+    needs: checksums
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: SHA256SUMS
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: SHA256SUMS
 
   android:
     uses: ./.github/workflows/android-apk.yml
@@ -136,7 +212,7 @@ jobs:
   draft:
     name: Draft release
     if: github.ref_type == 'tag'
-    needs: [version, checksums, android]
+    needs: [version, checksums, attest, android]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -148,6 +224,10 @@ jobs:
         with:
           pattern: cli-*
           merge-multiple: true
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: sbom-launcher
           path: dist
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -173,8 +253,8 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
         run: |
           case "$(gh release view "$TAG" --json isDraft --jq .isDraft 2> /dev/null)" in
-            "") gh release create "$TAG" --draft --verify-tag --title "RustTV $VERSION" --notes-file notes.md dist/*.tar.gz dist/SHA256SUMS ;;
-            true) gh release upload "$TAG" --clobber dist/*.tar.gz dist/SHA256SUMS && gh release edit "$TAG" --notes-file notes.md ;;
+            "") gh release create "$TAG" --draft --verify-tag --title "RustTV $VERSION" --notes-file notes.md dist/*.tar.gz dist/*.cdx.json dist/SHA256SUMS ;;
+            true) gh release upload "$TAG" --clobber dist/*.tar.gz dist/*.cdx.json dist/SHA256SUMS && gh release edit "$TAG" --notes-file notes.md ;;
             *) echo "::error::$TAG is published already"; exit 1 ;;
           esac
       # Release sign checks this run's files, then waits for the owner's

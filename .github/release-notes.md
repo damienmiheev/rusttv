@@ -10,6 +10,8 @@ Supported devices are the ones with a profile in [`compat/devices/`](https://git
 ## Check the files
 
 - `SHA256SUMS` covers every file and is signed with the update signing key: `minisign -Vm SHA256SUMS -P {minisign_key}`. `rusttv update` checks this itself.
+- Each file has a GitHub build provenance attestation: `gh attestation verify <file> --repo damienmiheev/rusttv` shows the workflow run and commit that built it.
+- `*.cdx.json` are CycloneDX SBOMs (every crate in the binary); each CLI archive has its own two.
 - APKs are signed with RustTV's release key. Certificate SHA-256: `{apk_cert}` (`apksigner verify --print-certs`).
 
 ## Safety
