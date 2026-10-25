@@ -155,6 +155,21 @@ Residual risk: firmware updates may re-enable the stock launcher or change its p
 - **The user confirms every install.** RustTV is not a system or device-owner app: it opens a `PackageInstaller` session and Android shows its own confirmation. The first time, the launcher opens Android's "Install unknown apps" screen for RustTV and says so on the About page. The session's result receiver is not exported, so only the system installer's reply to RustTV's own PendingIntent reaches it.
 - **With Home takeover.** An update restarts the launcher like any app update. If a new version fails to start while the stock launcher is disabled, recover with `rusttv launcher restore` ([Recovery scenarios](#recovery-scenarios)).
 
+## RustTV Remote (phone)
+
+*Owner decisions 2026-10-25 (REMOTE.md, ARCHITECTURE.md D24).* A TV-side feature like launcher updates, outside the CLI's risk classes. Planned for 0.3.0; nothing is built yet.
+
+- **Threat model.** An attacker on the home network: a guest who knows the Wi-Fi password (on WPA2 they can decrypt other clients' traffic after seeing their handshake), a rogue access point, or a compromised device. Plain HTTP gives no server identity, so the design assumes the network is hostile:
+  - the long-term secret never crosses the network after pairing (HMAC challenge-response);
+  - every message after authentication is XChaCha20-Poly1305 with a direction byte and a counter, so typed text and keys can't be read or replayed;
+  - the pairing secret is in the QR code's URL fragment, which browsers never send, valid 2 minutes, one use, only while the pairing screen is open; the TV and the phone show the same 2-digit code and the person presses OK on the TV remote.
+- **What a paired phone can do:** what a remote can do — keys, text, open an app, edit Home's order and folders, and pointer taps in listed apps. **It can never** change a setting or a package, pair or revoke phones, write to the history store, or pass the review screen: the review/approval screen drops all phone input (it arrives through RustTV's own socket, so it is told apart from the remote).
+- **What only the person does on the TV:** pair or revoke a phone, connect RustTV to the TV's Remote Service, list apps for the pointer. Each is a Settings action with a preview, OK, and a `tv` history entry.
+- **The listener** runs only while a phone is paired, refuses anything unpaired after one small header, and caps every length, connection and message rate (REMOTE.md § 3). A parser panic would kill Home, so the parser has property tests and a fuzz run.
+- **Secrets on the TV** are in the launcher's private storage (`files/remote/phones.toml`); a damaged file means "no phones". Debuggable builds refuse to pair. On the phone they are in the page's `localStorage`; clearing site data unpairs it.
+- **The Remote Service pairing** gives RustTV a credential that can press any key in any app and type into any field, the same power as the Google TV phone app. Only a typed key enum reaches it. Removing the pairing deletes RustTV's key and the pinned certificate.
+- **The pointer's accessibility service** is declared with `canPerformGestures` only: no window content, no key filtering, only the package name from window changes, so it can't read what other apps show or what keys are pressed. It acts only while a listed app is in front, is off by default, and is turned on by the person in Android's settings (`history sync` warns once when `enabled_accessibility_services` changes). `check-dex.sh` keeps the accessibility APIs in `PointerService.kt` only.
+
 ## ADB hygiene (user guidance)
 
 - Legacy Wi-Fi ADB (TCP 5555) relies only on the one-time RSA key approval and is unencrypted; enable it only on trusted networks and disable it after use.
