@@ -418,6 +418,11 @@ echoed.
   The review/approval screen **drops every phone input**: phone keys arrive
   through RustTV's own socket, so they can be told apart from the remote.
 
+- **Waking up (2026-10-26):** the page retries a lost connection after
+  0.5, 1, 2, then every 3 seconds, so a TV back from standby is found within
+  3 seconds. Back from the background after more than 5 seconds, it always
+  connects again (iOS freezes pages, and a socket that looks open may be
+  dead); a tap while the connection is down retries at once.
 - **Screensavers (owner decision 2026-10-26: not supported).** A phone
   doesn't wake the TV from a screensaver. Tested on the Philips: an app can
   start an activity over Google's Ambient mode (Android allows it for this

@@ -63,6 +63,9 @@
   let pairing = null; // { secret, nonce, name } while pairing
   let socket = null, session = null, challenge = null;
   let retry = 0, retryTimer = 0;
+  // `soon`: the next close reconnects at once. `hiddenAt`: when the page
+  // last went to the background.
+  let soon = false, hiddenAt = Date.now();
   let view = null, lastKind = null, tab = "apps";
 
   function show(id) {
@@ -166,10 +169,26 @@
       if (pairing?.nonce) {
         failPairing(t("broke"));
       } else if (credentials && !document.hidden) {
-        retry = Math.min(retry + 1, 6);
-        retryTimer = setTimeout(connect, 500 * 2 ** retry);
+        // A TV back from standby is found within 3 seconds: 0.5, 1, 2, 3, 3…
+        retry = Math.min(retry + 1, 4);
+        retryTimer = setTimeout(connect, soon ? 0 : Math.min(3000, 250 * 2 ** retry));
+        soon = false;
       }
     };
+  }
+
+  // Connects again now: the phone is back from the background, or the
+  // person tapped while the connection was down.
+  function reconnectNow() {
+    if (!credentials || pairing) return;
+    clearTimeout(retryTimer);
+    retry = 0;
+    if (socket) {
+      soon = true;
+      socket.close();
+    } else {
+      connect();
+    }
   }
 
   function sendText(message) {
@@ -177,7 +196,12 @@
   }
 
   function send(message) {
-    if (!session || socket?.readyState !== WebSocket.OPEN) return;
+    if (!session || socket?.readyState !== WebSocket.OPEN) {
+      // Down and waiting to retry: a tap retries now. (Still signing in:
+      // wait for it.)
+      if (!socket) reconnectNow();
+      return;
+    }
     socket.send(session.seal(encoder.encode(JSON.stringify(message)), random(24)));
   }
 
@@ -281,7 +305,18 @@
   }
 
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && credentials && !socket && !pairing) connect();
+    if (document.hidden) {
+      hiddenAt = Date.now();
+      return;
+    }
+    if (!credentials || pairing) return;
+    if (!socket) {
+      reconnectNow();
+    } else if (Date.now() - hiddenAt > 5000) {
+      // iOS freezes pages in the background: a socket that looks open may
+      // be dead, and taps would go nowhere until the TV gave up on it.
+      reconnectNow();
+    }
   });
 
   // --- Views ------------------------------------------------------------------
