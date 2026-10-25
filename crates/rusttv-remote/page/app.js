@@ -262,6 +262,8 @@
   // IndexedDB and asks again after a week, so a connection only fetches what
   // is new. Until it arrives, the tile shows a colour from its id.
   const WEEK_MS = 7 * 24 * 3600 * 1000;
+  // The launcher's own tiles; their pictures come from the TV too.
+  const BUILTINS = ["about", "settings", "remote", "hidden-apps"];
   const pictures = new Map(); // id -> { kind, url, at }
   const asked = new Set();
   const db = new Promise((resolve) => {
@@ -325,7 +327,7 @@
   // Asks the TV for the apps' pictures this phone lacks (or got a week ago).
   function askPictures(tiles) {
     for (const tile of tiles) {
-      const builtin = tile.id === "about" || tile.id === "settings" || tile.id === "hidden-apps";
+      const builtin = BUILTINS.includes(tile.id);
       if ((!tile.id.includes("/") && !builtin) || asked.has(tile.id)) continue;
       const have = pictures.get(tile.id);
       if (have && Date.now() - have.at < WEEK_MS) continue;
@@ -365,7 +367,7 @@
       }
       box.append(minis);
     } else {
-      const builtin = ["about", "settings", "hidden-apps"].includes(tile.id);
+      const builtin = BUILTINS.includes(tile.id);
       box.style.background = builtin
         ? "linear-gradient(150deg, #FFC35C, #F5A524 42%, #D9480F)"
         : `linear-gradient(150deg, ${colour(tile.id)}, #0E1014 140%)`;
@@ -420,8 +422,10 @@
     });
   }
 
-  // Built-in tiles in the phone's language; apps and folders by their name.
+  // Built-in tiles in the phone's language (RustTV Remote is a name);
+  // apps and folders by their name.
   function nameOf(tile) {
+    if (tile.id === "remote") return "RustTV Remote";
     const key = { about: "tile_about", settings: "tile_settings", "hidden-apps": "hidden_title" }[tile.id];
     return key ? t(key) : tile.label;
   }
@@ -480,7 +484,7 @@
     $("hidden-page").hidden = mode !== "hidden";
     if (mode === "hidden") sync($("hidden-grid"), hidden, hidden, focused);
     $("screen").hidden = mode !== "settings";
-    if (mode === "settings") $("screen-title").textContent = t(focused === "about" ? "tile_about" : "tile_settings");
+    if (mode === "settings") $("screen-title").textContent = nameOf({ id: BUILTINS.includes(focused) ? focused : "settings" });
     // Back only where the TV's Back does something.
     const back = !!(home && (view.folder || ["menu", "moving", "hidden", "settings", "text"].includes(mode)));
     $("back").hidden = !back;

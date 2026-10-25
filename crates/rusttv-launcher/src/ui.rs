@@ -80,6 +80,7 @@ const BUILTIN_BANNER_SIZE: (u32, u32) = (320, 180);
 const ABOUT_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/about.rgba"));
 const SETTINGS_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/settings.rgba"));
 const HIDDEN_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/hidden.rgba"));
+const REMOTE_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/remote.rgba"));
 
 /// A built-in tile's banner, by tile name, as RGBA ([`BUILTIN_BANNER_SIZE`]):
 /// for the phones' pictures.
@@ -88,6 +89,7 @@ pub(crate) fn builtin_banner(name: &str) -> Option<(u32, u32, &'static [u8])> {
         "about" => ABOUT_BANNER,
         "settings" => SETTINGS_BANNER,
         "hidden-apps" => HIDDEN_BANNER,
+        "remote" => REMOTE_BANNER,
         _ => return None,
     };
     Some((BUILTIN_BANNER_SIZE.0, BUILTIN_BANNER_SIZE.1, rgba))
@@ -431,7 +433,10 @@ struct Controller {
     review_code: Rc<VecModel<i32>>,
     /// The phone remote, while a phone is paired (REMOTE.md).
     remote: Option<crate::remote::Link>,
-    /// The pairing screen in Settings.
+    /// The RustTV Remote page while it is open.
+    remote_page: Option<crate::remote_page::RemotePage>,
+    remote_rows: Rc<VecModel<SettingsRow>>,
+    /// The pairing screen, over the RustTV Remote page.
     pairing: Option<remote_view::Pairing>,
     /// Another app is on screen (Android paused the launcher): phones get
     /// the touchpad, not the Home mirror.
@@ -457,6 +462,8 @@ impl Controller {
         window.set_settings_sections(ModelRc::from(settings_sections.clone()));
         let settings_rows = Rc::new(VecModel::default());
         window.set_settings_rows(ModelRc::from(settings_rows.clone()));
+        let remote_rows = Rc::new(VecModel::default());
+        window.set_remote_rows(ModelRc::from(remote_rows.clone()));
         let review_lines = Rc::new(VecModel::default());
         window.set_review_lines(ModelRc::from(review_lines.clone()));
         let review_code = Rc::new(VecModel::default());
@@ -533,6 +540,8 @@ impl Controller {
                 review_lines,
                 review_code,
                 remote: None,
+                remote_page: None,
+                remote_rows,
                 pairing: None,
                 away: false,
             })
@@ -776,6 +785,8 @@ impl Controller {
             }
             Some(Effect::OpenSettings) => self.open_settings(),
             Some(Effect::Settings(input)) => self.settings_input(input),
+            Some(Effect::OpenRemote) => self.open_remote_page(),
+            Some(Effect::Remote(input)) => self.remote_page_input(input),
             Some(Effect::OpenAbout) => {
                 self.open_notices();
                 self.refresh_update();
@@ -926,6 +937,7 @@ impl Controller {
             | State::Menu
             | State::Hidden
             | State::Settings
+            | State::Remote
             | State::Folder => {
                 self.tick_timer.stop();
                 return;
@@ -1081,6 +1093,7 @@ impl Controller {
             mode_value(self.home.state())
         });
         self.render_settings(&window);
+        self.render_remote_page(&window);
         self.render_pairing(&window);
         window.set_pressed(self.pressed);
         if self.home.state() != State::About && self.notices.take().is_some() {
@@ -1182,6 +1195,7 @@ impl Controller {
                 .unwrap_or_default(),
             TileId::About => "About".to_owned(),
             TileId::Settings => "Settings".to_owned(),
+            TileId::Remote => "RustTV Remote".to_owned(),
             TileId::Hidden => "Hidden apps".to_owned(),
         }
     }
@@ -1208,7 +1222,7 @@ impl Controller {
                 if let Some(link) = &mut self.remote {
                     link.resend();
                 }
-                if let Some(page) = &mut self.settings
+                if let Some(page) = &mut self.remote_page
                     && let Some(link) = &self.remote
                 {
                     page.set_phones(link.phone_rows());
@@ -1222,12 +1236,13 @@ impl Controller {
                 phone,
                 message: PhoneMessage::Trust,
             } => self.open_trust(phone),
-            // Never into the review or pairing screens; in Settings only
-            // Back, so a phone can't pair, remove or approve anything.
+            // Never into the review or pairing screens; in Settings and on
+            // the RustTV Remote page only Back, so a phone can't pair,
+            // remove or approve anything.
             RemoteEvent::Input { message, .. }
                 if self.review.is_none() && self.pairing.is_none() =>
             {
-                let in_settings = self.home.state() == State::Settings;
+                let in_settings = matches!(self.home.state(), State::Settings | State::Remote);
                 let back = matches!(
                     message,
                     PhoneMessage::Key {
@@ -1555,6 +1570,13 @@ impl Controller {
                     ..TileData::default()
                 };
             }
+            TileId::Remote => {
+                return TileData {
+                    image: self.builtins.remote.image.clone(),
+                    kind: 8,
+                    ..TileData::default()
+                };
+            }
         };
         let Some(app) = self.apps.get(component) else {
             return TileData {
@@ -1646,6 +1668,7 @@ impl BuiltinView {
 struct Builtins {
     about: BuiltinView,
     settings: BuiltinView,
+    remote: BuiltinView,
     hidden: BuiltinView,
 }
 
@@ -1654,6 +1677,7 @@ impl Builtins {
         Self {
             about: BuiltinView::new(ABOUT_BANNER),
             settings: BuiltinView::new(SETTINGS_BANNER),
+            remote: BuiltinView::new(REMOTE_BANNER),
             hidden: BuiltinView::new(HIDDEN_BANNER),
         }
     }
@@ -1663,6 +1687,7 @@ impl Builtins {
         match id {
             TileId::About => Some(&self.about),
             TileId::Settings => Some(&self.settings),
+            TileId::Remote => Some(&self.remote),
             TileId::Hidden => Some(&self.hidden),
             TileId::App(_) | TileId::Folder(_) => None,
         }
@@ -1739,6 +1764,7 @@ fn mode_value(state: State) -> i32 {
         State::Hidden => 5,
         State::Settings => 6,
         State::Folder => 8,
+        State::Remote => 10,
     }
 }
 
@@ -2195,7 +2221,8 @@ mod tests {
                 app("a"),
                 app("c"),
                 TileId::About,
-                TileId::Settings
+                TileId::Settings,
+                TileId::Remote
             ]
         );
     }
@@ -2244,15 +2271,15 @@ mod tests {
         }
         screen.lifecycle.resumed();
         screen.wait(1);
-        // A, B, C loading; About, Settings.
-        assert_eq!(screen.kinds(), [4, 4, 4, 3, 6]);
+        // A, B, C loading; About, Settings, RustTV Remote.
+        assert_eq!(screen.kinds(), [4, 4, 4, 3, 6, 8]);
         assert_eq!(screen.artwork_calls(), 0);
 
         assert_eq!(screen.shared.platform.borrow().artwork_loaded_calls(), 0);
 
         screen.wait(20);
         screen.wait(20);
-        assert_eq!(screen.kinds(), [0, 0, 0, 3, 6]);
+        assert_eq!(screen.kinds(), [0, 0, 0, 3, 6, 8]);
         assert_eq!(screen.artwork_calls(), 3);
         // Told once, after the last picture, so it can free what it decoded.
         assert_eq!(screen.shared.platform.borrow().artwork_loaded_calls(), 1);
@@ -2271,8 +2298,9 @@ mod tests {
             screen.tap(DOWN);
             screen.tap(OK); // Hide from Home
             assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
-            // A, C, About, Settings, Hidden apps; focus on C, where B was.
-            assert_eq!(screen.kinds(), [0, 0, 3, 6, 5]);
+            // A, C, About, Settings, RustTV Remote, Hidden apps; focus on C,
+            // where B was.
+            assert_eq!(screen.kinds(), [0, 0, 3, 6, 8, 5]);
             assert_eq!(screen.window.get_focused_index(), 1);
             assert!(screen.launched().is_empty());
         }
@@ -2280,16 +2308,16 @@ mod tests {
 
         // Started again, with artwork loaded later as on Android: B's is not read.
         let screen = screen_with(abc().with_lazy_artwork(), Some(file.clone()));
-        assert_eq!(screen.kinds(), [4, 4, 3, 6, 5]);
+        assert_eq!(screen.kinds(), [4, 4, 3, 6, 8, 5]);
         screen.wait(20);
         screen.wait(20);
-        assert_eq!(screen.kinds(), [0, 0, 3, 6, 5]);
+        assert_eq!(screen.kinds(), [0, 0, 3, 6, 8, 5]);
         assert_eq!(screen.artwork_calls(), 2);
 
         // Its page reads it.
-        screen.tap(RIGHT);
-        screen.tap(RIGHT);
-        screen.tap(RIGHT);
+        for _ in 0..5 {
+            screen.tap(RIGHT);
+        }
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::Hidden));
         let page: Vec<SharedString> = screen
@@ -2309,7 +2337,7 @@ mod tests {
         // OK puts it back, before About; the page closes with focus on it.
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
-        assert_eq!(screen.kinds(), [0, 0, 0, 3, 6]);
+        assert_eq!(screen.kinds(), [0, 0, 0, 3, 6, 8]);
         assert_eq!(screen.window.get_focused_index(), 2);
         assert_eq!(screen.window.get_tiles().row_data(2).unwrap().label, "B");
         assert!(order_file::load(&file).hidden.is_empty());
@@ -2790,16 +2818,24 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let screen = screen_with_remote(dir.join("order.toml"));
-        // A, B, C, About, Settings; then the RustTV Remote section.
-        for _ in 0..4 {
+        // A, B, C, About, Settings, RustTV Remote: its own page.
+        for _ in 0..5 {
             screen.tap(RIGHT);
         }
         screen.tap(OK);
-        for _ in 0..3 {
-            screen.tap(DOWN);
-        }
-        screen.tap(RIGHT);
-        assert_eq!(screen.window.get_settings_row(), 0, "on Pair a phone");
+        assert_eq!(screen.window.get_mode(), mode_value(State::Remote));
+        assert_eq!(screen.window.get_remote_row(), 0, "on Pair a phone");
+        let event = |event| screen._controller.borrow_mut().remote_event(event);
+        // A phone's OK can't pair one: on this page it only has Back.
+        let phone_key = |name| RemoteEvent::Input {
+            phone: rusttv_remote::PhoneId([1; 16]),
+            message: PhoneMessage::Key {
+                name,
+                action: KeyAction::Press,
+            },
+        };
+        event(phone_key(PhoneKey::Ok));
+        assert_eq!(screen.window.get_mode(), mode_value(State::Remote));
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), 9, "the pairing screen opens");
         assert!(
@@ -2815,7 +2851,6 @@ mod tests {
         assert!(screen.window.get_pairing_qr().size().width > 100);
         assert!(screen.window.get_pairing_address().starts_with("http://"));
 
-        let event = |event| screen._controller.borrow_mut().remote_event(event);
         event(RemoteEvent::PairRequest {
             request: 7,
             name: "Pixel 7".into(),
@@ -2825,20 +2860,16 @@ mod tests {
         assert_eq!(screen.window.get_pairing_name(), "Pixel 7");
         assert_eq!(screen.window.get_pairing_code(), "05");
         // A phone's OK never answers: only the TV's remote does.
-        event(RemoteEvent::Input {
-            phone: rusttv_remote::PhoneId([1; 16]),
-            message: PhoneMessage::Key {
-                name: PhoneKey::Ok,
-                action: KeyAction::Press,
-            },
-        });
+        event(phone_key(PhoneKey::Ok));
         assert_eq!(screen.window.get_pairing_phase(), 1);
         screen.tap(OK);
         assert_eq!(screen.window.get_pairing_phase(), 2, "paired");
-        // Back to Settings by itself.
+        // Back to the page by itself, then Back to Home.
         screen.wait(2100);
-        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        assert_eq!(screen.window.get_mode(), mode_value(State::Remote));
         assert!(!screen.shared.platform.borrow().secure());
+        event(phone_key(PhoneKey::Back));
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -2853,8 +2884,8 @@ mod tests {
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
         settle(&screen);
-        // Animations, Updates, History, RustTV Remote.
-        assert_eq!(screen.window.get_settings_sections().row_count(), 4);
+        // Animations, Updates, History.
+        assert_eq!(screen.window.get_settings_sections().row_count(), 3);
         assert_eq!(screen.window.get_settings_rows().row_count(), 7);
         screen.tap(RIGHT); // focus on Normal, the current choice
         assert_eq!(screen.window.get_settings_row(), 4);

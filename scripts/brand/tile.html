@@ -4,7 +4,9 @@
 <style>
 /* The banners of the launcher's own tiles (direction B on the brand canvas):
    the whole banner is the amber tile, with the dark screen and its stand.
-   tile.html?about, ?settings or ?hidden picks the symbol. 3× of 320×180. */
+   tile.html?about, ?settings or ?hidden picks the symbol; ?remote shows
+   RustTV Remote's remote with its ring D-pad (remote-icon.html) instead of
+   the screen. 3× of 320×180. */
 body { width: 960px; height: 540px; overflow: hidden; }
 .page { position: absolute; left: 0; top: 0; width: 960px; height: 540px; gap: 30px;
   background: linear-gradient(155deg, var(--amber-light) 0%, var(--amber) 42%, var(--amber-deep) 100%);
@@ -16,6 +18,17 @@ body { width: 960px; height: 540px; overflow: hidden; }
 .r { font-size: 202px; transform: translate(-5.5px, 3.6px); }
 svg { display: block; }
 .symbol { display: none; }
+/* RustTV Remote: remote-icon.html's remote at --s: 560px. */
+.remote { display: none; width: 202px; height: 370px; border-radius: 84px; background: var(--ink);
+  box-sizing: border-box; box-shadow: inset 0 0 0 2px rgba(255,255,255,0.10), 0 22px 48px rgba(120,40,0,0.40);
+  flex-direction: column; align-items: center; padding-top: 39px; gap: 42px; }
+.ring { width: 140px; height: 140px; border-radius: 50%; box-sizing: border-box; border: 22px solid #FFFFFF;
+  display: flex; align-items: center; justify-content: center; }
+.ring::after { content: ""; width: 34%; height: 34%; border-radius: 50%; background: var(--amber); }
+.dots { display: flex; gap: 25px; }
+.dots i { width: 31px; height: 31px; border-radius: 50%; background: rgba(255,255,255,0.55); }
+body.remote-tile .screen, body.remote-tile .stand { display: none; }
+body.remote-tile .remote { display: flex; }
 </style>
 </head><body>
 <div class="page">
@@ -46,6 +59,11 @@ svg { display: block; }
 </svg>
 </div>
 <div class="stand"></div>
+<div class="remote"><div class="ring"></div><div class="dots"><i></i><i></i></div></div>
 </div>
-<script>document.getElementById(location.search.slice(1) || "about").style.display = "block";</script>
+<script>
+const tile = location.search.slice(1) || "about";
+if (tile === "remote") document.body.classList.add("remote-tile");
+else document.getElementById(tile).style.display = "block";
+</script>
 </body></html>

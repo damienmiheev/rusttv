@@ -1,17 +1,19 @@
-//! RustTV Remote in Settings (REMOTE.md § 2): the pairing screen (QR code,
-//! then "Allow?" with the match code and OK on the remote), the paired
-//! phones, and removing one. Phones can never do any of this themselves:
-//! ui.rs drops their input while the pairing screen is open.
+//! The RustTV Remote page (REMOTE.md § 2), opened from its Home tile: the
+//! pairing screen (QR code, then "Allow?" with the match code and OK on the
+//! remote), the paired phones, and removing one. Phones can never do any of
+//! this themselves: ui.rs passes them only Back on this page and nothing
+//! while the pairing screen is open.
 
 use std::time::Duration;
 
-use slint::{Image, Rgba8Pixel, SharedPixelBuffer, Timer};
+use slint::{ComponentHandle, Image, Model, Rgba8Pixel, SharedPixelBuffer, Timer};
 
-use super::{Controller, HomeWindow, settings_view};
+use super::{Controller, HomeWindow, SettingsRow, Strings, settings_view};
 use crate::model::Input;
 use crate::remote;
+use crate::remote_page::{Action, RemotePage};
 
-/// How long "paired" shows before the screen goes back to Settings.
+/// How long "paired" shows before the screen goes back to the page.
 const PAIRED_SHOWN: Duration = Duration::from_secs(2);
 /// How long the check code shows while a phone sets up trust.
 const TRUST_SHOWN: Duration = Duration::from_secs(180);
@@ -19,6 +21,9 @@ const TRUST_SHOWN: Duration = Duration::from_secs(180);
 /// Pixels per QR module; Slint scales the image to the screen without
 /// smoothing.
 const QR_SCALE: usize = 8;
+
+/// Phone rows the page shows at once; focus scrolls past them.
+const PAGE_ROWS: usize = 6;
 
 /// The pairing screen's state.
 pub(super) struct Pairing {
@@ -52,6 +57,38 @@ enum Phase {
 }
 
 impl Controller {
+    /// OK on the RustTV Remote tile: the page, with the paired phones.
+    pub(super) fn open_remote_page(&mut self) {
+        self.remote_page = Some(RemotePage::default());
+        self.settings_status = (settings_view::NO_STATUS, String::new());
+        self.phones_changed();
+    }
+
+    /// A key while the RustTV Remote page (or its pairing screen) is open.
+    pub(super) fn remote_page_input(&mut self, input: Input) {
+        if self.pairing.is_some() {
+            self.pairing_input(input);
+            return;
+        }
+        let Some(page) = &mut self.remote_page else {
+            return;
+        };
+        if matches!(input, Input::Up | Input::Down | Input::OkReleased) {
+            self.settings_status = (settings_view::NO_STATUS, String::new());
+        }
+        match page.handle(input) {
+            Some(Action::Close) => {
+                self.remote_page = None;
+                self.home.close_remote();
+                // With no phone left, the listener stops.
+                self.phones_changed();
+            }
+            Some(Action::PairPhone) => self.open_pairing(),
+            Some(Action::RemovePhone(id)) => self.remove_phone(id),
+            None => {}
+        }
+    }
+
     /// OK on "Pair a phone": starts the listener if needed, opens pairing
     /// and shows the QR code.
     pub(super) fn open_pairing(&mut self) {
@@ -145,7 +182,7 @@ impl Controller {
                 if let Some(pairing) = &mut self.pairing {
                     pairing.phase = Phase::Paired { name };
                 }
-                // Back to Settings by itself, where the phone is listed.
+                // Back to the page by itself, where the phone is listed.
                 let me = self.me.clone();
                 Timer::single_shot(PAIRED_SHOWN, move || {
                     if let Some(controller) = me.upgrade() {
@@ -225,20 +262,58 @@ impl Controller {
         self.phones_changed();
     }
 
-    /// Settings lists the phones again; with none left (and no pairing
-    /// screen), the listener stops.
+    /// The page lists the phones again; with none left (and neither the
+    /// page nor the pairing screen open), the listener stops.
     pub(super) fn phones_changed(&mut self) {
         let rows = self
             .remote
             .as_ref()
             .map(remote::Link::phone_rows)
             .unwrap_or_default();
-        if rows.is_empty() && self.pairing.is_none() && !self.options.remote_pairing {
+        if rows.is_empty()
+            && self.pairing.is_none()
+            && self.remote_page.is_none()
+            && !self.options.remote_pairing
+        {
             // Dropping the link stops the listener and its threads.
             self.remote = None;
         }
-        if let Some(page) = &mut self.settings {
+        if let Some(page) = &mut self.remote_page {
             page.set_phones(rows);
+        }
+    }
+
+    /// Fills the RustTV Remote page's rows.
+    pub(super) fn render_remote_page(&self, window: &HomeWindow) {
+        let Some(page) = &self.remote_page else {
+            return;
+        };
+        let strings = window.global::<Strings>();
+        let mut rows = vec![SettingsRow {
+            title: strings.invoke_pair_phone(),
+            detail: strings.invoke_pair_phone_detail(),
+            current: false,
+            dim: false,
+        }];
+        rows.extend(
+            page.phones()
+                .iter()
+                .enumerate()
+                .map(|(i, phone)| SettingsRow {
+                    title: phone.name.as_str().into(),
+                    detail: strings.invoke_phone_detail(page.removing() == Some(i + 1)),
+                    current: false,
+                    dim: false,
+                }),
+        );
+        window.set_remote_banner(self.builtins.remote.image.clone());
+        let row = page.row();
+        window.set_remote_row(i32::try_from(row).unwrap_or(i32::MAX));
+        window.set_remote_first_row(
+            i32::try_from(row.saturating_sub(PAGE_ROWS - 1)).unwrap_or(i32::MAX),
+        );
+        if !self.remote_rows.iter().eq(rows.iter().cloned()) {
+            self.remote_rows.set_vec(rows);
         }
     }
 

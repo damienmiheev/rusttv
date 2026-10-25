@@ -26,8 +26,8 @@ to its home screen.
    After pairing, the long-term secret never crosses the network.
 5. **Pairing a phone:** the TV asks "Allow *this phone*?" and shows a 2-digit
    match code, which the phone shows too. OK on the TV remote pairs, and the
-   pairing is recorded as a `tv` entry in the history. It can be revoked in
-   Settings.
+   pairing is recorded as a `tv` entry in the history. It can be revoked on
+   the RustTV Remote page.
 6. **Address:** a fixed IP, with no mDNS. If the address changes, scan the QR
    again. Settings recommends a DHCP reservation in the router.
 7. **New crates:**
@@ -68,12 +68,12 @@ to its home screen.
     - Everywhere else, swipes become arrow keys and a tap is OK.
     - The pointer needs a **narrow accessibility service**
       (§ 5 The pointer), off until the person switches it on.
-15. **Name:** "RustTV Remote", used for the Settings row, the page title and
+15. **Name:** "RustTV Remote", used for its Home tile, its page's title and
     the home-screen icon.
 16. **The phone's name** is typed on the phone during pairing, pre-filled
     from what the browser reports (for example "iPhone (Safari)"). It is 1–40
     characters, with control characters and bidi marks removed (the same rule
-    as folder names). It can be changed later in Settings.
+    as folder names). It can be changed later on the RustTV Remote page.
 17. **Two phones share one view:** every phone and the TV show the same focus
     and mode. The last action wins, as with two remotes.
 
@@ -93,9 +93,9 @@ to its home screen.
   first of `navigator.languages` among the launcher's 20, else English;
   right to left for Arabic and Hebrew), from `page/i18n.js`, checked by
   `page/i18n.test.mjs` in CI. Tiles show the apps' own banners (or icons),
-  see Storage. Not yet: pictures for the built-in tiles (About, Settings,
-  Hidden apps), renaming a folder from the phone (typing works), a
-  home-screen icon.
+  see Storage; the built-in tiles (About, Settings, RustTV Remote, Hidden
+  apps) show their banners too. Not yet: renaming a folder from the phone
+  (typing works).
 - **Look:** the launcher's colours, Inter, the RustTV icon and the built-in
   tile images.
   - Focus is shown as on the TV: the focused tile grows slightly, with a soft
@@ -162,19 +162,25 @@ to its home screen.
 
 ## 2. Pairing and authentication
 
-- **As built (2026-10-25):** Settings → RustTV Remote lists "Pair a phone"
-  and the paired phones (OK, then OK again, removes one). "Pair a phone"
+- **As built (2026-10-25):** RustTV Remote is a page of its own (owner
+  decision 2026-10-25), opened from its own built-in Home tile (`remote`,
+  after About and Settings; it moves like them, and its banner is the
+  remote from the phone's home-screen icon). The page shows that banner
+  and what a phone may do, then "Pair a phone" and the paired phones (OK,
+  then OK again, removes one). "Pair a phone"
   starts the listener if needed and opens a FLAG_SECURE screen with the QR
   code (drawn by the launcher from `qrcode`'s modules) and the TV's address
   (the source address of its route to the internet, found with a UDP
   socket that sends nothing). A phone that asks shows "Allow “name”?" and
   the code; only OK on the TV's remote allows it, Back refuses. Phone input
-  never reaches this screen, and in Settings a phone can only press Back.
+  never reaches this screen, and on the page a phone can only press Back.
   With no phone left, the listener stops. Not yet: the history entry for
   pairing and removing (needs the phones in the history snapshot, a format
   change of its own) and an on/off switch. `rusttv-launcher-desktop
-  --demo-remote <dir>` renders the section and the pairing screen.
-- **Starting:** "Pair a phone" in Settings shows a QR code with
+  --demo-remote <dir>` renders the page and the pairing screen. The tile
+  is not in the history snapshot: every Home has it, and RustTV builds that
+  don't know its name must still read the history (HISTORY.md § 1).
+- **Starting:** "Pair a phone" on the RustTV Remote page shows a QR code with
   `http://<ip>:8484/#p=<secret>`.
   - The secret is 32 random bytes from `SecureRandom`, valid for 2 minutes
     and for one use, and only while that screen is open.
@@ -214,7 +220,7 @@ to its home screen.
     that direction, which neither side sends: a message can't be replayed,
     reordered, dropped or reflected without failing to open.
   - Tile pictures travel the same way, one message each.
-- **Revoking:** in Settings, a phone can be revoked or renamed (each one a
+- **Revoking:** on the RustTV Remote page, a phone can be revoked or renamed (each one a
   `tv` history entry). When the last phone is revoked, the listener stops.
 
 ### Trusting the TV (HTTPS)
@@ -375,10 +381,11 @@ echoed.
   - on the hidden apps page, a tap on an app puts it back on Home, as OK
     does.
 
-  Settings and About show on the phone only as their name; there, as
-  before, a phone can only press Back. The phone shows Back only where the
-  TV's Back does something (a folder, the menu, a move, the hidden apps
-  page, Settings, About, typing).
+  Settings, About and the RustTV Remote page show on the phone only as
+  their name; there, as before, a phone can only press Back. The phone
+  shows Back only where the TV's Back does something (a folder, the menu,
+  a move, the hidden apps page, Settings, About, the RustTV Remote page,
+  typing).
 
   The review/approval screen **drops every phone input**: phone keys arrive
   through RustTV's own socket, so they can be told apart from the remote.
@@ -447,7 +454,7 @@ talks to. Its protocol is documented by open-source clients such as
   - pair or revoke phones;
   - write to the history store;
   - pass the review screen.
-- **The person's own Settings actions:** pairing a phone, revoking one, and
+- **The person's own actions on the RustTV Remote page:** pairing a phone, revoking one, and
   pairing with the Remote Service. Each one:
   - shows a preview ("This phone will be able to press keys and type on this
     TV");
@@ -469,7 +476,7 @@ talks to. Its protocol is documented by open-source clients such as
 - **Phase 1 — the mirror and the keyboard inside RustTV:**
   - the `rusttv-remote` crate: protocol, auth, encryption, server, page;
   - the remote thread;
-  - the Settings section and the pairing prompt;
+  - the RustTV Remote page (its own Home tile) and the pairing prompt;
   - the `HomeView` push and banner transfer;
   - phone editing;
   - history entries.

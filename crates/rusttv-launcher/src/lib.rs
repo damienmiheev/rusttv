@@ -14,6 +14,7 @@ mod model;
 mod order_file;
 mod platform;
 mod remote;
+mod remote_page;
 mod review;
 mod settings;
 mod ui;

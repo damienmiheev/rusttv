@@ -82,7 +82,7 @@ pub enum PhoneMessage {
     /// A choice in the open long-press menu.
     Menu { choice: MenuChoice },
     /// The picture of an app's tile, by component, or of a built-in tile
-    /// (`about`, `settings`, `hidden-apps`): answered with a
+    /// (`about`, `settings`, `remote`, `hidden-apps`): answered with a
     /// [`TvMessage::Banner`] to this phone only.
     Banner { id: String },
     /// Moving a tile of the Home mirror: `over` is the tile it is over;
@@ -271,8 +271,8 @@ pub enum MenuChoice {
 /// A tile of the Home mirror.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TileView {
-    /// Tile name: a component, `folder:<n>`, `about`, `settings` or
-    /// `hidden-apps`.
+    /// Tile name: a component, `folder:<n>`, `about`, `settings`,
+    /// `remote` or `hidden-apps`.
     pub id: String,
     pub label: String,
     /// The banner's version (changes when the app updates), if it has one.
@@ -425,13 +425,12 @@ fn is_component(name: &str) -> bool {
     })
 }
 
-/// A tile id: `about`, `settings`, `hidden-apps`, `folder:<number>` or a
-/// component.
 /// One of the launcher's own tiles.
 fn is_builtin(id: &str) -> bool {
-    matches!(id, "about" | "settings" | "hidden-apps")
+    matches!(id, "about" | "settings" | "remote" | "hidden-apps")
 }
 
+/// A tile id: a built-in tile, `folder:<number>` or a component.
 fn is_tile_id(id: &str) -> bool {
     is_builtin(id)
         || id
