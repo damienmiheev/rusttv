@@ -433,6 +433,117 @@ fn pairing_needs_the_secret_the_person_and_one_use() {
     assert_eq!(remote.wait_event(WAIT), Some(Event::PairingClosed));
 }
 
+/// Sends a sealed message and waits until the listener has read it: a key
+/// after it reaches the launcher only once it has.
+fn send_sealed_and_settle(
+    remote: &Remote,
+    client: &mut Client,
+    session: &mut Session,
+    id: PhoneId,
+    message: &PhoneMessage,
+) {
+    let key = PhoneMessage::Key {
+        name: Key::Back,
+        action: KeyAction::Press,
+    };
+    for (n, message) in [message, &key].into_iter().enumerate() {
+        let json = serde_json::to_string(message).unwrap();
+        let frame = session.seal(json.as_bytes(), [n as u8 + 40; 24]).unwrap();
+        client.send(Message::binary(frame)).unwrap();
+    }
+    assert_eq!(
+        remote.wait_event(WAIT),
+        Some(Event::Input {
+            phone: id,
+            message: key
+        })
+    );
+}
+
+/// A Home Screen icon trading a handover token: the keys it gets, or `None`
+/// when the TV refuses.
+fn redeem(
+    client: &mut Client,
+    id: PhoneId,
+    token: &[u8; 32],
+    nonce: &[u8; 32],
+) -> Option<PhoneKeys> {
+    send(
+        client,
+        &PhoneMessage::Redeem {
+            phone_id: id,
+            phone_nonce: Bytes32(*nonce),
+            proof: Bytes32(auth::handover_proof(token, nonce, &id)),
+        },
+    );
+    loop {
+        match client.read().unwrap() {
+            Message::Binary(frame) => {
+                let mut session = Session::phone(&auth::handover_key(token, nonce));
+                let plain = session.open(&frame, 1024).unwrap();
+                let TvMessage::Keys { auth, key } = serde_json::from_slice(&plain).unwrap() else {
+                    panic!("expected keys");
+                };
+                return Some(PhoneKeys {
+                    auth: auth.0,
+                    key: key.0,
+                });
+            }
+            Message::Text(text) => {
+                assert_eq!(
+                    serde_json::from_str::<TvMessage>(text.as_str()).unwrap(),
+                    TvMessage::Denied
+                );
+                return None;
+            }
+            Message::Ping(_) | Message::Pong(_) => {}
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn a_home_screen_icon_trades_a_handover_token_once_for_the_keys() {
+    let remote = start(Phones::default());
+    let mut browser = connect(&remote);
+    let id = pair(&remote, &mut browser);
+    let mut session = authenticate(&remote, &mut browser, id);
+    let token = [0x33; 32];
+    let handover = PhoneMessage::Handover {
+        token: Bytes32(token),
+    };
+    send_sealed_and_settle(&remote, &mut browser, &mut session, id, &handover);
+
+    // A wrong token, or the right one for another phone, gets nothing.
+    let mut stranger = connect(&remote);
+    assert_eq!(redeem(&mut stranger, id, &[0x44; 32], &[0x55; 32]), None);
+    let mut stranger = connect(&remote);
+    assert_eq!(
+        redeem(&mut stranger, PhoneId([9; 16]), &token, &[0x55; 32]),
+        None
+    );
+
+    // The icon gets this phone's keys and signs in with them.
+    let mut icon = connect(&remote);
+    let keys = redeem(&mut icon, id, &token, &[0x66; 32]).unwrap();
+    assert_eq!(keys, PhoneKeys::derive(&SECRET, &NONCE));
+    let _ = authenticate(&remote, &mut icon, id);
+
+    // One use.
+    let mut again = connect(&remote);
+    assert_eq!(redeem(&mut again, id, &token, &[0x77; 32]), None);
+
+    // Removing the phone drops its tokens.
+    let token = [0x88; 32];
+    let handover = PhoneMessage::Handover {
+        token: Bytes32(token),
+    };
+    send_sealed_and_settle(&remote, &mut browser, &mut session, id, &handover);
+    assert!(remote.revoke(&id).is_some());
+    let mut late = connect(&remote);
+    assert_eq!(redeem(&mut late, id, &token, &[0x99; 32]), None);
+}
+
 #[test]
 fn revoking_closes_the_connection() {
     let remote = start(Phones::default());

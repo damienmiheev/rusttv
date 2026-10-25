@@ -24,9 +24,9 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overscroll-behavior: none; }
 body { font-family: Inter, -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none; }
-button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer;
-  transition: transform 160ms var(--ease), background-color 120ms ease; }
-button:active { transform: scale(0.97); }
+button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; }
+button, a.primary { transition: transform 160ms var(--ease), background-color 120ms ease; -webkit-tap-highlight-color: transparent; }
+button:active, a.primary:active { transform: scale(0.97); }
 .tile:active .art { transform: scale(0.97); }
 .tile.focused:active .art { transform: scale(1.02); }
 @media (prefers-reduced-motion: reduce) {
@@ -55,7 +55,10 @@ header { position: relative; display: flex; align-items: center; gap: 12px; padd
 .hero p { margin: 0; font-size: 13px; color: var(--dim); }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(clamp(130px, 14vw, 240px), 1fr)); gap: 16px 14px; }
 .tile { display: flex; flex-direction: column; gap: 9px; text-align: start; touch-action: pan-y; }
-.art { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center;
+/* isolation: WebKit stops clipping to the rounded corners while a
+   transform changes (pressed, then focused), and the picture showed square
+   around the card. */
+.art { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; isolation: isolate; display: flex; align-items: center; justify-content: center;
   box-shadow: 0 4px 10px #00000040; transition: transform 150ms var(--ease), box-shadow 150ms var(--ease); }
 .art span { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; color: #fff; padding: 0 10px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .art img { pointer-events: none; -webkit-user-drag: none; }
@@ -238,6 +241,14 @@ input { font: inherit; height: 52px; border-radius: 14px; border: 2px solid var(
       <b>RustTV</b>
       <div class="status"><span class="dot" id="dot"></span><span id="status" data-t="connecting"></span></div>
     </div>
+    <!-- In a phone's browser: opens the Add to Home Screen hint again. -->
+    <button class="round" id="install-open" type="button" data-t-label="install_title" hidden>
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4.5" width="15" height="15" rx="4"/><path d="M12 8.5v7M8.5 12h7"/></svg>
+    </button>
+    <!-- Over plain HTTP: opens the trust setup again after "Not now". -->
+    <button class="round" id="trust-open" type="button" data-t-label="trust_title" hidden>
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9.5" rx="2.5"/><path d="M8.5 11V8a3.5 3.5 0 0 1 6.8-1.2"/></svg>
+    </button>
     <button class="round" data-key="power" data-t-label="power" data-other-apps hidden>
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 3.5v7.5"/><path d="M6.6 7a7.5 7.5 0 1 0 10.8 0"/></svg>
     </button>

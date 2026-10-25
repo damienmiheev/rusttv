@@ -120,9 +120,28 @@ to its home screen.
   and on an iPad, about 6 on a computer, like the TV. Sheets and cards keep
   a phone's width on wide screens, and nothing sits under a notch.
 - **Add to Home Screen:** once paired, a phone browser that didn't open the
-  page from the Home Screen suggests adding it (iOS: Share → Add to Home
-  Screen; Android: the browser menu). "Got it" ends the suggestion, "Not
-  now" for a week. Never while the pairing link is in the address.
+  page from the Home Screen suggests adding it (iOS: Share, in Safari's
+  toolbar or other browsers' address bar, then Add to Home Screen;
+  Android: the browser menu). "Got it" ends the suggestion, "Not now" for
+  a week; a button in the header opens it again any time. Never while the
+  pairing link is in the address.
+  - **The icon starts paired (iOS):** iOS gives every Home Screen web app
+    storage of its own, shared with no browser, and a QR code always opens
+    in the browser, so an icon could never pair. In a browser on iOS the
+    address therefore always carries a one-time **handover token**
+    (`#h=<phone id>.<token>`): 32 random bytes the page registers with the
+    TV over its sealed session on each connection. An icon without keys
+    sends `redeem` with a fresh nonce and an HMAC proof of the token
+    (`rusttv-remote/1/handover`); the TV answers with the phone's keys
+    sealed under a key from the token and that nonce
+    (`rusttv-remote/1/handover-key`), forgets the token, and the icon signs
+    in as usual. The TV keeps a phone's 3 newest tokens for 24 hours, in
+    memory only (a restart forgets them), and drops them when the phone is
+    removed. A browser can't learn anything that names the phone (no MAC
+    address or device id), and its address on the network is no proof, so
+    the token is the only way across. Android's icons open in the browser,
+    with its storage, and need none. An icon that gets nothing says to add
+    it again from the browser.
 - **No secure context on plain HTTP:**
   - What's missing: Web Crypto, clipboard reads, service workers, and so a
     real install on Android Chrome. Its "Add to Home screen" still makes a
@@ -246,7 +265,16 @@ plain page as before.
   your TV" → Set up. The TV opens a "Trust this TV" screen with the phone's
   name, the certificate's name and a **check code**: the first 6 bytes of
   the certificate's SHA-256 fingerprint ("C5 8B 5F 12 9A 0E"). The phone
-  downloads `/tv.crt` and shows short steps for its platform. Before
+  downloads `/tv.crt` and shows short steps for its platform. On iOS only
+  Safari hands a certificate to Settings: in any other browser (Chrome,
+  Firefox, Edge…) Download opens Safari with `x-safari-https://`, the only
+  form iOS allows, so Safari warns once that the TV's HTTPS isn't trusted
+  yet, and the step says what to tap; it also names the plain address to
+  open by hand. Android installs it from its own Settings whichever
+  browser downloaded it; Firefox for Android keeps its own store and stays
+  on plain HTTP (where it still has the motion sensors). "Not now" holds
+  for a week and for that pairing only, and a lock button in the header
+  opens the setup again any time. Before
   installing, the person compares the code with the fingerprint the phone's
   own Settings show (iOS: the profile's More Details; Android: Trusted
   credentials): a tampered page can't fake that screen, and 48 bits can't

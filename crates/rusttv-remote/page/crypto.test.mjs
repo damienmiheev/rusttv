@@ -49,6 +49,8 @@ eq(C.hex(keys.auth), "022c6e5321ecdd6d5f573853b9b8d58e16320a6cdb45c0fedeeba28c86
 eq(C.hex(keys.key), "2cccd5037566ae24a4921e84b37296e87e59a923f26fdd40b1143b08fd1d5268", "session seed");
 eq(C.hex(C.authResponse(keys.auth, CHALLENGE, ID)), "8619ebc32fc9c6ffdd6e2c4f1eba95bef2dad871104daaab7513ef70798aa80d", "auth response");
 eq(C.hex(C.sessionKey(keys.key, CHALLENGE)), "0d42934d0f8d09a23873d11d8a56cd1f8a9bf3d9604f0c2e96f18074661d735f", "session key");
+eq(C.hex(C.handoverProof(SECRET, NONCE, ID)), "24fe519bc7c508e33d69669a79d3824fc9b03837fd75866f8806175b53fb621c", "handover proof");
+eq(C.hex(C.handoverKey(SECRET, NONCE)), "3db785d4f42218527494c55f3b5543ba7fa14668388f011e92a62d6dbaeb74cc", "handover key");
 
 // The crate's sealed frame (src/crypto.rs test_vector).
 const phone = new C.Session(fill(0x55, 32));

@@ -51,6 +51,15 @@
     store.set({ phone_id: moved[1], auth: moved[2], key: moved[3] });
   }
   let credentials = store.get();
+  // A Home Screen icon's address carries a one-time handover token from
+  // the browser it was added in (iOS gives the icon storage of its own):
+  // without keys, it trades the token for them (REMOTE.md § 1).
+  const handover = location.hash.match(/^#h=([0-9a-f]{32})\.([0-9a-f]{64})$/);
+  let redeeming = null; // { phone_id, token, nonce } until the keys come
+  if (handover) {
+    history.replaceState(null, "", location.pathname);
+    if (!credentials) redeeming = { phone_id: handover[1], token: C.unhex(handover[2], 32), nonce: random(32) };
+  }
   let pairing = null; // { secret, nonce, name } while pairing
   let socket = null, session = null, challenge = null;
   let retry = 0, retryTimer = 0;
@@ -94,10 +103,13 @@
       $("phone-name").value = await guessName();
       return;
     }
-    if (credentials) {
+    if (credentials || redeeming) {
       show("main");
       connect();
     } else {
+      // A Home Screen icon without keys can't pair itself: a QR code always
+      // opens in the browser.
+      if (standalone()) $("scan-text").textContent = t("home_unpaired");
       show("scan");
     }
   }
@@ -134,6 +146,13 @@
           phone_nonce: C.hex(pairing.nonce),
           name: pairing.name,
           proof: C.hex(C.pairingProof(pairing.secret, pairing.nonce, pairing.name)),
+        });
+      } else if (redeeming) {
+        sendText({
+          type: "redeem",
+          phone_id: redeeming.phone_id,
+          phone_nonce: C.hex(redeeming.nonce),
+          proof: C.hex(C.handoverProof(redeeming.token, redeeming.nonce, C.unhex(redeeming.phone_id, 16))),
         });
       } else if (credentials) {
         sendText({ type: "hello", phone_id: credentials.phone_id });
@@ -187,12 +206,19 @@
       challenge = null;
       retry = 0;
       setStatus(true, t("connected"));
+      offerHandover();
       checkTrust();
     } else if (message.type === "denied") {
       if (pairing?.nonce) {
         failPairing(t("refused"));
+      } else if (redeeming) {
+        // The token was spent, too old, or the TV restarted since.
+        redeeming = null;
+        $("scan-text").textContent = t("home_unpaired");
+        show("scan");
       } else {
-        // The TV doesn't know this phone any more (it was removed in Settings).
+        // The TV doesn't know this phone any more (removed on the RustTV
+        // Remote page).
         credentials = null;
         store.clear();
         $("scan-text").textContent = t("unpaired");
@@ -209,6 +235,7 @@
   }
 
   function onSealed(data) {
+    if (redeeming && !session) return gotKeys(new Uint8Array(data));
     const plain = session?.open(new Uint8Array(data));
     if (!plain) {
       socket?.close();
@@ -219,6 +246,38 @@
     } catch {
       socket?.close();
     }
+  }
+
+  // The TV's answer to a handover token: this phone's keys, sealed under a
+  // key from the token. Then the icon signs in as usual.
+  function gotKeys(frame) {
+    const plain = new C.Session(C.handoverKey(redeeming.token, redeeming.nonce)).open(frame);
+    let keys = null;
+    try {
+      keys = plain && JSON.parse(decoder.decode(plain));
+    } catch {
+      // Not keys: refused below.
+    }
+    if (keys?.type !== "keys" || !C.unhex(keys.auth, 32) || !C.unhex(keys.key, 32)) {
+      socket?.close();
+      return;
+    }
+    credentials = { phone_id: redeeming.phone_id, auth: keys.auth, key: keys.key };
+    store.set(credentials);
+    redeeming = null;
+    sendText({ type: "hello", phone_id: credentials.phone_id });
+  }
+
+  // In a browser on iOS, the address always carries a fresh one-time token,
+  // so a Home Screen icon added from it, with or without the hint, starts
+  // paired. The TV keeps a phone's 3 newest for a day. (Android's icons open
+  // in the browser, with its storage.)
+  function offerHandover() {
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
+    if (!ios || standalone() || (location.hash && !location.hash.startsWith("#h="))) return;
+    const token = random(32);
+    send({ type: "handover", token: C.hex(token) });
+    history.replaceState(null, "", `${location.pathname}#h=${credentials.phone_id}.${C.hex(token)}`);
   }
 
   document.addEventListener("visibilitychange", () => {
@@ -518,9 +577,29 @@
     if (!field && !$("typing").hidden && typingAsked) closeTyping();
   }
 
+  // A short tap felt in the hand. iOS has no navigator.vibrate, but since
+  // iOS 18 its browsers tick when a switch checkbox flips, also when its
+  // label is clicked from script.
+  function haptic(ms) {
+    if (navigator.vibrate) {
+      navigator.vibrate(ms);
+      return;
+    }
+    const label = document.createElement("label");
+    label.ariaHidden = "true";
+    label.style.display = "none";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.setAttribute("switch", "");
+    label.append(input);
+    document.head.append(label);
+    label.click();
+    label.remove();
+  }
+
   // --- Keys -------------------------------------------------------------------
   function press(name, action = "press") {
-    if (navigator.vibrate) navigator.vibrate(8);
+    haptic(8);
     send({ type: "key", name, action });
   }
   document.addEventListener("click", (event) => {
@@ -544,7 +623,7 @@
     gesture.timer = setTimeout(() => {
       if (!gesture) return;
       gesture.held = true;
-      if (navigator.vibrate) navigator.vibrate(15);
+      haptic(15);
     }, HOLD);
   }
 
@@ -582,12 +661,21 @@
         if (!inside) over = null;
       }
       // Over the middle of another tile's picture: rest there for a folder.
-      // Near its edges: take its place.
+      // Near its edges: take its place. Once a folder is being made, it
+      // holds while the finger stays over that picture or just past it,
+      // so a finger that wobbles doesn't drop it; only leaving does.
+      const middle = (id, reach) => {
+        const art = document.querySelector(`.tile[data-id="${CSS.escape(id)}"] .art`)?.getBoundingClientRect();
+        return !!art && Math.abs(event.clientX - (art.left + art.width / 2)) < art.width * reach
+          && Math.abs(event.clientY - (art.top + art.height / 2)) < art.height * reach;
+      };
       let on = false;
-      if (over && over !== gesture.id) {
-        const art = document.querySelector(`.tile[data-id="${CSS.escape(over)}"] .art`)?.getBoundingClientRect();
-        on = !!art && Math.abs(event.clientX - (art.left + art.width / 2)) < art.width * 0.25
-          && Math.abs(event.clientY - (art.top + art.height / 2)) < art.height * 0.3;
+      // (Outside an open folder's panel, over is null: the app leaves it.)
+      if (over !== null && gesture.on && gesture.over !== gesture.id && middle(gesture.over, 0.65)) {
+        over = gesture.over;
+        on = true;
+      } else if (over && over !== gesture.id) {
+        on = middle(over, 0.35);
       }
       // Only where the finger stays a moment: crossing tiles on the way
       // must not shuffle them (and the shuffle can undo itself).
@@ -840,19 +928,28 @@
   // --- Add to Home Screen ---------------------------------------------------------
   // Suggested once paired (never with the pairing link in the address, which
   // the Home Screen would keep), until "Got it", or a week after "Not now".
-  const INSTALL = "rusttv-remote-install";
+  // "-2": icons added before the keys travelled with them start unpaired,
+  // so every phone is offered the hint once more.
+  const INSTALL = "rusttv-remote-install-2";
+  function standalone() {
+    return matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  }
   const WEEK = 7 * 24 * 3600 * 1000;
-  function suggestInstall() {
-    const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  // `asked`: the person tapped the header button, so "Not now" and
+  // "Got it" don't hold it back.
+  function suggestInstall(asked = false) {
     const ios = /iPhone|iPad|iPod/.test(navigator.userAgent);
-    if (standalone || location.hash || (!ios && !/Android/.test(navigator.userAgent))) return;
+    const ours = location.hash.startsWith("#h=");
+    if (standalone() || (location.hash && !ours) || (!ios && !/Android/.test(navigator.userAgent))) return;
+    $("install-open").hidden = false;
     let seen = null;
     try {
       seen = JSON.parse(localStorage.getItem(INSTALL));
     } catch {
       // Unreadable: suggest again.
     }
-    if (seen && (seen.done || Date.now() - seen.at < WEEK)) return;
+    if (!asked && seen && (seen.done || Date.now() - seen.at < WEEK)) return;
+    $("trust").hidden = true;
     $("install-text").textContent = t(ios ? "install_ios" : "install_android");
     $("install").hidden = false;
   }
@@ -865,6 +962,7 @@
     }
   }
   $("install-ok").addEventListener("click", () => closeInstall(true));
+  $("install-open").addEventListener("click", () => suggestInstall(true));
   $("install-later").addEventListener("click", () => closeInstall(false));
 
   // --- Trusting the TV (REMOTE.md § 2) ------------------------------------------
@@ -887,6 +985,7 @@
       suggestInstall();
       return;
     }
+    $("trust-open").hidden = false;
     if (await phoneTrustsTv()) {
       const { phone_id: id, auth, key } = credentials;
       location.replace(`https://${location.hostname}:${SECURE_PORT}/#k=${id}.${auth}.${key}`);
@@ -898,7 +997,9 @@
     } catch {
       // Unreadable: offer again.
     }
-    if (seen && Date.now() - seen.at < WEEK) {
+    // "Not now" holds for a week, and only for this pairing: paired again
+    // (after the TV removed the phone), it is offered again.
+    if (seen && seen.phone === credentials.phone_id && Date.now() - seen.at < WEEK) {
       suggestInstall();
     } else if (!trustOffered) {
       trustOffered = true;
@@ -910,7 +1011,18 @@
     // The TV shows the code to compare before installing.
     send({ type: "trust" });
     const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
-    $("trust-steps").replaceChildren(...t(ios ? "trust_ios" : "trust_android").split("\n").map((step) => {
+    const steps = t(ios ? "trust_ios" : "trust_android").split("\n");
+    // On iOS only Safari hands a certificate to Settings; other browsers
+    // (Chrome, Firefox, Edge…) just save the file. Their Download opens
+    // Safari, and the step names the address in case it doesn't.
+    if (ios && /CriOS|FxiOS|EdgiOS|OPiOS|GSA\/|DuckDuckGo|YaBrowser/.test(navigator.userAgent)) {
+      const certificate = `http://${location.host}/tv.crt`;
+      steps[0] = t("trust_in_safari", certificate);
+      // iOS opens Safari from a link only for https: Safari warns once,
+      // since it doesn't trust the TV yet (the step says what to tap).
+      $("trust-download").href = `x-safari-https://${location.hostname}:${SECURE_PORT}/tv.crt`;
+    }
+    $("trust-steps").replaceChildren(...steps.map((step) => {
       const item = document.createElement("li");
       item.textContent = step;
       return item;
@@ -919,10 +1031,15 @@
     $("trust-intro").hidden = true;
     $("trust-start").hidden = true;
   });
+  $("trust-download").addEventListener("click", () => haptic(8));
+  $("trust-open").addEventListener("click", () => {
+    $("install").hidden = true;
+    $("trust").hidden = false;
+  });
   $("trust-later").addEventListener("click", () => {
     $("trust").hidden = true;
     try {
-      localStorage.setItem(TRUST, JSON.stringify({ at: Date.now() }));
+      localStorage.setItem(TRUST, JSON.stringify({ at: Date.now(), phone: credentials?.phone_id }));
     } catch {
       // Private browsing: offered again next time.
     }
