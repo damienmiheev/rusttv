@@ -22,6 +22,13 @@ field in `--json` output says which contract you get, CLI.md).
   `folder_removed`, `folder_renamed` and `in_folder`, and `history show` may
   include `launcher.folders` (CLI.md).
 
+### Releases
+
+- Every release file has a GitHub build provenance attestation
+  (`gh attestation verify <file> --repo damienmiheev/rusttv`), and every
+  binary a CycloneDX SBOM: two in each CLI archive, one per launcher ABI
+  next to the APKs (RELEASE.md).
+
 ## 0.1.0 (2026-10-24)
 
 First public release (ROADMAP Phase 6).

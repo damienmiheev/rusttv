@@ -9,15 +9,25 @@ then publishes. The signing keys are in no other workflow.
 
 | File | Built by | Signed |
 |---|---|---|
-| `rusttv-<version>-<target>.tar.gz` for `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`: `rusttv`, `rusttv-mcp`, README.md, CLI.md, MCP.md, SECURITY.md, LICENSE-MIT, LICENSE-APACHE, THIRD_PARTY_NOTICES.txt | `.github/workflows/release-build.yml` | No (SHA-256 in `SHA256SUMS`) |
+| `rusttv-<version>-<target>.tar.gz` for `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`: `rusttv`, `rusttv-mcp`, README.md, CLI.md, MCP.md, SECURITY.md, LICENSE-MIT, LICENSE-APACHE, THIRD_PARTY_NOTICES.txt, and the CycloneDX SBOMs `rusttv.cdx.json` and `rusttv-mcp.cdx.json` for that target | `.github/workflows/release-build.yml` | No (SHA-256 in `SHA256SUMS`) |
+| `rusttv-launcher-<version>-<abi>.cdx.json`: CycloneDX SBOM of the launcher's Rust code for each ABI (the APK has no other libraries) | the same workflow, with `cargo-cyclonedx` | No (SHA-256 in `SHA256SUMS`) |
 | `rusttv-launcher-<version>-<abi>.apk` for `arm64-v8a`, `armeabi-v7a`, `x86_64` | the same workflow, unsigned (`android/build.sh` with `RUSTTV_UNSIGNED=1`) | Release key, by `.github/workflows/release-sign.yml` after the owner's approval (below) |
-| `SHA256SUMS` covering all of the above | the Release build (CLI), Release sign (APKs) | Update signing key: `SHA256SUMS.minisig` (below) |
+| `SHA256SUMS` covering all of the above | the Release build (CLI, SBOMs), Release sign (APKs) | Update signing key: `SHA256SUMS.minisig` (below) |
 | `SHA256SUMS.minisig` | Release sign (`minisign -Sm SHA256SUMS`) | — |
 
 `rusttv update` (CLI.md § Updates) installs the CLI archive and the APK for
 the device's ABI only if `SHA256SUMS.minisig` is a valid signature of
 `SHA256SUMS` by the update signing key and the file matches `SHA256SUMS`, so
 the file names above are a contract: keep them exactly.
+
+Every file in `SHA256SUMS` also has a GitHub **build provenance attestation**
+(Sigstore-signed, made with `actions/attest`): the Release build attests the
+CLI archives and SBOMs, Release sign the signed APKs. `gh attestation verify
+<file> --repo damienmiheev/rusttv` shows which workflow run and commit made
+it. Attestations are extra evidence for people checking a release by hand;
+`rusttv update` still trusts only `SHA256SUMS.minisig` (SECURITY.md § Updates).
+The SBOMs list every crate in each binary, from `Cargo.lock` and the target's
+dependencies; the licence texts are in THIRD_PARTY_NOTICES.txt.
 
 The macOS binaries are not notarized; Gatekeeper blocks them until the user
 runs `xattr -d com.apple.quarantine rusttv rusttv-mcp` (say so in the release
@@ -211,16 +221,16 @@ Work on a release branch; tick each item in the release pull request.
 
 - [ ] The release pull request is merged into `main`.
 - [ ] Run **Tag release** on `main` (Actions → Tag release → Run workflow, or `gh workflow run tag-release.yml --ref main`) once CI on `main`'s head has passed. It checks that `v<version>` doesn't exist yet, that the CHANGELOG has the section, that `RELEASE_SIGNING_KEY` is set and that CI passed, tags `main`'s head as `v<version>` and starts the Release build on the tag. The tag is made by GitHub Actions, so it isn't GPG-signed; `SHA256SUMS.minisig` is what proves a release. A signed tag pushed by hand (`git tag -s v<version> -m "RustTV <version>" && git push origin v<version>`) works too and starts the Release build itself.
-- [ ] The **Release build** of the tag; all jobs pass. Its last job creates a **draft** GitHub release with the CLI archives, `SHA256SUMS` (CLI only so far) and notes from the CHANGELOG section plus `.github/release-notes.md` (install, checking the files, safety). It fails if `RELEASE_SIGNING_KEY` isn't set.
+- [ ] The **Release build** of the tag; all jobs pass. It attests the provenance of everything in `SHA256SUMS`. Its last job creates a **draft** GitHub release with the CLI archives, the launcher SBOMs, `SHA256SUMS` (no APKs yet) and notes from the CHANGELOG section plus `.github/release-notes.md` (install, checking the files, safety). It fails if `RELEASE_SIGNING_KEY` isn't set.
 - [ ] The Release build then starts **Release sign** (`Sign v<version>`; by hand: `gh workflow run release-sign.yml --ref main -f tag=v<version>`). Its `check` job, without the keys:
   - waits for the Release build to finish and checks that the tag is on `main`, names the Cargo version, and that the run is a successful Release build of the tag's commit;
-  - checks the draft's CLI archives against the run's own `SHA256SUMS` (artifacts can't change after upload, so every signed file comes from that run);
+  - checks the draft's CLI archives and SBOMs against the run's own `SHA256SUMS` (artifacts can't change after upload, so every signed file comes from that run);
   - checks the run's unsigned APKs: alignment and `check-dex.sh`;
   - lists every SHA-256 in its summary.
 
-  Then its `sign` job waits for the owner: open the run, read the summary, **Review deployments** → `release` → **Approve**. It signs the APKs with the release key and checks the certificate, adds their sums to `SHA256SUMS`, signs it with the update signing key, checks the signature against `RELEASE_SIGNING_KEY` at the tag, and uploads the APKs, `SHA256SUMS` and `SHA256SUMS.minisig` to the draft. Re-running either workflow is safe.
+  Then its `sign` job waits for the owner: open the run, read the summary, **Review deployments** → `release` → **Approve**. It signs the APKs with the release key and checks the certificate, adds their sums to `SHA256SUMS`, signs it with the update signing key, checks the signature against `RELEASE_SIGNING_KEY` at the tag, and uploads the APKs, `SHA256SUMS` and `SHA256SUMS.minisig` to the draft. Its `attest` job, without the keys, then attests the signed APKs. Re-running either workflow is safe.
 - [ ] The unsigned APKs are workflow artifacts, kept 90 days: sign within that time, or build the tag again.
-- [ ] Smoke test with the draft's files (`gh release download v<version>`): `rusttv --version` and `rusttv device list` on macOS and Linux; the signed APK installs (`rusttv launcher install --apk …`) and starts on the emulator and on at least one TV with a compat profile; About shows the version and the notices.
+- [ ] Smoke test with the draft's files (`gh release download v<version>`): `rusttv --version` and `rusttv device list` on macOS and Linux; the signed APK installs (`rusttv launcher install --apk …`) and starts on the emulator and on at least one TV with a compat profile; About shows the version and the notices; `gh attestation verify` passes for one CLI archive and one APK.
 - [ ] Read the draft's notes (supported devices, known issues), then **Publish** it on GitHub (not as a pre-release, which `rusttv update` ignores). This works from a phone.
 - [ ] From the previous release's binary (none for the first release): `rusttv update check` sees the new version; `rusttv update cli --dry-run` and `rusttv update launcher --dry-run` verify and plan it.
 

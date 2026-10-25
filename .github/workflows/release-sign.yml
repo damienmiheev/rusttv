@@ -3,7 +3,7 @@
 #
 # `check` has no secrets. It ties everything to the tag's Release build run:
 # the tag is on main and names the Cargo version, the run built that commit,
-# the draft's CLI archives match the run's SHA256SUMS, and the run's unsigned
+# the draft's CLI archives and SBOMs match the run's SHA256SUMS, and the run's unsigned
 # APKs pass the alignment and check-dex.sh checks. Its summary lists every
 # SHA-256, so the owner sees what they approve.
 #
@@ -13,7 +13,8 @@
 # download-artifact, apksigner and minisign. It signs the APKs with the
 # release key, adds their sums, signs SHA256SUMS with the update signing key,
 # checks it against the key compiled in at the tag and uploads the APKs,
-# SHA256SUMS and SHA256SUMS.minisig to the draft. Re-running it is safe.
+# SHA256SUMS and SHA256SUMS.minisig to the draft. `attest` then attests the
+# build provenance of the signed APKs, without the keys. Re-running it is safe.
 # Publishes nothing: the owner presses Publish afterwards.
 name: Release sign
 run-name: Sign ${{ inputs.tag }}
@@ -102,14 +103,14 @@ jobs:
           out=$RUNNER_TEMP/release
           mkdir -p "$out/unsigned"
           # Artifacts can't change after upload, so the run's SHA256SUMS ties the
-          # draft's CLI archives to this build.
+          # draft's CLI archives and SBOMs to this build.
           gh run download "$RUN" -n SHA256SUMS -D "$out"
           gh run download "$RUN" -n rusttv-launcher-apk -D "$out/unsigned"
-          gh release download "$TAG" -D "$out" -p '*.tar.gz'
+          gh release download "$TAG" -D "$out" -p '*.tar.gz' -p '*.cdx.json'
           (cd "$out" && sha256sum --check --strict SHA256SUMS)
-          archives=("$out"/*.tar.gz)
-          [ "${#archives[@]}" = "$(wc -l < "$out/SHA256SUMS")" ] ||
-            { echo "::error::the draft has archives that the run's SHA256SUMS doesn't list"; exit 1; }
+          files=("$out"/*.tar.gz "$out"/*.cdx.json)
+          [ "${#files[@]}" = "$(wc -l < "$out/SHA256SUMS")" ] ||
+            { echo "::error::the draft has files that the run's SHA256SUMS doesn't list"; exit 1; }
           (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;$BUILD_TOOLS" > /dev/null
           for abi in arm64-v8a armeabi-v7a x86_64; do
             apk="$out/unsigned/rusttv-launcher-$version-$abi-unsigned.apk"
@@ -120,7 +121,7 @@ jobs:
           mv "$out/SHA256SUMS" "$out"/unsigned/*.apk "$RUNNER_TEMP/to-sign/"
           {
             echo "### $TAG at \`$COMMIT\`, Release build [$RUN]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN)"
-            echo 'Approving signs these files (CLI archives, then the unsigned APKs):'
+            echo 'Approving signs these files (CLI archives and SBOMs, then the unsigned APKs):'
             echo '```'
             cat "$RUNNER_TEMP/to-sign/SHA256SUMS"
             (cd "$RUNNER_TEMP/to-sign" && sha256sum -- *.apk)
@@ -141,6 +142,8 @@ jobs:
     environment: release
     permissions:
       contents: write
+    outputs:
+      apk-sums: ${{ steps.sign-sums.outputs.apk-sums }}
     env:
       TAG: ${{ inputs.tag }}
       PUBLIC_KEY: ${{ needs.check.outputs.public-key }}
@@ -179,6 +182,7 @@ jobs:
             rm "$in"
           done
       - name: Sign SHA256SUMS
+        id: sign-sums
         env:
           MINISIGN_KEY: ${{ secrets.MINISIGN_KEY }}
           MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
@@ -190,7 +194,9 @@ jobs:
           mkdir -m 700 "$keys"
           printf '%s\n' "$MINISIGN_KEY" > "$keys/release.key"
           cd "$RUNNER_TEMP/release"
-          sha256sum -- rusttv-launcher-*.apk >> SHA256SUMS
+          apk_sums=$(sha256sum -- rusttv-launcher-*.apk)
+          printf '%s\n' "$apk_sums" >> SHA256SUMS
+          { echo 'apk-sums<<EOF'; printf '%s\n' "$apk_sums"; echo EOF; } >> "$GITHUB_OUTPUT"
           # minisign reads the password from stdin when it isn't a terminal.
           printf '%s\n' "$MINISIGN_PASSWORD" | minisign -Sm SHA256SUMS -s "$keys/release.key" -t "RustTV ${TAG#v}"
           rm -rf "$keys"
@@ -209,3 +215,23 @@ jobs:
             echo '```'
             echo "Check the draft, then publish: $(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url --jq .url)"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Attests that the signed APKs come from this run. Without the keys, and the
+  # only job that can request the OIDC token Sigstore signs with. It gets the
+  # APKs' sums from `sign`, so it downloads nothing.
+  attest:
+    name: Attest ${{ inputs.tag }} APKs
+    needs: sign
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      id-token: write
+      attestations: write
+    steps:
+      - name: Write the APK sums
+        env:
+          APK_SUMS: ${{ needs.sign.outputs.apk-sums }}
+        run: printf '%s\n' "$APK_SUMS" > "$RUNNER_TEMP/apk.sums"
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: ${{ runner.temp }}/apk.sums
