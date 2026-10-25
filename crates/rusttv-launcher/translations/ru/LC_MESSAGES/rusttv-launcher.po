@@ -53,9 +53,6 @@ msgstr "Не удалось загрузить приложения: {}"
 msgid "Couldn't load the licence notices: {}"
 msgstr "Не удалось загрузить сведения о лицензиях: {}"
 
-msgid "About RustTV"
-msgstr "О RustTV"
-
 msgid "Hidden apps"
 msgstr "Скрытые приложения"
 

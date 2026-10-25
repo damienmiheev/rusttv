@@ -4829,6 +4829,7 @@ dependencies = [
  "jni 0.21.1",
  "log",
  "material-colors",
+ "png",
  "rusttv-history",
  "serde",
  "slint",

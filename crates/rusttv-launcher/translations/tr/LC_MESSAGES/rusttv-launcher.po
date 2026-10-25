@@ -53,9 +53,6 @@ msgstr "Uygulamalar yüklenemedi: {}"
 msgid "Couldn't load the licence notices: {}"
 msgstr "Lisans bildirimleri yüklenemedi: {}"
 
-msgid "About RustTV"
-msgstr "RustTV hakkında"
-
 msgid "Hidden apps"
 msgstr "Gizli uygulamalar"
 

@@ -53,9 +53,6 @@ msgstr "ऐप्लिकेशन लोड नहीं हो सके: {}"
 msgid "Couldn't load the licence notices: {}"
 msgstr "लाइसेंस नोटिस लोड नहीं हो सके: {}"
 
-msgid "About RustTV"
-msgstr "RustTV के बारे में"
-
 msgid "Hidden apps"
 msgstr "छिपाए गए ऐप्लिकेशन"
 

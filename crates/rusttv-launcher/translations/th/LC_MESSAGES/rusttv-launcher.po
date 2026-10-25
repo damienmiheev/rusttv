@@ -53,9 +53,6 @@ msgstr "โหลดแอปไม่ได้: {}"
 msgid "Couldn't load the licence notices: {}"
 msgstr "โหลดประกาศเกี่ยวกับใบอนุญาตไม่ได้: {}"
 
-msgid "About RustTV"
-msgstr "เกี่ยวกับ RustTV"
-
 msgid "Hidden apps"
 msgstr "แอปที่ซ่อนไว้"
 

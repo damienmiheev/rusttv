@@ -29,6 +29,10 @@ tokio = { version = "1.54.1", default-features = false, features = ["rt", "macro
 # Launcher UI (ARCHITECTURE D9). Pinned: Slint's generated code and runtime must match.
 slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2"] }
 slint-build = "=1.18.1"
+# Launcher build script: decodes the built-in tiles' banners (assets/tiles) into
+# raw pixels, since the TV build has no image decoder. Already in the tree via
+# slint-build's compiler (owner OK 2026-10-25). MIT OR Apache-2.0.
+png = "0.18.1"
 # Headless Slint backend with mocked time, for the launcher's UI tests only.
 i-slint-backend-testing = "=1.18.1"
 # Launcher hero backdrop colour: port of Google's material-color-utilities
