@@ -53,9 +53,6 @@ msgstr "Tidak dapat memuat aplikasi: {}"
 msgid "Couldn't load the licence notices: {}"
 msgstr "Tidak dapat memuat pemberitahuan lisensi: {}"
 
-msgid "About RustTV"
-msgstr "Tentang RustTV"
-
 msgid "Hidden apps"
 msgstr "Aplikasi tersembunyi"
 

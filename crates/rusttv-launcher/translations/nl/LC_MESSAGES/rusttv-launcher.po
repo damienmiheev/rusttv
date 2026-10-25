@@ -53,9 +53,6 @@ msgstr "Kan apps niet laden: {}"
 msgid "Couldn't load the licence notices: {}"
 msgstr "Kan licentievermeldingen niet laden: {}"
 
-msgid "About RustTV"
-msgstr "Over RustTV"
-
 msgid "Hidden apps"
 msgstr "Verborgen apps"
 

@@ -53,9 +53,6 @@ msgstr "无法加载应用：{}"
 msgid "Couldn't load the licence notices: {}"
 msgstr "无法加载许可声明：{}"
 
-msgid "About RustTV"
-msgstr "关于 RustTV"
-
 msgid "Hidden apps"
 msgstr "已隐藏的应用"
 

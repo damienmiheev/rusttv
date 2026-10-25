@@ -10,7 +10,7 @@ Supported devices are the ones with a profile in [`compat/devices/`](https://git
 ## Check the files
 
 - `SHA256SUMS` covers every file and is signed with the update signing key: `minisign -Vm SHA256SUMS -P {minisign_key}`. `rusttv update` checks this itself.
-- APKs are signed with RustTV's release key. Certificate SHA-256: `ec16f7040c826d218cfd147c1fa49c4b376253c7b89b3d5e97ac707c8fd54473` (`apksigner verify --print-certs`).
+- APKs are signed with RustTV's release key. Certificate SHA-256: `{apk_cert}` (`apksigner verify --print-certs`).
 
 ## Safety
 

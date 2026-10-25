@@ -53,9 +53,6 @@ msgstr "無法載入應用程式：{}"
 msgid "Couldn't load the licence notices: {}"
 msgstr "無法載入授權聲明：{}"
 
-msgid "About RustTV"
-msgstr "關於 RustTV"
-
 msgid "Hidden apps"
 msgstr "已隱藏的應用程式"
 

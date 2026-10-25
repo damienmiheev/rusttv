@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>RustTV built-in tile banner</title>
+<link rel="stylesheet" href="brand.css">
+<style>
+/* The banners of the launcher's own tiles (direction B on the brand canvas):
+   the whole banner is the amber tile, with the dark screen and its stand.
+   tile.html?about, ?settings or ?hidden picks the symbol. 3× of 320×180. */
+body { width: 960px; height: 540px; overflow: hidden; }
+.page { position: absolute; left: 0; top: 0; width: 960px; height: 540px; gap: 30px;
+  background: linear-gradient(155deg, var(--amber-light) 0%, var(--amber) 42%, var(--amber-deep) 100%);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.screen { width: 452px; height: 306px; border-radius: 68px; background: var(--ink);
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.10), 0 22px 48px rgba(120,40,0,0.40);
+  display: flex; align-items: center; justify-content: center; }
+.stand { width: 120px; height: 18px; border-radius: 9px; background: rgba(18,20,26,0.75); }
+.r { font-size: 202px; transform: translate(-5.5px, 3.6px); }
+svg { display: block; }
+.symbol { display: none; }
+</style>
+</head><body>
+<div class="page">
+<div class="screen">
+<span class="symbol r" id="about">R</span>
+<!-- A gear: eight rounded teeth on a disc, with a hole. -->
+<svg class="symbol" id="settings" width="197" height="197" viewBox="-50 -50 100 100" aria-hidden="true">
+  <mask id="gear-hole"><rect x="-50" y="-50" width="100" height="100" fill="#fff"/><circle r="13.5" fill="#000"/></mask>
+  <g fill="#fff" mask="url(#gear-hole)">
+    <circle r="33"/>
+    <rect x="-8.5" y="-46" width="17" height="22" rx="4.5"/>
+    <rect x="-8.5" y="-46" width="17" height="22" rx="4.5" transform="rotate(45)"/>
+    <rect x="-8.5" y="-46" width="17" height="22" rx="4.5" transform="rotate(90)"/>
+    <rect x="-8.5" y="-46" width="17" height="22" rx="4.5" transform="rotate(135)"/>
+    <rect x="-8.5" y="-46" width="17" height="22" rx="4.5" transform="rotate(180)"/>
+    <rect x="-8.5" y="-46" width="17" height="22" rx="4.5" transform="rotate(225)"/>
+    <rect x="-8.5" y="-46" width="17" height="22" rx="4.5" transform="rotate(270)"/>
+    <rect x="-8.5" y="-46" width="17" height="22" rx="4.5" transform="rotate(315)"/>
+  </g>
+</svg>
+<!-- An eye with a slash: an almond with an iris ring, cut by the slash's gap. -->
+<svg class="symbol" id="hidden" width="215" height="215" viewBox="-50 -50 100 100" aria-hidden="true">
+  <mask id="eye-cut"><rect x="-50" y="-50" width="100" height="100" fill="#fff"/>
+    <circle r="17" fill="#000"/><circle r="9.5" fill="#fff"/>
+    <line x1="-34" y1="-34" x2="34" y2="34" stroke="#000" stroke-width="17" stroke-linecap="round"/></mask>
+  <path d="M -46 0 C -30 -30, 30 -30, 46 0 C 30 30, -30 30, -46 0 Z" fill="#fff" mask="url(#eye-cut)"/>
+  <line x1="-34" y1="-34" x2="34" y2="34" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
+</svg>
+</div>
+<div class="stand"></div>
+</div>
+<script>document.getElementById(location.search.slice(1) || "about").style.display = "block";</script>
+</body></html>

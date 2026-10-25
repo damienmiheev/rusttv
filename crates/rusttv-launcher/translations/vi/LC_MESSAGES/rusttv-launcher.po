@@ -53,9 +53,6 @@ msgstr "Không tải được ứng dụng: {}"
 msgid "Couldn't load the licence notices: {}"
 msgstr "Không tải được thông báo giấy phép: {}"
 
-msgid "About RustTV"
-msgstr "Giới thiệu về RustTV"
-
 msgid "Hidden apps"
 msgstr "Ứng dụng đã ẩn"
 

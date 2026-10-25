@@ -246,13 +246,14 @@ component Artwork inherits Rectangle {
     background: Theme.surface;
 
     // Pictures fade in: on a TV they arrive after the first frame (kind 4,
-    // loading, is an empty card until then).
+    // loading, is an empty card until then). The built-in tiles (3, 5, 6) have
+    // banners too.
     Image {
         width: parent.width;
         height: parent.height;
         source: data.image;
         image-fit: cover;
-        opacity: data.kind == 0 ? 1 : 0;
+        opacity: data.kind == 0 || data.kind == 3 || data.kind == 5 || data.kind == 6 ? 1 : 0;
         animate opacity { duration: 300ms; easing: ease-out; }
     }
     Image {
@@ -288,11 +289,11 @@ component Artwork inherits Rectangle {
             }
         }
     }
-    if data.kind == 1 || data.kind == 2 || data.kind == 3 || data.kind == 5 || data.kind == 6: Text {
+    if data.kind == 1 || data.kind == 2: Text {
         y: data.kind == 1 ? parent.height * 0.15 + 80 * u : 0;
         width: parent.width;
         height: data.kind == 1 ? 32 * u : parent.height;
-        text: data.kind == 3 ? @tr("About RustTV") : data.kind == 5 ? @tr("Hidden apps") : data.kind == 6 ? @tr("Settings") : data.label;
+        text: data.label;
         font-size: 23 * u;
         color: Theme.text;
         horizontal-alignment: center;

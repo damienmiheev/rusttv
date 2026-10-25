@@ -23,6 +23,9 @@ shot icon-background.html 432 432 "$OUT/bg.png"
 shot icon-foreground.html 432 432 "$OUT/fg.png"
 shot banner.html 960 540 "$OUT/banner.png"
 shot logo.html 1280 640 "$OUT/logo.png"
+for tile in about settings hidden; do
+    shot "tile.html?$tile" 960 540 "$OUT/tile-$tile.png"
+done
 
 python3 - "$OUT" "$ROOT" <<'PY'
 import sys
@@ -39,6 +42,13 @@ Image.open(out / "logo.png").convert("RGB").save(docs / "logo-1280x640.png", opt
 (res / "drawable-xhdpi").mkdir(parents=True, exist_ok=True)
 Image.open(out / "banner.png").convert("RGB").resize((320, 180), Image.LANCZOS).save(
     res / "drawable-xhdpi/banner.png", optimize=True)
+# The launcher's own tiles (About, Settings, Hidden apps): 320x180 like the
+# app banners; build.rs decodes them into the library.
+tiles = root / "crates/rusttv-launcher/assets/tiles"
+tiles.mkdir(parents=True, exist_ok=True)
+for name in ["about", "settings", "hidden"]:
+    Image.open(out / f"tile-{name}.png").convert("RGB").resize((320, 180), Image.LANCZOS).save(
+        tiles / f"{name}.png", optimize=True)
 # Adaptive icon layers per density (108dp canvas).
 for name, px in [("mdpi", 108), ("hdpi", 162), ("xhdpi", 216), ("xxhdpi", 324), ("xxxhdpi", 432)]:
     folder = res / f"mipmap-{name}"
@@ -47,5 +57,5 @@ for name, px in [("mdpi", 108), ("hdpi", 162), ("xhdpi", 216), ("xxhdpi", 324), 
         folder / "ic_launcher_background.png", optimize=True)
     Image.open(out / "fg.png").resize((px, px), Image.LANCZOS).save(
         folder / "ic_launcher_foreground.png", optimize=True)
-print("wrote docs/brand/{icon-1024,icon-512,logo-1280x640}.png, banner, adaptive icon layers")
+print("wrote docs/brand/{icon-1024,icon-512,logo-1280x640}.png, banner, tile banners, adaptive icon layers")
 PY

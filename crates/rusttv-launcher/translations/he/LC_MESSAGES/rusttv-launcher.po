@@ -53,9 +53,6 @@ msgstr "לא ניתן לטעון אפליקציות: {}"
 msgid "Couldn't load the licence notices: {}"
 msgstr "לא ניתן לטעון את הודעות הרישיון: {}"
 
-msgid "About RustTV"
-msgstr "מידע על RustTV"
-
 msgid "Hidden apps"
 msgstr "אפליקציות מוסתרות"
 

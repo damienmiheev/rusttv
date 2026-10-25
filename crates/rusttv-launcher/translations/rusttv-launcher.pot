@@ -199,9 +199,6 @@ msgstr ""
 msgid "History couldn't be read: {}. Your computer's copy can put it back."
 msgstr ""
 
-msgid "About RustTV"
-msgstr ""
-
 msgid "Hidden apps"
 msgstr ""
 

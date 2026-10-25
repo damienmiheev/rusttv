@@ -53,9 +53,6 @@ msgstr "Nie udało się wczytać aplikacji: {}"
 msgid "Couldn't load the licence notices: {}"
 msgstr "Nie udało się wczytać informacji o licencjach: {}"
 
-msgid "About RustTV"
-msgstr "Informacje o RustTV"
-
 msgid "Hidden apps"
 msgstr "Ukryte aplikacje"
 

@@ -53,9 +53,6 @@ msgstr "アプリを読み込めませんでした：{}"
 msgid "Couldn't load the licence notices: {}"
 msgstr "ライセンス情報を読み込めませんでした：{}"
 
-msgid "About RustTV"
-msgstr "RustTV について"
-
 msgid "Hidden apps"
 msgstr "非表示のアプリ"
 

@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 env:
   CARGO_TERM_COLOR: always
   # Must match skia-bindings in Cargo.lock. KEY is the file name skia-bindings
