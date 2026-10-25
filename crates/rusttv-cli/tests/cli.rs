@@ -2118,7 +2118,10 @@ fn update_check_compares_the_cli_and_the_launcher_with_the_latest_release() {
         data["page"],
         format!("https://github.com/damienmiheev/rusttv/releases/tag/v{NEWER}")
     );
-    assert_eq!(data["can_verify"], false, "no release signing key yet");
+    assert_eq!(
+        data["can_verify"], true,
+        "the release signing key is compiled in"
+    );
     assert_eq!(data["cli"]["current"], env!("CARGO_PKG_VERSION"));
     assert_eq!(data["cli"]["target"], env!("RUSTTV_TARGET"));
     assert_eq!(data["cli"]["update_available"], true);
@@ -2187,7 +2190,7 @@ fn update_check_text_says_what_to_run() {
         "{stdout}"
     );
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("no release signing key"), "{stderr}");
+    assert!(!stderr.contains("no release signing key"), "{stderr}");
     std::fs::remove_dir_all(dir).unwrap();
 }
 
@@ -2299,7 +2302,7 @@ fn update_launcher_never_reinstalls_or_downgrades() {
 }
 
 #[test]
-fn update_launcher_refuses_without_a_signing_key_a_wrong_key_or_a_tampered_apk() {
+fn update_launcher_refuses_another_key_or_a_tampered_apk() {
     let dir = state_dir("update-launcher-verify");
     let key = TestSigningKey::new(1);
     write_release(&dir, NEWER, &[(NEWER_APK, b"signed apk")], &key);
@@ -2311,9 +2314,9 @@ fn update_launcher_refuses_without_a_signing_key_a_wrong_key_or_a_tampered_apk()
         error["message"].as_str().unwrap().to_owned()
     };
 
-    // This build has no release signing key.
+    // The compiled-in release key didn't sign this test release.
     let output = rusttv_update(rusttv_exe(), &dir, "tv-fresh", None, &args);
-    assert!(message(&output).contains("no release signing key"));
+    assert!(message(&output).contains("another key"));
 
     let other = TestSigningKey::new(2);
     let output = rusttv_update(rusttv_exe(), &dir, "tv-fresh", Some(&other), &args);
@@ -2454,12 +2457,7 @@ fn update_cli_refuses_a_tampered_archive_and_the_same_version() {
     let output = rusttv_update(&exe, &dir, "tv", None, &args);
     let error = &json_stdout(&output)["error"];
     assert_eq!(error["code"], "UPDATE_VERIFY_FAILED");
-    assert!(
-        error["message"]
-            .as_str()
-            .unwrap()
-            .contains("no release signing key")
-    );
+    assert!(error["message"].as_str().unwrap().contains("another key"));
 
     let _ = std::fs::remove_dir_all(dir.join("release"));
     write_release(&dir, env!("CARGO_PKG_VERSION"), &[], &key);

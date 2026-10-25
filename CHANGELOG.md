@@ -33,9 +33,9 @@ First public release (ROADMAP Phase 6).
   releases from GitHub (or `RUSTTV_UPDATE_DIR`), the launcher on a TV through
   the normal install plan and the CLI on this computer with `.previous`
   copies and automatic put-back. Only files whose `SHA256SUMS` is signed
-  with the owner's minisign key (`SHA256SUMS.minisig`); never a downgrade.
-  Until the key is compiled in, both install paths refuse
-  (`UPDATE_VERIFY_FAILED`) (CLI.md § Updates, SECURITY.md § Updates).
+  with the owner's minisign key (`SHA256SUMS.minisig`, key id
+  `C1DB81DC9704FCB0`); never a downgrade (CLI.md § Updates, SECURITY.md §
+  Updates).
 - `launcher upgrade`: install or upgrade the launcher also while a Home
   takeover is active, as restore, install and takeover again, three separate
   plans approved by typing `upgrade` once; stops at the first failing stage
