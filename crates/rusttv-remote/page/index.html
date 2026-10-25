@@ -2,10 +2,270 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="RustTV Remote">
+<meta name="theme-color" content="#0E1014">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="data:,">
 <title>RustTV Remote</title>
+<style>
+:root {
+  --bg: #0E1014; --surface: #1C1F26; --raised: #2A2E37; --text: #F2F3F5; --dim: #A4A9B4;
+  --faint: #8A909C; --accent: #F5A524; --ok: #5BD69A;
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  --top: env(safe-area-inset-top, 0px); --bottom: env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overscroll-behavior: none; }
+body { font-family: Inter, -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none; }
+button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer;
+  transition: transform 160ms var(--ease), background-color 120ms ease; }
+button:active { transform: scale(0.97); }
+svg { display: block; }
+[hidden] { display: none !important; }
+.screen { position: fixed; inset: 0; display: flex; flex-direction: column; overflow: hidden; }
+.glow { position: absolute; left: -120px; top: -160px; width: 520px; height: 440px; pointer-events: none;
+  background: radial-gradient(closest-side, var(--glow, #F5A52426), #0E101400); transition: background 300ms ease; }
+
+/* Header */
+header { position: relative; display: flex; align-items: center; gap: 12px; padding: calc(var(--top) + 16px) 20px 0 20px; }
+.logo { width: 34px; height: 34px; flex: none; }
+.who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.who b { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dot { width: 6px; height: 6px; border-radius: 3px; background: var(--faint); flex: none; }
+.dot.on { background: var(--ok); }
+.round { width: 44px; height: 44px; border-radius: 22px; background: var(--surface); box-shadow: inset 0 0 0 1px #FFFFFF0F; display: flex; align-items: center; justify-content: center; flex: none; }
+
+/* Apps */
+#apps { position: relative; flex: 1; overflow-y: auto; overflow-x: hidden; padding: 0 20px calc(var(--bottom) + 110px) 20px; touch-action: pan-y; }
+.hero { padding: 26px 0 18px 0; display: flex; flex-direction: column; gap: 6px; }
+.hero h1 { margin: 0; font-size: 34px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.05; min-height: 36px; }
+.hero p { margin: 0; font-size: 13px; color: var(--dim); }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 14px; }
+.tile { display: flex; flex-direction: column; gap: 9px; text-align: left; touch-action: pan-y; }
+.art { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 10px #00000040; transition: transform 150ms var(--ease), box-shadow 150ms var(--ease); }
+.art span { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; color: #fff; padding: 0 10px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.tile.focused .art { transform: scale(1.05); box-shadow: 0 16px 32px -6px #000000B3; }
+.tile .name { font-size: 13px; font-weight: 500; color: var(--faint); padding-left: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile.focused .name { color: var(--text); }
+.tile.dragging { opacity: 0.25; }
+.tile.over .art { box-shadow: 0 0 0 2px #F5A52499, 0 16px 32px -6px #000000B3; transform: scale(1.05); }
+.minis { position: absolute; inset: 9px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.minis i { border-radius: 5px; }
+.ghost { position: fixed; z-index: 30; pointer-events: none; transform: rotate(-2.5deg) scale(1.08); }
+.ghost .art { box-shadow: inset 0 0 0 3px var(--accent), 0 24px 44px -8px #000000CC; }
+
+/* Bars */
+.bar { position: absolute; left: 16px; right: 16px; top: calc(var(--top) + 16px); z-index: 20; padding: 8px 8px 8px 16px; border-radius: 26px;
+  background: var(--surface); box-shadow: inset 0 1px 0 #FFFFFF12, inset 0 0 0 1px #F5A52440; display: flex; align-items: center; gap: 12px; }
+.bar div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.bar b { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar small { font-size: 12px; color: var(--dim); }
+.primary { height: 40px; padding: 0 18px; border-radius: 20px; background: var(--accent); color: var(--bg); font-size: 14px; font-weight: 600; }
+.secondary { height: 48px; border-radius: 24px; background: var(--raised); font-size: 15px; font-weight: 500; }
+
+/* Folder */
+#folder { position: fixed; inset: 0; z-index: 15; background: #0E1014B3; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  padding: calc(var(--top) + 96px) 16px 0 16px; display: flex; flex-direction: column; gap: 16px; }
+#folder h2 { margin: 0; padding: 0 6px; font-size: 34px; font-weight: 600; letter-spacing: -0.03em; }
+.panel { border-radius: 28px; background: #1C1F26E6; box-shadow: inset 0 1px 0 #FFFFFF14, 0 30px 60px -20px #000000CC; padding: 18px 16px 16px 16px; max-height: 62vh; overflow-y: auto; }
+#folder p { margin: 0; padding: 0 6px; font-size: 13px; line-height: 1.5; color: var(--dim); }
+
+/* Touchpad */
+#touchpad { flex: 1; display: flex; flex-direction: column; padding-top: 14px; padding-bottom: calc(var(--bottom) + 96px); }
+#wants { margin: 0 16px 12px 16px; height: 54px; border-radius: 18px; background: #F5A5241A; box-shadow: inset 0 0 0 1px #F5A52433; display: flex; align-items: center; gap: 12px; padding: 0 16px; text-align: left; }
+#wants span { flex: 1; font-size: 14px; color: #E7D9BC; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#wants em { font-style: normal; font-size: 14px; font-weight: 600; color: var(--accent); }
+#pad { position: relative; flex: 1; margin: 0 16px; border-radius: 32px; overflow: hidden; touch-action: none;
+  background: linear-gradient(180deg, #1B1E25 0%, #15171C 100%); box-shadow: inset 0 1px 0 #FFFFFF14, inset 0 0 0 1px #FFFFFF0A, 0 24px 48px -20px #00000099; }
+#pad::before { content: ""; position: absolute; inset: 0; pointer-events: none; background-image: radial-gradient(#FFFFFF0D 1px, transparent 1.2px); background-size: 18px 18px; }
+.padtop { position: absolute; left: 20px; right: 20px; top: 18px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
+.padtop small { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #6E7480; }
+.mode { height: 26px; padding: 0 10px; border-radius: 13px; display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; background: #FFFFFF0F; color: #C9CDD5; }
+.mode.pointer { background: #F5A5241F; color: var(--accent); }
+.hint { position: absolute; left: 20px; right: 20px; bottom: 20px; font-size: 13px; line-height: 1.5; color: var(--dim); pointer-events: none; }
+#touch { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 32px; background: #FFFFFF14; box-shadow: inset 0 0 0 1.5px #FFFFFF40; pointer-events: none; opacity: 0; transition: opacity 200ms ease; }
+#flash { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(0.94); opacity: 0; height: 52px; padding: 0 20px; border-radius: 26px; background: var(--raised);
+  display: flex; align-items: center; font-size: 16px; font-weight: 600; pointer-events: none; transition: opacity 180ms ease, transform 180ms var(--ease); }
+#flash.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.keys { display: flex; align-items: center; gap: 10px; padding: 14px 16px 0 16px; }
+.key { width: 52px; height: 52px; border-radius: 26px; background: var(--surface); box-shadow: inset 0 0 0 1px #FFFFFF0F; display: flex; align-items: center; justify-content: center; }
+.volume { margin-left: auto; height: 52px; border-radius: 26px; background: var(--surface); box-shadow: inset 0 0 0 1px #FFFFFF0F; display: flex; align-items: center; color: #6E7480; }
+.volume button { width: 56px; height: 52px; display: flex; align-items: center; justify-content: center; color: var(--text); }
+
+/* Dock */
+nav { position: absolute; z-index: 25; left: 12px; right: 12px; bottom: calc(var(--bottom) + 18px); height: 64px; padding: 0 8px; border-radius: 32px;
+  background: #1C1F26F2; -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); box-shadow: inset 0 1px 0 #FFFFFF12, 0 -16px 40px 8px #0E1014; display: flex; align-items: center; gap: 6px; }
+nav > button { width: 48px; height: 48px; border-radius: 24px; display: flex; align-items: center; justify-content: center; flex: none; }
+.tabs { flex: 1; height: 44px; border-radius: 22px; background: var(--bg); padding: 3px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; }
+.tabs button { border-radius: 19px; font-size: 14px; font-weight: 500; color: var(--dim); }
+.tabs button[aria-selected="true"] { background: var(--raised); box-shadow: inset 0 1px 0 #FFFFFF14; color: var(--text); font-weight: 600; }
+
+/* Typing */
+#typing { position: fixed; inset: 0; z-index: 40; background: var(--bg); padding: calc(var(--top) + 16px) 16px 16px 16px; display: flex; flex-direction: column; gap: 18px; }
+#typing header { padding: 0 4px; }
+.card { padding: 18px; border-radius: 28px; background: var(--surface); box-shadow: inset 0 1px 0 #FFFFFF12; display: flex; flex-direction: column; gap: 12px; }
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+.card label { font-size: 15px; font-weight: 500; }
+input { font: inherit; height: 52px; border-radius: 14px; border: 2px solid var(--accent); background: var(--bg); color: var(--text); font-size: 18px; padding: 0 14px; outline: none; user-select: text; -webkit-user-select: text; width: 100%; }
+.row { display: flex; gap: 10px; }
+.row .secondary { flex: 1; }
+.row .primary { flex: 2; height: 48px; border-radius: 24px; font-size: 15px; }
+.help { font-size: 12px; color: var(--dim); }
+
+/* Pairing and messages */
+.center { position: relative; flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 28px; padding: calc(var(--top) + 40px) 24px calc(var(--bottom) + 40px) 24px; }
+.intro { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; }
+.intro .logo { width: 72px; height: 72px; filter: drop-shadow(0 18px 30px #D9480F66); }
+.intro h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+.intro p { margin: 0; font-size: 15px; line-height: 1.5; color: var(--dim); max-width: 310px; }
+.field { display: flex; flex-direction: column; gap: 8px; }
+.field label { font-size: 14px; font-weight: 500; }
+.field input { border: 1.5px solid #3A3F4A; background: var(--surface); font-size: 17px; }
+.field input:focus { border-color: var(--accent); }
+.code { border-radius: 24px; background: var(--surface); padding: 22px; display: flex; flex-direction: column; align-items: center; gap: 12px; text-align: center; }
+.code small { font-size: 14px; color: var(--dim); }
+.code b { font-size: 64px; font-weight: 700; letter-spacing: 0.08em; color: var(--accent); line-height: 1; font-variant-numeric: tabular-nums; }
+.code span { font-size: 15px; line-height: 1.5; }
+.wide { height: 52px; border-radius: 26px; font-size: 16px; }
+</style>
 </head>
-<body style="margin:0;background:#0E1014;color:#F2F3F5;font-family:system-ui,sans-serif">
-<p style="padding:24px">RustTV Remote: the page comes in the next change.</p>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="amber" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFC35C"/><stop offset="0.42" stop-color="#F5A524"/><stop offset="1" stop-color="#D9480F"/>
+    </linearGradient>
+    <symbol id="logo" viewBox="0 0 100 100">
+      <rect width="100" height="100" rx="22.7" fill="url(#amber)"/>
+      <rect x="17.3" y="22" width="65.3" height="44" rx="10" fill="#12141A"/>
+      <text x="49" y="57" text-anchor="middle" font-family="Inter, -apple-system, system-ui, sans-serif" font-size="37" font-weight="900" fill="#fff" letter-spacing="-2">R</text>
+      <rect x="38.3" y="73" width="23.3" height="3.3" rx="1.7" fill="#12141ABF"/>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- Not paired: scan the QR code on the TV -->
+<section id="scan" class="screen" hidden>
+  <div class="glow"></div>
+  <div class="center">
+    <div class="intro">
+      <svg class="logo"><use href="#logo"/></svg>
+      <h1>RustTV Remote</h1>
+      <p id="scan-text">On the TV, open Settings → RustTV Remote → Pair a phone, then scan the code with this phone's camera.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Pairing -->
+<section id="pair" class="screen" hidden>
+  <div class="glow"></div>
+  <form id="pair-form" class="center">
+    <div class="intro">
+      <svg class="logo"><use href="#logo"/></svg>
+      <h1>Pair with your TV</h1>
+      <p>This phone will be able to press keys and type on the TV. It can never change settings or approve anything.</p>
+    </div>
+    <div class="field" id="name-field">
+      <label for="phone-name">Name for this phone</label>
+      <input id="phone-name" maxlength="40" autocomplete="off" autocapitalize="words" enterkeyhint="go">
+      <div class="help">You can change it later in the TV's Settings.</div>
+    </div>
+    <button class="primary wide" id="pair-button" type="submit">Pair</button>
+    <div class="code" id="pair-code" hidden>
+      <small>Check that the TV shows the same code</small>
+      <b id="code"></b>
+      <span>Then press <strong>OK</strong> on the TV remote.<br>Back on the remote refuses.</span>
+    </div>
+    <div class="help" id="pair-status" style="text-align:center"></div>
+  </form>
+</section>
+
+<!-- Connected -->
+<section id="main" class="screen" hidden>
+  <div class="glow" id="glow"></div>
+  <header>
+    <svg class="logo"><use href="#logo"/></svg>
+    <div class="who">
+      <b>RustTV</b>
+      <div class="status"><span class="dot" id="dot"></span><span id="status">Connecting…</span></div>
+    </div>
+    <button class="round" data-key="power" aria-label="Power">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 3.5v7.5"/><path d="M6.6 7a7.5 7.5 0 1 0 10.8 0"/></svg>
+    </button>
+  </header>
+
+  <div class="bar" id="moving" hidden>
+    <div><b id="moving-title">Moving</b><small>Rest on an app to make a folder</small></div>
+    <button class="primary" data-key="ok">Done</button>
+  </div>
+
+  <div id="apps">
+    <div class="hero"><h1 id="hero"></h1><p>Tap to open · hold for options · hold and drag to move</p></div>
+    <div class="grid" id="grid"></div>
+  </div>
+
+  <div id="touchpad" hidden>
+    <button id="wants" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5A524" stroke-width="1.75" stroke-linecap="round"><rect x="2.5" y="6" width="19" height="12" rx="3"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M8 14h8"/></svg><span id="wants-text"></span><em>Type</em></button>
+    <div id="pad">
+      <div class="padtop"><small>Touchpad</small><span class="mode" id="mode">Arrows</span></div>
+      <div id="flash"></div>
+      <div class="hint" id="pad-hint"></div>
+      <div id="touch"></div>
+    </div>
+    <div class="keys">
+      <button class="key" data-key="home" aria-label="Home"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 11 12 4l8.5 7"/><path d="M6 9.5V20h12V9.5"/></svg></button>
+      <button class="key" data-key="play_pause" aria-label="Play or pause"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M5 5.5v13l7.5-6.5z"/><rect x="14.5" y="6" width="2.2" height="12" rx="1"/><rect x="18.5" y="6" width="2.2" height="12" rx="1"/></svg></button>
+      <div class="volume">
+        <button data-key="volume_down" aria-label="Volume down"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg></button>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6"/></svg>
+        <button data-key="volume_up" aria-label="Volume up"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M12 5v14"/></svg></button>
+      </div>
+    </div>
+  </div>
+
+  <nav aria-label="RustTV Remote">
+    <button data-key="back" aria-label="Back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+    <div class="tabs" role="tablist" aria-label="View">
+      <button role="tab" id="tab-apps" aria-selected="true">Apps</button>
+      <button role="tab" id="tab-touchpad" aria-selected="false">Touchpad</button>
+    </div>
+    <button id="keyboard" aria-label="Keyboard"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><rect x="2.5" y="6" width="19" height="12" rx="3"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M8 14h8"/></svg></button>
+  </nav>
+
+  <div id="folder" hidden>
+    <h2 id="folder-name"></h2>
+    <div class="panel"><div class="grid" id="folder-grid"></div></div>
+    <p>Hold an app and drag it out of the panel to take it out of the folder. Back closes.</p>
+  </div>
+  <div class="ghost" id="ghost" hidden></div>
+</section>
+
+<!-- Typing -->
+<section id="typing" hidden>
+  <header>
+    <svg class="logo"><use href="#logo"/></svg>
+    <div class="who"><b>RustTV</b></div>
+    <button class="round" id="typing-close" aria-label="Hide the keyboard"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
+  </header>
+  <form class="card" id="typing-form">
+    <div class="eyebrow" id="typing-eyebrow">The TV is asking for text</div>
+    <label for="typing-input" id="typing-label">Text</label>
+    <input id="typing-input" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done">
+    <div class="help">Letters appear on the TV as you type.</div>
+    <div class="row">
+      <button class="secondary" type="button" id="typing-clear">Clear</button>
+      <button class="primary" type="submit">Done</button>
+    </div>
+  </form>
+</section>
+
+<!--crypto.js-->
+<!--app.js-->
 </body>
 </html>

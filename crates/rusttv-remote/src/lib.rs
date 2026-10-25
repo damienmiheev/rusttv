@@ -40,6 +40,11 @@ pub use server::{Clock, Event, MAX_CONNECTED, Options, PAIRING_TIME, PORT, Rando
 
 /// The phone page, served at `/` ([`Options::page`]).
 pub const PAGE: &str = include_str!("../page/index.html");
+/// The page's crypto, inlined into the page; checked against the crate's
+/// test vectors by `page/crypto.test.mjs`.
+pub const CRYPTO_JS: &str = include_str!("../page/crypto.js");
+/// The page's logic, inlined into the page.
+pub const APP_JS: &str = include_str!("../page/app.js");
 
 /// Why a remote operation failed. Every variant means "drop this message"
 /// (or this connection); none of them is ever echoed to the phone.
