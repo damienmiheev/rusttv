@@ -6,7 +6,6 @@ Developer tools. They are not part of `rusttv` and are not installed with it.
 |---|---|---|
 | `licenses.sh [output]` | Third-party licence notices for everything shipped: Rust crates via `cargo-about` (`about.toml`), the Slint licence, Skia and the libraries compiled into it, the LLVM runtimes, the Rust standard library and cleanyourtv's package data (`licenses/`). Fails on a licence not accepted in `about.toml`; CI runs it. | No |
 | `brand/render.sh` | Renders the brand assets (app icon layers, TV banner, logo) from the HTML templates in `scripts/brand/` with headless Chrome (docs/brand/README.md). | No |
-| `release-sign.sh v<version>` | The owner's local part of a release (RELEASE.md § Checklist): signs the unsigned APKs of the tag's Release build with the release key, adds their sums, signs `SHA256SUMS` with minisign and uploads all of it to the tag's draft release. Publishes nothing. | No |
 | `tv-capture.sh <serial>` | Read-only capture of a TV: the raw `adb` outputs the fixtures use, `rusttv` JSON reads, compat profile. Writes to `.rusttv/captures/` (git-ignored); unit identifiers are redacted. | No |
 
 ## TV session checklist

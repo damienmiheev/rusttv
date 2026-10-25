@@ -1,9 +1,9 @@
 # Builds everything a release ships: the CLI and MCP server for macOS and Linux
 # (arm64 and x86_64) with licence notices and SHA-256 sums, and the unsigned
-# launcher APKs, as workflow artifacts. On a tag push it also creates a draft
-# GitHub release with the CLI archives and the CHANGELOG section. It never
-# signs or publishes: the owner signs the APKs and SHA256SUMS locally
-# (scripts/release-sign.sh) and publishes the draft (RELEASE.md).
+# launcher APKs, as workflow artifacts. On a tag it also creates a draft
+# GitHub release with the CLI archives and the CHANGELOG section, then starts
+# Release sign, which waits for the owner's approval. It never signs or
+# publishes itself: the owner publishes the draft (RELEASE.md).
 name: Release build
 
 on:
@@ -125,6 +125,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -149,11 +150,17 @@ jobs:
           key="$(grep -A1 'pub const RELEASE_SIGNING_KEY' crates/rusttv-core/src/update.rs | grep -o 'Some("RW[A-Za-z0-9+/=]*")' | sed 's/^Some("\(.*\)")$/\1/')"
           [ -n "$key" ] || { echo "::error::RELEASE_SIGNING_KEY is not set (RELEASE.md)"; exit 1; }
           sed -e "s/{version}/$VERSION/g" -e "s|{minisign_key}|$key|g" .github/release-notes.md >> notes.md
-      # The APKs and SHA256SUMS.minisig are added by the owner's
-      # scripts/release-sign.sh; drafts are invisible to `rusttv update`.
+      # The APKs and SHA256SUMS.minisig are added by Release sign; drafts are
+      # invisible to `rusttv update`.
       - name: Create the draft
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           VERSION: ${{ needs.version.outputs.version }}
         run: gh release create "$TAG" --draft --verify-tag --title "RustTV $VERSION" --notes-file notes.md dist/*.tar.gz dist/SHA256SUMS
+      # Release sign waits for the owner's approval before it can use the keys.
+      - name: Start Release sign
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh workflow run release-sign.yml --ref main -f tag="$TAG"

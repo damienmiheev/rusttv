@@ -2,7 +2,7 @@
 # from the GitHub app) on main once the version in Cargo.toml and its
 # CHANGELOG section are merged. It tags main's head as v<version> and starts
 # the Release build on that tag, which makes the draft release. Signing and
-# publishing stay with the owner (scripts/release-sign.sh, RELEASE.md).
+# publishing need the owner (Release sign's approval, Publish; RELEASE.md).
 # The tag is made by GitHub Actions, so it isn't GPG-signed; what users check
 # is SHA256SUMS.minisig (SECURITY.md § Updates).
 name: Tag release

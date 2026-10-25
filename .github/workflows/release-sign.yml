@@ -1,0 +1,108 @@
+# Signs a tag's draft release (RELEASE.md § Checklist): the unsigned APKs of
+# the tag's Release build with the release key, then SHA256SUMS with the
+# update signing key, and uploads the APKs, SHA256SUMS and SHA256SUMS.minisig
+# to the draft. The Release build starts it after making the draft; run it by
+# hand with the tag otherwise. It waits until the owner approves it in the
+# protected `release` environment, which holds the keys (only runs from main
+# may use it). Publishes nothing: the owner presses Publish afterwards.
+# The job runs no third-party actions and builds nothing, so the keys are
+# reachable only by GitHub's own actions, apksigner, minisign and this file.
+name: Release sign
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag whose draft release to sign, e.g. v0.1.0
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  sign:
+    name: Sign ${{ inputs.tag }}
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+      # The APK certificate's SHA-256 (RELEASE.md § Signing).
+      CERT: ec16f7040c826d218cfd147c1fa49c4b376253c7b89b3d5e97ac707c8fd54473
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+      - name: Check the tag, the draft and the Release build
+        run: |
+          echo "OUT=$RUNNER_TEMP/release" >> "$GITHUB_ENV"
+          echo "KEYS=$RUNNER_TEMP/keys" >> "$GITHUB_ENV"
+          echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::$TAG is not v<major>.<minor>.<patch>"; exit 1; }
+          [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true ] ||
+            { echo "::error::$TAG has no draft release (published already, or the Release build hasn't made it)"; exit 1; }
+          commit=$(git rev-parse "$TAG^{commit}")
+          run=$(gh run list --workflow release-build.yml --limit 50 \
+            --json databaseId,headBranch,headSha,conclusion \
+            --jq "map(select(.headBranch == \"$TAG\" and .headSha == \"$commit\" and .conclusion == \"success\"))[0].databaseId")
+          [ -n "$run" ] && [ "$run" != null ] || { echo "::error::no successful Release build of $TAG at $commit"; exit 1; }
+          echo "RUN=$run" >> "$GITHUB_ENV"
+          # The update signing key's public half, as compiled into rusttv at the
+          # tag (rustfmt may put `Some(...)` on the next line).
+          key=$(git show "$commit:crates/rusttv-core/src/update.rs" | grep -A1 'pub const RELEASE_SIGNING_KEY' |
+            grep -o 'Some("RW[A-Za-z0-9+/=]*")' | sed 's/^Some("\(.*\)")$/\1/')
+          [ -n "$key" ] || { echo "::error::RELEASE_SIGNING_KEY is not set at $TAG"; exit 1; }
+          echo "PUBLIC_KEY=$key" >> "$GITHUB_ENV"
+      - name: Download and check
+        run: |
+          mkdir -p "$OUT/unsigned"
+          gh release download "$TAG" -D "$OUT" -p '*.tar.gz' -p SHA256SUMS
+          (cd "$OUT" && sha256sum -c SHA256SUMS)
+          gh run download "$RUN" -n rusttv-launcher-apk -D "$OUT/unsigned"
+          sudo apt-get install -y -qq minisign > /dev/null
+      - name: Sign the APKs
+        env:
+          RUSTTV_KEYSTORE_B64: ${{ secrets.RUSTTV_KEYSTORE_B64 }}
+          RUSTTV_KEYSTORE_PASSWORD: ${{ secrets.RUSTTV_KEYSTORE_PASSWORD }}
+        run: |
+          version=${TAG#v}
+          tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          mkdir -m 700 "$KEYS"
+          echo "$RUSTTV_KEYSTORE_B64" | base64 -d > "$KEYS/release.jks"
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            in="$OUT/unsigned/rusttv-launcher-$version-$abi-unsigned.apk"
+            apk="$OUT/rusttv-launcher-$version-$abi.apk"
+            "$tools/zipalign" -c -p 4 "$in" || { echo "::error::$in is not aligned"; exit 1; }
+            "$tools/apksigner" sign --ks "$KEYS/release.jks" --ks-key-alias rusttv \
+              --ks-pass env:RUSTTV_KEYSTORE_PASSWORD --key-pass env:RUSTTV_KEYSTORE_PASSWORD \
+              --out "$apk" "$in"
+            "$tools/apksigner" verify --print-certs "$apk" | grep -q "SHA-256 digest: $CERT" ||
+              { echo "::error::$apk is not signed with the release key"; exit 1; }
+            android/check-dex.sh "$apk"
+          done
+          rm -rf "$KEYS" "$OUT/unsigned"
+      - name: Sign SHA256SUMS
+        env:
+          MINISIGN_KEY: ${{ secrets.MINISIGN_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          version=${TAG#v}
+          mkdir -m 700 "$KEYS"
+          printf '%s\n' "$MINISIGN_KEY" > "$KEYS/release.key"
+          cd "$OUT"
+          sha256sum rusttv-launcher-*.apk >> SHA256SUMS
+          # minisign reads the password from stdin when it isn't a terminal.
+          printf '%s\n' "$MINISIGN_PASSWORD" | minisign -Sm SHA256SUMS -s "$KEYS/release.key" -t "RustTV $version"
+          rm -rf "$KEYS"
+          # The signature must check against the key compiled into rusttv.
+          minisign -Vm SHA256SUMS -P "$PUBLIC_KEY"
+          cat SHA256SUMS
+      - name: Upload to the draft
+        run: |
+          gh release upload "$TAG" --clobber "$OUT"/rusttv-launcher-*.apk "$OUT/SHA256SUMS" "$OUT/SHA256SUMS.minisig"
+          echo "Signed. Publish: $(gh release view "$TAG" --json url --jq .url)" >> "$GITHUB_STEP_SUMMARY"

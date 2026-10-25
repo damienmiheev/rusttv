@@ -1,7 +1,7 @@
 # Builds the launcher APKs (android/build.sh). Called by ci.yml on every push
 # and pull request, and by release-build.yml, which also uploads the APKs.
 # CI has no release key, so these APKs are signed with the runner's debug key,
-# or left unsigned for a release, which the owner signs locally (RELEASE.md).
+# or left unsigned for a release, which Release sign signs (RELEASE.md).
 name: Android APK
 
 on:
