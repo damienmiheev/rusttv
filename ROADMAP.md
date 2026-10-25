@@ -98,19 +98,6 @@ Decided "not for now"; raise again when the core launcher is done.
     seeing whether people share themes.
   - The default theme stays the polished, Apple TV-like one.
 
-- **Background follows the focused app (drives Ambilight)** — parked
-  2026-10-23. Ambilight in video mode already follows the colours near the
-  screen edges, so no Philips API is needed: the Home background itself carries
-  the focused app's colour. Options discussed, best first:
-  - A heavily blurred, darkened copy of the focused app's banner as the whole
-    background (a tiny cached image, e.g. 32×18, stretched with smoothing),
-    so there is no visible border or frame.
-  - A slight hue tint of the whole dark background.
-  - A large, faint halo from the focused tile (weakest effect on Ambilight).
-  - Open question: how strongly Ambilight reacts to dark colours. First step
-    when picked up: a test build with 2–3 brightness levels, judged by eye on
-    the TV (screencap is blocked on the Philips).
-
 - **Privacy menu: choose packages by category, on the Mac and on the TV** —
   parked 2026-10-23. A normal app (RustTV included, even as Home) can't
   disable other apps; only the adb shell or system apps can. Options discussed:
