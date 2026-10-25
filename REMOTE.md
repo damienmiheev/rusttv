@@ -79,9 +79,18 @@ to its home screen.
 
 ## 1. The page
 
-- **One file:** `index.html`, vanilla HTML, CSS and JS, with no build step
-  and no CDN. It is compiled into the launcher with `include_str!` and served
-  at `http://<tv-ip>:8484/`.
+- **One response:** `page/index.html`, `page/crypto.js` and `page/app.js`,
+  vanilla HTML, CSS and JS with no build step and no CDN, compiled in with
+  `include_str!`. The listener inlines both scripts into the page and serves
+  it at `http://<tv-ip>:8484/` with a Content-Security-Policy that allows
+  only those two scripts (by their SHA-256), inline styles, `data:`/`blob:`
+  images and a socket to the same host; nothing else loads.
+- **As built (2026-10-25):** pairing, connection, the Home mirror (tap, hold,
+  hold and drag), an open folder, move mode, typing, and the touchpad
+  (pointer and arrows) work against the real listener
+  (`cargo run -p rusttv-remote --example demo`, a stand-in TV with a fake
+  Home). Not yet: banners (tiles show a colour from their id), renaming a
+  folder from the phone, the page in other languages, a home-screen icon.
 - **Look:** the launcher's colours, Inter, the RustTV icon and the built-in
   tile images.
   - Focus is shown as on the TV: the focused tile grows slightly, with a soft
@@ -109,7 +118,11 @@ to its home screen.
     `apple-mobile-web-app-capable`. `ws://` works from an `http://` page.
     Typing, touch and the person's own paste work.
   - So the page carries its own SHA-256, HMAC and XChaCha20-Poly1305 in pure
-    JS (~400 lines written for this project, MIT like the rest).
+    JS (`page/crypto.js`, ~350 lines written for this project, MIT like the
+    rest; Poly1305 on BigInt). `page/crypto.test.mjs` checks it in CI
+    against the crate's test vectors and published SHA-256, HMAC and
+    HChaCha20 vectors. `crypto.getRandomValues` works without a secure
+    context.
 - **Storage:** the long-term secret and the session key live in the page's
   `localStorage`, which belongs to the page's own address.
   - If the browser clears site data, the phone must scan the QR again.

@@ -21,6 +21,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use sha2::{Digest, Sha256};
 use tungstenite::protocol::{Role, WebSocketConfig};
 use tungstenite::{Message, WebSocket};
 
@@ -66,7 +67,9 @@ pub type Clock = Arc<dyn Fn() -> u64 + Send + Sync>;
 pub struct Options {
     /// [`PORT`] on the TV; 0 in tests for any free port.
     pub port: u16,
-    /// The page served at `/`.
+    /// The page served at `/` ([`PAGE`](crate::PAGE)): its `<!--crypto.js-->`
+    /// and `<!--app.js-->` markers become inline scripts, allowed by their
+    /// hashes in the page's Content-Security-Policy.
     pub page: &'static str,
     pub random: Random,
     pub clock: Clock,
@@ -126,7 +129,7 @@ struct Shared {
     events: Mutex<Sender<Event>>,
     random: Random,
     clock: Clock,
-    page: &'static str,
+    page: Page,
     stopped: AtomicBool,
     next_id: AtomicU64,
 }
@@ -209,7 +212,7 @@ impl Remote {
             events: Mutex::new(sender),
             random: options.random,
             clock: options.clock,
-            page: options.page,
+            page: Page::build(options.page),
             stopped: AtomicBool::new(false),
             next_id: AtomicU64::new(1),
         });
@@ -426,7 +429,7 @@ fn serve(mut stream: TcpStream, guard: &mut Admitted<'_>) -> Result<(), RemoteEr
     stream.set_nodelay(true).map_err(io)?;
     stream.set_write_timeout(Some(WRITE_TIME)).map_err(io)?;
     let (head, rest) = read_head(&mut stream, deadline)?;
-    let Some(key) = route(&mut stream, guard.shared.page, &head)? else {
+    let Some(key) = route(&mut stream, &guard.shared.page, &head)? else {
         return Ok(());
     };
     let answer = format!(
@@ -482,7 +485,8 @@ fn read_head(stream: &mut TcpStream, deadline: Instant) -> Result<(Vec<u8>, Vec<
 /// What a request asks for.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Route {
-    Page,
+    /// The page, for this `Host`.
+    Page(String),
     /// A valid WebSocket upgrade from the page itself, with its key.
     Upgrade(String),
     BadRequest,
@@ -514,7 +518,10 @@ pub(crate) fn classify(head: &[u8]) -> Result<Route, RemoteError> {
         return Ok(Route::NotAllowed);
     }
     Ok(match request.path {
-        Some("/") => Route::Page,
+        Some("/") => match header("Host") {
+            Some(host) if is_host(host) => Route::Page(host.to_owned()),
+            _ => Route::BadRequest,
+        },
         Some("/ws") => {
             let host = header("Host").unwrap_or_default();
             let upgrade = header("Upgrade").is_some_and(|v| v.eq_ignore_ascii_case("websocket"));
@@ -537,24 +544,77 @@ pub(crate) fn classify(head: &[u8]) -> Result<Route, RemoteError> {
     })
 }
 
+/// The page with its scripts inlined, and the hashes that allow exactly
+/// those scripts.
+struct Page {
+    html: String,
+    script_hashes: String,
+}
+
+impl Page {
+    fn build(template: &str) -> Self {
+        let mut html = template.to_owned();
+        let mut hashes = Vec::new();
+        for (marker, script) in [
+            ("<!--crypto.js-->", crate::CRYPTO_JS),
+            ("<!--app.js-->", crate::APP_JS),
+        ] {
+            html = html.replace(marker, &format!("<script>{script}</script>"));
+            hashes.push(format!(
+                "'sha256-{}'",
+                base64(&Sha256::digest(script.as_bytes()))
+            ));
+        }
+        Self {
+            html,
+            script_hashes: hashes.join(" "),
+        }
+    }
+}
+
+/// A `Host` header we put into the page's policy: a name or address and a
+/// port, nothing else.
+fn is_host(host: &str) -> bool {
+    !host.is_empty()
+        && host.len() <= 255
+        && host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '[' | ']'))
+}
+
 /// Answers a page request itself; for a WebSocket upgrade returns the key.
-fn route(stream: &mut TcpStream, page: &str, head: &[u8]) -> Result<Option<String>, RemoteError> {
-    let respond = |stream: &mut TcpStream, status: &str, kind: &str, body: &str| {
+fn route(stream: &mut TcpStream, page: &Page, head: &[u8]) -> Result<Option<String>, RemoteError> {
+    let respond = |stream: &mut TcpStream, status: &str, kind: &str, policy: &str, body: &str| {
         let response = format!(
             "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\nCache-Control: no-store\r\n\
              X-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n\
-             Content-Security-Policy: default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; img-src 'self' blob: data:\r\n\
-             Connection: close\r\n\r\n{body}",
+             Content-Security-Policy: {policy}\r\nConnection: close\r\n\r\n{body}",
             body.len()
         );
         stream.write_all(response.as_bytes()).map_err(io)
     };
+    let none = "default-src 'none'";
     match classify(head)? {
         Route::Upgrade(key) => return Ok(Some(key)),
-        Route::Page => respond(stream, "200 OK", "text/html; charset=utf-8", page)?,
-        Route::BadRequest => respond(stream, "400 Bad Request", "text/plain", "")?,
-        Route::NotFound => respond(stream, "404 Not Found", "text/plain", "")?,
-        Route::NotAllowed => respond(stream, "405 Method Not Allowed", "text/plain", "")?,
+        Route::Page(host) => {
+            // Only the inlined scripts run; the page may only open its own
+            // socket.
+            let policy = format!(
+                "default-src 'none'; script-src {}; style-src 'unsafe-inline'; img-src data: blob:; \
+                 connect-src ws://{host}; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+                page.script_hashes
+            );
+            respond(
+                stream,
+                "200 OK",
+                "text/html; charset=utf-8",
+                &policy,
+                &page.html,
+            )?;
+        }
+        Route::BadRequest => respond(stream, "400 Bad Request", "text/plain", none, "")?,
+        Route::NotFound => respond(stream, "404 Not Found", "text/plain", none, "")?,
+        Route::NotAllowed => respond(stream, "405 Method Not Allowed", "text/plain", none, "")?,
     }
     Ok(None)
 }
@@ -827,7 +887,7 @@ mod tests {
             events: Mutex::new(sender),
             random: Arc::new(|_: &mut [u8]| {}),
             clock: Arc::new(|| 0),
-            page: "",
+            page: Page::build(""),
             stopped: AtomicBool::new(false),
             next_id: AtomicU64::new(1),
         }
