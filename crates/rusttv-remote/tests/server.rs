@@ -237,8 +237,6 @@ fn refuses_unknown_phones_wrong_answers_and_text_after_auth() {
 
     let mut client = connect(&remote);
     let id = pair(&remote, &mut client);
-    drop(client);
-    let mut client = connect(&remote);
     send(&mut client, &PhoneMessage::Hello { phone_id: id });
     let TvMessage::Challenge { .. } = receive(&mut client) else {
         panic!("no challenge");

@@ -382,6 +382,13 @@ struct Admitted<'a> {
 }
 
 impl Admitted<'_> {
+    fn release(&mut self) {
+        if self.pending {
+            self.shared.lock().pending -= 1;
+            self.pending = false;
+        }
+    }
+
     fn authenticated(&mut self, phone: PhoneId) -> Receiver<Outgoing> {
         let (outbox, inbox) = mpsc::channel();
         let id = self.shared.next_id.fetch_add(1, Ordering::Relaxed);
@@ -431,7 +438,16 @@ fn serve(mut stream: TcpStream, guard: &mut Admitted<'_>) -> Result<(), RemoteEr
         .max_message_size(Some(MAX_PHONE_MESSAGE + NONCE_LEN + TAG_LEN))
         .max_frame_size(Some(MAX_PHONE_MESSAGE + NONCE_LEN + TAG_LEN));
     let mut socket = WebSocket::from_partially_read(stream, rest, Role::Server, Some(config));
-    let (phone, keys, challenge) = authenticate(&mut socket, guard.shared, deadline)?;
+    let (phone, keys, challenge) = match authenticate(&mut socket, guard.shared, deadline) {
+        Ok(authenticated) => authenticated,
+        Err(error) => {
+            // Free the pending slot before the phone hears "denied", so its
+            // next try isn't refused by the cap.
+            guard.release();
+            deny(&mut socket);
+            return Err(error);
+        }
+    };
     let inbox = guard.authenticated(phone);
     let mut session = Session::tv(&auth::session_key(&keys.key, &challenge));
     send_text(&mut socket, &TvMessage::Ok)?;
@@ -560,7 +576,8 @@ fn base64(bytes: &[u8]) -> String {
 }
 
 /// Pairing (if the phone pairs), then the challenge. The phone, its keys and
-/// the challenge the session key comes from.
+/// the challenge the session key comes from; on an error the caller answers
+/// "denied".
 fn authenticate(
     socket: &mut Socket,
     shared: &Shared,
@@ -575,7 +592,6 @@ fn authenticate(
     {
         let phone = pair(shared, &phone_nonce.0, name, &proof.0);
         let Some(phone) = phone else {
-            deny(socket);
             return Err(RemoteError::Decrypt);
         };
         send_text(socket, &TvMessage::Paired { phone_id: phone })?;
@@ -584,11 +600,9 @@ fn authenticate(
         message = read_text(socket, Instant::now() + HANDSHAKE_TIME)?;
     }
     let PhoneMessage::Hello { phone_id } = message else {
-        deny(socket);
         return Err(RemoteError::Invalid("expected hello".to_owned()));
     };
     let Some(keys) = shared.lock().phones.get(&phone_id).map(|p| p.keys.clone()) else {
-        deny(socket);
         return Err(RemoteError::Decrypt);
     };
     let challenge: [u8; 32] = shared.random();
@@ -601,11 +615,9 @@ fn authenticate(
     let PhoneMessage::Auth { hmac } =
         read_text(socket, deadline.max(Instant::now() + HANDSHAKE_TIME))?
     else {
-        deny(socket);
         return Err(RemoteError::Invalid("expected auth".to_owned()));
     };
     if !auth::verify_auth(&keys.auth, &challenge, &phone_id, &hmac.0) {
-        deny(socket);
         return Err(RemoteError::Decrypt);
     }
     Ok((phone_id, keys, challenge))
