@@ -103,7 +103,7 @@ pub(crate) fn load(path: &Path) -> Loaded {
 /// The tile a name in the file stands for. [`TileId::Hidden`] in `keys` is
 /// dropped when the order meets the app list, and so is a folder without
 /// a `[folders]` entry.
-fn tile_for_name(name: String) -> TileId {
+pub(crate) fn tile_for_name(name: String) -> TileId {
     match name.as_str() {
         ABOUT => TileId::About,
         SETTINGS => TileId::Settings,
@@ -121,7 +121,7 @@ fn folder_number(name: &str) -> Option<u32> {
     name.strip_prefix(FOLDER)?.parse().ok()
 }
 
-fn name_of(id: &TileId) -> String {
+pub(crate) fn name_of(id: &TileId) -> String {
     match id {
         TileId::App(component) => component.clone(),
         TileId::About => ABOUT.to_owned(),

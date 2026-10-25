@@ -54,6 +54,8 @@ const FOLDER_COLUMNS: usize = 4;
 /// Apps per page of an open folder: three rows. Pages sit side by side;
 /// Left and Right cross from one to the next.
 const FOLDER_PAGE: usize = 3 * FOLDER_COLUMNS;
+/// [`FOLDER_PAGE`] for other modules (the phone remote names the page).
+pub(crate) const FOLDER_PAGE_SIZE: usize = FOLDER_PAGE;
 
 /// The longest folder name, in characters.
 pub const FOLDER_NAME_MAX: usize = 40;
@@ -650,6 +652,57 @@ impl Home {
         self.focus = index;
         self.update_scroll();
         true
+    }
+
+    /// A tap (or long press) on a tile chosen directly, as the phone remote
+    /// does (REMOTE.md § 4): on Home it focuses the tile, in an open folder
+    /// one of its apps, then opens it (or its menu) as OK would. Anywhere
+    /// else (moving, menus, Settings, About) it does nothing.
+    pub fn point(&mut self, id: &TileId, long: bool, now: Duration) -> Option<Effect> {
+        match self.mode {
+            Mode::Browse => {
+                let index = self.tiles.iter().position(|tile| tile == id)?;
+                self.focus = index;
+                self.update_scroll();
+            }
+            Mode::Folder(open) => {
+                let TileId::App(component) = id else {
+                    return None;
+                };
+                let index = self
+                    .folders
+                    .get(&open.id)?
+                    .apps
+                    .iter()
+                    .position(|app| app == component)?;
+                self.mode = Mode::Folder(OpenFolder {
+                    focus: Some(index),
+                    ..open
+                });
+            }
+            _ => return None,
+        }
+        self.ok_since = None;
+        if long {
+            self.open_menu();
+            None
+        } else {
+            self.activate(now)
+        }
+    }
+
+    /// A long OK decided by the phone remote: the focused tile's menu, as
+    /// holding OK opens it.
+    pub fn long_press(&mut self) {
+        let shown = match self.mode {
+            Mode::Browse => true,
+            Mode::Folder(open) => open.focus.is_some(),
+            _ => false,
+        };
+        if shown {
+            self.ok_since = None;
+            self.open_menu();
+        }
     }
 
     /// Tiles in display order.
@@ -2315,6 +2368,66 @@ mod tests {
         assert!(home.open_folder().is_none());
         assert_eq!(home.handle(Input::Tick, ms(1000) + FOLDER_HOVER), None);
         ms(1000) + FOLDER_HOVER
+    }
+
+    #[test]
+    fn pointing_at_a_tile_opens_it_or_its_menu() {
+        let mut home = home(4); // a00 a01 a02 a03 About Settings
+        assert_eq!(
+            home.point(&id("a02"), false, ms(5)),
+            Some(Effect::Launch("a02".into()))
+        );
+        assert_eq!(home.state(), State::Launching);
+        home.handle(Input::Paused, ms(10));
+        assert_eq!(component(&home), "a02");
+
+        assert_eq!(home.point(&id("a01"), true, ms(20)), None);
+        assert_eq!(home.state(), State::Menu);
+        assert_eq!(component(&home), "a01");
+        // Not while a menu is open, nor for a tile that isn't shown.
+        assert_eq!(home.point(&id("a03"), false, ms(30)), None);
+        press(&mut home, &[Input::Back]);
+        assert_eq!(home.point(&id("zz"), false, ms(40)), None);
+        assert_eq!(
+            home.point(&TileId::Settings, false, ms(50)),
+            Some(Effect::OpenSettings)
+        );
+        assert_eq!(home.point(&id("a00"), false, ms(60)), None);
+    }
+
+    #[test]
+    fn a_long_press_from_the_phone_opens_the_focused_tiles_menu() {
+        let mut home = home(4);
+        press(&mut home, &[Input::Right]);
+        home.long_press();
+        assert_eq!(home.state(), State::Menu);
+        assert_eq!(component(&home), "a01");
+        // Not from inside a menu.
+        home.long_press();
+        assert_eq!(home.state(), State::Menu);
+    }
+
+    #[test]
+    fn pointing_in_an_open_folder_picks_its_app() {
+        let mut home = home(4);
+        let now = make_folder(&mut home, Input::Right);
+        home.handle(Input::OkPressed, now); // drop: a00 and a01 in folder 1
+        home.handle(Input::OkReleased, now);
+        let apps: Vec<String> = folder_apps(&home, 1)
+            .iter()
+            .map(|a| (*a).to_owned())
+            .collect();
+        assert_eq!(home.point(&TileId::Folder(1), false, now), None);
+        assert_eq!(home.state(), State::Folder);
+        let last = apps.last().unwrap().clone();
+        assert_eq!(
+            home.point(&id(&last), false, now),
+            Some(Effect::Launch(last))
+        );
+        // An app outside the open folder isn't reachable from inside it.
+        home.handle(Input::Paused, now);
+        home.point(&TileId::Folder(1), false, now);
+        assert_eq!(home.point(&id("a03"), false, now), None);
     }
 
     fn folder_apps(home: &Home, id: u32) -> Vec<&str> {

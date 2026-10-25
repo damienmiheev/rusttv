@@ -233,7 +233,9 @@ echoed.
 
 - **Phone → TV:**
   - `hello`, `auth`;
-  - `key { name, action: down | up | press }`, with names from a fixed list:
+  - `key { name, action: down | up | press | long }`, with names from a fixed
+    list (`long` is OK held still for 0.6 s and lifted, decided on the
+    phone, so a resting finger that then swipes is never a long press):
     up, down, left, right, ok, back, home, menu, play_pause, volume_up,
     volume_down, mute, power, …;
   - `text { insert | delete | submit }`;

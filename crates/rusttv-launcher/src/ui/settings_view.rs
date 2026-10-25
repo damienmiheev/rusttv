@@ -38,6 +38,14 @@ thread_local! {
     static CONTROLLER: RefCell<Weak<RefCell<Controller>>> = const { RefCell::new(Weak::new()) };
 }
 
+/// Runs `f` on the controller, if it still exists (for events delivered to
+/// the UI thread from other threads).
+pub(super) fn with_controller(f: impl FnOnce(&mut Controller)) {
+    if let Some(controller) = CONTROLLER.with(|slot| slot.borrow().upgrade()) {
+        f(&mut controller.borrow_mut());
+    }
+}
+
 /// Lets results from the history thread find the controller.
 pub(super) fn register(controller: &Rc<RefCell<Controller>>) {
     CONTROLLER.with(|slot| *slot.borrow_mut() = Rc::downgrade(controller));
