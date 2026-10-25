@@ -265,10 +265,17 @@
   const pictures = new Map(); // id -> { kind, url, at }
   const asked = new Set();
   const db = new Promise((resolve) => {
+    // Without the cache within 2 s (another tab or the browser holds it
+    // blocked), the page fetches pictures each time rather than none.
+    setTimeout(() => resolve(null), 2000);
     try {
       const open = indexedDB.open("rusttv-remote", 1);
       open.onupgradeneeded = () => open.result.createObjectStore("pictures", { keyPath: "id" });
-      open.onsuccess = () => resolve(open.result);
+      open.onsuccess = () => {
+        // Let go when another tab or the browser wants to change it.
+        open.result.onversionchange = () => open.result.close();
+        resolve(open.result);
+      };
       open.onerror = () => resolve(null);
     } catch {
       resolve(null); // No IndexedDB (private browsing): fetch each time.
@@ -276,7 +283,12 @@
   });
   const picturesLoaded = db.then((store) => new Promise((resolve) => {
     if (!store) return resolve();
-    const all = store.transaction("pictures").objectStore("pictures").getAll();
+    let all;
+    try {
+      all = store.transaction("pictures").objectStore("pictures").getAll();
+    } catch {
+      return resolve(); // Closed meanwhile: no cache this time.
+    }
     all.onsuccess = () => {
       for (const { id, kind, blob, at } of all.result) {
         pictures.set(id, { kind, url: URL.createObjectURL(blob), at });
