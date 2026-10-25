@@ -22,6 +22,7 @@ shot icon.html 1024 1024 "$OUT/icon.png"
 shot icon-background.html 432 432 "$OUT/bg.png"
 shot icon-foreground.html 432 432 "$OUT/fg.png"
 shot banner.html 960 540 "$OUT/banner.png"
+shot remote-icon.html 512 512 "$OUT/remote-icon.png"
 shot logo.html 1280 640 "$OUT/logo.png"
 for tile in about settings hidden; do
     shot "tile.html?$tile" 960 540 "$OUT/tile-$tile.png"
@@ -57,14 +58,8 @@ for name, px in [("mdpi", 108), ("hdpi", 162), ("xhdpi", 216), ("xxhdpi", 324), 
         folder / "ic_launcher_background.png", optimize=True)
     Image.open(out / "fg.png").resize((px, px), Image.LANCZOS).save(
         folder / "ic_launcher_foreground.png", optimize=True)
-# RustTV Remote's Home Screen icon on phones: the adaptive icon's visible
-# middle (72 of 108 dp), full square, as phones round it themselves (iOS
-# fills transparent corners with black).
-fg = Image.open(out / "fg.png").convert("RGBA")
-icon = Image.alpha_composite(Image.open(out / "bg.png").convert("RGBA").resize(fg.size), fg)
-side = icon.width * 72 // 108
-left = (icon.width - side) // 2
-icon.crop((left, left, left + side, left + side)).convert("RGB").resize((180, 180), Image.LANCZOS).save(
+# RustTV Remote's Home Screen icon on phones (remote-icon.html), full square.
+Image.open(out / "remote-icon.png").convert("RGB").resize((180, 180), Image.LANCZOS).save(
     root / "crates/rusttv-remote/page/icon.png", optimize=True)
-print("wrote docs/brand/{icon-1024,icon-512,logo-1280x640}.png, banner, tile banners, adaptive icon layers, phone icon")
+print("wrote docs/brand/{icon-1024,icon-512,logo-1280x640}.png, banner, tile banners, adaptive icon layers, remote icon")
 PY

@@ -124,7 +124,8 @@
   function connect() {
     clearTimeout(retryTimer);
     if (socket) return;
-    socket = new WebSocket(`ws://${location.host}/ws`);
+    // Over HTTPS the socket is TLS too (a secure page can't open ws://).
+    socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
     socket.binaryType = "arraybuffer";
     socket.onopen = () => {
       if (pairing?.nonce) {

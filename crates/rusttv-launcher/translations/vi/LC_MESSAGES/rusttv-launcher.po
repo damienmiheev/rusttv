@@ -383,3 +383,15 @@ msgstr "Điện thoại sẽ có thể bấm nút và gõ chữ trên TV này. N
 
 msgid "“{}” is paired."
 msgstr "Đã ghép nối “{}”."
+
+msgid "Trust this TV"
+msgstr "Tin cậy TV này"
+
+msgid "“{}” is installing this TV's certificate, “{}”."
+msgstr "“{}” đang cài chứng chỉ của TV này, “{}”."
+
+msgid "Before installing, check on the phone that its SHA-256 fingerprint starts with:"
+msgstr "Trước khi cài, hãy kiểm tra trên điện thoại rằng dấu vân tay SHA-256 bắt đầu bằng:"
+
+msgid "If it doesn't match, don't install it: someone on your network may be interfering."
+msgstr "Nếu không khớp, đừng cài: có thể ai đó trong mạng của bạn đang can thiệp."

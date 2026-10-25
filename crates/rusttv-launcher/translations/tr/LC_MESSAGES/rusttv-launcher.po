@@ -383,3 +383,15 @@ msgstr "Bu TV'de tuşlara basabilir ve yazabilir. Asla ayar değiştiremez veya 
 
 msgid "“{}” is paired."
 msgstr "“{}” eşlendi."
+
+msgid "Trust this TV"
+msgstr "Bu TV'ye güven"
+
+msgid "“{}” is installing this TV's certificate, “{}”."
+msgstr "“{}”, bu TV'nin sertifikasını (“{}”) yüklüyor."
+
+msgid "Before installing, check on the phone that its SHA-256 fingerprint starts with:"
+msgstr "Yüklemeden önce telefonda SHA-256 parmak izinin şununla başladığını kontrol edin:"
+
+msgid "If it doesn't match, don't install it: someone on your network may be interfering."
+msgstr "Eşleşmiyorsa yüklemeyin: ağınızdaki biri araya giriyor olabilir."

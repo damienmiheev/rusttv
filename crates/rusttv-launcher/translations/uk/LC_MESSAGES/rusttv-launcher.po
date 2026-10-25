@@ -383,3 +383,15 @@ msgstr "Він зможе натискати кнопки й вводити те
 
 msgid "“{}” is paired."
 msgstr "«{}» під'єднано."
+
+msgid "Trust this TV"
+msgstr "Довіра до телевізора"
+
+msgid "“{}” is installing this TV's certificate, “{}”."
+msgstr "«{}» встановлює сертифікат цього телевізора «{}»."
+
+msgid "Before installing, check on the phone that its SHA-256 fingerprint starts with:"
+msgstr "Перед встановленням перевірте на телефоні, що його відбиток SHA-256 починається з:"
+
+msgid "If it doesn't match, don't install it: someone on your network may be interfering."
+msgstr "Якщо не збігається, не встановлюйте: хтось у вашій мережі може втручатися."

@@ -14,6 +14,7 @@
     "hint_pointer", "hint_home", "hint_app", "hint_soon", "wants", "wants_any", "type", "typing_free", "flash_long",
     "flash_click", "up", "down", "left", "right", "install_title", "install_ios", "install_android", "not_now", "got_it",
     "menu_move", "menu_hide", "hidden_title", "tile_settings", "tile_about", "hidden_hint", "screen_hint",
+    "trust_title", "trust_intro", "trust_start", "trust_download", "trust_ios", "trust_android", "trust_waiting",
   ];
 
   const T = {
@@ -43,6 +44,7 @@
       "Open the browser menu (⋮), then Add to Home screen. RustTV Remote is then one tap away.",
       "Not now", "Got it",
       "Move", "Hide from Home", "Hidden apps", "Settings", "About", "Tap an app to put it back on Home. Back returns.", "Open on the TV: use the TV remote there. Back returns.",
+      "Make this phone trust your TV", "Set it up once: the remote then opens securely, with no warnings, and can use the phone's motion sensors.", "Set up", "Download the TV's certificate", "Tap Download below and allow it.\nOpen Settings → Profile Downloaded. Tap More Details, then the certificate: its SHA-256 fingerprint must start with the code on your TV. If it doesn't, don't install it.\nTap Install. Then Settings → General → About → Certificate Trust Settings: turn on the TV's certificate.", "Tap Download below.\nOpen Settings, search for “CA certificate” and install the downloaded file.\nIn Settings → Trusted credentials → User, open it: its SHA-256 fingerprint must start with the code on your TV. If it doesn't, remove it.", "Come back here when it's done: the remote switches to the secure page by itself.",
     ],
     uk: [
       "На телевізорі відкрийте Налаштування → RustTV Remote, виберіть «Під'єднати телефон» і відскануйте код камерою цього телефона.",
@@ -70,6 +72,7 @@
       "Відкрийте меню браузера (⋮), потім «Додати на головний екран». RustTV Remote буде за один дотик.",
       "Не зараз", "Зрозуміло",
       "Перемістити", "Сховати з головного екрана", "Приховані додатки", "Налаштування", "Про програму", "Торкніться застосунку, щоб повернути його на головний екран. «Назад» — повернутися.", "Відкрито на телевізорі: користуйтеся пультом. «Назад» — повернутися.",
+      "Налаштуйте довіру телефона до телевізора", "Один раз: пульт відкриватиметься захищено, без попереджень, і зможе використовувати датчики руху телефона.", "Налаштувати", "Завантажити сертифікат телевізора", "Натисніть «Завантажити» нижче й дозвольте.\nВідкрийте Параметри → Профіль завантажено. Натисніть «Докладніше», потім сертифікат: його відбиток SHA-256 має починатися з коду на телевізорі. Якщо ні — не встановлюйте.\nНатисніть «Встановити». Потім Параметри → Загальні → Про пристрій → Параметри довіри сертифікатам: увімкніть сертифікат телевізора.", "Натисніть «Завантажити» нижче.\nВідкрийте Налаштування, знайдіть «сертифікат CA» і встановіть завантажений файл.\nУ Налаштування → Надійні облікові дані → Користувач відкрийте його: відбиток SHA-256 має починатися з коду на телевізорі. Якщо ні — видаліть його.", "Поверніться сюди, коли закінчите: пульт сам перейде на захищену сторінку.",
     ],
     ru: [
       "На телевизоре откройте Настройки → RustTV Remote, выберите «Подключить телефон» и отсканируйте код камерой этого телефона.",
@@ -97,6 +100,7 @@
       "Откройте меню браузера (⋮), затем «Добавить на главный экран». RustTV Remote будет в одно касание.",
       "Не сейчас", "Понятно",
       "Переместить", "Скрыть с главного экрана", "Скрытые приложения", "Настройки", "О программе", "Нажмите на приложение, чтобы вернуть его на главный экран. «Назад» — вернуться.", "Открыто на телевизоре: пользуйтесь пультом. «Назад» — вернуться.",
+      "Настройте доверие телефона к телевизору", "Один раз: пульт будет открываться защищённо, без предупреждений, и сможет использовать датчики движения телефона.", "Настроить", "Скачать сертификат телевизора", "Нажмите «Скачать» ниже и разрешите.\nОткройте Настройки → Профиль загружен. Нажмите «Подробнее», затем сертификат: его отпечаток SHA-256 должен начинаться с кода на телевизоре. Если нет — не устанавливайте.\nНажмите «Установить». Затем Настройки → Основные → Об этом устройстве → Доверие сертификатам: включите сертификат телевизора.", "Нажмите «Скачать» ниже.\nОткройте Настройки, найдите «сертификат CA» и установите скачанный файл.\nВ Настройки → Надёжные учётные данные → Пользователь откройте его: отпечаток SHA-256 должен начинаться с кода на телевизоре. Если нет — удалите его.", "Вернитесь сюда, когда закончите: пульт сам перейдёт на защищённую страницу.",
     ],
     de: [
       "Öffne auf dem Fernseher Einstellungen → RustTV Remote, wähle „Handy koppeln“ und scanne den Code mit der Kamera dieses Handys.",
@@ -124,6 +128,7 @@
       "Öffne das Browsermenü (⋮), dann „Zum Startbildschirm hinzufügen“. RustTV Remote ist dann nur einen Tipp entfernt.",
       "Nicht jetzt", "Verstanden",
       "Verschieben", "Auf dem Startbildschirm ausblenden", "Ausgeblendete Apps", "Einstellungen", "Info", "Tippe auf eine App, um sie zurück auf die Startseite zu holen. Zurück kehrt zurück.", "Auf dem Fernseher geöffnet: bediene es mit der Fernbedienung. Zurück kehrt zurück.",
+      "Lass dieses Handy deinem Fernseher vertrauen", "Einmal einrichten: Die Fernbedienung öffnet sich dann sicher, ohne Warnungen, und kann die Bewegungssensoren des Handys nutzen.", "Einrichten", "Zertifikat des Fernsehers laden", "Tippe unten auf „Laden“ und erlaube es.\nÖffne Einstellungen → Profil geladen. Tippe auf „Weitere Details“, dann auf das Zertifikat: Sein SHA-256-Fingerabdruck muss mit dem Code auf dem Fernseher beginnen. Wenn nicht, installiere es nicht.\nTippe auf „Installieren“. Dann Einstellungen → Allgemein → Info → Zertifikatsvertrauenseinstellungen: Zertifikat des Fernsehers einschalten.", "Tippe unten auf „Laden“.\nÖffne die Einstellungen, suche nach „CA-Zertifikat“ und installiere die geladene Datei.\nÖffne es unter Einstellungen → Vertrauenswürdige Anmeldedaten → Nutzer: Sein SHA-256-Fingerabdruck muss mit dem Code auf dem Fernseher beginnen. Wenn nicht, entferne es.", "Komm danach hierher zurück: Die Fernbedienung wechselt von selbst zur sicheren Seite.",
     ],
     es: [
       "En el televisor, abre Ajustes → RustTV Remote, elige Vincular un teléfono y escanea el código con la cámara de este teléfono.",
@@ -151,6 +156,7 @@
       "Abre el menú del navegador (⋮) y luego Añadir a pantalla de inicio. RustTV Remote quedará a un toque.",
       "Ahora no", "Entendido",
       "Mover", "Ocultar de la pantalla de inicio", "Apps ocultas", "Ajustes", "Acerca de", "Toca una app para devolverla a Inicio. Atrás vuelve.", "Abierto en el televisor: usa el mando allí. Atrás vuelve.",
+      "Haz que este teléfono confíe en tu televisor", "Configúralo una vez: el mando se abrirá de forma segura, sin avisos, y podrá usar los sensores de movimiento del teléfono.", "Configurar", "Descargar el certificado del televisor", "Toca Descargar abajo y permítelo.\nAbre Ajustes → Perfil descargado. Toca Más detalles y luego el certificado: su huella SHA-256 debe empezar por el código de tu televisor. Si no, no lo instales.\nToca Instalar. Luego Ajustes → General → Información → Ajustes de confianza de certificados: activa el certificado del televisor.", "Toca Descargar abajo.\nAbre Ajustes, busca «certificado de CA» e instala el archivo descargado.\nEn Ajustes → Credenciales de confianza → Usuario, ábrelo: su huella SHA-256 debe empezar por el código de tu televisor. Si no, quítalo.", "Vuelve aquí cuando termines: el mando pasará solo a la página segura.",
     ],
     fr: [
       "Sur le téléviseur, ouvrez Paramètres → RustTV Remote, choisissez Associer un téléphone puis scannez le code avec l'appareil photo de ce téléphone.",
@@ -178,6 +184,7 @@
       "Ouvrez le menu du navigateur (⋮), puis Ajouter à l'écran d'accueil. RustTV Remote sera alors à portée d'un toucher.",
       "Plus tard", "Compris",
       "Déplacer", "Masquer de l’écran d’accueil", "Applis masquées", "Paramètres", "À propos", "Touchez une app pour la remettre sur l'accueil. Retour revient.", "Ouvert sur le téléviseur : utilisez la télécommande. Retour revient.",
+      "Faites confiance à votre téléviseur sur ce téléphone", "Une seule fois : la télécommande s'ouvrira ensuite de façon sécurisée, sans avertissement, et pourra utiliser les capteurs de mouvement du téléphone.", "Configurer", "Télécharger le certificat du téléviseur", "Touchez Télécharger ci-dessous et autorisez.\nOuvrez Réglages → Profil téléchargé. Touchez Plus de détails, puis le certificat : son empreinte SHA-256 doit commencer par le code affiché sur le téléviseur. Sinon, ne l'installez pas.\nTouchez Installer. Puis Réglages → Général → Informations → Réglages des certificats : activez le certificat du téléviseur.", "Touchez Télécharger ci-dessous.\nOuvrez les Paramètres, cherchez « certificat CA » et installez le fichier téléchargé.\nDans Paramètres → Identifiants de confiance → Utilisateur, ouvrez-le : son empreinte SHA-256 doit commencer par le code affiché sur le téléviseur. Sinon, supprimez-le.", "Revenez ici une fois terminé : la télécommande passe d'elle-même à la page sécurisée.",
     ],
     it: [
       "Sulla TV apri Impostazioni → RustTV Remote, scegli Associa un telefono e inquadra il codice con la fotocamera di questo telefono.",
@@ -205,6 +212,7 @@
       "Apri il menu del browser (⋮), poi Aggiungi a schermata Home. RustTV Remote sarà a un tocco.",
       "Non ora", "Ho capito",
       "Sposta", "Nascondi dalla schermata Home", "App nascoste", "Impostazioni", "Informazioni", "Tocca un'app per rimetterla nella Home. Indietro torna.", "Aperto sulla TV: usa il telecomando. Indietro torna.",
+      "Fai fidare questo telefono della tua TV", "Una volta sola: il telecomando si aprirà in modo sicuro, senza avvisi, e potrà usare i sensori di movimento del telefono.", "Configura", "Scarica il certificato della TV", "Tocca Scarica qui sotto e consenti.\nApri Impostazioni → Profilo scaricato. Tocca Più dettagli, poi il certificato: la sua impronta SHA-256 deve iniziare con il codice sulla TV. Se non è così, non installarlo.\nTocca Installa. Poi Impostazioni → Generali → Info → Impostazioni certificati attendibili: attiva il certificato della TV.", "Tocca Scarica qui sotto.\nApri Impostazioni, cerca «certificato CA» e installa il file scaricato.\nIn Impostazioni → Credenziali attendibili → Utente, aprilo: la sua impronta SHA-256 deve iniziare con il codice sulla TV. Se non è così, rimuovilo.", "Torna qui quando hai finito: il telecomando passa da solo alla pagina sicura.",
     ],
     pt_BR: [
       "Na TV, abra o Configurações → RustTV Remote, escolha Parear um celular e leia o código com a câmera deste celular.",
@@ -232,6 +240,7 @@
       "Abra o menu do navegador (⋮) e depois Adicionar à tela inicial. O RustTV Remote fica a um toque.",
       "Agora não", "Entendi",
       "Mover", "Ocultar da tela inicial", "Apps ocultos", "Configurações", "Sobre", "Toque em um app para colocá-lo de volta no Início. Voltar retorna.", "Aberto na TV: use o controle da TV. Voltar retorna.",
+      "Faça este celular confiar na sua TV", "Configure uma vez: o controle passa a abrir com segurança, sem avisos, e pode usar os sensores de movimento do celular.", "Configurar", "Baixar o certificado da TV", "Toque em Baixar abaixo e permita.\nAbra Ajustes → Perfil Transferido. Toque em Mais Detalhes e no certificado: a impressão digital SHA-256 deve começar com o código da sua TV. Se não, não instale.\nToque em Instalar. Depois Ajustes → Geral → Sobre → Ajustes de Confiança de Certificado: ative o certificado da TV.", "Toque em Baixar abaixo.\nAbra Configurações, pesquise “certificado CA” e instale o arquivo baixado.\nEm Configurações → Credenciais confiáveis → Usuário, abra-o: a impressão digital SHA-256 deve começar com o código da sua TV. Se não, remova-o.", "Volte aqui ao terminar: o controle muda sozinho para a página segura.",
     ],
     nl: [
       "Open op de tv Instellingen → RustTV Remote, kies Telefoon koppelen en scan de code met de camera van deze telefoon.",
@@ -259,6 +268,7 @@
       "Open het browsermenu (⋮) en dan Toevoegen aan startscherm. RustTV Remote is dan één tik weg.",
       "Niet nu", "Begrepen",
       "Verplaatsen", "Verbergen op startscherm", "Verborgen apps", "Instellingen", "Over", "Tik op een app om hem terug te zetten op Start. Terug gaat terug.", "Geopend op de tv: gebruik daar de afstandsbediening. Terug gaat terug.",
+      "Laat deze telefoon je tv vertrouwen", "Eén keer instellen: de afstandsbediening opent daarna beveiligd, zonder waarschuwingen, en kan de bewegingssensoren van de telefoon gebruiken.", "Instellen", "Certificaat van de tv downloaden", "Tik hieronder op Download en sta het toe.\nOpen Instellingen → Profiel gedownload. Tik op Meer details en dan op het certificaat: de SHA-256-vingerafdruk moet beginnen met de code op je tv. Zo niet, installeer het dan niet.\nTik op Installeer. Daarna Instellingen → Algemeen → Info → Certificaatvertrouwen: zet het certificaat van de tv aan.", "Tik hieronder op Download.\nOpen Instellingen, zoek op ‘CA-certificaat’ en installeer het gedownloade bestand.\nOpen het via Instellingen → Vertrouwde inloggegevens → Gebruiker: de SHA-256-vingerafdruk moet beginnen met de code op je tv. Zo niet, verwijder het.", "Kom hier terug als het klaar is: de afstandsbediening schakelt zelf over naar de beveiligde pagina.",
     ],
     pl: [
       "Na telewizorze otwórz Ustawienia → RustTV Remote, wybierz Sparuj telefon i zeskanuj kod aparatem tego telefonu.",
@@ -286,6 +296,7 @@
       "Otwórz menu przeglądarki (⋮), potem Dodaj do ekranu głównego. RustTV Remote będzie o jedno stuknięcie.",
       "Nie teraz", "Rozumiem",
       "Przenieś", "Ukryj na ekranie głównym", "Ukryte aplikacje", "Ustawienia", "Informacje", "Stuknij aplikację, aby przywrócić ją na ekran główny. Wstecz wraca.", "Otwarte na telewizorze: użyj pilota. Wstecz wraca.",
+      "Niech ten telefon ufa Twojemu telewizorowi", "Ustaw to raz: pilot będzie otwierać się bezpiecznie, bez ostrzeżeń, i będzie mógł używać czujników ruchu telefonu.", "Skonfiguruj", "Pobierz certyfikat telewizora", "Stuknij Pobierz poniżej i zezwól.\nOtwórz Ustawienia → Pobrano profil. Stuknij Więcej szczegółów, potem certyfikat: jego odcisk SHA-256 musi zaczynać się od kodu z telewizora. Jeśli nie, nie instaluj go.\nStuknij Zainstaluj. Potem Ustawienia → Ogólne → To urządzenie → Ustawienia zaufania certyfikatów: włącz certyfikat telewizora.", "Stuknij Pobierz poniżej.\nOtwórz Ustawienia, wyszukaj „certyfikat CA” i zainstaluj pobrany plik.\nW Ustawienia → Zaufane dane logowania → Użytkownik otwórz go: odcisk SHA-256 musi zaczynać się od kodu z telewizora. Jeśli nie, usuń go.", "Wróć tu po zakończeniu: pilot sam przejdzie na bezpieczną stronę.",
     ],
     tr: [
       "TV'de Ayarlar → RustTV Remote'u açın, Telefon eşle'yi seçin ve kodu bu telefonun kamerasıyla okutun.",
@@ -313,6 +324,7 @@
       "Tarayıcı menüsünü (⋮) açın, sonra Ana ekrana ekle'yi seçin. RustTV Remote bir dokunuş uzakta olur.",
       "Şimdi değil", "Anladım",
       "Taşı", "Ana ekrandan gizle", "Gizli uygulamalar", "Ayarlar", "Hakkında", "Ana ekrana geri koymak için bir uygulamaya dokunun. Geri döner.", "TV'de açık: orada TV kumandasını kullanın. Geri döner.",
+      "Bu telefonun TV'nize güvenmesini sağlayın", "Bir kez ayarlayın: kumanda bundan sonra uyarı olmadan güvenli açılır ve telefonun hareket sensörlerini kullanabilir.", "Ayarla", "TV'nin sertifikasını indir", "Aşağıdan İndir'e dokunun ve izin verin.\nAyarlar → Profil İndirildi'yi açın. Diğer Ayrıntılar'a, sonra sertifikaya dokunun: SHA-256 parmak izi TV'deki kodla başlamalı. Başlamıyorsa yüklemeyin.\nYükle'ye dokunun. Sonra Ayarlar → Genel → Hakkında → Sertifika Güven Ayarları: TV'nin sertifikasını açın.", "Aşağıdan İndir'e dokunun.\nAyarlar'ı açın, “CA sertifikası” arayın ve indirilen dosyayı yükleyin.\nAyarlar → Güvenilen kimlik bilgileri → Kullanıcı'da açın: SHA-256 parmak izi TV'deki kodla başlamalı. Başlamıyorsa kaldırın.", "Bitince buraya dönün: kumanda kendiliğinden güvenli sayfaya geçer.",
     ],
     ar: [
       "على التلفزيون، افتح الإعدادات → RustTV Remote واختر «إقران هاتف»، ثم امسح الرمز بكاميرا هذا الهاتف.",
@@ -340,6 +352,7 @@
       "افتح قائمة المتصفح (⋮) ثم «إضافة إلى الشاشة الرئيسية». سيصبح RustTV Remote على بُعد لمسة واحدة.",
       "ليس الآن", "حسنًا",
       "نقل", "إخفاء من الشاشة الرئيسية", "التطبيقات المخفية", "الإعدادات", "حول", "المس تطبيقًا لإعادته إلى الشاشة الرئيسية. «رجوع» للعودة.", "مفتوح على التلفزيون: استخدم جهاز التحكم هناك. «رجوع» للعودة.",
+      "اجعل هذا الهاتف يثق بتلفزيونك", "اضبط ذلك مرة واحدة: سيفتح جهاز التحكم بأمان ومن دون تحذيرات، ويمكنه استخدام مستشعرات الحركة في الهاتف.", "إعداد", "تنزيل شهادة التلفزيون", "اضغط «تنزيل» أدناه واسمح بذلك.\nافتح الإعدادات ← تم تنزيل ملف التعريف. اضغط «مزيد من التفاصيل» ثم الشهادة: يجب أن تبدأ بصمة SHA-256 بالرمز الظاهر على التلفزيون. إن لم تبدأ به فلا تثبّتها.\nاضغط «تثبيت». ثم الإعدادات ← عام ← حول ← إعدادات الثقة بالشهادة: فعّل شهادة التلفزيون.", "اضغط «تنزيل» أدناه.\nافتح الإعدادات وابحث عن «شهادة CA» وثبّت الملف الذي نزّلته.\nفي الإعدادات ← بيانات الاعتماد الموثوقة ← المستخدم افتحها: يجب أن تبدأ بصمة SHA-256 بالرمز الظاهر على التلفزيون. إن لم تبدأ به فأزلها.", "عد إلى هنا عند الانتهاء: سينتقل جهاز التحكم إلى الصفحة الآمنة تلقائيًا.",
     ],
     he: [
       "בטלוויזיה, פתחו את הגדרות → RustTV Remote, בחרו צימוד טלפון וסרקו את הקוד במצלמת הטלפון הזה.",
@@ -367,6 +380,7 @@
       "פתחו את תפריט הדפדפן (⋮) ואז הוספה למסך הבית. RustTV Remote יהיה במרחק הקשה אחת.",
       "לא עכשיו", "הבנתי",
       "העברה", "הסתרה ממסך הבית", "אפליקציות מוסתרות", "הגדרות", "מידע", "הקישו על אפליקציה כדי להחזיר אותה למסך הבית. חזרה – חזרה.", "פתוח בטלוויזיה: השתמשו שם בשלט. חזרה – חזרה.",
+      "תנו לטלפון הזה לתת אמון בטלוויזיה", "הגדרה חד־פעמית: השלט ייפתח באופן מאובטח, בלי אזהרות, ויוכל להשתמש בחיישני התנועה של הטלפון.", "הגדרה", "הורדת האישור של הטלוויזיה", "הקישו על הורדה למטה ואשרו.\nפתחו את הגדרות ← פרופיל שהורד. הקישו על פרטים נוספים ואז על האישור: טביעת האצבע SHA-256 שלו חייבת להתחיל בקוד שבטלוויזיה. אם לא, אל תתקינו.\nהקישו על התקנה. ואז הגדרות ← כללי ← אודות ← הגדרות אמון באישורים: הפעילו את האישור של הטלוויזיה.", "הקישו על הורדה למטה.\nפתחו את ההגדרות, חפשו „אישור CA” והתקינו את הקובץ שהורד.\nבהגדרות ← פרטי כניסה מהימנים ← משתמש פתחו אותו: טביעת האצבע SHA-256 חייבת להתחיל בקוד שבטלוויזיה. אם לא, הסירו אותו.", "חזרו לכאן בסיום: השלט יעבור לבד לדף המאובטח.",
     ],
     hi: [
       "टीवी पर सेटिंग → RustTV Remote खोलें, 'फ़ोन जोड़ें' चुनें, फिर इस फ़ोन के कैमरे से कोड स्कैन करें।",
@@ -394,6 +408,7 @@
       "ब्राउज़र मेनू (⋮) खोलें, फिर 'होम स्क्रीन में जोड़ें'। RustTV Remote तब एक टैप दूर होगा।",
       "अभी नहीं", "समझ गया",
       "जगह बदलें", "होम स्क्रीन से छिपाएं", "छिपाए गए ऐप्लिकेशन", "सेटिंग", "जानकारी", "किसी ऐप को होम पर वापस लाने के लिए उस पर टैप करें। 'वापस' लौटाता है।", "टीवी पर खुला है: वहां टीवी रिमोट इस्तेमाल करें। 'वापस' लौटाता है।",
+      "इस फ़ोन से अपने टीवी पर भरोसा करवाएं", "एक बार सेट करें: फिर रिमोट बिना चेतावनी के सुरक्षित रूप से खुलेगा और फ़ोन के मोशन सेंसर इस्तेमाल कर सकेगा।", "सेट करें", "टीवी का प्रमाणपत्र डाउनलोड करें", "नीचे डाउनलोड पर टैप करें और अनुमति दें।\nसेटिंग्ज़ → प्रोफ़ाइल डाउनलोड हुई खोलें। और विवरण पर, फिर प्रमाणपत्र पर टैप करें: उसका SHA-256 फ़िंगरप्रिंट टीवी पर दिख रहे कोड से शुरू होना चाहिए। अगर नहीं, तो इंस्टॉल न करें।\nइंस्टॉल पर टैप करें। फिर सेटिंग्ज़ → सामान्य → परिचय → प्रमाणपत्र भरोसा सेटिंग्ज़: टीवी का प्रमाणपत्र चालू करें।", "नीचे डाउनलोड पर टैप करें।\nसेटिंग खोलें, “CA प्रमाणपत्र” खोजें और डाउनलोड की गई फ़ाइल इंस्टॉल करें।\nसेटिंग → भरोसेमंद क्रेडेंशियल → उपयोगकर्ता में उसे खोलें: SHA-256 फ़िंगरप्रिंट टीवी पर दिख रहे कोड से शुरू होना चाहिए। अगर नहीं, तो उसे हटा दें।", "पूरा होने पर यहां लौटें: रिमोट अपने आप सुरक्षित पेज पर चला जाएगा।",
     ],
     id: [
       "Di TV, buka Setelan → RustTV Remote, pilih Pasangkan ponsel, lalu pindai kodenya dengan kamera ponsel ini.",
@@ -421,6 +436,7 @@
       "Buka menu browser (⋮), lalu Tambahkan ke layar utama. RustTV Remote jadi tinggal satu ketukan.",
       "Nanti", "Mengerti",
       "Pindahkan", "Sembunyikan dari layar utama", "Aplikasi tersembunyi", "Setelan", "Tentang", "Ketuk aplikasi untuk mengembalikannya ke Beranda. Kembali untuk kembali.", "Terbuka di TV: gunakan remote TV di sana. Kembali untuk kembali.",
+      "Buat ponsel ini memercayai TV Anda", "Atur sekali saja: remote lalu terbuka dengan aman, tanpa peringatan, dan bisa memakai sensor gerak ponsel.", "Atur", "Unduh sertifikat TV", "Ketuk Unduh di bawah dan izinkan.\nBuka Pengaturan → Profil Diunduh. Ketuk Detail Lainnya, lalu sertifikatnya: sidik jari SHA-256-nya harus diawali kode di TV Anda. Jika tidak, jangan pasang.\nKetuk Instal. Lalu Pengaturan → Umum → Mengenai → Pengaturan Kepercayaan Sertifikat: nyalakan sertifikat TV.", "Ketuk Unduh di bawah.\nBuka Setelan, cari “sertifikat CA”, lalu pasang file yang diunduh.\nDi Setelan → Kredensial tepercaya → Pengguna, buka sertifikatnya: sidik jari SHA-256-nya harus diawali kode di TV Anda. Jika tidak, hapus.", "Kembali ke sini setelah selesai: remote akan pindah ke halaman aman dengan sendirinya.",
     ],
     ja: [
       "テレビで 設定 → RustTV Remote を開き、「スマホをペアリング」を選んで、このスマホのカメラでコードを読み取ってください。",
@@ -448,6 +464,7 @@
       "ブラウザのメニュー（⋮）を開き、「ホーム画面に追加」を選びます。RustTV Remote をワンタップで開けます。",
       "後で", "OK",
       "移動", "ホーム画面から非表示", "非表示のアプリ", "設定", "概要", "アプリをタップするとホームに戻します。戻るで戻ります。", "テレビで開いています：テレビのリモコンで操作してください。戻るで戻ります。",
+      "このスマホでテレビを信頼する", "一度だけ設定すれば、リモコンは警告なしで安全に開き、スマホのモーションセンサーも使えます。", "設定する", "テレビの証明書をダウンロード", "下の「ダウンロード」をタップして許可します。\n設定 → プロファイルがダウンロード済み を開き、「詳細」、続けて証明書をタップします。SHA-256フィンガープリントがテレビのコードで始まっている必要があります。違う場合はインストールしないでください。\n「インストール」をタップ。次に 設定 → 一般 → 情報 → 証明書信頼設定 でテレビの証明書をオンにします。", "下の「ダウンロード」をタップします。\n設定を開いて「CA証明書」を検索し、ダウンロードしたファイルをインストールします。\n設定 → 信頼できる認証情報 → ユーザー で開き、SHA-256フィンガープリントがテレビのコードで始まることを確認します。違う場合は削除してください。", "終わったらここに戻ってください。リモコンが自動で安全なページに切り替わります。",
     ],
     ko: [
       "TV에서 설정 → RustTV Remote를 열고 휴대폰 연결을 선택한 뒤, 이 휴대폰 카메라로 코드를 스캔하세요.",
@@ -475,6 +492,7 @@
       "브라우저 메뉴(⋮)를 연 다음 홈 화면에 추가를 선택하세요. RustTV Remote를 한 번에 열 수 있습니다.",
       "나중에", "알겠어요",
       "이동", "홈 화면에서 숨기기", "숨긴 앱", "설정", "정보", "앱을 탭하면 홈으로 되돌립니다. 뒤로: 돌아가기.", "TV에서 열려 있습니다: TV 리모컨을 사용하세요. 뒤로: 돌아가기.",
+      "이 휴대폰이 TV를 신뢰하도록 설정", "한 번만 설정하면 리모컨이 경고 없이 안전하게 열리고 휴대폰의 모션 센서도 쓸 수 있습니다.", "설정", "TV 인증서 다운로드", "아래의 다운로드를 탭하고 허용하세요.\n설정 → 프로파일이 다운로드됨을 엽니다. 자세한 정보, 그다음 인증서를 탭하세요. SHA-256 지문이 TV의 코드로 시작해야 합니다. 아니라면 설치하지 마세요.\n설치를 탭하세요. 그다음 설정 → 일반 → 정보 → 인증서 신뢰 설정에서 TV 인증서를 켜세요.", "아래의 다운로드를 탭하세요.\n설정을 열고 ‘CA 인증서’를 검색해 다운로드한 파일을 설치하세요.\n설정 → 신뢰할 수 있는 자격증명 → 사용자에서 열어 보세요. SHA-256 지문이 TV의 코드로 시작해야 합니다. 아니라면 삭제하세요.", "다 되면 여기로 돌아오세요. 리모컨이 저절로 보안 페이지로 넘어갑니다.",
     ],
     th: [
       "บนทีวี เปิด การตั้งค่า → RustTV Remote เลือก จับคู่โทรศัพท์ แล้วสแกนโค้ดด้วยกล้องของโทรศัพท์เครื่องนี้",
@@ -502,6 +520,7 @@
       "เปิดเมนูเบราว์เซอร์ (⋮) แล้วเลือก เพิ่มลงในหน้าจอหลัก จากนั้นเปิด RustTV Remote ได้ในแตะเดียว",
       "ไว้ทีหลัง", "เข้าใจแล้ว",
       "ย้าย", "ซ่อนจากหน้าจอหลัก", "แอปที่ซ่อนไว้", "การตั้งค่า", "เกี่ยวกับ", "แตะแอปเพื่อนำกลับไปที่หน้าหลัก กดกลับเพื่อย้อนกลับ", "เปิดอยู่บนทีวี: ใช้รีโมตทีวีที่นั่น กดกลับเพื่อย้อนกลับ",
+      "ให้โทรศัพท์นี้เชื่อถือทีวีของคุณ", "ตั้งค่าครั้งเดียว: จากนั้นรีโมตจะเปิดอย่างปลอดภัย ไม่มีคำเตือน และใช้เซ็นเซอร์ตรวจจับการเคลื่อนไหวของโทรศัพท์ได้", "ตั้งค่า", "ดาวน์โหลดใบรับรองของทีวี", "แตะ ดาวน์โหลด ด้านล่างแล้วอนุญาต\nเปิด การตั้งค่า → ดาวน์โหลดโปรไฟล์แล้ว แตะ รายละเอียดเพิ่มเติม แล้วแตะใบรับรอง: ลายนิ้วมือ SHA-256 ต้องขึ้นต้นด้วยรหัสบนทีวี ถ้าไม่ใช่ อย่าติดตั้ง\nแตะ ติดตั้ง จากนั้น การตั้งค่า → ทั่วไป → เกี่ยวกับ → การตั้งค่าความเชื่อถือใบรับรอง: เปิดใบรับรองของทีวี", "แตะ ดาวน์โหลด ด้านล่าง\nเปิดการตั้งค่า ค้นหา “ใบรับรอง CA” แล้วติดตั้งไฟล์ที่ดาวน์โหลด\nใน การตั้งค่า → ข้อมูลรับรองที่เชื่อถือได้ → ผู้ใช้ ให้เปิดดู: ลายนิ้วมือ SHA-256 ต้องขึ้นต้นด้วยรหัสบนทีวี ถ้าไม่ใช่ ให้ลบออก", "กลับมาที่นี่เมื่อเสร็จ: รีโมตจะเปลี่ยนไปหน้าที่ปลอดภัยเอง",
     ],
     vi: [
       "Trên TV, mở Cài đặt → RustTV Remote, chọn Ghép nối điện thoại rồi quét mã bằng camera của điện thoại này.",
@@ -529,6 +548,7 @@
       "Mở menu trình duyệt (⋮), rồi Thêm vào màn hình chính. RustTV Remote sẽ chỉ cách một lần chạm.",
       "Để sau", "Đã hiểu",
       "Di chuyển", "Ẩn khỏi màn hình chính", "Ứng dụng đã ẩn", "Cài đặt", "Giới thiệu", "Chạm vào một ứng dụng để đưa nó trở lại Màn hình chính. Quay lại để trở về.", "Đang mở trên TV: hãy dùng điều khiển TV. Quay lại để trở về.",
+      "Cho điện thoại này tin cậy TV của bạn", "Thiết lập một lần: sau đó điều khiển mở an toàn, không cảnh báo, và dùng được cảm biến chuyển động của điện thoại.", "Thiết lập", "Tải chứng chỉ của TV", "Chạm Tải xuống bên dưới và cho phép.\nMở Cài đặt → Đã tải về hồ sơ. Chạm Chi tiết khác rồi chạm chứng chỉ: dấu vân tay SHA-256 phải bắt đầu bằng mã trên TV. Nếu không, đừng cài.\nChạm Cài đặt. Rồi Cài đặt → Cài đặt chung → Giới thiệu → Cài đặt tin cậy chứng nhận: bật chứng chỉ của TV.", "Chạm Tải xuống bên dưới.\nMở Cài đặt, tìm “chứng chỉ CA” và cài tệp đã tải.\nTrong Cài đặt → Thông tin xác thực đáng tin cậy → Người dùng, mở nó ra: dấu vân tay SHA-256 phải bắt đầu bằng mã trên TV. Nếu không, hãy xóa.", "Quay lại đây khi xong: điều khiển sẽ tự chuyển sang trang an toàn.",
     ],
     zh_CN: [
       "在电视上打开 设置 → RustTV Remote，选择“配对手机”，然后用这部手机的相机扫描二维码。",
@@ -556,6 +576,7 @@
       "打开浏览器菜单（⋮），然后选择“添加到主屏幕”。之后轻点一下即可打开 RustTV Remote。",
       "以后再说", "知道了",
       "移动", "从主屏幕隐藏", "已隐藏的应用", "设置", "关于", "轻点应用即可将其放回主屏幕。按返回键返回。", "已在电视上打开：请用电视遥控器操作。按返回键返回。",
+      "让这部手机信任你的电视", "只需设置一次：之后遥控器会安全打开，不再有警告，还能使用手机的运动传感器。", "设置", "下载电视的证书", "轻点下方的“下载”并允许。\n打开 设置 → 已下载描述文件。轻点“更多详细信息”，再轻点证书：它的 SHA-256 指纹必须以电视上的代码开头。如果不是，请勿安装。\n轻点“安装”。然后 设置 → 通用 → 关于本机 → 证书信任设置：打开电视的证书。", "轻点下方的“下载”。\n打开设置，搜索“CA 证书”，安装下载的文件。\n在 设置 → 受信任的凭据 → 用户 中打开它：SHA-256 指纹必须以电视上的代码开头。如果不是，请移除它。", "完成后回到这里：遥控器会自动切换到安全页面。",
     ],
     zh_TW: [
       "在電視上開啟 設定 → RustTV Remote，選擇「配對手機」，然後用這支手機的相機掃描 QR 碼。",
@@ -583,6 +604,7 @@
       "開啟瀏覽器選單（⋮），然後選擇「加到主畫面」。之後輕觸一下即可開啟 RustTV Remote。",
       "稍後再說", "知道了",
       "移動", "從主畫面隱藏", "已隱藏的應用程式", "設定", "關於", "輕觸應用程式即可將其放回主畫面。按返回鍵返回。", "已在電視上開啟：請用電視遙控器操作。按返回鍵返回。",
+      "讓這支手機信任你的電視", "只需設定一次：之後遙控器會安全開啟，不再有警告，還能使用手機的動作感應器。", "設定", "下載電視的憑證", "輕觸下方的「下載」並允許。\n打開 設定 → 已下載描述檔。輕觸「更多詳細資訊」，再輕觸憑證：它的 SHA-256 指紋必須以電視上的代碼開頭。如果不是，請勿安裝。\n輕觸「安裝」。然後 設定 → 一般 → 關於本機 → 憑證信任設定：打開電視的憑證。", "輕觸下方的「下載」。\n打開設定，搜尋「CA 憑證」，安裝下載的檔案。\n在 設定 → 信任的憑證 → 使用者 中打開它：SHA-256 指紋必須以電視上的代碼開頭。如果不是，請移除它。", "完成後回到這裡：遙控器會自動切換到安全頁面。",
     ],
   };
 

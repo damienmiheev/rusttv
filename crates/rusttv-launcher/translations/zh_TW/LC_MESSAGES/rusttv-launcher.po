@@ -383,3 +383,15 @@ msgstr "它將可以在這台電視上按鍵和輸入文字，但絕不會變更
 
 msgid "“{}” is paired."
 msgstr "「{}」已配對。"
+
+msgid "Trust this TV"
+msgstr "信任這台電視"
+
+msgid "“{}” is installing this TV's certificate, “{}”."
+msgstr "「{}」正在安裝這台電視的憑證「{}」。"
+
+msgid "Before installing, check on the phone that its SHA-256 fingerprint starts with:"
+msgstr "安裝前，請在手機上確認其 SHA-256 指紋以此開頭："
+
+msgid "If it doesn't match, don't install it: someone on your network may be interfering."
+msgstr "如果不一致，請勿安裝：可能有人在干擾你的網路。"
