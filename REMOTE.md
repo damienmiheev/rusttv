@@ -153,9 +153,12 @@ to its home screen.
     at ~107 MB PSS instead of ~68 MB. Nothing else is kept on the TV.
     Measured on the Philips with 29 apps (2026-10-25): 109 KB in all
     (median 3.5 KB, largest 11.7 KB); on the phone the first arrived 192 ms
-    and the last 827 ms after the page started; 1.42 s of one core on the TV
-    in total, collection included (0.63 s without it); idle CPU unchanged
-    (2 ticks in 30 s); a reload with the cache costs the TV nothing.
+    and the last 827 ms after the page started; 0.70 s of one core on the
+    TV in total (3 runs: 70, 70, 71 ticks), about 23 ms per picture for
+    drawing and compressing; the collection itself takes 12–17 ms (ART's
+    log). Decoding banners with BitmapFactory instead, to skip the
+    collection, measured no better (76 ticks) and was dropped. Idle CPU
+    unchanged (2 ticks in 30 s); a reload with the cache costs nothing.
 
 ## 2. Pairing and authentication
 
