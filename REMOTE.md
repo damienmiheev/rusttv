@@ -115,6 +115,10 @@ to its home screen.
   A small bar at the bottom has Back, and Keyboard while the TV asks for
   text. There is no Apps / Touchpad switch: the page shows Apps while
   RustTV is in front and the touchpad while another app is.
+- **Any screen:** tile columns follow the width (at least 130 px, growing
+  with the screen up to 240 px): 2 on a 320 px phone, 4 to 5 in landscape
+  and on an iPad, about 6 on a computer, like the TV. Sheets and cards keep
+  a phone's width on wide screens, and nothing sits under a notch.
 - **Add to Home Screen:** once paired, a phone browser that didn't open the
   page from the Home Screen suggests adding it (iOS: Share → Add to Home
   Screen; Android: the browser menu). "Got it" ends the suggestion, "Not
@@ -222,7 +226,11 @@ to its home screen.
   `sha1dc` (already in the tree), and WebSocket frames are handled by
   `tungstenite` without its handshake feature.
   - A connection reads with a 100 ms timeout, so it can also send the latest
-    view the launcher pushed. Its wakeups are measured with the budgets.
+    view the launcher pushed; for 500 ms after the phone sends something it
+    reads with 5 ms, so the view that answers goes out at once. Measured on
+    the Philips (2026-10-25, 30 runs, phone page in a browser on the LAN):
+    phone input to the answering view on the phone, median 115 ms before,
+    24 ms after (p90 119 → 28 ms).
   - The UI picks events up on its existing short timer and pushes the
     `HomeView` after every model change.
   - `/ws` is refused unless `Origin` is the page itself, so another site

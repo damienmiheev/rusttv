@@ -47,8 +47,14 @@ const MAX_HEADERS: usize = 32;
 /// Time to finish HTTP, the upgrade and authentication.
 const HANDSHAKE_TIME: Duration = Duration::from_secs(10);
 const WRITE_TIME: Duration = Duration::from_secs(5);
-/// How often an authenticated connection wakes to send pushed views.
+/// How often an idle authenticated connection wakes to send pushed views.
 const POLL: Duration = Duration::from_millis(100);
+/// How often it wakes for a while after the phone sent something: the
+/// view that answers it goes out within this instead of up to [`POLL`]
+/// (measured on the Philips: a phone input's answer took 115 ms).
+const POLL_BUSY: Duration = Duration::from_millis(5);
+/// How long the connection stays at [`POLL_BUSY`] after a phone message.
+const BUSY_FOR: Duration = Duration::from_millis(500);
 const PING_EVERY: Duration = Duration::from_secs(20);
 /// Dropped after two missed pongs.
 const PONG_DEADLINE: Duration = Duration::from_secs(45);
@@ -788,6 +794,8 @@ fn talk(
     inbox: &Receiver<Outgoing>,
 ) -> Result<(), RemoteError> {
     socket.get_mut().set_read_timeout(Some(POLL)).map_err(io)?;
+    let mut poll = POLL;
+    let mut busy_until = Instant::now();
     let mut pending = shared.lock().view.clone();
     let mut once = VecDeque::new();
     let mut window = (Instant::now(), 0_u32);
@@ -823,8 +831,17 @@ fn talk(
             socket.send(Message::Ping(Vec::new().into())).map_err(ws)?;
             last_ping = now;
         }
+        let wanted = if now < busy_until { POLL_BUSY } else { POLL };
+        if wanted != poll {
+            socket
+                .get_mut()
+                .set_read_timeout(Some(wanted))
+                .map_err(io)?;
+            poll = wanted;
+        }
         match socket.read() {
             Ok(Message::Binary(frame)) => {
+                busy_until = Instant::now() + BUSY_FOR;
                 if now.duration_since(window.0) >= Duration::from_secs(1) {
                     window = (now, 0);
                 }

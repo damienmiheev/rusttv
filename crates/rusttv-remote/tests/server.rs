@@ -238,6 +238,40 @@ fn pictures_reach_only_their_phone_all_of_them_in_order() {
 }
 
 #[test]
+fn the_answer_to_a_phone_input_goes_out_without_waiting_for_the_idle_poll() {
+    let remote = start(Phones::default());
+    let mut client = connect(&remote);
+    let id = pair(&remote, &mut client);
+    let mut session = authenticate(&remote, &mut client, id);
+    let key = PhoneMessage::Key {
+        name: Key::Right,
+        action: KeyAction::Press,
+    };
+    let mut slowest = Duration::ZERO;
+    for round in 0..5_u8 {
+        let frame = session
+            .seal(serde_json::to_string(&key).unwrap().as_bytes(), [round; 24])
+            .unwrap();
+        client.send(Message::binary(frame)).unwrap();
+        assert!(matches!(remote.wait_event(WAIT), Some(Event::Input { .. })));
+        // The launcher answers with a view, as after a key.
+        let view = TvMessage::Home(HomeView {
+            focused: Some(format!("a{round}/.Main")),
+            ..HomeView::default()
+        });
+        let sent = std::time::Instant::now();
+        remote.push(&view).unwrap();
+        assert_eq!(receive_sealed(&mut client, &mut session), view);
+        slowest = slowest.max(sent.elapsed());
+    }
+    // Idle, a connection only looks for views every 100 ms.
+    assert!(
+        slowest < Duration::from_millis(60),
+        "slowest answer {slowest:?}"
+    );
+}
+
+#[test]
 fn a_paired_phone_connects_again_and_gets_the_latest_view() {
     let remote = start(Phones::default());
     let mut first = connect(&remote);
