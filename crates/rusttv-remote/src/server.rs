@@ -233,6 +233,14 @@ impl Remote {
         self.address
     }
 
+    /// Hands the events to a thread that waits on them (the launcher
+    /// forwards them to its UI thread, so nothing polls while nobody
+    /// connects). Afterwards [`Remote::try_event`] and [`Remote::wait_event`]
+    /// return nothing.
+    pub fn take_events(&mut self) -> Receiver<Event> {
+        std::mem::replace(&mut self.events, mpsc::channel().1)
+    }
+
     /// The next event, if any.
     pub fn try_event(&self) -> Option<Event> {
         self.events.try_recv().ok()

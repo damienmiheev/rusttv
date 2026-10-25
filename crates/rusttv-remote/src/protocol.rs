@@ -112,14 +112,16 @@ pub enum Key {
     Power,
 }
 
-/// Press and release in one message, or each half on its own (long presses,
-/// key repeat).
+/// Press and release in one message, each half on its own (key repeat), or
+/// a long press decided on the phone (the finger stayed still and lifted),
+/// so a resting finger that then swipes never counts as one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum KeyAction {
     Press,
     Down,
     Up,
+    Long,
 }
 
 /// One edit to the text field the TV shows.
@@ -421,6 +423,7 @@ mod tests {
     #[test]
     fn ignores_unknown_fields_but_not_unknown_messages() {
         assert!(parse(r#"{"type":"key","name":"ok","action":"press","extra":1}"#).is_ok());
+        assert!(parse(r#"{"type":"key","name":"ok","action":"long"}"#).is_ok());
         assert!(parse(r#"{"type":"shell","command":"reboot"}"#).is_err());
         assert!(parse(r#"{"type":"key","name":"settings","action":"press"}"#).is_err());
     }

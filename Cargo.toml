@@ -77,6 +77,10 @@ tungstenite = { version = "0.30.0", default-features = false }
 # SHA-1 for the WebSocket upgrade's accept key, already in the tree through gix
 # (collision-detecting SHA-1). No dependencies. MIT OR Apache-2.0.
 sha1dc = "0.1.5"
+# The OS's secure random source for the phone remote's nonces and keys on
+# the TV and the desktop (already in the tree through tungstenite's rand).
+# MIT OR Apache-2.0.
+getrandom = "0.4.3"
 
 [workspace.lints.rust]
 # Only the future JNI bridge crate may opt out of this.

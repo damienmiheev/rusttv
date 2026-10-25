@@ -421,6 +421,7 @@
   // --- Touchpad -----------------------------------------------------------------
   const pad = $("pad"), touch = $("touch"), flash = $("flash");
   const touches = new Map();
+  const LONG = 600; // the launcher's long press
   let padState = null, pending = { dx: 0, dy: 0, scroll: false }, frame = 0, flashTimer = 0;
 
   function showFlash(text) {
@@ -444,21 +445,23 @@
   }
 
   pad.addEventListener("pointerdown", (event) => {
-    pad.setPointerCapture(event.pointerId);
+    try {
+      pad.setPointerCapture(event.pointerId);
+    } catch {
+      // Not a live pointer (synthetic events): movement still arrives.
+    }
     touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
     const box = pad.getBoundingClientRect();
     touch.style.left = `${event.clientX - box.left}px`;
     touch.style.top = `${event.clientY - box.top}px`;
     touch.style.opacity = "1";
     if (touches.size === 1) {
-      padState = { x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, at: performance.now(), moved: false, long: false };
+      padState = { x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, at: performance.now(), moved: false };
+      // Only shown here; the long press is sent on release, if the finger
+      // never moved (a resting finger that then swipes is a swipe).
       padState.timer = setTimeout(() => {
-        if (padState && !padState.moved && !pointerMode()) {
-          padState.long = true;
-          press("ok", "down");
-          showFlash("Long press");
-        }
-      }, 500);
+        if (padState && !padState.moved && !pointerMode()) showFlash("Long press");
+      }, LONG);
     }
   });
 
@@ -500,9 +503,10 @@
     if (touches.size > 0 || !padState) return;
     touch.style.opacity = "0";
     clearTimeout(padState.timer);
-    if (padState.long) {
-      press("ok", "up");
-    } else if (!padState.moved && performance.now() - padState.at < 400) {
+    const held = performance.now() - padState.at;
+    if (!padState.moved && held >= LONG && !pointerMode()) {
+      press("ok", "long");
+    } else if (!padState.moved && held < 400) {
       if (pointerMode()) {
         send({ type: "pointer", dx: 0, dy: 0, action: "click" });
         showFlash("Click");

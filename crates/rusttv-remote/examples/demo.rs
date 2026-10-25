@@ -58,9 +58,10 @@ fn main() {
     let mut secret = [0; 32];
     random(&mut secret);
     remote.open_pairing(secret);
+    let mut opened = std::time::Instant::now();
     let hex: String = secret.iter().map(|b| format!("{b:02x}")).collect();
     eprintln!(
-        "Pair: http://127.0.0.1:{}/#p={hex}",
+        "Pair: http://<this computer's address>:{}/#p={hex}",
         remote.address().port()
     );
 
@@ -85,6 +86,12 @@ fn main() {
     remote.push(&TvMessage::Home(home.clone())).unwrap();
     loop {
         let Some(event) = remote.wait_event(Duration::from_secs(1)) else {
+            // Keep the link working until a phone pairs (a real QR code
+            // lasts two minutes).
+            if remote.phones().is_empty() && opened.elapsed() > Duration::from_secs(90) {
+                remote.open_pairing(secret);
+                opened = std::time::Instant::now();
+            }
             continue;
         };
         eprintln!("{event:?}");

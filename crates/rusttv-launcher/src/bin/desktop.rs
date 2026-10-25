@@ -7,6 +7,9 @@
 //!
 //! `RUSTTV_LANG=<tag>` (e.g. `uk`, `ar`) shows that translation.
 //!
+//! `RUSTTV_REMOTE_PAIR=1` starts RustTV Remote with pairing open and prints
+//! the pairing link; every phone that asks is allowed (REMOTE.md).
+//!
 //! `--demo <dir>` instead plays a fixed key script and writes a BMP snapshot
 //! after each step into `<dir>`, then quits. Needs no screen-capture permission.
 
@@ -19,6 +22,28 @@ use std::time::Duration;
 use rusttv_launcher::{
     Bitmap, DemoStep, FakePlatform, RunOptions, run, run_demo, start_desktop_history,
 };
+
+/// Prints the launcher's info, warning and error messages, so the desktop dev
+/// mode shows what the TV would log.
+struct Stderr;
+
+impl log::Log for Stderr {
+    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+        metadata.level() <= log::Level::Info
+    }
+
+    #[expect(
+        clippy::print_stderr,
+        reason = "the dev mode's log goes to the terminal"
+    )]
+    fn log(&self, record: &log::Record<'_>) {
+        if self.enabled(record.metadata()) && record.target().starts_with("rusttv") {
+            eprintln!("{}: {}", record.level(), record.args());
+        }
+    }
+
+    fn flush(&self) {}
+}
 
 /// Stand-in for the time an app takes to cover the launcher, so the launch
 /// animation finishes before the launcher "comes back".
@@ -166,6 +191,9 @@ fn demo_script() -> Vec<DemoStep> {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    if log::set_logger(&Stderr).is_ok() {
+        log::set_max_level(log::LevelFilter::Info);
+    }
     let mut options = RunOptions {
         // e.g. RUSTTV_LANG=uk or RUSTTV_LANG=ar to try a translation.
         language: std::env::var("RUSTTV_LANG").ok(),
@@ -173,6 +201,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         simulated_pause: Some(SIMULATED_APP_START),
         order_file: None,
         lifecycle: Default::default(),
+        // RUSTTV_REMOTE_PAIR=1 starts the phone remote with pairing open.
+        remote_pairing: std::env::var_os("RUSTTV_REMOTE_PAIR").is_some(),
     };
     let mut args = std::env::args().skip(1);
     let Some(flag) = args.next() else {

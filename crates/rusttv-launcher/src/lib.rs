@@ -13,6 +13,7 @@ mod i18n;
 mod model;
 mod order_file;
 mod platform;
+mod remote;
 mod review;
 mod settings;
 mod ui;
