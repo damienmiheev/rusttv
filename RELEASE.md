@@ -1,8 +1,8 @@
 # Releasing RustTV
 
 How a release is built, signed and checked. GitHub Actions builds everything
-from the tagged commit and makes a draft release; the owner tags, signs on
-their own computer and publishes. The two signing keys never enter CI.
+from the tagged commit and makes a draft release; the owner signs on their
+own computer and publishes. The two signing keys never enter CI.
 
 ## What a release contains
 
@@ -183,10 +183,11 @@ Work on a release branch; tick each item in the release pull request.
 
 ### Tag, sign and publish (owner)
 
-- [ ] Signed tag on the release commit, pushed: `git tag -s v<version> -m "RustTV <version>" && git push origin v<version>`. The tag must equal `v` + the Cargo version; the workflow fails otherwise.
-- [ ] The tag push runs the **Release build**; all jobs pass. Its last job creates a **draft** GitHub release with the CLI archives, `SHA256SUMS` (CLI only so far) and notes from the CHANGELOG section plus `.github/release-notes.md` (install, checking the files, safety). It fails if `RELEASE_SIGNING_KEY` isn't set.
+- [ ] The release pull request is merged into `main`.
+- [ ] Run **Tag release** on `main` (Actions → Tag release → Run workflow, or `gh workflow run tag-release.yml --ref main`). It checks that `v<version>` doesn't exist yet, that the CHANGELOG has the section and that `RELEASE_SIGNING_KEY` is set, tags `main`'s head as `v<version>` and starts the Release build on the tag. The tag is made by GitHub Actions, so it isn't GPG-signed; `SHA256SUMS.minisig` is what proves a release. A signed tag pushed by hand (`git tag -s v<version> -m "RustTV <version>" && git push origin v<version>`) works too and starts the Release build itself.
+- [ ] The **Release build** of the tag; all jobs pass. Its last job creates a **draft** GitHub release with the CLI archives, `SHA256SUMS` (CLI only so far) and notes from the CHANGELOG section plus `.github/release-notes.md` (install, checking the files, safety). It fails if `RELEASE_SIGNING_KEY` isn't set.
 - [ ] `scripts/release-sign.sh v<version>` on the owner's computer. It asks for the keystore password once and minisign's password once. It:
-  - checks the draft and the run belong to the tag, and that `RELEASE_SIGNING_KEY` at the tag is `~/.rusttv-release/rusttv-release.pub`;
+  - fetches the tag, checks the draft and the run belong to it, and that `RELEASE_SIGNING_KEY` at the tag is `~/.rusttv-release/rusttv-release.pub`;
   - downloads the CLI archives and `SHA256SUMS` from the draft and checks them;
   - downloads the unsigned APKs from the run, checks their alignment, signs them with the release key, checks the certificate and `check-dex.sh`;
   - adds their sums to `SHA256SUMS`, signs it with the update signing key and checks the signature;

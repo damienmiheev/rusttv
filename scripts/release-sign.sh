@@ -23,14 +23,16 @@ version=${TAG#v}
 [ "$TAG" = "v$version" ] || fail "give the tag, e.g. v0.1.0"
 [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true ] ||
     fail "$TAG has no draft release (published already, or the Release build hasn't made it)"
+# The Tag release workflow makes the tag on GitHub; fetch it.
+git fetch -q origin "refs/tags/$TAG:refs/tags/$TAG"
 commit=$(git rev-parse "$TAG^{commit}")
-run=$(gh run list --workflow release-build.yml --event push --limit 50 \
+run=$(gh run list --workflow release-build.yml --limit 50 \
     --json databaseId,headBranch,headSha,conclusion \
     --jq "map(select(.headBranch == \"$TAG\" and .headSha == \"$commit\" and .conclusion == \"success\"))[0].databaseId")
 [ -n "$run" ] && [ "$run" != null ] || fail "no successful Release build of $TAG at $commit"
 pub=$(sed -n 2p "$KEYS/rusttv-release.pub")
 git show "$commit:crates/rusttv-core/src/update.rs" |
-    grep -q "RELEASE_SIGNING_KEY: Option<&str> = Some(\"$pub\")" ||
+    grep -A1 'pub const RELEASE_SIGNING_KEY' | grep -qF "Some(\"$pub\")" ||
     fail "RELEASE_SIGNING_KEY at $TAG is not $KEYS/rusttv-release.pub"
 
 OUT="target/release-$version"

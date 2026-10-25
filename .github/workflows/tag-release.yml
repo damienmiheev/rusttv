@@ -1,0 +1,54 @@
+# Tags a release: run it by hand (Actions → Tag release → Run workflow, also
+# from the GitHub app) on main once the version in Cargo.toml and its
+# CHANGELOG section are merged. It tags main's head as v<version> and starts
+# the Release build on that tag, which makes the draft release. Signing and
+# publishing stay with the owner (scripts/release-sign.sh, RELEASE.md).
+# The tag is made by GitHub Actions, so it isn't GPG-signed; what users check
+# is SHA256SUMS.minisig (SECURITY.md § Updates).
+name: Tag release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tag:
+    name: Tag and start the Release build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check
+        id: check
+        run: |
+          version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "rusttv-core") | .version')"
+          tag="v$version"
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+            echo "::error::$tag exists already; bump the version in Cargo.toml first"
+            exit 1
+          fi
+          grep -q "^## $version " CHANGELOG.md || { echo "::error::no CHANGELOG section for $version"; exit 1; }
+          grep -A1 'pub const RELEASE_SIGNING_KEY' crates/rusttv-core/src/update.rs | grep -q 'Some("RW' ||
+            { echo "::error::RELEASE_SIGNING_KEY is not set (RELEASE.md)"; exit 1; }
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Tag
+        env:
+          TAG: ${{ steps.check.outputs.tag }}
+          VERSION: ${{ steps.check.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "RustTV $VERSION"
+          git push origin "$TAG"
+      # A tag pushed with the workflow token starts no workflow; a dispatch does.
+      - name: Start the Release build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.check.outputs.tag }}
+        run: gh workflow run release-build.yml --ref "$TAG"

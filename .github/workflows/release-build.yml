@@ -144,8 +144,9 @@ jobs:
         run: |
           awk -v v="## $VERSION " 'index($0, v) == 1 {on = 1; next} on && /^## / {exit} on' CHANGELOG.md > notes.md
           [ -s notes.md ] || { echo "::error::no CHANGELOG section for $VERSION"; exit 1; }
-          # The update signing key's public half, as compiled into rusttv.
-          key="$(sed -n 's/^pub const RELEASE_SIGNING_KEY: Option<&str> = Some("\(RW[A-Za-z0-9+/=]*\)");$/\1/p' crates/rusttv-core/src/update.rs)"
+          # The update signing key's public half, as compiled into rusttv
+          # (rustfmt may put `Some(...)` on the next line).
+          key="$(grep -A1 'pub const RELEASE_SIGNING_KEY' crates/rusttv-core/src/update.rs | grep -o 'Some("RW[A-Za-z0-9+/=]*")' | sed 's/^Some("\(.*\)")$/\1/')"
           [ -n "$key" ] || { echo "::error::RELEASE_SIGNING_KEY is not set (RELEASE.md)"; exit 1; }
           sed -e "s/{version}/$VERSION/g" -e "s|{minisign_key}|$key|g" .github/release-notes.md >> notes.md
       # The APKs and SHA256SUMS.minisig are added by the owner's
