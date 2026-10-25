@@ -58,6 +58,7 @@ Report actual results. If a check fails or was skipped, say so.
 | Safety engine, risk classes, recovery | SECURITY.md |
 | Safe optimizer design (Phase 4) | OPTIMIZER.md |
 | TV history, Settings page, approvals on the TV | HISTORY.md |
+| RustTV Remote (phone remote, touchpad, pairing) | REMOTE.md |
 | How to measure | BENCHMARK_PLAN.md |
 | Prior art and evidence | RESEARCH.md |
 | Risks and open uncertainties | RISKS.md |
