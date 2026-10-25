@@ -76,6 +76,9 @@ pub enum PhoneMessage {
     Open { app: String },
     /// A tap or long press on a tile of the Home mirror.
     Tile { id: String, gesture: Gesture },
+    /// The picture of an app's tile, by component: answered with a
+    /// [`TvMessage::Banner`] to this phone only.
+    Banner { id: String },
     /// Moving a tile of the Home mirror: `over` is the tile it is over;
     /// `on` when the finger is over that tile's middle, where resting makes
     /// a folder (near its edges the tile only takes its place).
@@ -186,6 +189,38 @@ pub enum TvMessage {
     Home(HomeView),
     /// Another app is in front.
     App(AppView),
+    /// An app tile's picture, to the phone that asked for it.
+    Banner(Picture),
+}
+
+/// An app tile's picture, as the TV draws it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Picture {
+    /// The app's component.
+    pub id: String,
+    pub kind: PictureKind,
+    /// The picture as WebP, base64 ([`picture_data`]).
+    pub webp: String,
+}
+
+/// What a [`Picture`] is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PictureKind {
+    /// A 16:9 TV banner: fills the tile.
+    Banner,
+    /// A square icon: drawn centred, with the app's name.
+    Icon,
+}
+
+/// Most WebP bytes in one [`Picture`]: with base64, the message stays under
+/// [`MAX_TV_MESSAGE`]. A larger picture isn't sent; the phone keeps its
+/// stand-in.
+pub const MAX_PICTURE: usize = 44 * 1024;
+
+/// WebP bytes as a [`Picture::webp`]; `None` over [`MAX_PICTURE`].
+pub fn picture_data(webp: &[u8]) -> Option<String> {
+    (webp.len() <= MAX_PICTURE).then(|| crate::hex::base64(webp))
 }
 
 /// The Home mirror (REMOTE.md § 4): sent whole after every change.
@@ -290,7 +325,9 @@ fn check_phone(message: &PhoneMessage) -> Result<(), RemoteError> {
         PhoneMessage::Text {
             edit: TextEdit::Delete { count },
         } if *count == 0 || usize::from(*count) > MAX_TEXT => invalid("delete count"),
-        PhoneMessage::Open { app } if !is_component(app) => invalid("app"),
+        PhoneMessage::Open { app } | PhoneMessage::Banner { id: app } if !is_component(app) => {
+            invalid("app")
+        }
         PhoneMessage::Tile { id, .. } if !is_tile_id(id) => invalid("tile"),
         PhoneMessage::Drag { id, over, .. }
             if !is_tile_id(id) || over.as_deref().is_some_and(|over| !is_tile_id(over)) =>
@@ -551,5 +588,31 @@ mod tests {
                 prop_assert!(!text.chars().any(char::is_control));
             }
         }
+    }
+
+    #[test]
+    fn a_phone_asks_for_pictures_of_apps_only() {
+        let ask = |id: &str| parse_phone(format!(r#"{{"type":"banner","id":"{id}"}}"#).as_bytes());
+        assert_eq!(
+            ask("com.example/.Main").unwrap(),
+            PhoneMessage::Banner {
+                id: "com.example/.Main".into()
+            }
+        );
+        assert!(ask("folder:1").is_err());
+        assert!(ask("about").is_err());
+        assert!(ask("../etc/passwd").is_err());
+    }
+
+    #[test]
+    fn pictures_fit_a_message_or_are_not_sent() {
+        assert_eq!(picture_data(b"RIFF").as_deref(), Some("UklGRg=="));
+        assert_eq!(picture_data(&vec![0; MAX_PICTURE + 1]), None);
+        let largest = TvMessage::Banner(Picture {
+            id: "a".repeat(255),
+            kind: PictureKind::Icon,
+            webp: picture_data(&vec![0; MAX_PICTURE]).unwrap(),
+        });
+        assert!(largest.to_bytes().is_ok(), "the largest picture still fits");
     }
 }

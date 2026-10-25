@@ -7,13 +7,18 @@
 //! nothing polls while no phone talks. Phone input then goes through the
 //! same model calls as the remote's keys (`ui.rs`).
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::mpsc::{self, Sender};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use rusttv_remote::protocol::{FolderView, HomeMode, HomeView, TextField, TileView, TvMessage};
-use rusttv_remote::{Event, Options, PAGE, Phones, Remote, RemoteError};
+use rusttv_remote::protocol::{
+    FolderView, HomeMode, HomeView, Picture, TextField, TileView, TvMessage, picture_data,
+};
+use rusttv_remote::{Event, Options, Outlet, PAGE, PhoneId, Phones, Remote, RemoteError};
 
+use crate::platform::Pictures;
 use crate::settings::PhoneRow;
 
 use crate::model::{FOLDER_PAGE_SIZE, Home, State, TileId};
@@ -27,6 +32,8 @@ pub(crate) struct Link {
     remote: Remote,
     phones_file: PathBuf,
     last: Option<TvMessage>,
+    /// Requests for the picture thread, while it runs.
+    pictures: Option<Sender<(PhoneId, String)>>,
 }
 
 impl std::fmt::Debug for Link {
@@ -91,6 +98,7 @@ impl Link {
         files: &Path,
         port: u16,
         pairing: bool,
+        pictures: Option<Pictures>,
         deliver: impl Fn(Event) + Send + 'static,
     ) -> Option<Self> {
         let phones_file = files.join(PHONES_FILE);
@@ -134,10 +142,12 @@ impl Link {
             "RustTV Remote listening on port {}",
             remote.address().port()
         );
+        let pictures = pictures.and_then(|draw| picture_thread(&remote, draw));
         Some(Self {
             remote,
             phones_file,
             last: None,
+            pictures,
         })
     }
 
@@ -186,11 +196,73 @@ impl Link {
         self.last = Some(message);
     }
 
+    /// `phone` asked for an app's tile picture: drawn and sent to it on the
+    /// picture thread. The caller checks the app is on Home.
+    pub(crate) fn ask_picture(&self, phone: PhoneId, id: String) {
+        if let Some(pictures) = &self.pictures {
+            let _ = pictures.send((phone, id));
+        }
+    }
+
     /// A phone connected: it gets the current view again.
     pub(crate) fn resend(&mut self) {
         if let Some(message) = self.last.take() {
             self.push(message);
         }
+    }
+}
+
+/// How long the picture thread ignores asking again for the same picture:
+/// a phone caches what it gets, so repeats only waste the TV's time.
+const PICTURE_REPEAT: Duration = Duration::from_secs(60);
+
+/// Starts the thread that draws tile pictures one at a time, off the UI
+/// thread (drawing and compressing one takes about 20 ms on the Philips). It
+/// ends with the [`Link`]. Nothing is kept but when each was last sent.
+fn picture_thread(remote: &Remote, pictures: Pictures) -> Option<Sender<(PhoneId, String)>> {
+    let (sender, requests) = mpsc::channel::<(PhoneId, String)>();
+    let outlet = remote.outlet();
+    let spawned = std::thread::Builder::new()
+        .name("rusttv-remote-pictures".to_owned())
+        .spawn(move || {
+            let mut sent: HashMap<(PhoneId, String), Instant> = HashMap::new();
+            // Ends when the Link drops the sender.
+            while let Ok(first) = requests.recv() {
+                let mut drawn = false;
+                for (phone, id) in std::iter::once(first).chain(requests.try_iter()) {
+                    let now = Instant::now();
+                    sent.retain(|_, at| now.duration_since(*at) < PICTURE_REPEAT);
+                    if sent.insert((phone, id.clone()), now).is_some() {
+                        continue;
+                    }
+                    drawn = true;
+                    send_picture(&outlet, &pictures, phone, id);
+                }
+                if drawn {
+                    (pictures.done)();
+                }
+            }
+        });
+    match spawned {
+        Ok(_) => Some(sender),
+        Err(error) => {
+            log::warn!("RustTV Remote: no picture thread: {error}");
+            None
+        }
+    }
+}
+
+fn send_picture(outlet: &Outlet, pictures: &Pictures, phone: PhoneId, id: String) {
+    let Some((kind, webp)) = (pictures.draw)(&id) else {
+        return;
+    };
+    let Some(webp) = picture_data(&webp) else {
+        log::info!("RustTV Remote: {id}'s picture is too large to send");
+        return;
+    };
+    let picture = TvMessage::Banner(Picture { id, kind, webp });
+    if let Err(error) = outlet.send_to(&phone, &picture) {
+        log::warn!("RustTV Remote: picture not sent: {error}");
     }
 }
 

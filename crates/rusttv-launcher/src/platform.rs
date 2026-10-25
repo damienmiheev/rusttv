@@ -12,7 +12,28 @@ use material_colors::hct::Hct;
 use material_colors::quantize::{Quantizer, QuantizerCelebi};
 use material_colors::score::Score;
 
+use rusttv_remote::protocol::PictureKind;
+
 use crate::model::App;
+
+/// Draws one app's tile picture as WebP: its banner, else its icon; `None`
+/// with neither.
+pub type DrawPicture = Box<dyn Fn(&str) -> Option<(PictureKind, Vec<u8>)> + Send>;
+
+/// Draws apps' tile pictures for the phones, from any thread.
+pub struct Pictures {
+    pub draw: DrawPicture,
+    /// After a few pictures: frees what the system decoded for them, as
+    /// [`Platform::artwork_loaded`] does (on the Philips, ~40 MB stayed until
+    /// the next collection).
+    pub done: Box<dyn Fn() + Send>,
+}
+
+impl std::fmt::Debug for Pictures {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Pictures").finish_non_exhaustive()
+    }
+}
 
 /// Lists and launches apps on the device.
 pub trait Platform {
@@ -77,6 +98,13 @@ pub trait Platform {
     /// times.
     fn utc_offset_secs(&self) -> i32 {
         0
+    }
+
+    /// Draws apps' tile pictures for RustTV Remote's phones, from any
+    /// thread. None where the platform can't (the desktop dev mode): phones
+    /// then show their stand-ins.
+    fn pictures(&self) -> Option<Pictures> {
+        None
     }
 }
 

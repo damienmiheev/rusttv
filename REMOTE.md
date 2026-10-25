@@ -92,8 +92,9 @@ to its home screen.
   Home), and on the Philips TV. The page speaks the phone's language (the
   first of `navigator.languages` among the launcher's 20, else English;
   right to left for Arabic and Hebrew), from `page/i18n.js`, checked by
-  `page/i18n.test.mjs` in CI. Not yet: banners (tiles show a colour from
-  their id), renaming a folder from the phone, a home-screen icon.
+  `page/i18n.test.mjs` in CI. Tiles show the apps' own banners (or icons),
+  see Storage. Not yet: pictures for the built-in tiles (About, Settings,
+  Hidden apps), renaming a folder from the phone, a home-screen icon.
 - **Look:** the launcher's colours, Inter, the RustTV icon and the built-in
   tile images.
   - Focus is shown as on the TV: the focused tile grows slightly, with a soft
@@ -133,8 +134,23 @@ to its home screen.
 - **Storage:** the long-term secret and the session key live in the page's
   `localStorage`, which belongs to the page's own address.
   - If the browser clears site data, the phone must scan the QR again.
-  - Banners are cached in IndexedDB, keyed by component and versionCode.
-    The Cache API is off on plain HTTP.
+  - Tile pictures are cached in IndexedDB, by component, and asked for
+    again after a week (an app's banner rarely changes; reading every app's
+    version at listing time would slow the TV's cold start). The Cache API
+    is off on plain HTTP.
+  - As built (2026-10-25): the phone asks for each app it has no fresh
+    picture of; the TV checks the app is on Home or in a folder (never a
+    hidden one), and its picture thread draws the banner (else the icon)
+    through `Bridge.tilePicture` and compresses it to WebP with Android's
+    own encoder, then sends it to that phone only. After each burst it asks
+    Android for one garbage collection, as the launcher does after loading
+    its own banners: without it, what the system decoded kept the launcher
+    at ~107 MB PSS instead of ~68 MB. Nothing else is kept on the TV.
+    Measured on the Philips with 29 apps (2026-10-25): 109 KB in all
+    (median 3.5 KB, largest 11.7 KB); on the phone the first arrived 192 ms
+    and the last 827 ms after the page started; 1.42 s of one core on the TV
+    in total, collection included (0.63 s without it); idle CPU unchanged
+    (2 ticks in 30 s); a reload with the cache costs the TV nothing.
 
 ## 2. Pairing and authentication
 
@@ -189,7 +205,7 @@ to its home screen.
   - The associated data is a direction byte and the message's number in
     that direction, which neither side sends: a message can't be replayed,
     reordered, dropped or reflected without failing to open.
-  - Banners travel the same way, in chunks.
+  - Tile pictures travel the same way, one message each.
 - **Revoking:** in Settings, a phone can be revoked or renamed (each one a
   `tv` history entry). When the last phone is revoked, the listener stops.
 
@@ -221,7 +237,8 @@ to its home screen.
     - request line and headers: 4 KB;
     - WebSocket frames: 4 KB;
     - text: 1 KB per message;
-    - banner chunks: 64 KB, one banner in flight per phone.
+    - tile pictures: at most 44 KB of WebP (64 KB with base64), drawn one
+      at a time; a larger one isn't sent.
   - No recursion, and no allocation sized by the peer.
   - Caps on connections and messages:
     - at most 4 phones connected and 1 pending unpaired connection;
@@ -272,13 +289,15 @@ echoed.
     stays 150 ms, so tiles crossed on the way don't shuffle (on the TV a
     drag across a tile used to move there and back). `end` drops it where
     the last move put it; `cancel` puts it back;
+  - `banner { id }`: an app's tile picture, for apps on Home only;
   - `pointer { dx, dy, click | scroll }`;
   - `name { phone_id, text }`, during pairing only.
 - **TV → phone:**
   - `challenge`, `ok`, `denied`, `ping`;
   - `state`, which carries the `HomeView` while RustTV is in front, or
     `{ app, mode: pointer | arrows, text_field }` while another app is;
-  - `banner { component, version, chunk }`.
+  - `banner { id, kind: banner | icon, webp }`, to the phone that asked,
+    in order (views are coalesced, pictures are not).
 - **`HomeView`:**
   - the tiles in order: id, label, banner version, folder membership;
   - the open folder and its page;

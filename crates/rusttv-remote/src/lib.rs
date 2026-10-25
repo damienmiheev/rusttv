@@ -36,7 +36,9 @@ pub mod fuzzing {
 
 pub use auth::{Phone, PhoneId, Phones};
 pub use crypto::{Direction, NONCE_LEN, Session, TAG_LEN};
-pub use server::{Clock, Event, MAX_CONNECTED, Options, PAIRING_TIME, PORT, Random, Remote};
+pub use server::{
+    Clock, Event, MAX_CONNECTED, Options, Outlet, PAIRING_TIME, PORT, Random, Remote,
+};
 
 /// The phone page, served at `/` ([`Options::page`]).
 pub const PAGE: &str = include_str!("../page/index.html");

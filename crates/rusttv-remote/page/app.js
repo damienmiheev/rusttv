@@ -174,6 +174,7 @@
       sendText({ type: "auth", hmac: C.hex(response) });
     } else if (message.type === "ok" && challenge) {
       session = new C.Session(C.sessionKey(C.unhex(credentials.key, 32), challenge));
+      asked.clear(); // answers lost with the last connection are asked again
       challenge = null;
       retry = 0;
       setStatus(true, t("connected"));
@@ -222,6 +223,7 @@
   }
 
   function onView(message) {
+    if (message.type === "banner") return gotPicture(message);
     if (message.type !== "home" && message.type !== "app") return;
     view = message;
     if (message.type !== lastKind) {
@@ -246,16 +248,97 @@
     return `hsl(${hash % 360} 45% 30%)`;
   }
 
+  // --- Tile pictures ------------------------------------------------------------
+  // The TV draws an app's banner (or icon) when asked; the phone keeps it in
+  // IndexedDB and asks again after a week, so a connection only fetches what
+  // is new. Until it arrives, the tile shows a colour from its id.
+  const WEEK_MS = 7 * 24 * 3600 * 1000;
+  const pictures = new Map(); // id -> { kind, url, at }
+  const asked = new Set();
+  const db = new Promise((resolve) => {
+    try {
+      const open = indexedDB.open("rusttv-remote", 1);
+      open.onupgradeneeded = () => open.result.createObjectStore("pictures", { keyPath: "id" });
+      open.onsuccess = () => resolve(open.result);
+      open.onerror = () => resolve(null);
+    } catch {
+      resolve(null); // No IndexedDB (private browsing): fetch each time.
+    }
+  });
+  const picturesLoaded = db.then((store) => new Promise((resolve) => {
+    if (!store) return resolve();
+    const all = store.transaction("pictures").objectStore("pictures").getAll();
+    all.onsuccess = () => {
+      for (const { id, kind, blob, at } of all.result) {
+        pictures.set(id, { kind, url: URL.createObjectURL(blob), at });
+      }
+      resolve();
+    };
+    all.onerror = () => resolve();
+  }));
+
+  picturesLoaded.then(render);
+
+  function gotPicture({ id, kind, webp }) {
+    if (typeof id !== "string" || typeof webp !== "string" || (kind !== "banner" && kind !== "icon")) return;
+    let blob;
+    try {
+      blob = new Blob([Uint8Array.from(atob(webp), (c) => c.charCodeAt(0))], { type: "image/webp" });
+    } catch {
+      return;
+    }
+    const old = pictures.get(id);
+    if (old) URL.revokeObjectURL(old.url);
+    const at = Date.now();
+    pictures.set(id, { kind, url: URL.createObjectURL(blob), at });
+    db.then((store) => {
+      try {
+        store?.transaction("pictures", "readwrite").objectStore("pictures").put({ id, kind, blob, at });
+      } catch {
+        // Not kept: asked for again next time.
+      }
+    });
+    render();
+  }
+
+  // Asks the TV for the apps' pictures this phone lacks (or got a week ago).
+  function askPictures(tiles) {
+    for (const tile of tiles) {
+      if (!tile.id.includes("/") || asked.has(tile.id)) continue;
+      const have = pictures.get(tile.id);
+      if (have && Date.now() - have.at < WEEK_MS) continue;
+      asked.add(tile.id);
+      send({ type: "banner", id: tile.id });
+    }
+  }
+
   function art(tile, tiles) {
     const box = document.createElement("div");
     box.className = "art";
+    const picture = pictures.get(tile.id);
+    if (picture) {
+      const image = document.createElement("img");
+      image.src = picture.url;
+      image.alt = "";
+      image.draggable = false;
+      box.classList.add(picture.kind);
+      box.dataset.picture = picture.url;
+      box.append(image);
+      if (picture.kind === "icon") {
+        const label = document.createElement("span");
+        label.textContent = tile.label;
+        box.append(label);
+      }
+      return box;
+    }
     if (tile.id.startsWith("folder:")) {
       box.style.background = "#2A2E37";
       const minis = document.createElement("div");
       minis.className = "minis";
       for (const inner of tiles.filter((t) => t.folder === tile.id).slice(0, 4)) {
         const mini = document.createElement("i");
-        mini.style.background = colour(inner.id);
+        const picture = pictures.get(inner.id);
+        mini.style.background = picture?.kind === "banner" ? `center / cover url("${picture.url}")` : colour(inner.id);
         minis.append(mini);
       }
       box.append(minis);
@@ -301,7 +384,12 @@
       if (!element) return fresh;
       element.className = fresh.className;
       element.setAttribute("aria-label", tile.label);
-      if (!(gesture && element === gesture.element)) element.replaceChildren(...fresh.childNodes);
+      if (!(gesture && element === gesture.element)) {
+        // The same picture: keep its element, so it isn't decoded again.
+        const was = element.firstChild, art = fresh.firstChild;
+        if (art.dataset.picture && was?.dataset.picture === art.dataset.picture) fresh.replaceChild(was, art);
+        element.replaceChildren(...fresh.childNodes);
+      }
       return element;
     });
     for (const element of old.values()) if (!next.includes(element)) element.remove();
@@ -334,6 +422,7 @@
     $("hero").textContent = focusedTile ? focusedTile.label : "";
     $("glow").style.setProperty("--glow", focusedTile ? colour(focusedTile.id).replace("30%)", "30% / 0.35)") : "#F5A52426");
 
+    if (home && session) picturesLoaded.then(() => askPictures(tiles));
     if (tab === "apps") {
       // While a tile is dragged the grid reflows live, as the TV's does.
       flip($("grid"), () => sync($("grid"), tiles.filter((t) => !t.folder), tiles, focused));
