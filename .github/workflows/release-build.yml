@@ -14,6 +14,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-build-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -21,13 +29,14 @@ jobs:
   version:
     name: Check the version
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - id: version
         run: |
-          version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "rusttv-core") | .version')"
+          version=$(scripts/release-info.sh version)
           echo "version=$version" >> "$GITHUB_OUTPUT"
           # A tag must name the version in Cargo.toml (tag v0.1.0 -> 0.1.0).
           if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
@@ -38,6 +47,7 @@ jobs:
   notices:
     name: Licence notices
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install toolchain from rust-toolchain.toml
@@ -45,6 +55,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: licenses
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install cargo-about
         run: cargo install cargo-about --version 0.9.2 --locked --features cli
       # One file for everything RustTV ships (about.toml lists the CLI targets too).
@@ -61,12 +72,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Linux on the oldest supported runner image: the binaries need its
+        # glibc (2.35) or newer, so Ubuntu 22.04 and Debian 12 can run them.
         include:
-          - { target: aarch64-apple-darwin, os: macos-latest }
-          - { target: x86_64-apple-darwin, os: macos-latest }
-          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest }
-          - { target: aarch64-unknown-linux-gnu, os: ubuntu-24.04-arm }
+          - { target: aarch64-apple-darwin, os: macos-15 }
+          - { target: x86_64-apple-darwin, os: macos-15 }
+          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
+          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install toolchain from rust-toolchain.toml and the target
@@ -74,6 +88,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           key: release-${{ matrix.target }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo build --release --locked --target ${{ matrix.target }} -p rusttv-cli -p rusttv-mcp
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -99,6 +114,7 @@ jobs:
     name: SHA256SUMS
     needs: cli
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -112,7 +128,6 @@ jobs:
           if-no-files-found: error
 
   android:
-    needs: version
     uses: ./.github/workflows/android-apk.yml
     with:
       upload: true
@@ -123,6 +138,7 @@ jobs:
     if: github.ref_type == 'tag'
     needs: [version, checksums, android]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
       actions: write
@@ -145,22 +161,26 @@ jobs:
         run: |
           awk -v v="## $VERSION " 'index($0, v) == 1 {on = 1; next} on && /^## / {exit} on' CHANGELOG.md > notes.md
           [ -s notes.md ] || { echo "::error::no CHANGELOG section for $VERSION"; exit 1; }
-          # The update signing key's public half, as compiled into rusttv
-          # (rustfmt may put `Some(...)` on the next line).
-          key="$(grep -A1 'pub const RELEASE_SIGNING_KEY' crates/rusttv-core/src/update.rs | grep -o 'Some("RW[A-Za-z0-9+/=]*")' | sed 's/^Some("\(.*\)")$/\1/')"
-          [ -n "$key" ] || { echo "::error::RELEASE_SIGNING_KEY is not set (RELEASE.md)"; exit 1; }
-          sed -e "s/{version}/$VERSION/g" -e "s|{minisign_key}|$key|g" .github/release-notes.md >> notes.md
+          key=$(scripts/release-info.sh signing-key)
+          cert=$(scripts/release-info.sh apk-cert)
+          sed -e "s/{version}/$VERSION/g" -e "s|{minisign_key}|$key|g" -e "s/{apk_cert}/$cert/g" .github/release-notes.md >> notes.md
       # The APKs and SHA256SUMS.minisig are added by Release sign; drafts are
-      # invisible to `rusttv update`.
+      # invisible to `rusttv update`. A re-run refreshes an existing draft.
       - name: Create the draft
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
           VERSION: ${{ needs.version.outputs.version }}
-        run: gh release create "$TAG" --draft --verify-tag --title "RustTV $VERSION" --notes-file notes.md dist/*.tar.gz dist/SHA256SUMS
-      # Release sign waits for the owner's approval before it can use the keys.
+        run: |
+          case "$(gh release view "$TAG" --json isDraft --jq .isDraft 2> /dev/null)" in
+            "") gh release create "$TAG" --draft --verify-tag --title "RustTV $VERSION" --notes-file notes.md dist/*.tar.gz dist/SHA256SUMS ;;
+            true) gh release upload "$TAG" --clobber dist/*.tar.gz dist/SHA256SUMS && gh release edit "$TAG" --notes-file notes.md ;;
+            *) echo "::error::$TAG is published already"; exit 1 ;;
+          esac
+      # Release sign checks this run's files, then waits for the owner's
+      # approval before it can use the keys.
       - name: Start Release sign
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh workflow run release-sign.yml --ref main -f tag="$TAG"
+        run: gh workflow run release-sign.yml --ref main -f tag="$TAG" -f run="$GITHUB_RUN_ID"

@@ -59,11 +59,14 @@ The keys live as secrets of the GitHub environment `release`:
 | `MINISIGN_KEY` | the contents of `~/.rusttv-release/rusttv-release.key` |
 | `MINISIGN_PASSWORD` | minisign's password |
 
-The environment has the owner as required reviewer and allows only `main`,
-so only `.github/workflows/release-sign.yml` as merged on `main` can read the
-secrets, and only after the owner presses **Approve** (works from a phone).
-That job runs only GitHub's own actions, `apksigner` and `minisign`; it
-builds nothing. Set the secrets with `gh secret set <name> --env release`
+The environment has the owner as required reviewer, allows only `main` and
+can't be bypassed by admins, so only `.github/workflows/release-sign.yml` as
+merged on `main` can read the secrets, and only after the owner presses
+**Approve** (works from a phone). Changes reach `main` only through a pull
+request with green CI, and `v*` tags can't be moved or deleted (repository
+rulesets). The job that holds the keys runs no repository code and no
+third-party action: GitHub's `download-artifact`, `apksigner` and
+`minisign`; every check of the files runs before it, without the keys. Set the secrets with `gh secret set <name> --env release`
 (it asks for the value without showing it; pipe the two files in). The
 originals stay in `~/.rusttv-release/` and Apple Passwords. If GitHub, the
 owner's account or the environment is ever compromised, treat both keys as
@@ -193,7 +196,7 @@ Work on a release branch; tick each item in the release pull request.
 
 ### Before the tag
 
-- [ ] `main` is green in CI (fmt, clippy, tests, cargo deny, licence notices, Android APK).
+- [ ] `main` is green in CI (fmt, clippy, tests, cargo deny, Android APK with the licence notices).
 - [ ] Version bumped in `Cargo.toml` and `Cargo.lock` (above).
 - [ ] `RELEASE_SIGNING_KEY` in `crates/rusttv-core/src/update.rs` is `Some(...)` with the update signing key's public half, committed before the Release build runs. A release built while it is `None` can never update itself (`can_verify` is false in `rusttv update check --json`).
 - [ ] `CHANGELOG.md`: the version's section is complete and dated; "unreleased" removed.
@@ -207,14 +210,16 @@ Work on a release branch; tick each item in the release pull request.
 ### Tag, sign and publish (owner)
 
 - [ ] The release pull request is merged into `main`.
-- [ ] Run **Tag release** on `main` (Actions → Tag release → Run workflow, or `gh workflow run tag-release.yml --ref main`). It checks that `v<version>` doesn't exist yet, that the CHANGELOG has the section and that `RELEASE_SIGNING_KEY` is set, tags `main`'s head as `v<version>` and starts the Release build on the tag. The tag is made by GitHub Actions, so it isn't GPG-signed; `SHA256SUMS.minisig` is what proves a release. A signed tag pushed by hand (`git tag -s v<version> -m "RustTV <version>" && git push origin v<version>`) works too and starts the Release build itself.
+- [ ] Run **Tag release** on `main` (Actions → Tag release → Run workflow, or `gh workflow run tag-release.yml --ref main`) once CI on `main`'s head has passed. It checks that `v<version>` doesn't exist yet, that the CHANGELOG has the section, that `RELEASE_SIGNING_KEY` is set and that CI passed, tags `main`'s head as `v<version>` and starts the Release build on the tag. The tag is made by GitHub Actions, so it isn't GPG-signed; `SHA256SUMS.minisig` is what proves a release. A signed tag pushed by hand (`git tag -s v<version> -m "RustTV <version>" && git push origin v<version>`) works too and starts the Release build itself.
 - [ ] The **Release build** of the tag; all jobs pass. Its last job creates a **draft** GitHub release with the CLI archives, `SHA256SUMS` (CLI only so far) and notes from the CHANGELOG section plus `.github/release-notes.md` (install, checking the files, safety). It fails if `RELEASE_SIGNING_KEY` isn't set.
-- [ ] The Release build then starts **Release sign**, which waits for the owner: Actions → the run → **Review deployments** → `release` → **Approve** (or run it by hand: `gh workflow run release-sign.yml --ref main -f tag=v<version>`). It:
-  - checks the draft and the run belong to the tag, and that `RELEASE_SIGNING_KEY` at the tag is `~/.rusttv-release/rusttv-release.pub`;
-  - downloads the CLI archives and `SHA256SUMS` from the draft and checks them;
-  - downloads the unsigned APKs from the run, checks their alignment, signs them with the release key, checks the certificate and `check-dex.sh`;
-  - adds their sums to `SHA256SUMS`, signs it with the update signing key and checks the signature;
-  - uploads the APKs, `SHA256SUMS` and `SHA256SUMS.minisig` to the draft.
+- [ ] The Release build then starts **Release sign** (`Sign v<version>`; by hand: `gh workflow run release-sign.yml --ref main -f tag=v<version>`). Its `check` job, without the keys:
+  - waits for the Release build to finish and checks that the tag is on `main`, names the Cargo version, and that the run is a successful Release build of the tag's commit;
+  - checks the draft's CLI archives against the run's own `SHA256SUMS` (artifacts can't change after upload, so every signed file comes from that run);
+  - checks the run's unsigned APKs: alignment and `check-dex.sh`;
+  - lists every SHA-256 in its summary.
+
+  Then its `sign` job waits for the owner: open the run, read the summary, **Review deployments** → `release` → **Approve**. It signs the APKs with the release key and checks the certificate, adds their sums to `SHA256SUMS`, signs it with the update signing key, checks the signature against `RELEASE_SIGNING_KEY` at the tag, and uploads the APKs, `SHA256SUMS` and `SHA256SUMS.minisig` to the draft. Re-running either workflow is safe.
+- [ ] The unsigned APKs are workflow artifacts, kept 90 days: sign within that time, or build the tag again.
 - [ ] Smoke test with the draft's files (`gh release download v<version>`): `rusttv --version` and `rusttv device list` on macOS and Linux; the signed APK installs (`rusttv launcher install --apk …`) and starts on the emulator and on at least one TV with a compat profile; About shows the version and the notices.
 - [ ] Read the draft's notes (supported devices, known issues), then **Publish** it on GitHub (not as a pre-release, which `rusttv update` ignores). This works from a phone.
 - [ ] From the previous release's binary (none for the first release): `rusttv update check` sees the new version; `rusttv update cli --dry-run` and `rusttv update launcher --dry-run` verify and plan it.

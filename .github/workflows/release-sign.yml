@@ -1,13 +1,22 @@
-# Signs a tag's draft release (RELEASE.md § Checklist): the unsigned APKs of
-# the tag's Release build with the release key, then SHA256SUMS with the
-# update signing key, and uploads the APKs, SHA256SUMS and SHA256SUMS.minisig
-# to the draft. The Release build starts it after making the draft; run it by
-# hand with the tag otherwise. It waits until the owner approves it in the
-# protected `release` environment, which holds the keys (only runs from main
-# may use it). Publishes nothing: the owner presses Publish afterwards.
-# The job runs no third-party actions and builds nothing, so the keys are
-# reachable only by GitHub's own actions, apksigner, minisign and this file.
+# Signs a tag's draft release (RELEASE.md § Checklist). The Release build
+# starts it after making the draft; run it by hand with the tag otherwise.
+#
+# `check` has no secrets. It ties everything to the tag's Release build run:
+# the tag is on main and names the Cargo version, the run built that commit,
+# the draft's CLI archives match the run's SHA256SUMS, and the run's unsigned
+# APKs pass the alignment and check-dex.sh checks. Its summary lists every
+# SHA-256, so the owner sees what they approve.
+#
+# `sign` then waits for the owner's approval in the protected `release`
+# environment, which holds the keys (only runs from main may use it). It runs
+# no code from the repository and no third-party action: GitHub's
+# download-artifact, apksigner and minisign. It signs the APKs with the
+# release key, adds their sums, signs SHA256SUMS with the update signing key,
+# checks it against the key compiled in at the tag and uploads the APKs,
+# SHA256SUMS and SHA256SUMS.minisig to the draft. Re-running it is safe.
+# Publishes nothing: the owner presses Publish afterwards.
 name: Release sign
+run-name: Sign ${{ inputs.tag }}
 
 on:
   workflow_dispatch:
@@ -15,24 +24,39 @@ on:
       tag:
         description: Tag whose draft release to sign, e.g. v0.1.0
         required: true
+      run:
+        description: The tag's Release build run id (optional; found from the tag otherwise)
+        required: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-sign-${{ inputs.tag }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  BUILD_TOOLS: "35.0.0"
+
 jobs:
-  sign:
-    name: Sign ${{ inputs.tag }}
+  check:
+    name: Check ${{ inputs.tag }}
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    environment: release
+    timeout-minutes: 30
     permissions:
-      contents: write
+      contents: read
       actions: read
+    outputs:
+      public-key: ${{ steps.check.outputs.public-key }}
+      apk-cert: ${{ steps.check.outputs.apk-cert }}
     env:
-      GH_TOKEN: ${{ github.token }}
       TAG: ${{ inputs.tag }}
-      # The APK certificate's SHA-256 (RELEASE.md § Signing).
-      CERT: ec16f7040c826d218cfd147c1fa49c4b376253c7b89b3d5e97ac707c8fd54473
+      RUN_INPUT: ${{ inputs.run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -40,69 +64,146 @@ jobs:
           fetch-tags: true
           persist-credentials: false
       - name: Check the tag, the draft and the Release build
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          echo "OUT=$RUNNER_TEMP/release" >> "$GITHUB_ENV"
-          echo "KEYS=$RUNNER_TEMP/keys" >> "$GITHUB_ENV"
-          echo "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::$TAG is not v<major>.<minor>.<patch>"; exit 1; }
+          [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::$TAG is not v<major>.<minor>.<patch>"; exit 1; }
+          [[ -z $RUN_INPUT || $RUN_INPUT =~ ^[0-9]+$ ]] || { echo "::error::run must be a number"; exit 1; }
           [ "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true ] ||
             { echo "::error::$TAG has no draft release (published already, or the Release build hasn't made it)"; exit 1; }
-          commit=$(git rev-parse "$TAG^{commit}")
-          run=$(gh run list --workflow release-build.yml --limit 50 \
-            --json databaseId,headBranch,headSha,conclusion \
-            --jq "map(select(.headBranch == \"$TAG\" and .headSha == \"$commit\" and .conclusion == \"success\"))[0].databaseId")
-          [ -n "$run" ] && [ "$run" != null ] || { echo "::error::no successful Release build of $TAG at $commit"; exit 1; }
+          commit=$(git rev-parse "refs/tags/$TAG^{commit}")
+          git merge-base --is-ancestor "$commit" HEAD || { echo "::error::$TAG ($commit) is not on main"; exit 1; }
+          [ "v$(scripts/release-info.sh version "$commit")" = "$TAG" ] ||
+            { echo "::error::$TAG does not match the version in Cargo.toml at $commit"; exit 1; }
+          if [ -n "$RUN_INPUT" ]; then
+            run=$RUN_INPUT
+            # Started by the run's last job: wait until it has finished.
+            gh run watch "$run" --exit-status --interval 10 > /dev/null || { echo "::error::Release build $run failed"; exit 1; }
+          else
+            run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/release-build.yml/runs?head_sha=$commit&per_page=100" \
+              --jq "[.workflow_runs[] | select(.head_branch == \"$TAG\" and .conclusion == \"success\")][0].id // empty")
+            [ -n "$run" ] || { echo "::error::no successful Release build of $TAG at $commit"; exit 1; }
+          fi
+          facts=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq '"\(.path) \(.head_sha) \(.head_branch) \(.conclusion)"')
+          [ "$facts" = ".github/workflows/release-build.yml $commit $TAG success" ] ||
+            { echo "::error::run $run is not a successful Release build of $TAG at $commit ($facts)"; exit 1; }
           echo "RUN=$run" >> "$GITHUB_ENV"
-          # The update signing key's public half, as compiled into rusttv at the
-          # tag (rustfmt may put `Some(...)` on the next line).
-          key=$(git show "$commit:crates/rusttv-core/src/update.rs" | grep -A1 'pub const RELEASE_SIGNING_KEY' |
-            grep -o 'Some("RW[A-Za-z0-9+/=]*")' | sed 's/^Some("\(.*\)")$/\1/')
-          [ -n "$key" ] || { echo "::error::RELEASE_SIGNING_KEY is not set at $TAG"; exit 1; }
-          echo "PUBLIC_KEY=$key" >> "$GITHUB_ENV"
-      - name: Download and check
+          echo "COMMIT=$commit" >> "$GITHUB_ENV"
+          echo "public-key=$(scripts/release-info.sh signing-key "$commit")" >> "$GITHUB_OUTPUT"
+          echo "apk-cert=$(scripts/release-info.sh apk-cert)" >> "$GITHUB_OUTPUT"
+      - name: Download and check the files
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p "$OUT/unsigned"
-          gh release download "$TAG" -D "$OUT" -p '*.tar.gz' -p SHA256SUMS
-          (cd "$OUT" && sha256sum -c SHA256SUMS)
-          gh run download "$RUN" -n rusttv-launcher-apk -D "$OUT/unsigned"
-          sudo apt-get install -y -qq minisign > /dev/null
+          version=${TAG#v}
+          out=$RUNNER_TEMP/release
+          mkdir -p "$out/unsigned"
+          # Artifacts can't change after upload, so the run's SHA256SUMS ties the
+          # draft's CLI archives to this build.
+          gh run download "$RUN" -n SHA256SUMS -D "$out"
+          gh run download "$RUN" -n rusttv-launcher-apk -D "$out/unsigned"
+          gh release download "$TAG" -D "$out" -p '*.tar.gz'
+          (cd "$out" && sha256sum --check --strict SHA256SUMS)
+          archives=("$out"/*.tar.gz)
+          [ "${#archives[@]}" = "$(wc -l < "$out/SHA256SUMS")" ] ||
+            { echo "::error::the draft has archives that the run's SHA256SUMS doesn't list"; exit 1; }
+          (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;$BUILD_TOOLS" > /dev/null
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            apk="$out/unsigned/rusttv-launcher-$version-$abi-unsigned.apk"
+            "$ANDROID_HOME/build-tools/$BUILD_TOOLS/zipalign" -c -p 4 "$apk" || { echo "::error::$apk is not aligned"; exit 1; }
+            android/check-dex.sh "$apk"
+          done
+          mkdir "$RUNNER_TEMP/to-sign"
+          mv "$out/SHA256SUMS" "$out"/unsigned/*.apk "$RUNNER_TEMP/to-sign/"
+          {
+            echo "### $TAG at \`$COMMIT\`, Release build [$RUN]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN)"
+            echo 'Approving signs these files (CLI archives, then the unsigned APKs):'
+            echo '```'
+            cat "$RUNNER_TEMP/to-sign/SHA256SUMS"
+            (cd "$RUNNER_TEMP/to-sign" && sha256sum -- *.apk)
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: to-sign
+          path: ${{ runner.temp }}/to-sign/
+          retention-days: 1
+          if-no-files-found: error
+
+  sign:
+    name: Sign ${{ inputs.tag }}
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: release
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ inputs.tag }}
+      PUBLIC_KEY: ${{ needs.check.outputs.public-key }}
+      APK_CERT: ${{ needs.check.outputs.apk-cert }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: to-sign
+          path: ${{ runner.temp }}/release
+      - name: Install minisign and build-tools
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq minisign > /dev/null
+          (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "build-tools;$BUILD_TOOLS" > /dev/null
       - name: Sign the APKs
         env:
           RUSTTV_KEYSTORE_B64: ${{ secrets.RUSTTV_KEYSTORE_B64 }}
           RUSTTV_KEYSTORE_PASSWORD: ${{ secrets.RUSTTV_KEYSTORE_PASSWORD }}
         run: |
+          [ -n "$RUSTTV_KEYSTORE_B64" ] && [ -n "$RUSTTV_KEYSTORE_PASSWORD" ] ||
+            { echo "::error::RUSTTV_KEYSTORE_B64 or RUSTTV_KEYSTORE_PASSWORD is not set in the release environment"; exit 1; }
           version=${TAG#v}
-          tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
-          mkdir -m 700 "$KEYS"
-          echo "$RUSTTV_KEYSTORE_B64" | base64 -d > "$KEYS/release.jks"
+          out=$RUNNER_TEMP/release
+          tools=$ANDROID_HOME/build-tools/$BUILD_TOOLS
+          keys=$RUNNER_TEMP/keys
+          trap 'rm -rf "$keys"' EXIT
+          mkdir -m 700 "$keys"
+          base64 -d <<< "$RUSTTV_KEYSTORE_B64" > "$keys/release.jks"
           for abi in arm64-v8a armeabi-v7a x86_64; do
-            in="$OUT/unsigned/rusttv-launcher-$version-$abi-unsigned.apk"
-            apk="$OUT/rusttv-launcher-$version-$abi.apk"
-            "$tools/zipalign" -c -p 4 "$in" || { echo "::error::$in is not aligned"; exit 1; }
-            "$tools/apksigner" sign --ks "$KEYS/release.jks" --ks-key-alias rusttv \
+            in="$out/rusttv-launcher-$version-$abi-unsigned.apk"
+            apk="$out/rusttv-launcher-$version-$abi.apk"
+            "$tools/apksigner" sign --ks "$keys/release.jks" --ks-key-alias rusttv \
               --ks-pass env:RUSTTV_KEYSTORE_PASSWORD --key-pass env:RUSTTV_KEYSTORE_PASSWORD \
               --out "$apk" "$in"
-            "$tools/apksigner" verify --print-certs "$apk" | grep -q "SHA-256 digest: $CERT" ||
-              { echo "::error::$apk is not signed with the release key"; exit 1; }
-            android/check-dex.sh "$apk"
+            certs=$("$tools/apksigner" verify --print-certs "$apk")
+            grep -q "SHA-256 digest: $APK_CERT" <<< "$certs" || { echo "::error::$apk is not signed with the release key"; exit 1; }
+            rm "$in"
           done
-          rm -rf "$KEYS" "$OUT/unsigned"
       - name: Sign SHA256SUMS
         env:
           MINISIGN_KEY: ${{ secrets.MINISIGN_KEY }}
           MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
         run: |
-          version=${TAG#v}
-          mkdir -m 700 "$KEYS"
-          printf '%s\n' "$MINISIGN_KEY" > "$KEYS/release.key"
-          cd "$OUT"
-          sha256sum rusttv-launcher-*.apk >> SHA256SUMS
+          [ -n "$MINISIGN_KEY" ] && [ -n "$MINISIGN_PASSWORD" ] ||
+            { echo "::error::MINISIGN_KEY or MINISIGN_PASSWORD is not set in the release environment"; exit 1; }
+          keys=$RUNNER_TEMP/keys
+          trap 'rm -rf "$keys"' EXIT
+          mkdir -m 700 "$keys"
+          printf '%s\n' "$MINISIGN_KEY" > "$keys/release.key"
+          cd "$RUNNER_TEMP/release"
+          sha256sum -- rusttv-launcher-*.apk >> SHA256SUMS
           # minisign reads the password from stdin when it isn't a terminal.
-          printf '%s\n' "$MINISIGN_PASSWORD" | minisign -Sm SHA256SUMS -s "$KEYS/release.key" -t "RustTV $version"
-          rm -rf "$KEYS"
-          # The signature must check against the key compiled into rusttv.
+          printf '%s\n' "$MINISIGN_PASSWORD" | minisign -Sm SHA256SUMS -s "$keys/release.key" -t "RustTV ${TAG#v}"
+          rm -rf "$keys"
+          # The signature must check against the key compiled into rusttv at the tag.
           minisign -Vm SHA256SUMS -P "$PUBLIC_KEY"
-          cat SHA256SUMS
       - name: Upload to the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "$TAG" --clobber "$OUT"/rusttv-launcher-*.apk "$OUT/SHA256SUMS" "$OUT/SHA256SUMS.minisig"
-          echo "Signed. Publish: $(gh release view "$TAG" --json url --jq .url)" >> "$GITHUB_STEP_SUMMARY"
+          cd "$RUNNER_TEMP/release"
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" --clobber rusttv-launcher-*.apk SHA256SUMS SHA256SUMS.minisig
+          {
+            echo "### $TAG signed"
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+            echo "Check the draft, then publish: $(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json url --jq .url)"
+          } >> "$GITHUB_STEP_SUMMARY"

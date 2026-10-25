@@ -1,6 +1,7 @@
 # Tags a release: run it by hand (Actions → Tag release → Run workflow, also
 # from the GitHub app) on main once the version in Cargo.toml and its
-# CHANGELOG section are merged. It tags main's head as v<version> and starts
+# CHANGELOG section are merged and CI on main's head has passed. It tags
+# main's head as v<version> and starts
 # the Release build on that tag, which makes the draft release. Signing and
 # publishing need the owner (Release sign's approval, Publish; RELEASE.md).
 # The tag is made by GitHub Actions, so it isn't GPG-signed; what users check
@@ -13,11 +14,20 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: tag-release
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   tag:
     name: Tag and start the Release build
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: write
       actions: write
@@ -25,16 +35,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check
         id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          version="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "rusttv-core") | .version')"
+          version=$(scripts/release-info.sh version)
           tag="v$version"
           if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
             echo "::error::$tag exists already; bump the version in Cargo.toml first"
             exit 1
           fi
           grep -q "^## $version " CHANGELOG.md || { echo "::error::no CHANGELOG section for $version"; exit 1; }
-          grep -A1 'pub const RELEASE_SIGNING_KEY' crates/rusttv-core/src/update.rs | grep -q 'Some("RW' ||
-            { echo "::error::RELEASE_SIGNING_KEY is not set (RELEASE.md)"; exit 1; }
+          scripts/release-info.sh signing-key > /dev/null
+          ci=$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --event push --json conclusion --jq '.[0].conclusion // empty')
+          [ "$ci" = success ] || { echo "::error::CI on main's head ($GITHUB_SHA) is '${ci:-not finished}'; wait for it to pass"; exit 1; }
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Tag

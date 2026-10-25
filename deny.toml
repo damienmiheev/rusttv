@@ -6,6 +6,7 @@ all-features = true
 
 [advisories]
 # RustSec advisories; vulnerable, unmaintained and yanked crates fail the check.
+yanked = "deny"
 # Ignored only with a reason; recheck every entry on each Slint upgrade.
 ignore = [
     # Unmaintained, reached only through Slint's desktop backend (winit) on Linux: zbus
