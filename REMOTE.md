@@ -123,18 +123,23 @@ to its home screen.
   - The secret is 32 random bytes from `SecureRandom`, valid for 2 minutes
     and for one use, and only while that screen is open.
   - It sits in the URL fragment, which browsers never send to a server.
-- **Confirming:** the phone proves it knows the secret with the HMAC scheme
-  below. Then:
+- **Confirming:** the phone sends `pair { phone_nonce, name, proof }`: a
+  fresh 32-byte nonce, its name, and an HMAC under the pairing secret over
+  both, which proves it read the QR code and binds the name. Then:
   - the TV shows "Allow *iPhone (Safari)*? Code 47", and the phone shows 47;
   - OK on the TV remote pairs, and Back refuses;
   - three failed pairings in a row close the pairing screen.
-- **Keys:** pairing derives two values from the pairing secret and a TV nonce
-  with HMAC; neither is ever sent:
-  - the phone's long-term secret;
-  - a 32-byte encryption key `K`.
+- **Keys:** the match code and two keys come from the pairing secret and the
+  phone's nonce with HMAC; neither key is ever sent:
+  - the phone's long-term secret (`auth`);
+  - a 32-byte encryption key `K` (`key`).
+
+  Every HMAC input is a domain label, a zero byte, then fixed-length parts
+  (a variable-length part only last); `rusttv-remote` pins the bytes with
+  test vectors computed independently, for the page's JavaScript.
 - **The phones file:** the TV keeps the paired phones in
   `files/remote/phones.toml`, in the launcher's private storage. Each phone
-  has an `id`, `name`, `secret`, `key`, `paired_at` and `last_seen`.
+  has an `id`, `name`, `auth`, `key`, `paired_at` and `last_seen`.
   - The file is written atomically.
   - An unreadable file is kept as `.bak` and treated as "no phones", so a
     damaged file can't let anyone in.
@@ -143,15 +148,15 @@ to its home screen.
 - **Each connection:**
   1. `hello { phone_id }`
   2. `challenge { nonce }` (32 random bytes)
-  3. `auth { hmac }` over the nonce and a direction label
+  3. `auth { hmac }` over the challenge and the phone's id
   4. `ok` or `denied`
 
   The session key is derived from `K` and the nonce.
 - **Encrypted messages:** every WebSocket message after `ok` is
   XChaCha20-Poly1305 with a random 24-byte nonce.
-  - A direction byte goes in the associated data, so a message can't be
-    replayed in the other direction.
-  - A per-session counter in each message stops replays within a session.
+  - The associated data is a direction byte and the message's number in
+    that direction, which neither side sends: a message can't be replayed,
+    reordered, dropped or reflected without failing to open.
   - Banners travel the same way, in chunks.
 - **Revoking:** in Settings, a phone can be revoked or renamed (each one a
   `tv` history entry). When the last phone is revoked, the listener stops.
