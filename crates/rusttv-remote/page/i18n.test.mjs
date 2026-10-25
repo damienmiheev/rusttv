@@ -26,8 +26,8 @@ const html = fs.readFileSync(new URL("index.html", dir), "utf8");
 for (const match of html.matchAll(/data-t(?:-label)?="([a-z_]+)"/g)) used.add(match[1]);
 const app = fs.readFileSync(new URL("app.js", dir), "utf8");
 for (const match of app.matchAll(/\bt\("([a-z_]+)"/g)) used.add(match[1]);
-for (const match of app.matchAll(/\bt\([\w.]+ \? "([a-z_]+)" : "([a-z_]+)"\)/g)) used.add(match[1]).add(match[2]);
-for (const key of ["up", "down", "left", "right"]) used.add(key); // showFlash(t(key))
+// Keys picked in conditions or tables, e.g. t(ios ? "a" : "b").
+for (const match of app.matchAll(/"([a-z_]+)"/g)) if (KEYS.includes(match[1])) used.add(match[1]);
 for (const key of used) assert.ok(KEYS.includes(key), `unknown key ${key}`);
 for (const key of KEYS) assert.ok(used.has(key), `unused key ${key}`);
 

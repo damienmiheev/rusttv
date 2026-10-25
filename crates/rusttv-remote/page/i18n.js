@@ -13,6 +13,7 @@
     "rusttv_front", "app_front", "other_front", "moving", "moving_any", "mode_pointer", "mode_arrows", "mode_soon",
     "hint_pointer", "hint_home", "hint_app", "hint_soon", "wants", "wants_any", "type", "typing_free", "flash_long",
     "flash_click", "up", "down", "left", "right", "install_title", "install_ios", "install_android", "not_now", "got_it",
+    "menu_move", "menu_hide", "hidden_title", "tile_settings", "tile_about", "hidden_hint", "screen_hint",
   ];
 
   const T = {
@@ -41,6 +42,7 @@
       "Tap Share, then Add to Home Screen. RustTV Remote then opens like an app, full screen.",
       "Open the browser menu (⋮), then Add to Home screen. RustTV Remote is then one tap away.",
       "Not now", "Got it",
+      "Move", "Hide from Home", "Hidden apps", "Settings", "About", "Tap an app to put it back on Home. Back returns.", "Open on the TV: use the TV remote there. Back returns.",
     ],
     uk: [
       "На телевізорі відкрийте Налаштування → RustTV Remote, виберіть «Під'єднати телефон» і відскануйте код камерою цього телефона.",
@@ -67,6 +69,7 @@
       "Натисніть «Поділитися», потім «На початковий екран». RustTV Remote відкриватиметься як застосунок, на весь екран.",
       "Відкрийте меню браузера (⋮), потім «Додати на головний екран». RustTV Remote буде за один дотик.",
       "Не зараз", "Зрозуміло",
+      "Перемістити", "Сховати з головного екрана", "Приховані додатки", "Налаштування", "Про програму", "Торкніться застосунку, щоб повернути його на головний екран. «Назад» — повернутися.", "Відкрито на телевізорі: користуйтеся пультом. «Назад» — повернутися.",
     ],
     ru: [
       "На телевизоре откройте Настройки → RustTV Remote, выберите «Подключить телефон» и отсканируйте код камерой этого телефона.",
@@ -93,6 +96,7 @@
       "Нажмите «Поделиться», затем «На экран «Домой»». RustTV Remote будет открываться как приложение, на весь экран.",
       "Откройте меню браузера (⋮), затем «Добавить на главный экран». RustTV Remote будет в одно касание.",
       "Не сейчас", "Понятно",
+      "Переместить", "Скрыть с главного экрана", "Скрытые приложения", "Настройки", "О программе", "Нажмите на приложение, чтобы вернуть его на главный экран. «Назад» — вернуться.", "Открыто на телевизоре: пользуйтесь пультом. «Назад» — вернуться.",
     ],
     de: [
       "Öffne auf dem Fernseher Einstellungen → RustTV Remote, wähle „Handy koppeln“ und scanne den Code mit der Kamera dieses Handys.",
@@ -119,6 +123,7 @@
       "Tippe auf Teilen, dann auf „Zum Home-Bildschirm“. RustTV Remote öffnet sich dann wie eine App, im Vollbild.",
       "Öffne das Browsermenü (⋮), dann „Zum Startbildschirm hinzufügen“. RustTV Remote ist dann nur einen Tipp entfernt.",
       "Nicht jetzt", "Verstanden",
+      "Verschieben", "Auf dem Startbildschirm ausblenden", "Ausgeblendete Apps", "Einstellungen", "Info", "Tippe auf eine App, um sie zurück auf die Startseite zu holen. Zurück kehrt zurück.", "Auf dem Fernseher geöffnet: bediene es mit der Fernbedienung. Zurück kehrt zurück.",
     ],
     es: [
       "En el televisor, abre Ajustes → RustTV Remote, elige Vincular un teléfono y escanea el código con la cámara de este teléfono.",
@@ -145,6 +150,7 @@
       "Toca Compartir y luego Añadir a pantalla de inicio. RustTV Remote se abrirá como una app, a pantalla completa.",
       "Abre el menú del navegador (⋮) y luego Añadir a pantalla de inicio. RustTV Remote quedará a un toque.",
       "Ahora no", "Entendido",
+      "Mover", "Ocultar de la pantalla de inicio", "Apps ocultas", "Ajustes", "Acerca de", "Toca una app para devolverla a Inicio. Atrás vuelve.", "Abierto en el televisor: usa el mando allí. Atrás vuelve.",
     ],
     fr: [
       "Sur le téléviseur, ouvrez Paramètres → RustTV Remote, choisissez Associer un téléphone puis scannez le code avec l'appareil photo de ce téléphone.",
@@ -171,6 +177,7 @@
       "Touchez Partager, puis Sur l'écran d'accueil. RustTV Remote s'ouvrira comme une app, en plein écran.",
       "Ouvrez le menu du navigateur (⋮), puis Ajouter à l'écran d'accueil. RustTV Remote sera alors à portée d'un toucher.",
       "Plus tard", "Compris",
+      "Déplacer", "Masquer de l’écran d’accueil", "Applis masquées", "Paramètres", "À propos", "Touchez une app pour la remettre sur l'accueil. Retour revient.", "Ouvert sur le téléviseur : utilisez la télécommande. Retour revient.",
     ],
     it: [
       "Sulla TV apri Impostazioni → RustTV Remote, scegli Associa un telefono e inquadra il codice con la fotocamera di questo telefono.",
@@ -197,6 +204,7 @@
       "Tocca Condividi, poi Aggiungi alla schermata Home. RustTV Remote si aprirà come un'app, a schermo intero.",
       "Apri il menu del browser (⋮), poi Aggiungi a schermata Home. RustTV Remote sarà a un tocco.",
       "Non ora", "Ho capito",
+      "Sposta", "Nascondi dalla schermata Home", "App nascoste", "Impostazioni", "Informazioni", "Tocca un'app per rimetterla nella Home. Indietro torna.", "Aperto sulla TV: usa il telecomando. Indietro torna.",
     ],
     pt_BR: [
       "Na TV, abra o Configurações → RustTV Remote, escolha Parear um celular e leia o código com a câmera deste celular.",
@@ -223,6 +231,7 @@
       "Toque em Compartilhar e depois em Adicionar à Tela de Início. O RustTV Remote abrirá como um app, em tela cheia.",
       "Abra o menu do navegador (⋮) e depois Adicionar à tela inicial. O RustTV Remote fica a um toque.",
       "Agora não", "Entendi",
+      "Mover", "Ocultar da tela inicial", "Apps ocultos", "Configurações", "Sobre", "Toque em um app para colocá-lo de volta no Início. Voltar retorna.", "Aberto na TV: use o controle da TV. Voltar retorna.",
     ],
     nl: [
       "Open op de tv Instellingen → RustTV Remote, kies Telefoon koppelen en scan de code met de camera van deze telefoon.",
@@ -249,6 +258,7 @@
       "Tik op Deel en dan op Zet op beginscherm. RustTV Remote opent dan als een app, schermvullend.",
       "Open het browsermenu (⋮) en dan Toevoegen aan startscherm. RustTV Remote is dan één tik weg.",
       "Niet nu", "Begrepen",
+      "Verplaatsen", "Verbergen op startscherm", "Verborgen apps", "Instellingen", "Over", "Tik op een app om hem terug te zetten op Start. Terug gaat terug.", "Geopend op de tv: gebruik daar de afstandsbediening. Terug gaat terug.",
     ],
     pl: [
       "Na telewizorze otwórz Ustawienia → RustTV Remote, wybierz Sparuj telefon i zeskanuj kod aparatem tego telefonu.",
@@ -275,6 +285,7 @@
       "Stuknij Udostępnij, potem Do ekranu początkowego. RustTV Remote otworzy się jak aplikacja, na pełnym ekranie.",
       "Otwórz menu przeglądarki (⋮), potem Dodaj do ekranu głównego. RustTV Remote będzie o jedno stuknięcie.",
       "Nie teraz", "Rozumiem",
+      "Przenieś", "Ukryj na ekranie głównym", "Ukryte aplikacje", "Ustawienia", "Informacje", "Stuknij aplikację, aby przywrócić ją na ekran główny. Wstecz wraca.", "Otwarte na telewizorze: użyj pilota. Wstecz wraca.",
     ],
     tr: [
       "TV'de Ayarlar → RustTV Remote'u açın, Telefon eşle'yi seçin ve kodu bu telefonun kamerasıyla okutun.",
@@ -301,6 +312,7 @@
       "Paylaş'a, sonra Ana Ekrana Ekle'ye dokunun. RustTV Remote bir uygulama gibi, tam ekran açılır.",
       "Tarayıcı menüsünü (⋮) açın, sonra Ana ekrana ekle'yi seçin. RustTV Remote bir dokunuş uzakta olur.",
       "Şimdi değil", "Anladım",
+      "Taşı", "Ana ekrandan gizle", "Gizli uygulamalar", "Ayarlar", "Hakkında", "Ana ekrana geri koymak için bir uygulamaya dokunun. Geri döner.", "TV'de açık: orada TV kumandasını kullanın. Geri döner.",
     ],
     ar: [
       "على التلفزيون، افتح الإعدادات → RustTV Remote واختر «إقران هاتف»، ثم امسح الرمز بكاميرا هذا الهاتف.",
@@ -327,6 +339,7 @@
       "اضغط «مشاركة» ثم «إضافة إلى الشاشة الرئيسية». سيفتح RustTV Remote كتطبيق، بملء الشاشة.",
       "افتح قائمة المتصفح (⋮) ثم «إضافة إلى الشاشة الرئيسية». سيصبح RustTV Remote على بُعد لمسة واحدة.",
       "ليس الآن", "حسنًا",
+      "نقل", "إخفاء من الشاشة الرئيسية", "التطبيقات المخفية", "الإعدادات", "حول", "المس تطبيقًا لإعادته إلى الشاشة الرئيسية. «رجوع» للعودة.", "مفتوح على التلفزيون: استخدم جهاز التحكم هناك. «رجوع» للعودة.",
     ],
     he: [
       "בטלוויזיה, פתחו את הגדרות → RustTV Remote, בחרו צימוד טלפון וסרקו את הקוד במצלמת הטלפון הזה.",
@@ -353,6 +366,7 @@
       "הקישו על שיתוף ואז על הוספה למסך הבית. RustTV Remote ייפתח כמו אפליקציה, במסך מלא.",
       "פתחו את תפריט הדפדפן (⋮) ואז הוספה למסך הבית. RustTV Remote יהיה במרחק הקשה אחת.",
       "לא עכשיו", "הבנתי",
+      "העברה", "הסתרה ממסך הבית", "אפליקציות מוסתרות", "הגדרות", "מידע", "הקישו על אפליקציה כדי להחזיר אותה למסך הבית. חזרה – חזרה.", "פתוח בטלוויזיה: השתמשו שם בשלט. חזרה – חזרה.",
     ],
     hi: [
       "टीवी पर सेटिंग → RustTV Remote खोलें, 'फ़ोन जोड़ें' चुनें, फिर इस फ़ोन के कैमरे से कोड स्कैन करें।",
@@ -379,6 +393,7 @@
       "शेयर पर टैप करें, फिर 'होम स्क्रीन पर जोड़ें'। RustTV Remote तब ऐप की तरह, पूरी स्क्रीन में खुलेगा।",
       "ब्राउज़र मेनू (⋮) खोलें, फिर 'होम स्क्रीन में जोड़ें'। RustTV Remote तब एक टैप दूर होगा।",
       "अभी नहीं", "समझ गया",
+      "जगह बदलें", "होम स्क्रीन से छिपाएं", "छिपाए गए ऐप्लिकेशन", "सेटिंग", "जानकारी", "किसी ऐप को होम पर वापस लाने के लिए उस पर टैप करें। 'वापस' लौटाता है।", "टीवी पर खुला है: वहां टीवी रिमोट इस्तेमाल करें। 'वापस' लौटाता है।",
     ],
     id: [
       "Di TV, buka Setelan → RustTV Remote, pilih Pasangkan ponsel, lalu pindai kodenya dengan kamera ponsel ini.",
@@ -405,6 +420,7 @@
       "Ketuk Bagikan, lalu Tambah ke Layar Utama. RustTV Remote akan terbuka seperti aplikasi, layar penuh.",
       "Buka menu browser (⋮), lalu Tambahkan ke layar utama. RustTV Remote jadi tinggal satu ketukan.",
       "Nanti", "Mengerti",
+      "Pindahkan", "Sembunyikan dari layar utama", "Aplikasi tersembunyi", "Setelan", "Tentang", "Ketuk aplikasi untuk mengembalikannya ke Beranda. Kembali untuk kembali.", "Terbuka di TV: gunakan remote TV di sana. Kembali untuk kembali.",
     ],
     ja: [
       "テレビで 設定 → RustTV Remote を開き、「スマホをペアリング」を選んで、このスマホのカメラでコードを読み取ってください。",
@@ -431,6 +447,7 @@
       "共有をタップし、「ホーム画面に追加」を選びます。RustTV Remote がアプリのように全画面で開きます。",
       "ブラウザのメニュー（⋮）を開き、「ホーム画面に追加」を選びます。RustTV Remote をワンタップで開けます。",
       "後で", "OK",
+      "移動", "ホーム画面から非表示", "非表示のアプリ", "設定", "概要", "アプリをタップするとホームに戻します。戻るで戻ります。", "テレビで開いています：テレビのリモコンで操作してください。戻るで戻ります。",
     ],
     ko: [
       "TV에서 설정 → RustTV Remote를 열고 휴대폰 연결을 선택한 뒤, 이 휴대폰 카메라로 코드를 스캔하세요.",
@@ -457,6 +474,7 @@
       "공유를 탭한 다음 홈 화면에 추가를 선택하세요. RustTV Remote가 앱처럼 전체 화면으로 열립니다.",
       "브라우저 메뉴(⋮)를 연 다음 홈 화면에 추가를 선택하세요. RustTV Remote를 한 번에 열 수 있습니다.",
       "나중에", "알겠어요",
+      "이동", "홈 화면에서 숨기기", "숨긴 앱", "설정", "정보", "앱을 탭하면 홈으로 되돌립니다. 뒤로: 돌아가기.", "TV에서 열려 있습니다: TV 리모컨을 사용하세요. 뒤로: 돌아가기.",
     ],
     th: [
       "บนทีวี เปิด การตั้งค่า → RustTV Remote เลือก จับคู่โทรศัพท์ แล้วสแกนโค้ดด้วยกล้องของโทรศัพท์เครื่องนี้",
@@ -483,6 +501,7 @@
       "แตะ แชร์ แล้วเลือก เพิ่มไปยังหน้าจอโฮม RustTV Remote จะเปิดเหมือนแอปแบบเต็มจอ",
       "เปิดเมนูเบราว์เซอร์ (⋮) แล้วเลือก เพิ่มลงในหน้าจอหลัก จากนั้นเปิด RustTV Remote ได้ในแตะเดียว",
       "ไว้ทีหลัง", "เข้าใจแล้ว",
+      "ย้าย", "ซ่อนจากหน้าจอหลัก", "แอปที่ซ่อนไว้", "การตั้งค่า", "เกี่ยวกับ", "แตะแอปเพื่อนำกลับไปที่หน้าหลัก กดกลับเพื่อย้อนกลับ", "เปิดอยู่บนทีวี: ใช้รีโมตทีวีที่นั่น กดกลับเพื่อย้อนกลับ",
     ],
     vi: [
       "Trên TV, mở Cài đặt → RustTV Remote, chọn Ghép nối điện thoại rồi quét mã bằng camera của điện thoại này.",
@@ -509,6 +528,7 @@
       "Chạm Chia sẻ, rồi Thêm vào MH chính. RustTV Remote sẽ mở như một ứng dụng, toàn màn hình.",
       "Mở menu trình duyệt (⋮), rồi Thêm vào màn hình chính. RustTV Remote sẽ chỉ cách một lần chạm.",
       "Để sau", "Đã hiểu",
+      "Di chuyển", "Ẩn khỏi màn hình chính", "Ứng dụng đã ẩn", "Cài đặt", "Giới thiệu", "Chạm vào một ứng dụng để đưa nó trở lại Màn hình chính. Quay lại để trở về.", "Đang mở trên TV: hãy dùng điều khiển TV. Quay lại để trở về.",
     ],
     zh_CN: [
       "在电视上打开 设置 → RustTV Remote，选择“配对手机”，然后用这部手机的相机扫描二维码。",
@@ -535,6 +555,7 @@
       "轻点“分享”，然后选择“添加到主屏幕”。RustTV Remote 将像应用一样全屏打开。",
       "打开浏览器菜单（⋮），然后选择“添加到主屏幕”。之后轻点一下即可打开 RustTV Remote。",
       "以后再说", "知道了",
+      "移动", "从主屏幕隐藏", "已隐藏的应用", "设置", "关于", "轻点应用即可将其放回主屏幕。按返回键返回。", "已在电视上打开：请用电视遥控器操作。按返回键返回。",
     ],
     zh_TW: [
       "在電視上開啟 設定 → RustTV Remote，選擇「配對手機」，然後用這支手機的相機掃描 QR 碼。",
@@ -561,6 +582,7 @@
       "輕觸「分享」，然後選擇「加入主畫面」。RustTV Remote 將像應用程式一樣全螢幕開啟。",
       "開啟瀏覽器選單（⋮），然後選擇「加到主畫面」。之後輕觸一下即可開啟 RustTV Remote。",
       "稍後再說", "知道了",
+      "移動", "從主畫面隱藏", "已隱藏的應用程式", "設定", "關於", "輕觸應用程式即可將其放回主畫面。按返回鍵返回。", "已在電視上開啟：請用電視遙控器操作。按返回鍵返回。",
     ],
   };
 

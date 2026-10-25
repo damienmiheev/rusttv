@@ -76,7 +76,10 @@ pub enum PhoneMessage {
     Open { app: String },
     /// A tap or long press on a tile of the Home mirror.
     Tile { id: String, gesture: Gesture },
-    /// The picture of an app's tile, by component: answered with a
+    /// A choice in the open long-press menu.
+    Menu { choice: MenuChoice },
+    /// The picture of an app's tile, by component, or of a built-in tile
+    /// (`about`, `settings`, `hidden-apps`): answered with a
     /// [`TvMessage::Banner`] to this phone only.
     Banner { id: String },
     /// Moving a tile of the Home mirror: `over` is the tile it is over;
@@ -236,6 +239,30 @@ pub struct HomeView {
     pub mode: HomeMode,
     /// The text field the TV asks for, in [`HomeMode::Text`].
     pub text: Option<TextField>,
+    /// The long-press menu, in [`HomeMode::Menu`].
+    #[serde(default)]
+    pub menu: Option<MenuView>,
+    /// The hidden apps, in [`HomeMode::Hidden`] (empty otherwise); the
+    /// focused one is [`HomeView::focused`].
+    #[serde(default)]
+    pub hidden: Vec<TileView>,
+}
+
+/// The long-press menu of the focused tile.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MenuView {
+    pub items: Vec<MenuChoice>,
+    pub selected: u8,
+}
+
+/// An entry of the long-press menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MenuChoice {
+    /// Pick the tile up to move it.
+    Move,
+    /// Hide the app from Home.
+    Hide,
 }
 
 /// A tile of the Home mirror.
@@ -325,9 +352,8 @@ fn check_phone(message: &PhoneMessage) -> Result<(), RemoteError> {
         PhoneMessage::Text {
             edit: TextEdit::Delete { count },
         } if *count == 0 || usize::from(*count) > MAX_TEXT => invalid("delete count"),
-        PhoneMessage::Open { app } | PhoneMessage::Banner { id: app } if !is_component(app) => {
-            invalid("app")
-        }
+        PhoneMessage::Open { app } if !is_component(app) => invalid("app"),
+        PhoneMessage::Banner { id } if !is_component(id) && !is_builtin(id) => invalid("tile"),
         PhoneMessage::Tile { id, .. } if !is_tile_id(id) => invalid("tile"),
         PhoneMessage::Drag { id, over, .. }
             if !is_tile_id(id) || over.as_deref().is_some_and(|over| !is_tile_id(over)) =>
@@ -398,8 +424,13 @@ fn is_component(name: &str) -> bool {
 
 /// A tile id: `about`, `settings`, `hidden-apps`, `folder:<number>` or a
 /// component.
-fn is_tile_id(id: &str) -> bool {
+/// One of the launcher's own tiles.
+fn is_builtin(id: &str) -> bool {
     matches!(id, "about" | "settings" | "hidden-apps")
+}
+
+fn is_tile_id(id: &str) -> bool {
+    is_builtin(id)
         || id
             .strip_prefix("folder:")
             .is_some_and(|number| !number.starts_with('+') && number.parse::<u32>().is_ok())
@@ -591,7 +622,7 @@ mod tests {
     }
 
     #[test]
-    fn a_phone_asks_for_pictures_of_apps_only() {
+    fn a_phone_asks_for_pictures_of_apps_and_built_in_tiles_only() {
         let ask = |id: &str| parse_phone(format!(r#"{{"type":"banner","id":"{id}"}}"#).as_bytes());
         assert_eq!(
             ask("com.example/.Main").unwrap(),
@@ -600,7 +631,7 @@ mod tests {
             }
         );
         assert!(ask("folder:1").is_err());
-        assert!(ask("about").is_err());
+        assert!(ask("about").is_ok(), "the built-in tiles have pictures too");
         assert!(ask("../etc/passwd").is_err());
     }
 

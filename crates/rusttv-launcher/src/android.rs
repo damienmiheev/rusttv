@@ -144,8 +144,45 @@ impl AndroidPlatform {
         java(operation, &mut env, |env| f(env, &bridge, &activity))
     }
 
-    /// `Bridge.tilePicture`: the app's banner, else its icon, as WebP.
+    /// A built-in tile's banner as WebP, through `Bridge.webp`.
+    fn builtin_picture(&self, width: u32, height: u32, rgba: &[u8]) -> Option<Vec<u8>> {
+        let argb: Vec<i32> = rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|&[r, g, b, a]| i32::from_be_bytes([a, r, g, b]))
+            .collect();
+        let (width, height) = (i32::try_from(width).ok()?, i32::try_from(height).ok()?);
+        self.with_bridge("built-in tile picture", |env, bridge, _activity| {
+            let pixels = env.new_int_array(width * height)?;
+            env.set_int_array_region(&pixels, 0, &argb)?;
+            let array = env
+                .call_static_method(
+                    bridge,
+                    "webp",
+                    "([III)[B",
+                    &[
+                        JValue::Object(&pixels),
+                        JValue::Int(width),
+                        JValue::Int(height),
+                    ],
+                )?
+                .l()?;
+            env.convert_byte_array(JByteArray::from(array))
+        })
+        .map_err(|error| log::warn!("{error}"))
+        .ok()
+    }
+
+    /// `Bridge.tilePicture`: the app's banner, else its icon, as WebP; a
+    /// built-in tile's banner.
     fn picture(&self, id: &str) -> Option<(PictureKind, Vec<u8>)> {
+        if let Some((width, height, rgba)) = crate::ui::builtin_banner(id) {
+            return Some((
+                PictureKind::Banner,
+                self.builtin_picture(width, height, rgba)?,
+            ));
+        }
         let bytes = self
             .with_bridge("tile picture", |env, bridge, activity| {
                 let component = env.new_string(id)?;

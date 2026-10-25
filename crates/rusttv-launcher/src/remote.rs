@@ -14,14 +14,15 @@ use std::sync::mpsc::{self, Sender};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rusttv_remote::protocol::{
-    FolderView, HomeMode, HomeView, Picture, TextField, TileView, TvMessage, picture_data,
+    FolderView, HomeMode, HomeView, MenuChoice, MenuView, Picture, TextField, TileView, TvMessage,
+    picture_data,
 };
 use rusttv_remote::{Event, Options, Outlet, PAGE, PhoneId, Phones, Remote, RemoteError};
 
 use crate::platform::Pictures;
 use crate::settings::PhoneRow;
 
-use crate::model::{FOLDER_PAGE_SIZE, Home, State, TileId};
+use crate::model::{FOLDER_PAGE_SIZE, Home, MenuItem, State, TileId};
 use crate::order_file::name_of;
 
 /// Where the paired phones are kept, under the launcher's files directory.
@@ -361,6 +362,42 @@ pub(crate) fn home_view(
             State::Browse | State::Launching | State::Folder => HomeMode::Browse,
         }
     };
+    // The menu and the hidden apps page, as on the TV.
+    let menu = (mode == HomeMode::Menu)
+        .then(|| home.menu())
+        .flatten()
+        .map(|(items, selected)| MenuView {
+            items: items
+                .iter()
+                .map(|item| match item {
+                    MenuItem::Move => MenuChoice::Move,
+                    MenuItem::Hide => MenuChoice::Hide,
+                })
+                .collect(),
+            selected: u8::try_from(selected).unwrap_or(u8::MAX),
+        });
+    let (hidden, focused) = if mode == HomeMode::Hidden {
+        let hidden: Vec<TileView> = home
+            .hidden_apps()
+            .iter()
+            .map(|app| {
+                let id = TileId::App(app.clone());
+                TileView {
+                    id: name_of(&id),
+                    label: label(&id),
+                    banner: None,
+                    folder: None,
+                }
+            })
+            .collect();
+        let focus = home
+            .hidden_focus()
+            .and_then(|index| hidden.get(index))
+            .map(|tile| tile.id.clone());
+        (hidden, focus)
+    } else {
+        (Vec::new(), focused)
+    };
     HomeView {
         tiles,
         focused,
@@ -370,6 +407,8 @@ pub(crate) fn home_view(
             label: "Folder name".to_owned(),
             value,
         }),
+        menu,
+        hidden,
     }
 }
 
