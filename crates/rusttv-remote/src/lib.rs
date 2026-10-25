@@ -7,18 +7,26 @@
 //! ([`Phones`]); [`Session`] seals and opens every message after
 //! authentication with XChaCha20-Poly1305.
 //!
-//! Sans IO: no sockets, clock or randomness here. Callers pass nonces,
-//! secrets and times in, so everything is testable and the same bytes can be
-//! checked against the page's JavaScript. Used by the launcher; depends on
-//! neither the launcher nor `rusttv-core`.
+//! [`Remote`] is the listener: the page and one WebSocket per phone on std
+//! sockets, with every limit from REMOTE.md § 3.
+//!
+//! No clock or randomness of its own: callers pass nonces, secrets and times
+//! in (on the TV, Kotlin's `SecureRandom`), so everything is testable and the
+//! same bytes can be checked against the page's JavaScript. Used by the
+//! launcher; depends on neither the launcher nor `rusttv-core`.
 
 pub mod auth;
 mod crypto;
 mod hex;
 pub mod protocol;
+mod server;
 
 pub use auth::{Phone, PhoneId, Phones};
 pub use crypto::{Direction, NONCE_LEN, Session, TAG_LEN};
+pub use server::{Clock, Event, MAX_CONNECTED, Options, PAIRING_TIME, PORT, Random, Remote};
+
+/// The phone page, served at `/` ([`Options::page`]).
+pub const PAGE: &str = include_str!("../page/index.html");
 
 /// Why a remote operation failed. Every variant means "drop this message"
 /// (or this connection); none of them is ever echoed to the phone.
@@ -38,4 +46,11 @@ pub enum RemoteError {
     /// The phones file was written by a newer RustTV (format version inside).
     #[error("the phones file was written by a newer RustTV (format {0})")]
     FormatNewer(u32),
+    /// Another app already listens on the remote's port; the listener
+    /// doesn't start (Settings says so).
+    #[error("port {0} is already in use")]
+    PortTaken(u16),
+    /// A socket error, a timeout, or the phone went away.
+    #[error("connection: {0}")]
+    Io(String),
 }

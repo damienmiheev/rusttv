@@ -69,6 +69,14 @@ gix-pack = { version = "0.77.0", default-features = false, features = ["generate
 # from the caller). MIT OR Apache-2.0.
 hmac = "0.13.0"
 chacha20poly1305 = { version = "0.11.0", default-features = false, features = ["alloc"] }
+# Its HTTP/1.1 request parsing (page and WebSocket upgrade) and WebSocket
+# frames on std sockets: no tokio, no handshake feature (the upgrade answer is
+# a few lines over `sha1`, already in the tree). MIT OR Apache-2.0.
+httparse = "1.10.1"
+tungstenite = { version = "0.30.0", default-features = false }
+# SHA-1 for the WebSocket upgrade's accept key, already in the tree through gix
+# (collision-detecting SHA-1). No dependencies. MIT OR Apache-2.0.
+sha1dc = "0.1.5"
 
 [workspace.lints.rust]
 # Only the future JNI bridge crate may opt out of this.
