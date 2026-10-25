@@ -43,6 +43,9 @@ pub const PAGE: &str = include_str!("../page/index.html");
 /// The page's crypto, inlined into the page; checked against the crate's
 /// test vectors by `page/crypto.test.mjs`.
 pub const CRYPTO_JS: &str = include_str!("../page/crypto.js");
+/// The page's texts in the phone's language, inlined into the page; checked
+/// by `page/i18n.test.mjs`.
+pub const I18N_JS: &str = include_str!("../page/i18n.js");
 /// The page's logic, inlined into the page.
 pub const APP_JS: &str = include_str!("../page/app.js");
 

@@ -545,6 +545,8 @@ impl Controller {
     /// updater's status: on Android the daily check may have just started.
     fn resume(&mut self) {
         self.away = false;
+        // Phones switch back from the touchpad to the Home mirror.
+        self.push_remote_view();
         self.refresh_update();
         self.pack_timer.stop();
         if let Some(history) = History::get() {
@@ -1253,7 +1255,12 @@ impl Controller {
                 self.render();
             }
             PhoneMessage::Text { edit } => self.phone_text(edit),
-            PhoneMessage::Drag { id, over, phase } => self.phone_drag(&id, over, phase),
+            PhoneMessage::Drag {
+                id,
+                over,
+                phase,
+                on,
+            } => self.phone_drag(&id, over, phase, on),
             // Opening apps by name and the touchpad belong to phase 2.
             _ => {}
         }
@@ -1262,7 +1269,7 @@ impl Controller {
     /// Moving a tile by dragging it on the phone (REMOTE.md § 4): `over` is
     /// the tile under the finger (the dragged tile itself while nothing else
     /// is), `None` outside an open folder's panel.
-    fn phone_drag(&mut self, id: &str, over: Option<String>, phase: DragPhase) {
+    fn phone_drag(&mut self, id: &str, over: Option<String>, phase: DragPhase, on: bool) {
         let now = (self.clock)();
         let tile = order_file::tile_for_name(id.to_owned());
         let moving = self.home.state() == State::Moving;
@@ -1272,7 +1279,7 @@ impl Controller {
                 self.home.pick_up(&tile, now);
             }
             DragPhase::Move if moving => match &over {
-                Some(target) if *target != tile => self.home.drag_over(target, now),
+                Some(target) if *target != tile => self.home.drag_over(target, on, now),
                 Some(_) => {}
                 None => self.home.drag_out(now),
             },
@@ -2623,6 +2630,8 @@ mod tests {
                         id: "a/.Main".into(),
                         over: over.map(Into::into),
                         phase,
+                        // The middle of B (rest for a folder), C's edge.
+                        on: over == Some("b/.Main"),
                     },
                 });
         };
@@ -2649,6 +2658,8 @@ mod tests {
                         id: "a/.Main".into(),
                         over: over.map(Into::into),
                         phase,
+                        // The middle of B (rest for a folder), C's edge.
+                        on: over == Some("b/.Main"),
                     },
                 });
         };
@@ -2693,12 +2704,7 @@ mod tests {
         );
         if screen.window.get_pairing_phase() == 3 {
             // A machine without a network route: nothing else to check.
-            assert!(
-                screen
-                    .window
-                    .get_pairing_failure()
-                    .contains("network address")
-            );
+            assert_eq!(screen.window.get_pairing_failure(), 2, "no network address");
             return;
         }
         assert_eq!(screen.window.get_pairing_phase(), 0);
@@ -2725,7 +2731,8 @@ mod tests {
         assert_eq!(screen.window.get_pairing_phase(), 1);
         screen.tap(OK);
         assert_eq!(screen.window.get_pairing_phase(), 2, "paired");
-        screen.tap(BACK);
+        // Back to Settings by itself.
+        screen.wait(2100);
         assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
         assert!(!screen.shared.platform.borrow().secure());
         let _ = std::fs::remove_dir_all(dir);

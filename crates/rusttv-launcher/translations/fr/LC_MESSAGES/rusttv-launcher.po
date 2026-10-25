@@ -328,3 +328,58 @@ msgstr "{} mis dans {}"
 
 msgid "Took {} out of {}"
 msgstr "{} sorti de {}"
+
+# RustTV Remote (REMOTE.md)
+msgid "RustTV Remote"
+msgstr "RustTV Remote"
+
+msgid "Use a phone as a remote, keyboard and touchpad. It can press keys and type, but never change settings or approve anything."
+msgstr "Un téléphone comme télécommande, clavier et pavé tactile. Il peut appuyer sur des touches et saisir du texte, mais jamais changer les réglages ni approuver quoi que ce soit."
+
+msgid "Pair a phone"
+msgstr "Associer un téléphone"
+
+msgid "Shows a code to scan with the phone's camera"
+msgstr "Affiche un code pour l'appareil photo du téléphone"
+
+msgid "Press OK again to remove it"
+msgstr "Appuyez à nouveau sur OK pour le retirer"
+
+msgid "OK removes it"
+msgstr "OK le retire"
+
+msgid "RustTV Remote can't start: another app uses its network port (8484)."
+msgstr "RustTV Remote ne peut pas démarrer : une autre app utilise son port réseau (8484)."
+
+msgid "This TV has no network address. Connect it to your network and try again."
+msgstr "Ce téléviseur n'a pas d'adresse réseau. Connectez-le à votre réseau et réessayez."
+
+msgid "Pairing stopped after three wrong tries. Back returns; open Pair a phone again for a new code."
+msgstr "Association arrêtée après trois essais ratés. Retour pour revenir ; rouvrez Associer un téléphone pour un nouveau code."
+
+msgid "Couldn't make the code."
+msgstr "Impossible de créer le code."
+
+msgid "Removed {}. It can't control this TV any more."
+msgstr "{} retiré. Il ne peut plus contrôler ce téléviseur."
+
+msgid "OK allows this phone. Back refuses."
+msgstr "OK autorise ce téléphone. Retour refuse."
+
+msgid "Back returns."
+msgstr "Retour pour revenir."
+
+msgid "Scan this code with your phone's camera and open the link.\n\nThe phone must be on the same network as this TV. The code works once, for two minutes."
+msgstr "Scannez ce code avec l'appareil photo du téléphone et ouvrez le lien.\n\nLe téléphone doit être sur le même réseau que le téléviseur. Le code sert une fois, pendant deux minutes."
+
+msgid "Allow “{}”?"
+msgstr "Autoriser « {} » ?"
+
+msgid "Check that the phone shows the same code:"
+msgstr "Vérifiez que le téléphone affiche le même code :"
+
+msgid "It will be able to press keys and type on this TV. It can never change settings or approve anything."
+msgstr "Il pourra appuyer sur des touches et saisir du texte sur ce téléviseur. Il ne pourra jamais changer les réglages ni approuver quoi que ce soit."
+
+msgid "“{}” is paired."
+msgstr "« {} » est associé."

@@ -3,11 +3,16 @@
 //! phones, and removing one. Phones can never do any of this themselves:
 //! ui.rs drops their input while the pairing screen is open.
 
-use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
+use std::time::Duration;
+
+use slint::{Image, Rgba8Pixel, SharedPixelBuffer, Timer};
 
 use super::{Controller, HomeWindow, settings_view};
 use crate::model::Input;
 use crate::remote;
+
+/// How long "paired" shows before the screen goes back to Settings.
+const PAIRED_SHOWN: Duration = Duration::from_secs(2);
 
 /// Pixels per QR module; Slint scales the image to the screen without
 /// smoothing.
@@ -32,7 +37,9 @@ enum Phase {
     Paired {
         name: String,
     },
-    Failed(String),
+    /// `Strings.pairing-failure` kinds: 1 port taken, 2 no address, 3 no
+    /// code, 4 three wrong tries.
+    Failed(i32),
 }
 
 impl Controller {
@@ -42,18 +49,14 @@ impl Controller {
         if self.remote.is_none() {
             self.start_remote_now(true);
         }
-        let failed = |text: &str| Pairing {
-            phase: Phase::Failed(text.to_owned()),
+        let failed = |kind: i32| Pairing {
+            phase: Phase::Failed(kind),
             qr: Image::default(),
             address: String::new(),
         };
         let pairing = match (&self.remote, remote::lan_address()) {
-            (None, _) => {
-                failed("RustTV Remote can't start: another app uses its network port (8484).")
-            }
-            (Some(_), None) => {
-                failed("This TV has no network address. Connect it to your network and try again.")
-            }
+            (None, _) => failed(1),
+            (Some(_), None) => failed(2),
             (Some(link), Some(address)) => {
                 let link_text = link.open_pairing(&address.to_string());
                 match remote::qr_pixels(&link_text, QR_SCALE) {
@@ -64,7 +67,7 @@ impl Controller {
                         )),
                         address: format!("http://{address}:{}", link.remote().address().port()),
                     },
-                    None => failed("Couldn't make the code."),
+                    None => failed(3),
                 }
             }
         };
@@ -89,6 +92,20 @@ impl Controller {
                 if let Some(pairing) = &mut self.pairing {
                     pairing.phase = Phase::Paired { name };
                 }
+                // Back to Settings by itself, where the phone is listed.
+                let me = self.me.clone();
+                Timer::single_shot(PAIRED_SHOWN, move || {
+                    if let Some(controller) = me.upgrade() {
+                        let mut controller = controller.borrow_mut();
+                        if controller
+                            .pairing
+                            .as_ref()
+                            .is_some_and(|pairing| matches!(pairing.phase, Phase::Paired { .. }))
+                        {
+                            controller.close_pairing();
+                        }
+                    }
+                });
             }
             (_, Input::Back) => self.close_pairing(),
             _ => return,
@@ -138,10 +155,7 @@ impl Controller {
     /// Too many wrong pairing tries: the code no longer works.
     pub(super) fn pairing_closed(&mut self) {
         if let Some(pairing) = &mut self.pairing {
-            pairing.phase = Phase::Failed(
-                "Pairing stopped after three wrong tries. Back returns; open Pair a phone again for a new code."
-                    .to_owned(),
-            );
+            pairing.phase = Phase::Failed(4);
             self.render();
         }
     }
@@ -181,16 +195,16 @@ impl Controller {
             return;
         };
         let (phase, name, code, failure) = match &pairing.phase {
-            Phase::Waiting => (0, "", String::new(), ""),
-            Phase::Asking { name, code, .. } => (1, name.as_str(), format!("{code:02}"), ""),
-            Phase::Paired { name } => (2, name.as_str(), String::new(), ""),
-            Phase::Failed(text) => (3, "", String::new(), text.as_str()),
+            Phase::Waiting => (0, "", String::new(), 0),
+            Phase::Asking { name, code, .. } => (1, name.as_str(), format!("{code:02}"), 0),
+            Phase::Paired { name } => (2, name.as_str(), String::new(), 0),
+            Phase::Failed(kind) => (3, "", String::new(), *kind),
         };
         window.set_pairing_phase(phase);
         window.set_pairing_qr(pairing.qr.clone());
         window.set_pairing_address(pairing.address.as_str().into());
         window.set_pairing_name(name.into());
         window.set_pairing_code(code.into());
-        window.set_pairing_failure(failure.into());
+        window.set_pairing_failure(failure);
     }
 }

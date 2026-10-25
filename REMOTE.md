@@ -89,8 +89,11 @@ to its home screen.
   hold and drag), an open folder, move mode, typing, and the touchpad
   (pointer and arrows) work against the real listener
   (`cargo run -p rusttv-remote --example demo`, a stand-in TV with a fake
-  Home). Not yet: banners (tiles show a colour from their id), renaming a
-  folder from the phone, the page in other languages, a home-screen icon.
+  Home), and on the Philips TV. The page speaks the phone's language (the
+  first of `navigator.languages` among the launcher's 20, else English;
+  right to left for Arabic and Hebrew), from `page/i18n.js`, checked by
+  `page/i18n.test.mjs` in CI. Not yet: banners (tiles show a colour from
+  their id), renaming a folder from the phone, a home-screen icon.
 - **Look:** the launcher's colours, Inter, the RustTV icon and the built-in
   tile images.
   - Focus is shown as on the TV: the focused tile grows slightly, with a soft
@@ -107,9 +110,13 @@ to its home screen.
     itself.
   - **Pairing:** the name field and the match code.
 
-  A bottom bar has Back, an Apps / Touchpad switch and Keyboard. The page
-  switches to Touchpad by itself when another app comes to the front, and
-  back to Apps when RustTV does.
+  A small bar at the bottom has Back, and Keyboard while the TV asks for
+  text. There is no Apps / Touchpad switch: the page shows Apps while
+  RustTV is in front and the touchpad while another app is.
+- **Add to Home Screen:** once paired, a phone browser that didn't open the
+  page from the Home Screen suggests adding it (iOS: Share → Add to Home
+  Screen; Android: the browser menu). "Got it" ends the suggestion, "Not
+  now" for a week. Never while the pairing link is in the address.
 - **No secure context on plain HTTP:**
   - What's missing: Web Crypto, clipboard reads, service workers, and so a
     real install on Android Chrome. Its "Add to Home screen" still makes a
@@ -253,14 +260,18 @@ echoed.
   - `text { insert | delete | submit }`;
   - `open { app }`, a component from the list the TV sent;
   - `tile { id, gesture: tap | long_press }`;
-  - `drag { id, over, phase }`: `start` picks the tile up as Move in its
-    menu would (`Home::pick_up`); each `move` puts it on the tile under the
-    finger as arrows would (`Home::drag_over`; `over` is the dragged tile
-    itself while nothing else is under the finger, `null` only outside an
-    open folder's panel, which takes the app out, `Home::drag_out`);
-    resting there for the launcher's 0.6 s makes a folder, on the
-    launcher's own timer; `end` drops it where the last move put it;
-    `cancel` puts it back;
+  - `drag { id, over, phase, on }`: `start` picks the tile up as Move in
+    its menu would (`Home::pick_up`). A `move` names the tile under the
+    finger (`over` is the dragged tile itself while nothing else is under
+    the finger, `null` only outside an open folder's panel, which takes the
+    app out, `Home::drag_out`). Near that tile's edges (`on` false) the
+    dragged tile takes its place; over its middle (`on`: within a quarter
+    of its width and 30% of its height of the centre) it stays, and resting
+    there for the launcher's 0.6 s makes a folder, on the launcher's own
+    timer (`Home::drag_over`). The page sends a move only after the finger
+    stays 150 ms, so tiles crossed on the way don't shuffle (on the TV a
+    drag across a tile used to move there and back). `end` drops it where
+    the last move put it; `cancel` puts it back;
   - `pointer { dx, dy, click | scroll }`;
   - `name { phone_id, text }`, during pairing only.
 - **TV → phone:**

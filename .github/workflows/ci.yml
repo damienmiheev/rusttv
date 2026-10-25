@@ -54,6 +54,8 @@ jobs:
       # The phone page's JavaScript crypto must give the Rust side's bytes.
       - name: Phone page crypto matches the Rust test vectors
         run: node crates/rusttv-remote/page/crypto.test.mjs
+      - name: Phone page texts exist in every language
+        run: node crates/rusttv-remote/page/i18n.test.mjs
 
   deny:
     name: cargo deny

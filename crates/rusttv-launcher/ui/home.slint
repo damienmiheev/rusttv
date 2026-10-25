@@ -116,6 +116,12 @@ export global Strings {
     public pure function phone-detail(removing: bool) -> string {
         return removing ? @tr("Press OK again to remove it") : @tr("OK removes it");
     }
+    public pure function pairing-failure(kind: int) -> string {
+        if kind == 1 { return @tr("RustTV Remote can't start: another app uses its network port (8484)."); }
+        if kind == 2 { return @tr("This TV has no network address. Connect it to your network and try again."); }
+        if kind == 4 { return @tr("Pairing stopped after three wrong tries. Back returns; open Pair a phone again for a new code."); }
+        return @tr("Couldn't make the code.");
+    }
     public pure function on-off(on: bool) -> string {
         return on ? @tr("On") : @tr("Off");
     }
@@ -642,7 +648,8 @@ export component HomeWindow inherits Window {
     in property <string> pairing-address;
     in property <string> pairing-name;
     in property <string> pairing-code;
-    in property <string> pairing-failure;
+    // ui/remote_view.rs: 1 port taken, 2 no address, 3 no code, 4 three wrong tries.
+    in property <int> pairing-failure;
     // While an app moves on Home: the tile it is on top of, drawn under it
     // in its slot until the next key; -1 for none.
     in property <int> over-index: -1;
@@ -1466,7 +1473,7 @@ export component HomeWindow inherits Window {
             y: 300 * u;
             width: 1740 * u;
             horizontal-alignment: Dir.start;
-            text: pairing-phase == 2 ? @tr("“{}” is paired. Back returns to Settings.", pairing-name) : pairing-failure;
+            text: pairing-phase == 2 ? @tr("“{}” is paired.", pairing-name) : Strings.pairing-failure(pairing-failure);
             font-size: 41 * u;
             color: Theme.text;
             wrap: word-wrap;

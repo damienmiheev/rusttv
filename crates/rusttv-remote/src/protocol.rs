@@ -76,11 +76,15 @@ pub enum PhoneMessage {
     Open { app: String },
     /// A tap or long press on a tile of the Home mirror.
     Tile { id: String, gesture: Gesture },
-    /// Moving a tile of the Home mirror: `over` is the tile it is over.
+    /// Moving a tile of the Home mirror: `over` is the tile it is over;
+    /// `on` when the finger is over that tile's middle, where resting makes
+    /// a folder (near its edges the tile only takes its place).
     Drag {
         id: String,
         over: Option<String>,
         phase: DragPhase,
+        #[serde(default)]
+        on: bool,
     },
     /// The touchpad: a movement in phone pixels, a click or a scroll.
     Pointer {

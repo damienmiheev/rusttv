@@ -328,3 +328,58 @@ msgstr "ใส่ {} ใน {}"
 
 msgid "Took {} out of {}"
 msgstr "นำ {} ออกจาก {}"
+
+# RustTV Remote (REMOTE.md)
+msgid "RustTV Remote"
+msgstr "RustTV Remote"
+
+msgid "Use a phone as a remote, keyboard and touchpad. It can press keys and type, but never change settings or approve anything."
+msgstr "ใช้โทรศัพท์เป็นรีโมต แป้นพิมพ์ และทัชแพด กดปุ่มและพิมพ์ได้ แต่จะไม่เปลี่ยนการตั้งค่าหรืออนุมัติสิ่งใดเลย"
+
+msgid "Pair a phone"
+msgstr "จับคู่โทรศัพท์"
+
+msgid "Shows a code to scan with the phone's camera"
+msgstr "แสดงโค้ดให้สแกนด้วยกล้องโทรศัพท์"
+
+msgid "Press OK again to remove it"
+msgstr "กด OK อีกครั้งเพื่อลบ"
+
+msgid "OK removes it"
+msgstr "กด OK เพื่อลบ"
+
+msgid "RustTV Remote can't start: another app uses its network port (8484)."
+msgstr "เริ่ม RustTV Remote ไม่ได้: มีแอปอื่นใช้พอร์ตเครือข่าย (8484) อยู่"
+
+msgid "This TV has no network address. Connect it to your network and try again."
+msgstr "ทีวีนี้ไม่มีที่อยู่เครือข่าย เชื่อมต่อกับเครือข่ายแล้วลองอีกครั้ง"
+
+msgid "Pairing stopped after three wrong tries. Back returns; open Pair a phone again for a new code."
+msgstr "หยุดการจับคู่หลังผิดสามครั้ง กดกลับเพื่อย้อนกลับ เปิด จับคู่โทรศัพท์ อีกครั้งเพื่อรับโค้ดใหม่"
+
+msgid "Couldn't make the code."
+msgstr "สร้างโค้ดไม่ได้"
+
+msgid "Removed {}. It can't control this TV any more."
+msgstr "ลบ {} แล้ว ไม่สามารถควบคุมทีวีนี้ได้อีก"
+
+msgid "OK allows this phone. Back refuses."
+msgstr "กด OK เพื่ออนุญาตโทรศัพท์นี้ กดกลับเพื่อปฏิเสธ"
+
+msgid "Back returns."
+msgstr "กดกลับเพื่อย้อนกลับ"
+
+msgid "Scan this code with your phone's camera and open the link.\n\nThe phone must be on the same network as this TV. The code works once, for two minutes."
+msgstr "สแกนโค้ดนี้ด้วยกล้องโทรศัพท์แล้วเปิดลิงก์\n\nโทรศัพท์ต้องอยู่ในเครือข่ายเดียวกับทีวีนี้ โค้ดใช้ได้ครั้งเดียว ภายในสองนาที"
+
+msgid "Allow “{}”?"
+msgstr "อนุญาต “{}” ไหม"
+
+msgid "Check that the phone shows the same code:"
+msgstr "ตรวจดูว่าโทรศัพท์แสดงโค้ดเดียวกัน:"
+
+msgid "It will be able to press keys and type on this TV. It can never change settings or approve anything."
+msgstr "จะกดปุ่มและพิมพ์บนทีวีนี้ได้ แต่จะไม่เปลี่ยนการตั้งค่าหรืออนุมัติสิ่งใดเลย"
+
+msgid "“{}” is paired."
+msgstr "จับคู่ “{}” แล้ว"

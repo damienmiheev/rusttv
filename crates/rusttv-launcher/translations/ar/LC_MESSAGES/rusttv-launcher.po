@@ -328,3 +328,58 @@ msgstr "تمت إضافة {} إلى {}"
 
 msgid "Took {} out of {}"
 msgstr "تم إخراج {} من {}"
+
+# RustTV Remote (REMOTE.md)
+msgid "RustTV Remote"
+msgstr "RustTV Remote"
+
+msgid "Use a phone as a remote, keyboard and touchpad. It can press keys and type, but never change settings or approve anything."
+msgstr "استخدم الهاتف كجهاز تحكم ولوحة مفاتيح ولوحة لمس. يمكنه الضغط على الأزرار والكتابة، لكنه لا يغيّر الإعدادات ولا يوافق على أي شيء أبدًا."
+
+msgid "Pair a phone"
+msgstr "إقران هاتف"
+
+msgid "Shows a code to scan with the phone's camera"
+msgstr "يعرض رمزًا لكاميرا الهاتف"
+
+msgid "Press OK again to remove it"
+msgstr "اضغط OK مرة أخرى لإزالته"
+
+msgid "OK removes it"
+msgstr "OK لإزالته"
+
+msgid "RustTV Remote can't start: another app uses its network port (8484)."
+msgstr "لا يمكن تشغيل RustTV Remote: تطبيق آخر يستخدم منفذ الشبكة الخاص به (8484)."
+
+msgid "This TV has no network address. Connect it to your network and try again."
+msgstr "ليس لهذا التلفزيون عنوان شبكة. وصّله بشبكتك وحاول مرة أخرى."
+
+msgid "Pairing stopped after three wrong tries. Back returns; open Pair a phone again for a new code."
+msgstr "توقف الإقران بعد ثلاث محاولات خاطئة. «رجوع» للعودة؛ افتح «إقران هاتف» مرة أخرى للحصول على رمز جديد."
+
+msgid "Couldn't make the code."
+msgstr "تعذّر إنشاء الرمز."
+
+msgid "Removed {}. It can't control this TV any more."
+msgstr "تمت إزالة {}. لم يعد بإمكانه التحكم في هذا التلفزيون."
+
+msgid "OK allows this phone. Back refuses."
+msgstr "OK للسماح بهذا الهاتف. «رجوع» للرفض."
+
+msgid "Back returns."
+msgstr "«رجوع» للعودة."
+
+msgid "Scan this code with your phone's camera and open the link.\n\nThe phone must be on the same network as this TV. The code works once, for two minutes."
+msgstr "امسح هذا الرمز بكاميرا الهاتف وافتح الرابط.\n\nيجب أن يكون الهاتف على نفس شبكة التلفزيون. يعمل الرمز مرة واحدة، لمدة دقيقتين."
+
+msgid "Allow “{}”?"
+msgstr "السماح بـ «{}»؟"
+
+msgid "Check that the phone shows the same code:"
+msgstr "تحقّق من أن الهاتف يعرض الرمز نفسه:"
+
+msgid "It will be able to press keys and type on this TV. It can never change settings or approve anything."
+msgstr "سيتمكن من الضغط على الأزرار والكتابة على هذا التلفزيون. لن يغيّر الإعدادات ولن يوافق على أي شيء أبدًا."
+
+msgid "“{}” is paired."
+msgstr "تم إقران «{}»."

@@ -328,3 +328,58 @@ msgstr "Đã đưa {} vào {}"
 
 msgid "Took {} out of {}"
 msgstr "Đã lấy {} ra khỏi {}"
+
+# RustTV Remote (REMOTE.md)
+msgid "RustTV Remote"
+msgstr "RustTV Remote"
+
+msgid "Use a phone as a remote, keyboard and touchpad. It can press keys and type, but never change settings or approve anything."
+msgstr "Dùng điện thoại làm điều khiển, bàn phím và bàn di chuột. Điện thoại có thể bấm nút và gõ chữ, nhưng không bao giờ đổi cài đặt hay phê duyệt gì."
+
+msgid "Pair a phone"
+msgstr "Ghép nối điện thoại"
+
+msgid "Shows a code to scan with the phone's camera"
+msgstr "Hiện mã để quét bằng camera điện thoại"
+
+msgid "Press OK again to remove it"
+msgstr "Nhấn OK lần nữa để xóa"
+
+msgid "OK removes it"
+msgstr "OK để xóa"
+
+msgid "RustTV Remote can't start: another app uses its network port (8484)."
+msgstr "Không thể khởi động RustTV Remote: một ứng dụng khác đang dùng cổng mạng của nó (8484)."
+
+msgid "This TV has no network address. Connect it to your network and try again."
+msgstr "TV này không có địa chỉ mạng. Hãy kết nối mạng rồi thử lại."
+
+msgid "Pairing stopped after three wrong tries. Back returns; open Pair a phone again for a new code."
+msgstr "Đã dừng ghép nối sau ba lần sai. Nhấn Quay lại để trở về; mở Ghép nối điện thoại lần nữa để có mã mới."
+
+msgid "Couldn't make the code."
+msgstr "Không tạo được mã."
+
+msgid "Removed {}. It can't control this TV any more."
+msgstr "Đã xóa {}. Thiết bị này không thể điều khiển TV này nữa."
+
+msgid "OK allows this phone. Back refuses."
+msgstr "OK để cho phép điện thoại này. Quay lại để từ chối."
+
+msgid "Back returns."
+msgstr "Nhấn Quay lại để trở về."
+
+msgid "Scan this code with your phone's camera and open the link.\n\nThe phone must be on the same network as this TV. The code works once, for two minutes."
+msgstr "Quét mã này bằng camera điện thoại rồi mở liên kết.\n\nĐiện thoại phải ở cùng mạng với TV này. Mã dùng được một lần, trong hai phút."
+
+msgid "Allow “{}”?"
+msgstr "Cho phép “{}”?"
+
+msgid "Check that the phone shows the same code:"
+msgstr "Kiểm tra điện thoại hiện cùng một mã:"
+
+msgid "It will be able to press keys and type on this TV. It can never change settings or approve anything."
+msgstr "Điện thoại sẽ có thể bấm nút và gõ chữ trên TV này. Nó không bao giờ đổi cài đặt hay phê duyệt gì."
+
+msgid "“{}” is paired."
+msgstr "Đã ghép nối “{}”."
