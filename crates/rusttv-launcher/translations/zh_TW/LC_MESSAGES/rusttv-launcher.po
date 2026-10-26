@@ -407,3 +407,9 @@ msgstr "已開啟 · 手機觸控板可在其他應用程式中移動指標 · �
 
 msgid "Not on this device"
 msgstr "此裝置不支援"
+
+msgid "Paired the phone {}"
+msgstr "已配對手機 {}"
+
+msgid "Removed the phone {}"
+msgstr "已移除手機 {}"

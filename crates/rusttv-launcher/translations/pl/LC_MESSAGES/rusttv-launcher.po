@@ -407,3 +407,9 @@ msgstr "Włączony · touchpad telefonu przesuwa wskaźnik w innych aplikacjach 
 
 msgid "Not on this device"
 msgstr "Niedostępne na tym urządzeniu"
+
+msgid "Paired the phone {}"
+msgstr "Sparowano telefon {}"
+
+msgid "Removed the phone {}"
+msgstr "Usunięto telefon {}"

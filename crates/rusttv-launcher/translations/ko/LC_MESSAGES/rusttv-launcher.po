@@ -407,3 +407,9 @@ msgstr "켜짐 · 휴대전화 터치패드로 다른 앱의 포인터를 움직
 
 msgid "Not on this device"
 msgstr "이 기기에서는 사용할 수 없음"
+
+msgid "Paired the phone {}"
+msgstr "휴대전화 {} 페어링됨"
+
+msgid "Removed the phone {}"
+msgstr "휴대전화 {} 삭제됨"

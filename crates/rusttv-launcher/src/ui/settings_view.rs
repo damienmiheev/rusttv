@@ -350,6 +350,11 @@ impl Controller {
         let loaded = order_file::load(path);
         self.home
             .replace_order(loaded.order, loaded.folders, loaded.hidden);
+        // A restore may have removed phones.
+        if let Some(link) = &self.remote {
+            link.drop_removed_phones();
+        }
+        self.phones_changed();
         self.shown.clear();
         self.render();
     }
@@ -714,6 +719,8 @@ fn change_line(
             "".into(),
         ),
         Change::Removed { tile } => (10, label(tile).into(), "".into(), "".into()),
+        Change::PhonePaired { name, .. } => (16, name.as_str().into(), "".into(), "".into()),
+        Change::PhoneRemoved { name, .. } => (17, name.as_str().into(), "".into(), "".into()),
         Change::Firmware { .. } => (6, "".into(), "".into(), "".into()),
         Change::Takeover { active } => (7, "".into(), "".into(), strings.invoke_on_off(*active)),
         _ => (8, "".into(), "".into(), "".into()),

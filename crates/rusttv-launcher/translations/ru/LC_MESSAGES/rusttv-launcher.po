@@ -407,3 +407,9 @@ msgstr "Вкл. · тачпад телефона двигает указател
 
 msgid "Not on this device"
 msgstr "Недоступно на этом устройстве"
+
+msgid "Paired the phone {}"
+msgstr "Телефон {} подключён"
+
+msgid "Removed the phone {}"
+msgstr "Телефон {} удалён"

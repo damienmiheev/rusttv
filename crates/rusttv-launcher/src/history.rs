@@ -454,6 +454,13 @@ fn restore_draft(
         }
     }
     let launcher = device.launcher()?;
+    // Phones can only be removed: a phone paired since stays out of the
+    // restored state, one removed since can't come back (no keys).
+    let mut target = target;
+    target
+        .launcher
+        .phones
+        .retain(|id, _| launcher.phones.contains_key(id));
     if launcher != target.launcher {
         draft.launcher = Some(target.launcher);
     }

@@ -407,3 +407,9 @@ msgstr "Увімкнено · тачпад телефона рухає вказ�
 
 msgid "Not on this device"
 msgstr "Недоступно на цьому пристрої"
+
+msgid "Paired the phone {}"
+msgstr "Під'єднано телефон {}"
+
+msgid "Removed the phone {}"
+msgstr "Видалено телефон {}"

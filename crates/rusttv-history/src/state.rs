@@ -9,12 +9,16 @@ use crate::HistoryError;
 
 /// Version of the snapshot format. Bump on any incompatible change.
 ///
-/// 2 added `[launcher.folders]`. A snapshot without folders is still
-/// written as format 1, so older readers keep reading it.
-pub const STATE_FORMAT: u32 = 2;
+/// 2 added `[launcher.folders]`, 3 `[launcher.phones]`. A snapshot is
+/// written in the oldest format that holds it (no folders and no phones:
+/// format 1), so older readers keep reading it until it needs more.
+pub const STATE_FORMAT: u32 = 3;
 
 /// The longest folder name, in characters (the launcher's limit).
 const FOLDER_NAME_MAX: usize = 40;
+
+/// The longest phone name, in characters (RustTV Remote's limit).
+const PHONE_NAME_MAX: usize = 40;
 
 /// The allowlisted global settings, by name (the CLI's `SettingKey`).
 pub const SETTING_KEYS: [&str; 3] = [
@@ -61,6 +65,10 @@ pub struct Launcher {
     /// Component names of apps kept off Home.
     #[serde(default)]
     pub hidden: BTreeSet<String>,
+    /// Phones paired with RustTV Remote: id (32 hex digits) → name. Never
+    /// their keys; a restore can only remove phones (REMOTE.md § 6).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub phones: BTreeMap<String, String>,
     /// Whether the launcher checks for updates by itself.
     #[serde(default = "yes")]
     pub update_check: bool,
@@ -72,6 +80,7 @@ impl Default for Launcher {
             order: Vec::new(),
             folders: BTreeMap::new(),
             hidden: BTreeSet::new(),
+            phones: BTreeMap::new(),
             update_check: true,
         }
     }
@@ -182,10 +191,12 @@ impl State {
 
     /// The oldest format that can hold this snapshot.
     pub fn needed_format(&self) -> u32 {
-        if self.launcher.folders.is_empty() {
-            1
-        } else {
+        if !self.launcher.phones.is_empty() {
+            3
+        } else if !self.launcher.folders.is_empty() {
             2
+        } else {
+            1
         }
     }
 
@@ -243,6 +254,16 @@ impl State {
             if !is_folder_name(&folder.name) {
                 return Err(HistoryError::invalid(format!(
                     "the name of {key} is not valid"
+                )));
+            }
+        }
+        for (id, name) in &self.launcher.phones {
+            if id.len() != 32 || !id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+                return Err(HistoryError::invalid(format!("{id:?} is not a phone id")));
+            }
+            if !is_phone_name(name) {
+                return Err(HistoryError::invalid(format!(
+                    "the name of phone {id} is not valid"
                 )));
             }
         }
@@ -311,6 +332,14 @@ pub fn is_package_name(name: &str) -> bool {
 pub fn is_folder_name(name: &str) -> bool {
     !name.trim().is_empty()
         && name.chars().count() <= FOLDER_NAME_MAX
+        && !name.chars().any(char::is_control)
+}
+
+/// A phone's name: 1 to 40 characters, none of them control characters.
+/// Shown only, never run.
+pub fn is_phone_name(name: &str) -> bool {
+    !name.trim().is_empty()
+        && name.chars().count() <= PHONE_NAME_MAX
         && !name.chars().any(char::is_control)
 }
 
@@ -404,8 +433,8 @@ mod tests {
     #[test]
     fn a_newer_format_says_so() {
         assert!(matches!(
-            State::parse("format = 3\nsomething_new = true\n"),
-            Err(HistoryError::FormatNewer(3))
+            State::parse("format = 4\nsomething_new = true\n"),
+            Err(HistoryError::FormatNewer(4))
         ));
     }
 
@@ -433,6 +462,34 @@ mod tests {
             State::parse(&downgraded),
             Err(HistoryError::Invalid(_))
         ));
+    }
+
+    #[test]
+    fn phones_need_format_three() {
+        let mut with_phone = sample();
+        with_phone
+            .launcher
+            .phones
+            .insert("ab".repeat(16), "iPhone (Safari)".into());
+        let text = with_phone.to_toml().unwrap();
+        assert!(text.starts_with("format = 3\n"), "{text}");
+        assert_eq!(State::parse(&text).unwrap().launcher, with_phone.launcher);
+        let downgraded = text.replacen("format = 3", "format = 2", 1);
+        assert!(matches!(
+            State::parse(&downgraded),
+            Err(HistoryError::Invalid(_))
+        ));
+        for text in [
+            "format = 3\n[launcher.phones]\nabc = \"x\"\n",
+            "format = 3\n[launcher.phones]\nABABABABABABABABABABABABABABABAB = \"x\"\n",
+            "format = 3\n[launcher.phones]\nabababababababababababababababab = \"\"\n",
+            "format = 3\n[launcher.phones]\nabababababababababababababababab = \"a\\nb\"\n",
+        ] {
+            assert!(
+                matches!(State::parse(text), Err(HistoryError::Invalid(_))),
+                "{text}"
+            );
+        }
     }
 
     #[test]

@@ -67,6 +67,20 @@ pub enum Change {
         /// Whether it is hidden now.
         hidden: bool,
     },
+    /// A phone was paired with RustTV Remote.
+    PhonePaired {
+        /// Its id (32 hex digits).
+        id: String,
+        /// Its name.
+        name: String,
+    },
+    /// A paired phone was removed.
+    PhoneRemoved {
+        /// Its id.
+        id: String,
+        /// Its name.
+        name: String,
+    },
     /// The update switch changed.
     UpdateCheck {
         /// Its new value.
@@ -204,6 +218,22 @@ pub fn diff(old: &State, new: &State) -> Vec<Change> {
             hidden: new.launcher.hidden.contains(tile),
         });
     }
+    for (id, name) in &now.phones {
+        if !was.phones.contains_key(id) {
+            changes.push(Change::PhonePaired {
+                id: id.clone(),
+                name: name.clone(),
+            });
+        }
+    }
+    for (id, name) in &was.phones {
+        if !now.phones.contains_key(id) {
+            changes.push(Change::PhoneRemoved {
+                id: id.clone(),
+                name: name.clone(),
+            });
+        }
+    }
     if old.launcher.update_check != new.launcher.update_check {
         changes.push(Change::UpdateCheck {
             on: new.launcher.update_check,
@@ -285,6 +315,8 @@ pub(crate) fn summary(changes: &[Change]) -> String {
                 format!("Took {app} out of {name}")
             }
         }
+        Change::PhonePaired { name, .. } => format!("Paired phone {name}"),
+        Change::PhoneRemoved { name, .. } => format!("Removed phone {name}"),
         Change::UpdateCheck { on } => {
             format!("Update check {}", if *on { "on" } else { "off" })
         }
@@ -330,6 +362,30 @@ mod tests {
         let changes = diff(&old, &new);
         assert_eq!(changes.len(), 5, "{changes:?}");
         assert_eq!(summary(&changes), "Hid com.example.a and 4 more");
+    }
+
+    #[test]
+    fn phones_paired_and_removed_are_reported() {
+        let (a, b) = ("aa".repeat(16), "bb".repeat(16));
+        let mut old = State::new();
+        old.launcher.phones.insert(a.clone(), "Pixel".into());
+        let mut new = State::new();
+        new.launcher.phones.insert(b.clone(), "iPhone".into());
+        let changes = diff(&old, &new);
+        assert_eq!(
+            changes,
+            vec![
+                Change::PhonePaired {
+                    id: b,
+                    name: "iPhone".into()
+                },
+                Change::PhoneRemoved {
+                    id: a,
+                    name: "Pixel".into()
+                },
+            ]
+        );
+        assert_eq!(summary(&changes), "Paired phone iPhone and 1 more");
     }
 
     #[test]

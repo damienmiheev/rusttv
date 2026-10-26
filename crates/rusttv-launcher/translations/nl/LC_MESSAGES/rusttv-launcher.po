@@ -407,3 +407,9 @@ msgstr "Aan · het touchpad van de telefoon beweegt een aanwijzer in andere apps
 
 msgid "Not on this device"
 msgstr "Niet beschikbaar op dit apparaat"
+
+msgid "Paired the phone {}"
+msgstr "Telefoon {} gekoppeld"
+
+msgid "Removed the phone {}"
+msgstr "Telefoon {} verwijderd"

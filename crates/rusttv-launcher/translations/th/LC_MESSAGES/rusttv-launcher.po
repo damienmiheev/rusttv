@@ -407,3 +407,9 @@ msgstr "เปิด · ทัชแพดของโทรศัพท์เ�
 
 msgid "Not on this device"
 msgstr "ไม่มีในอุปกรณ์นี้"
+
+msgid "Paired the phone {}"
+msgstr "จับคู่โทรศัพท์ {} แล้ว"
+
+msgid "Removed the phone {}"
+msgstr "นำโทรศัพท์ {} ออกแล้ว"

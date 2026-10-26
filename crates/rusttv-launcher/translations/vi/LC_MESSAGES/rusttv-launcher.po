@@ -407,3 +407,9 @@ msgstr "Bật · bàn di chuột của điện thoại di chuyển con trỏ tro
 
 msgid "Not on this device"
 msgstr "Không có trên thiết bị này"
+
+msgid "Paired the phone {}"
+msgstr "Đã ghép nối điện thoại {}"
+
+msgid "Removed the phone {}"
+msgstr "Đã xóa điện thoại {}"

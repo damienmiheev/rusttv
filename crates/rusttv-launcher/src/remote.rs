@@ -7,7 +7,7 @@
 //! nothing polls while no phone talks. Phone input then goes through the
 //! same model calls as the remote's keys (`ui.rs`).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Sender};
@@ -126,6 +126,49 @@ fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     std::fs::rename(&partial, path)
 }
 
+/// The paired phones as the history records them: id → name, never keys
+/// (HISTORY.md § 1). Read only: a damaged file reads as no phones here and
+/// is dealt with when the listener starts.
+pub(crate) fn phone_names(files: &Path) -> BTreeMap<String, String> {
+    names_in(&files.join(PHONES_FILE))
+}
+
+fn names_in(phones_file: &Path) -> BTreeMap<String, String> {
+    std::fs::read_to_string(phones_file)
+        .ok()
+        .and_then(|text| Phones::parse(&text).ok())
+        .map(|phones| {
+            phones
+                .iter()
+                .map(|phone| (phone.id.to_string(), phone.name.clone()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// A history restore: removes every paired phone not in `keep`. It can
+/// never pair one back (a phone's keys are not in the history).
+pub(crate) fn keep_phones(files: &Path, keep: &BTreeMap<String, String>) -> Result<(), String> {
+    let path = files.join(PHONES_FILE);
+    let mut phones = match std::fs::read_to_string(&path) {
+        Ok(text) => Phones::parse(&text).map_err(|error| error.to_string())?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+    let gone: Vec<PhoneId> = phones
+        .iter()
+        .filter(|phone| !keep.contains_key(&phone.id.to_string()))
+        .map(|phone| phone.id)
+        .collect();
+    if gone.is_empty() {
+        return Ok(());
+    }
+    for id in &gone {
+        phones.remove(id);
+    }
+    save_phones(&path, &phones)
+}
+
 /// Writes the phones file atomically (a new file, then a rename).
 fn save_phones(path: &Path, phones: &Phones) -> Result<(), String> {
     let text = phones.to_toml().map_err(|error| error.to_string())?;
@@ -229,6 +272,22 @@ impl Link {
 
     pub(crate) fn remote(&self) -> &Remote {
         &self.remote
+    }
+
+    /// A history restore removed phones from the file: disconnects and
+    /// forgets them here too, so the listener never saves them back.
+    pub(crate) fn drop_removed_phones(&self) {
+        let kept = names_in(&self.phones_file);
+        let gone: Vec<PhoneId> = self
+            .remote
+            .phones()
+            .iter()
+            .filter(|phone| !kept.contains_key(&phone.id.to_string()))
+            .map(|phone| phone.id)
+            .collect();
+        for id in gone {
+            self.remote.revoke(&id);
+        }
     }
 
     /// Saves the phones file (after pairing, renaming or removing a phone).
@@ -574,6 +633,42 @@ mod tests {
         assert!(!path.exists());
         save_phones(&path, &Phones::default()).unwrap();
         assert!(load_phones(&path).is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn history_reads_phone_names_and_a_restore_only_removes_phones() {
+        let dir = std::env::temp_dir().join(format!("rusttv-remote-keep-{}", std::process::id()));
+        let path = dir.join(PHONES_FILE);
+        let phone = |byte: u8, name: &str| rusttv_remote::Phone {
+            id: PhoneId([byte; 16]),
+            name: name.to_owned(),
+            keys: rusttv_remote::auth::PhoneKeys::derive(&[byte; 32], &[byte; 32]),
+            paired_at: 1,
+            last_seen: None,
+        };
+        let mut phones = Phones::default();
+        phones.add(phone(1, "Pixel")).unwrap();
+        phones.add(phone(2, "iPhone")).unwrap();
+        save_phones(&path, &phones).unwrap();
+        let names = phone_names(&dir);
+        assert_eq!(names.len(), 2);
+        assert_eq!(names[&"01".repeat(16)], "Pixel");
+        // A restored state with only the iPhone and a phone this TV never had.
+        let keep = BTreeMap::from([
+            ("02".repeat(16), "iPhone".to_owned()),
+            ("03".repeat(16), "Gone".to_owned()),
+        ]);
+        keep_phones(&dir, &keep).unwrap();
+        assert_eq!(
+            phone_names(&dir).into_keys().collect::<Vec<_>>(),
+            ["02".repeat(16)]
+        );
+        // Keys are kept for the phone that stays.
+        assert_eq!(
+            load_phones(&path).iter().next().unwrap().keys,
+            phone(2, "").keys
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 }

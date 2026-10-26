@@ -542,13 +542,13 @@ talks to. Its protocol is documented by open-source clients such as
   - pair or revoke phones;
   - write to the history store;
   - pass the review screen.
-- **The person's own actions on the RustTV Remote page:** pairing a phone, revoking one, and
-  pairing with the Remote Service. Each one:
+- **The person's own actions on the RustTV Remote page:** pairing a phone
+  and removing one. Each one:
   - shows a preview ("This phone will be able to press keys and type on this
     TV");
   - asks for OK;
-  - is recorded as a `tv` history entry (`phone_paired`, `phone_revoked`,
-    `remote_service_paired`, `remote_service_unpaired`).
+  - is recorded as a `tv` history entry (`phone_paired`, `phone_removed`;
+    HISTORY.md § 1 Phones). A restore can only remove phones.
 - **Outside the CLI's risk classes:** this is a TV-side feature, like
   launcher updates. The CLI's watchlist gains no key.
 

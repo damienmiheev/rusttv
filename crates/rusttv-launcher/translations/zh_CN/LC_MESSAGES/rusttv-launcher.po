@@ -407,3 +407,9 @@ msgstr "已开启 · 手机触控板可在其他应用中移动指针 · 按 OK 
 
 msgid "Not on this device"
 msgstr "此设备不支持"
+
+msgid "Paired the phone {}"
+msgstr "已配对手机 {}"
+
+msgid "Removed the phone {}"
+msgstr "已移除手机 {}"
