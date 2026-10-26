@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pointer_description">讓與 RustTV Remote 配對的手機控制其他應用程式：移動指標、點按、捲動、按鍵和輸入文字。它只讀取所需內容，不保存任何內容。</string>
+</resources>

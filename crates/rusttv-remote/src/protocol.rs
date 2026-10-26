@@ -115,6 +115,12 @@ pub enum PhoneMessage {
         dy: i16,
         action: PointerAction,
     },
+    /// The phone's typing sheet opened or closed: while it is open the TV
+    /// hides its own on-screen keyboard.
+    Typing { open: bool },
+    /// A search in the app in front, for apps that draw their own keyboard
+    /// (YouTube): at most [`MAX_TEXT`] bytes, no control characters.
+    Search { query: String },
 }
 
 /// The keys a phone can press: a fixed list, nothing else reaches the TV.
@@ -332,6 +338,16 @@ pub struct AppView {
     pub pointer: bool,
     /// A focused text field, when the TV reports one.
     pub text: Option<TextField>,
+    /// The app draws for the D-pad only (nothing on screen to click): the
+    /// phone starts it with arrow keys.
+    #[serde(default)]
+    pub dpad: bool,
+    /// The app takes a search from the phone ([`PhoneMessage::Search`]).
+    #[serde(default)]
+    pub search: bool,
+    /// The app's name, as its Home tile shows it.
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 /// A text field the TV asks for.
@@ -358,6 +374,14 @@ fn check_phone(message: &PhoneMessage) -> Result<(), RemoteError> {
     let invalid = |what: &str| Err(RemoteError::Invalid(what.to_owned()));
     match message {
         PhoneMessage::Pair { name, .. } if !is_phone_name(name) => invalid("phone name"),
+        PhoneMessage::Search { query } if query.len() > MAX_TEXT => {
+            Err(RemoteError::TooLong("search"))
+        }
+        PhoneMessage::Search { query }
+            if query.trim().is_empty() || query.chars().any(char::is_control) =>
+        {
+            invalid("search")
+        }
         PhoneMessage::Text {
             edit: TextEdit::Insert { text },
         } => {
@@ -503,6 +527,18 @@ mod tests {
                 dy: 40,
                 ..
             })
+        ));
+        assert!(matches!(
+            parse(r#"{"type":"search","query":"cliff diving"}"#),
+            Ok(PhoneMessage::Search { .. })
+        ));
+        for query in ["", "   ", "a\nb"] {
+            let message = format!(r#"{{"type":"search","query":{query:?}}}"#);
+            assert!(parse(&message).is_err(), "{query:?}");
+        }
+        assert!(matches!(
+            parse(r#"{"type":"typing","open":true}"#),
+            Ok(PhoneMessage::Typing { open: true })
         ));
         let hex = "ab".repeat(32);
         let pair = format!(

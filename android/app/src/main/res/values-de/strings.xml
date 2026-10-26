@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pointer_description">Ein mit RustTV Remote gekoppeltes Handy steuert andere Apps: Zeiger bewegen, klicken, scrollen, Tasten drücken und tippen. Es liest nur, was dafür nötig ist, und speichert nichts.</string>
+</resources>

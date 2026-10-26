@@ -13,10 +13,12 @@ use jni::{JNIEnv, JavaVM};
 
 mod history;
 
-use rusttv_remote::protocol::PictureKind;
+use rusttv_remote::protocol::{Key, PictureKind, PointerAction, TextEdit, TextField};
 
 use crate::model::{App, Category};
-use crate::platform::{AppEntry, Artwork, Bitmap, Pictures, Platform, PlatformError, UpdateStatus};
+use crate::platform::{
+    AppEntry, Artwork, Bitmap, Pictures, Platform, PlatformError, PointerState, UpdateStatus,
+};
 use crate::ui::{Lifecycle, RunOptions, run};
 
 /// Size banners are drawn at: the Leanback banner size (320×180, 16:9).
@@ -416,6 +418,218 @@ impl Platform for AndroidPlatform {
         })
         .unwrap_or(0)
     }
+
+    fn pointer_state(&self) -> PointerState {
+        self.with_bridge("pointer state", |env, bridge, _activity| {
+            let text = env
+                .call_static_method(bridge, "pointerState", "()Ljava/lang/String;", &[])?
+                .l()?;
+            let text: String = env.get_string(&JString::from(text))?.into();
+            Ok(PointerState::from_bridge(&text))
+        })
+        .unwrap_or_else(|error| {
+            log::warn!("{error}");
+            PointerState::Unavailable
+        })
+    }
+
+    fn front_app(&self) -> Option<String> {
+        self.with_bridge("front app", |env, bridge, _activity| {
+            let text = env
+                .call_static_method(bridge, "pointerApp", "()Ljava/lang/String;", &[])?
+                .l()?;
+            let text: String = env.get_string(&JString::from(text))?.into();
+            Ok(text)
+        })
+        .inspect_err(|error| log::warn!("{error}"))
+        .ok()
+        .filter(|app| !app.is_empty())
+    }
+
+    fn front_field(&self) -> Option<TextField> {
+        let text = self
+            .with_bridge("front field", |env, bridge, _activity| {
+                let text = env
+                    .call_static_method(bridge, "pointerField", "()Ljava/lang/String;", &[])?
+                    .l()?;
+                let text: String = env.get_string(&JString::from(text))?.into();
+                Ok(text)
+            })
+            .inspect_err(|error| log::warn!("{error}"))
+            .ok()?;
+        let (label, value) = text.split_once('\n')?;
+        Some(TextField {
+            label: label.to_owned(),
+            value: value.to_owned(),
+        })
+    }
+
+    fn pointer_text(&mut self, edit: TextEdit) {
+        let (op, text, count) = match edit {
+            TextEdit::Insert { text } => (0, text, 0),
+            TextEdit::Delete { count } => (1, String::new(), i32::from(count)),
+            TextEdit::Submit => (2, String::new(), 0),
+        };
+        let typed = self.with_bridge("pointer typing", |env, bridge, _activity| {
+            let text = env.new_string(text)?;
+            env.call_static_method(
+                bridge,
+                "pointerType",
+                "(ILjava/lang/String;I)V",
+                &[JValue::Int(op), JValue::Object(&text), JValue::Int(count)],
+            )?;
+            Ok(())
+        });
+        if let Err(error) = typed {
+            log::warn!("{error}");
+        }
+    }
+
+    fn hide_tv_keyboard(&mut self, hide: bool) {
+        let done = self.with_bridge("tv keyboard", |env, bridge, _activity| {
+            env.call_static_method(
+                bridge,
+                "hideKeyboard",
+                "(Z)V",
+                &[JValue::Bool(u8::from(hide))],
+            )?;
+            Ok(())
+        });
+        if let Err(error) = done {
+            log::warn!("{error}");
+        }
+    }
+
+    fn can_search(&self, app: &str) -> bool {
+        self.with_bridge("can search", |env, bridge, activity| {
+            let app = env.new_string(app)?;
+            env.call_static_method(
+                bridge,
+                "canSearch",
+                "(Landroid/content/Context;Ljava/lang/String;)Z",
+                &[JValue::Object(activity), JValue::Object(&app)],
+            )?
+            .z()
+        })
+        .inspect_err(|error| log::warn!("{error}"))
+        .unwrap_or(false)
+    }
+
+    fn search(&mut self, app: &str, query: &str) {
+        let searched = self.with_bridge("search", |env, bridge, activity| {
+            let app = env.new_string(app)?;
+            let query = env.new_string(query)?;
+            env.call_static_method(
+                bridge,
+                "search",
+                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)V",
+                &[
+                    JValue::Object(activity),
+                    JValue::Object(&app),
+                    JValue::Object(&query),
+                ],
+            )?;
+            Ok(())
+        });
+        if let Err(error) = searched {
+            log::warn!("{error}");
+        }
+    }
+
+    fn front_app_dpad(&self) -> bool {
+        self.with_bridge("front app d-pad", |env, bridge, _activity| {
+            env.call_static_method(bridge, "pointerDpad", "()Z", &[])?
+                .z()
+        })
+        .inspect_err(|error| log::warn!("{error}"))
+        .unwrap_or(false)
+    }
+
+    fn pointer(&mut self, dx: i16, dy: i16, action: PointerAction) {
+        let action = match action {
+            PointerAction::Move => 0,
+            PointerAction::Click => 1,
+            PointerAction::Scroll => 2,
+        };
+        let sent = self.with_bridge("pointer", |env, bridge, _activity| {
+            env.call_static_method(
+                bridge,
+                "pointer",
+                "(III)V",
+                &[
+                    JValue::Int(i32::from(dx)),
+                    JValue::Int(i32::from(dy)),
+                    JValue::Int(action),
+                ],
+            )?;
+            Ok(())
+        });
+        if let Err(error) = sent {
+            log::warn!("{error}");
+        }
+    }
+
+    fn pointer_stop(&mut self) {
+        let stopped = self.with_bridge("pointer stop", |env, bridge, _activity| {
+            env.call_static_method(bridge, "pointerStop", "()V", &[])?;
+            Ok(())
+        });
+        if let Err(error) = stopped {
+            log::warn!("{error}");
+        }
+    }
+
+    fn pointer_key(&mut self, key: Key) {
+        // PointerService.key's codes.
+        let code = match key {
+            Key::Up => 0,
+            Key::Down => 1,
+            Key::Left => 2,
+            Key::Right => 3,
+            Key::Ok => 4,
+            Key::Back => 5,
+            Key::Home => 6,
+            Key::PlayPause => 7,
+            Key::Rewind => 8,
+            Key::FastForward => 9,
+            Key::VolumeUp => 10,
+            Key::VolumeDown => 11,
+            Key::Mute => 12,
+            _ => return,
+        };
+        let pressed = self.with_bridge("pointer key", |env, bridge, _activity| {
+            env.call_static_method(bridge, "pointerKey", "(I)V", &[JValue::Int(code)])?;
+            Ok(())
+        });
+        if let Err(error) = pressed {
+            log::warn!("{error}");
+        }
+    }
+
+    fn open_pointer_settings(&mut self) {
+        let opened = self.with_bridge("accessibility settings", |env, bridge, activity| {
+            env.call_static_method(
+                bridge,
+                "openAccessibilitySettings",
+                "(Landroid/content/Context;)V",
+                &[JValue::Object(activity)],
+            )?;
+            Ok(())
+        });
+        if let Err(error) = opened {
+            log::warn!("{error}");
+        }
+    }
+}
+
+/// `PointerService.nativeChanged()`: the pointer's service went on or off;
+/// phones and the RustTV Remote page hear of it.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ai_rusttv_launcher_PointerService_nativeChanged<'local>(
+    _env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) {
+    crate::ui::pointer_changed();
 }
 
 /// The app's banner, else its icon, else nothing.

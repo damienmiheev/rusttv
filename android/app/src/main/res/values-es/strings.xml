@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pointer_description">Permite que un teléfono emparejado con RustTV Remote controle otras apps: mover un puntero, hacer clic, desplazar, pulsar teclas y escribir. Solo lee lo necesario y no guarda nada.</string>
+</resources>

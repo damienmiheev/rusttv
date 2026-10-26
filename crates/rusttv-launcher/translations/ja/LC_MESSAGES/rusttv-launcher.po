@@ -395,3 +395,15 @@ msgstr "インストールする前に、スマホでSHA-256フィンガープ�
 
 msgid "If it doesn't match, don't install it: someone on your network may be interfering."
 msgstr "一致しない場合はインストールしないでください。ネットワーク上の誰かが妨害している可能性があります。"
+
+msgid "Pointer in other apps"
+msgstr "他のアプリでのポインタ"
+
+msgid "Off · OK opens Accessibility: turn on RustTV Pointer there"
+msgstr "オフ · OK でユーザー補助を開き、RustTV Pointer をオンに"
+
+msgid "On · the phone's touchpad moves a pointer in other apps · OK opens Accessibility"
+msgstr "オン · スマホのタッチパッドで他のアプリのポインタを操作 · OK でユーザー補助を開く"
+
+msgid "Not on this device"
+msgstr "このデバイスでは使えません"

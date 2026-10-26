@@ -113,6 +113,16 @@ export global Strings {
     public pure function pair-phone-detail() -> string {
         return @tr("Shows a code to scan with the phone's camera");
     }
+    // The pointer's accessibility service (REMOTE.md § 5): 0 not on this
+    // device, 1 off, 2 on.
+    public pure function pointer-row() -> string {
+        return @tr("Pointer in other apps");
+    }
+    public pure function pointer-detail(state: int) -> string {
+        if state == 1 { return @tr("Off · OK opens Accessibility: turn on RustTV Pointer there"); }
+        if state == 2 { return @tr("On · the phone's touchpad moves a pointer in other apps · OK opens Accessibility"); }
+        return @tr("Not on this device");
+    }
     public pure function phone-detail(removing: bool) -> string {
         return removing ? @tr("Press OK again to remove it") : @tr("OK removes it");
     }

@@ -395,3 +395,15 @@ msgstr "Controleer vóór het installeren op de telefoon dat de SHA-256-vingeraf
 
 msgid "If it doesn't match, don't install it: someone on your network may be interfering."
 msgstr "Klopt het niet, installeer het dan niet: iemand op je netwerk kan zich ermee bemoeien."
+
+msgid "Pointer in other apps"
+msgstr "Aanwijzer in andere apps"
+
+msgid "Off · OK opens Accessibility: turn on RustTV Pointer there"
+msgstr "Uit · OK opent Toegankelijkheid: zet daar RustTV Pointer aan"
+
+msgid "On · the phone's touchpad moves a pointer in other apps · OK opens Accessibility"
+msgstr "Aan · het touchpad van de telefoon beweegt een aanwijzer in andere apps · OK opent Toegankelijkheid"
+
+msgid "Not on this device"
+msgstr "Niet beschikbaar op dit apparaat"

@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
-"POT-Creation-Date: 2026-10-25 21:48+0000\n"
+"POT-Creation-Date: 2026-10-26 18:16+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -124,7 +124,7 @@ msgstr ""
 msgid "Animations"
 msgstr ""
 
-#: ui/home.slint:98 ui/home.slint:126
+#: ui/home.slint:98 ui/home.slint:136
 msgid "Off"
 msgstr ""
 
@@ -158,7 +158,7 @@ msgid ""
 "but never change settings or approve anything."
 msgstr ""
 
-#: ui/home.slint:111 ui/home.slint:1465
+#: ui/home.slint:111 ui/home.slint:1475
 msgid "Pair a phone"
 msgstr ""
 
@@ -166,380 +166,398 @@ msgstr ""
 msgid "Shows a code to scan with the phone's camera"
 msgstr ""
 
-#: ui/home.slint:117
+#: ui/home.slint:119
+msgid "Pointer in other apps"
+msgstr ""
+
+#: ui/home.slint:122
+msgid "Off · OK opens Accessibility: turn on RustTV Pointer there"
+msgstr ""
+
+#: ui/home.slint:123
+msgid ""
+"On · the phone's touchpad moves a pointer in other apps · OK opens "
+"Accessibility"
+msgstr ""
+
+#: ui/home.slint:124
+msgid "Not on this device"
+msgstr ""
+
+#: ui/home.slint:127
 msgid "Press OK again to remove it"
 msgstr ""
 
-#: ui/home.slint:117
+#: ui/home.slint:127
 msgid "OK removes it"
 msgstr ""
 
-#: ui/home.slint:120
+#: ui/home.slint:130
 msgid "RustTV Remote can't start: another app uses its network port (8484)."
 msgstr ""
 
-#: ui/home.slint:121
+#: ui/home.slint:131
 msgid ""
 "This TV has no network address. Connect it to your network and try again."
 msgstr ""
 
-#: ui/home.slint:122
+#: ui/home.slint:132
 msgid ""
 "Pairing stopped after three wrong tries. Back returns; open Pair a phone "
 "again for a new code."
 msgstr ""
 
-#: ui/home.slint:123
+#: ui/home.slint:133
 msgid "Couldn't make the code."
 msgstr ""
 
-#: ui/home.slint:126
+#: ui/home.slint:136
 msgid "On"
 msgstr ""
 
-#: ui/home.slint:130
+#: ui/home.slint:140
 msgid "Transition animations"
 msgstr ""
 
-#: ui/home.slint:131
+#: ui/home.slint:141
 msgid "Window animations"
 msgstr ""
 
-#: ui/home.slint:132
+#: ui/home.slint:142
 msgid "App animations"
 msgstr ""
 
-#: ui/home.slint:136
+#: ui/home.slint:146
 msgid "off"
 msgstr ""
 
-#: ui/home.slint:137
+#: ui/home.slint:147
 msgid "not seen"
 msgstr ""
 
-#: ui/home.slint:138
+#: ui/home.slint:148
 msgid "on"
 msgstr ""
 
-#: ui/home.slint:141
+#: ui/home.slint:151
 msgid "default"
 msgstr ""
 
-#: ui/home.slint:145
+#: ui/home.slint:155
 msgid "Your computer"
 msgstr ""
 
-#: ui/home.slint:146
+#: ui/home.slint:156
 msgid "Changed outside RustTV"
 msgstr ""
 
-#: ui/home.slint:147
+#: ui/home.slint:157
 msgid "Restored from your computer"
 msgstr ""
 
-#: ui/home.slint:148
+#: ui/home.slint:158
 msgid "This TV"
 msgstr ""
 
-#: ui/home.slint:151
+#: ui/home.slint:161
 msgid "time unknown"
 msgstr ""
 
-#: ui/home.slint:159
+#: ui/home.slint:169
 msgid "Apps reordered"
 msgstr ""
 
-#: ui/home.slint:160
+#: ui/home.slint:170
 msgid "Hid {}"
 msgstr ""
 
-#: ui/home.slint:161
+#: ui/home.slint:171
 msgid "Showed {}"
 msgstr ""
 
-#: ui/home.slint:162
+#: ui/home.slint:172
 msgid "Check for updates: {}"
 msgstr ""
 
-#: ui/home.slint:163
+#: ui/home.slint:173
 msgid "{}: {} → {}"
 msgstr ""
 
-#: ui/home.slint:164
+#: ui/home.slint:174
 msgid "Firmware updated"
 msgstr ""
 
-#: ui/home.slint:165
+#: ui/home.slint:175
 msgid "Home takeover: {}"
 msgstr ""
 
-#: ui/home.slint:166
+#: ui/home.slint:176
 msgid "Added {}"
 msgstr ""
 
-#: ui/home.slint:167
+#: ui/home.slint:177
 msgid "Removed {}"
 msgstr ""
 
-#: ui/home.slint:168
+#: ui/home.slint:178
 msgid "Made the folder {}"
 msgstr ""
 
-#: ui/home.slint:169
+#: ui/home.slint:179
 msgid "Removed the folder {}"
 msgstr ""
 
-#: ui/home.slint:170
+#: ui/home.slint:180
 msgid "Renamed the folder {} to {}"
 msgstr ""
 
-#: ui/home.slint:171
+#: ui/home.slint:181
 msgid "Put {} in {}"
 msgstr ""
 
-#: ui/home.slint:172
+#: ui/home.slint:182
 msgid "Took {} out of {}"
 msgstr ""
 
-#: ui/home.slint:173
+#: ui/home.slint:183
 msgid "No change"
 msgstr ""
 
-#: ui/home.slint:177
+#: ui/home.slint:187
 msgid ""
 "Your computer applies these: run rusttv history apply-pending within 2 hours"
 msgstr ""
 
-#: ui/home.slint:178
+#: ui/home.slint:188
 msgid "This TV changes now"
 msgstr ""
 
-#: ui/home.slint:181
+#: ui/home.slint:191
 msgid ""
 "To change this on the TV itself, run rusttv history allow-tv-settings on "
 "your computer once. Until then your computer applies it."
 msgstr ""
 
-#: ui/home.slint:184
+#: ui/home.slint:194
 msgid "Some apps may look odd without animations."
 msgstr ""
 
-#: ui/home.slint:187
+#: ui/home.slint:197
 msgid "No changes yet. Changes made here or from your computer appear here."
 msgstr ""
 
-#: ui/home.slint:190
+#: ui/home.slint:200
 msgid "{} (+{} more)"
 msgstr ""
 
-#: ui/home.slint:193
+#: ui/home.slint:203
 msgid "History started"
 msgstr ""
 
-#: ui/home.slint:196
+#: ui/home.slint:206
 msgid "Restore this state"
 msgstr ""
 
-#: ui/home.slint:199
+#: ui/home.slint:209
 msgid "Check for updates automatically"
 msgstr ""
 
-#: ui/home.slint:202
+#: ui/home.slint:212
 msgid "{} min"
 msgstr ""
 
-#: ui/home.slint:203
+#: ui/home.slint:213
 msgid "{} h {} min"
 msgstr ""
 
-#: ui/home.slint:206
+#: ui/home.slint:216
 msgid "On your computer, run rusttv history apply-pending within {}."
 msgstr ""
 
-#: ui/home.slint:213
+#: ui/home.slint:223
 msgid "Applied."
 msgstr ""
 
-#: ui/home.slint:214
+#: ui/home.slint:224
 msgid "Saved for your computer. {}"
 msgstr ""
 
-#: ui/home.slint:215
+#: ui/home.slint:225
 msgid "Nothing changed: {}"
 msgstr ""
 
-#: ui/home.slint:216
+#: ui/home.slint:226
 msgid "Nothing changed: wrong code."
 msgstr ""
 
-#: ui/home.slint:217
+#: ui/home.slint:227
 msgid "Too many wrong codes. Approvals are locked for {}."
 msgstr ""
 
-#: ui/home.slint:218
+#: ui/home.slint:228
 msgid "Approvals are off in test builds."
 msgstr ""
 
-#: ui/home.slint:219
+#: ui/home.slint:229
 msgid "Busy — try again in a moment."
 msgstr ""
 
-#: ui/home.slint:220
+#: ui/home.slint:230
 msgid ""
 "Couldn't undo everything: {}. Fix it with rusttv history restore on your "
 "computer, or in Android Settings."
 msgstr ""
 
-#: ui/home.slint:221
+#: ui/home.slint:231
 msgid "This is the state now: nothing to restore."
 msgstr ""
 
-#: ui/home.slint:222
+#: ui/home.slint:232
 msgid "Your computer has a newer RustTV. Update RustTV on this TV."
 msgstr ""
 
-#: ui/home.slint:223
+#: ui/home.slint:233
 msgid "Reading history…"
 msgstr ""
 
-#: ui/home.slint:224
+#: ui/home.slint:234
 msgid "History couldn't be read: {}. Your computer's copy can put it back."
 msgstr ""
 
-#: ui/home.slint:225
+#: ui/home.slint:235
 msgid "Removed {}. It can't control this TV any more."
 msgstr ""
 
-#: ui/home.slint:440
+#: ui/home.slint:450
 msgid "About"
 msgstr ""
 
-#: ui/home.slint:440 ui/home.slint:524 ui/home.slint:992
+#: ui/home.slint:450 ui/home.slint:534 ui/home.slint:1002
 msgid "Hidden apps"
 msgstr ""
 
-#: ui/home.slint:440 ui/home.slint:524 ui/home.slint:1185
+#: ui/home.slint:450 ui/home.slint:534 ui/home.slint:1195
 msgid "Settings"
 msgstr ""
 
-#: ui/home.slint:440 ui/home.slint:524 ui/home.slint:1271
+#: ui/home.slint:450 ui/home.slint:534 ui/home.slint:1281
 msgid "RustTV Remote"
 msgstr ""
 
-#: ui/home.slint:888
+#: ui/home.slint:898
 msgid "Type a name, then press ✓. Back keeps the old one."
 msgstr ""
 
-#: ui/home.slint:889
+#: ui/home.slint:899
 msgid "Move past the edge to take the app out. OK drops it."
 msgstr ""
 
-#: ui/home.slint:890
+#: ui/home.slint:900
 msgid "Back closes the folder. Up reaches its name."
 msgstr ""
 
-#: ui/home.slint:1002
+#: ui/home.slint:1012
 msgid "OK puts the app back on Home. Back returns."
 msgstr ""
 
-#: ui/home.slint:1068
+#: ui/home.slint:1078
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr ""
 
-#: ui/home.slint:1082
+#: ui/home.slint:1092
 msgid ""
 "Built with Slint under the Slint Royalty-free License 2.0. Also includes "
 "Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0."
 msgstr ""
 
-#: ui/home.slint:1089
+#: ui/home.slint:1099
 msgid "Source: github.com/damienmiheev/rusttv"
 msgstr ""
 
-#: ui/home.slint:1099
+#: ui/home.slint:1109
 msgid "Up and Down scroll the notices. Back returns."
 msgstr ""
 
-#: ui/home.slint:1120
+#: ui/home.slint:1130
 msgid "Third-party notices"
 msgstr ""
 
-#: ui/home.slint:1195 ui/home.slint:1281
+#: ui/home.slint:1205 ui/home.slint:1291
 msgid "Up and Down choose, OK opens. Back returns."
 msgstr ""
 
-#: ui/home.slint:1349
+#: ui/home.slint:1359
 msgid "Review changes"
 msgstr ""
 
-#: ui/home.slint:1360
+#: ui/home.slint:1370
 msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
 msgstr ""
 
-#: ui/home.slint:1361
+#: ui/home.slint:1371
 msgid "Nothing changes until you hold OK. Back cancels."
 msgstr ""
 
-#: ui/home.slint:1399
+#: ui/home.slint:1409
 msgid "Approve"
 msgstr ""
 
-#: ui/home.slint:1409
+#: ui/home.slint:1419
 msgid "Press these arrows on the remote:"
 msgstr ""
 
-#: ui/home.slint:1409
+#: ui/home.slint:1419
 msgid "Now hold OK to apply."
 msgstr ""
 
-#: ui/home.slint:1465
+#: ui/home.slint:1475
 msgid "Trust this TV"
 msgstr ""
 
-#: ui/home.slint:1475
+#: ui/home.slint:1485
 msgid "OK allows this phone. Back refuses."
 msgstr ""
 
-#: ui/home.slint:1475
+#: ui/home.slint:1485
 msgid "Back returns."
 msgstr ""
 
-#: ui/home.slint:1503
+#: ui/home.slint:1513
 msgid ""
 "Scan this code with your phone's camera and open the link.\n\nThe phone must "
 "be on the same network as this TV. The code works once, for two minutes."
 msgstr ""
 
-#: ui/home.slint:1522
+#: ui/home.slint:1532
 msgid "Allow “{}”?"
 msgstr ""
 
-#: ui/home.slint:1533
+#: ui/home.slint:1543
 msgid "Check that the phone shows the same code:"
 msgstr ""
 
-#: ui/home.slint:1552
+#: ui/home.slint:1562
 msgid ""
 "It will be able to press keys and type on this TV. It can never change "
 "settings or approve anything."
 msgstr ""
 
-#: ui/home.slint:1562
+#: ui/home.slint:1572
 msgid "“{}” is installing this TV's certificate, “{}”."
 msgstr ""
 
-#: ui/home.slint:1572
+#: ui/home.slint:1582
 msgid ""
 "Before installing, check on the phone that its SHA-256 fingerprint starts "
 "with:"
 msgstr ""
 
-#: ui/home.slint:1593
+#: ui/home.slint:1603
 msgid ""
 "If it doesn't match, don't install it: someone on your network may be "
 "interfering."
 msgstr ""
 
-#: ui/home.slint:1603
+#: ui/home.slint:1613
 msgid "“{}” is paired."
 msgstr ""

@@ -36,6 +36,88 @@ object Bridge {
         }
     }
 
+    /** Where the pointer's accessibility service stands: "ready" or "off" (REMOTE.md § 5). */
+    @JvmStatic
+    fun pointerState(): String = PointerService.state()
+
+    /** Moves (0), clicks (1) or scrolls (2) the pointer; never blocks. */
+    @JvmStatic
+    fun pointer(dx: Int, dy: Int, action: Int) = PointerService.post(dx, dy, action)
+
+    /** The package of the app in front, from the pointer's service, or "". */
+    @JvmStatic
+    fun pointerApp(): String = PointerService.app()
+
+    /** The focused text field in the app in front as "label\nvalue", or "". */
+    @JvmStatic
+    fun pointerField(): String = PointerService.field()
+
+    /** Types into that field: 0 insert, 1 delete `count` characters, 2 Enter. */
+    @JvmStatic
+    fun pointerType(op: Int, text: String, count: Int) = PointerService.type(op, text, count)
+
+    /** YouTube's TV apps take a search as its web address, not as a search intent. */
+    private val YOUTUBE = setOf("com.google.android.youtube.tv", "com.google.android.youtube.tvmusic")
+
+    /** Whether [app] takes a search from a phone (REMOTE.md § 5): YouTube, or a search intent. */
+    @JvmStatic
+    fun canSearch(context: Context, app: String): Boolean =
+        app in YOUTUBE ||
+            context.packageManager.queryIntentActivities(
+                Intent(Intent.ACTION_SEARCH).setPackage(app),
+                0,
+            ).isNotEmpty()
+
+    /** Opens [app]'s results for a phone's [query]. */
+    @JvmStatic
+    fun search(context: Context, app: String, query: String) {
+        val intent = if (app in YOUTUBE) {
+            Intent(
+                Intent.ACTION_VIEW,
+                android.net.Uri.parse("https://www.youtube.com/results")
+                    .buildUpon()
+                    .appendQueryParameter("search_query", query)
+                    .build(),
+            )
+        } else {
+            Intent(Intent.ACTION_SEARCH).putExtra(android.app.SearchManager.QUERY, query)
+        }
+        intent.setPackage(app).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            // The app stopped taking searches: nothing happens.
+        }
+    }
+
+    /** Hides the TV's on-screen keyboard while a phone types, or lets it show. */
+    @JvmStatic
+    fun hideKeyboard(hide: Boolean) = PointerService.hideKeyboard(hide)
+
+    /** Whether the app in front draws for the D-pad only (nothing to click). */
+    @JvmStatic
+    fun pointerDpad(): Boolean = PointerService.dpad()
+
+    /** Presses a key in the app in front (PointerService.key's codes). */
+    @JvmStatic
+    fun pointerKey(code: Int) = PointerService.key(code)
+
+    /** Hides the pointer. */
+    @JvmStatic
+    fun pointerStop() = PointerService.hide()
+
+    /** Android's accessibility settings, where the person turns the pointer on or off. */
+    @JvmStatic
+    fun openAccessibilitySettings(context: Context) {
+        val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            // No such screen on this TV: the row's text says where to look.
+        }
+    }
+
     /** Four random numbers from the OS source, for the review code. */
     @JvmStatic
     fun randomCode(): IntArray = IntArray(4) { java.security.SecureRandom().nextInt(4) }

@@ -395,3 +395,15 @@ msgstr "इंस्टॉल करने से पहले फ़ोन प�
 
 msgid "If it doesn't match, don't install it: someone on your network may be interfering."
 msgstr "अगर मेल नहीं खाता, तो इंस्टॉल न करें: आपके नेटवर्क पर कोई दखल दे रहा हो सकता है।"
+
+msgid "Pointer in other apps"
+msgstr "दूसरे ऐप्स में पॉइंटर"
+
+msgid "Off · OK opens Accessibility: turn on RustTV Pointer there"
+msgstr "बंद · OK सुलभता खोलता है: वहाँ RustTV Pointer चालू करें"
+
+msgid "On · the phone's touchpad moves a pointer in other apps · OK opens Accessibility"
+msgstr "चालू · फ़ोन का टचपैड दूसरे ऐप्स में पॉइंटर हिलाता है · OK सुलभता खोलता है"
+
+msgid "Not on this device"
+msgstr "इस डिवाइस पर उपलब्ध नहीं"

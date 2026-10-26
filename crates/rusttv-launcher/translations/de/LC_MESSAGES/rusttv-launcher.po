@@ -395,3 +395,15 @@ msgstr "Prüfe vor der Installation auf dem Handy, dass sein SHA-256-Fingerabdru
 
 msgid "If it doesn't match, don't install it: someone on your network may be interfering."
 msgstr "Wenn er nicht passt, installiere es nicht: Jemand in deinem Netzwerk könnte eingreifen."
+
+msgid "Pointer in other apps"
+msgstr "Zeiger in anderen Apps"
+
+msgid "Off · OK opens Accessibility: turn on RustTV Pointer there"
+msgstr "Aus · OK öffnet Bedienungshilfen: dort RustTV Pointer einschalten"
+
+msgid "On · the phone's touchpad moves a pointer in other apps · OK opens Accessibility"
+msgstr "An · das Touchpad des Handys bewegt einen Zeiger in anderen Apps · OK öffnet Bedienungshilfen"
+
+msgid "Not on this device"
+msgstr "Auf diesem Gerät nicht verfügbar"
