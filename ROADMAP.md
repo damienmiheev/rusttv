@@ -212,6 +212,40 @@ Decided "not for now"; raise again when the core launcher is done.
     (YouTube links to YouTube, like the search address), others to the TV's
     browser; only http(s) links, checked like other phone input.
 
+- **Ad blocking card on Home** — parked 2026-10-27 (owner idea). A built-in
+  Home card like RustTV Remote, with its own page: Off / DNS provider /
+  Filter on the TV, the chosen provider or list, "never block" domains and,
+  with the filter, how many lookups it blocked today. Notes so far:
+  - **DNS provider:** Android's Private DNS (DNS-over-TLS) pointed at an
+    ad-blocking provider from a fixed list (AdGuard DNS, NextDNS, Mullvad);
+    RustTV hosts nothing. The provider sees which domains the TV looks up
+    (not content). `private_dns_mode` and `private_dns_specifier` are
+    protected settings and Google TV often hides them: the launcher's
+    `WRITE_SECURE_SETTINGS` allowlist (HISTORY.md § 7) would grow from the
+    three animation scales to these two, turned on with the review, code and
+    hold-OK on the TV, recorded in the history and undoable. `history sync`
+    already watches `private_dns_specifier`.
+  - **Filter on the TV:** a `VpnService` in its own process (`:adblock`)
+    that routes only a private DNS address through itself, answers blocked
+    domains as non-existent and forwards the rest to the normal DNS; video
+    and other traffic never pass through it. Android asks "Allow VPN" once;
+    "Always-on VPN" keeps it after a reboot. It fails open (normal DNS if it
+    stops) and takes the TV's single VPN slot.
+  - **Lists:** open-source, downloaded on the TV (not bundled, which also
+    keeps GPL lists out of the code): StevenBlack hosts (MIT) plus the
+    Perflyst Smart-TV list as the default, a stricter tier optional (HaGeZi,
+    GPL-3.0); licenses to check when picked up. Each list is size-limited
+    and checked to be domain names only; the last good list is kept. List
+    downloads are a new network use and need a privacy note.
+  - **Limits:** no effect on YouTube and Netflix ads (served from the same
+    servers as the video) or apps with their own encrypted DNS; never
+    modifies apps.
+  - Off by default, turned on only on the TV, never by a phone. Memory and
+    CPU of the filter measured by BENCHMARK_PLAN.md before it ships.
+  - Related: turning off Samba TV (ACR, seen as `SambaService` on the
+    Philips) through the privacy catalog cuts the tracking behind targeted
+    ads.
+
 - **Phone remote and second screen** — **planned 2026-10-25 as RustTV
   Remote, see REMOTE.md** (0.3.0). The owner's decisions there replace the
   discussion that was here; per-app second-screen views remain research
