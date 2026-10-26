@@ -40,9 +40,14 @@ class PointerService : AccessibilityService() {
     private val main = Handler(Looper.getMainLooper())
     private var windows: WindowManager? = null
     private var cursor: View? = null
+    // One full-screen, untouchable overlay; only the cursor's drawing moves
+    // in it. Moving a small window instead cost a window relayout per step
+    // (measured on the Philips: system_server ~20% and SurfaceFlinger ~15%
+    // of a core while the pointer moved). The layer is gone while hidden.
+    private var layer: View? = null
     private val place = WindowManager.LayoutParams(
-        WindowManager.LayoutParams.WRAP_CONTENT,
-        WindowManager.LayoutParams.WRAP_CONTENT,
+        WindowManager.LayoutParams.MATCH_PARENT,
+        WindowManager.LayoutParams.MATCH_PARENT,
         WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -56,7 +61,7 @@ class PointerService : AccessibilityService() {
     /** The click point, in screen pixels. */
     private var x = 960f
     private var y = 540f
-    private val hide = Runnable { cursor?.visibility = View.GONE }
+    private val hide = Runnable { layer?.visibility = View.GONE }
 
     // Two fingers scroll the scrollable element under the pointer, one step
     // per SCROLL_STEP pixels of travel.
@@ -81,12 +86,16 @@ class PointerService : AccessibilityService() {
         x = (lastX ?: width / 2).coerceIn(0f, width - 1)
         y = (lastY ?: height / 2).coerceIn(0f, height - 1)
         val view = Cursor(this, (height / 36).coerceAtLeast(16f))
-        view.visibility = View.GONE
-        place.x = (x + OFFSET).toInt()
-        place.y = (y + OFFSET).toInt()
-        manager.addView(view, place)
+        val root = android.widget.FrameLayout(this)
+        root.addView(view, android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+        ))
+        root.visibility = View.GONE
+        manager.addView(root, place)
         windows = manager
         cursor = view
+        layer = root
         instance = this
         changed()
         // Connected again (Android pauses services, e.g. for UI automation):
@@ -268,7 +277,8 @@ class PointerService : AccessibilityService() {
         softKeyboardController.showMode = SHOW_MODE_AUTO
         instance = null
         main.removeCallbacksAndMessages(null)
-        cursor?.let { windows?.removeViewImmediate(it) }
+        layer?.let { windows?.removeViewImmediate(it) }
+        layer = null
         cursor = null
         windows = null
         changed()
@@ -298,10 +308,9 @@ class PointerService : AccessibilityService() {
 
     private fun show() {
         val view = cursor ?: return
-        place.x = (x + OFFSET).toInt()
-        place.y = (y + OFFSET).toInt()
-        view.visibility = View.VISIBLE
-        windows?.updateViewLayout(view, place)
+        view.translationX = x + OFFSET
+        view.translationY = y + OFFSET
+        if (layer?.visibility != View.VISIBLE) layer?.visibility = View.VISIBLE
         main.removeCallbacks(hide)
         main.postDelayed(hide, HIDE_AFTER_MS)
     }
@@ -509,15 +518,14 @@ class PointerService : AccessibilityService() {
 
     private fun stop() {
         main.removeCallbacks(hide)
-        cursor?.visibility = View.GONE
+        layer?.visibility = View.GONE
         owedX = 0f
         owedY = 0f
     }
 
     /**
-     * The cursor: a round dot with its top-left corner pointed. The click
-     * point sits just outside the window, at the tip, so the window never
-     * covers what the tap lands on.
+     * The cursor: a round dot with its top-left corner pointed; the click
+     * point is just above-left of its tip.
      */
     private class Cursor(context: Context, private val size: Float) : View(context) {
         private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -555,7 +563,7 @@ class PointerService : AccessibilityService() {
         private const val MOVE = 0
         private const val CLICK = 1
         private const val SCROLL = 2
-        /** The window starts this far right of and below the click point. */
+        /** The cursor is drawn this far right of and below the click point. */
         private const val OFFSET = 2
         private const val HIDE_AFTER_MS = 6_000L
         /** Phone pixels (doubled by the page) of two-finger travel per scroll step. */
