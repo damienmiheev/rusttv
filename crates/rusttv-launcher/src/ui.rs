@@ -1210,7 +1210,9 @@ impl Controller {
                 // The phone picks pointer or arrows by app.
                 app: self.front_app.clone(),
                 dpad: self.front_dpad,
-                search: self.front_search,
+                // Only apps drawn for the D-pad draw their own keyboard; in
+                // others (browsers) the pointer clicks the real field.
+                search: self.front_search && self.front_dpad,
                 label: self.front_app.as_ref().and_then(|app| {
                     let prefix = format!("{app}/");
                     self.apps
@@ -1355,7 +1357,11 @@ impl Controller {
             PhoneMessage::Search { query }
                 if self.away && self.platform.pointer_state() == PointerState::Ready =>
             {
-                if let Some(app) = self.front_app.clone().filter(|_| self.front_search) {
+                if let Some(app) = self
+                    .front_app
+                    .clone()
+                    .filter(|_| self.front_search && self.front_dpad)
+                {
                     self.platform.search(&app, &query);
                 }
             }
@@ -2982,6 +2988,12 @@ mod tests {
         phone_says(&screen, search());
         assert!(screen.shared.platform.borrow().searches().is_empty());
         screen._controller.borrow_mut().front_search = true;
+        phone_says(&screen, search());
+        assert!(
+            screen.shared.platform.borrow().searches().is_empty(),
+            "an app with things to click types into its own field"
+        );
+        screen._controller.borrow_mut().front_dpad = true;
         phone_says(&screen, search());
         assert_eq!(
             screen.shared.platform.borrow().searches(),

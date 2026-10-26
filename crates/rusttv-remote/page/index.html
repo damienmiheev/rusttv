@@ -24,7 +24,8 @@
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overscroll-behavior: none; }
 body { font-family: Inter, -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; user-select: none; -webkit-user-select: none; }
-button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; }
+/* manipulation: quick repeated taps (volume) never zoom the page on iOS. */
+button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; touch-action: manipulation; }
 button, a.primary { transition: transform 160ms var(--ease), background-color 120ms ease; -webkit-tap-highlight-color: transparent; }
 button:active, a.primary:active { transform: scale(0.97); }
 .tile:active .art { transform: scale(0.97); }

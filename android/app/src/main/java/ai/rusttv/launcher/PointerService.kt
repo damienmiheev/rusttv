@@ -481,9 +481,10 @@ class PointerService : AccessibilityService() {
             audio.adjustStreamVolume(
                 android.media.AudioManager.STREAM_MUSIC,
                 direction,
-                // No FLAG_SHOW_UI: the Philips volume bar takes focus, and arrows
-                // would then move it instead of the app.
-                0,
+                // The TV's own volume bar, as for the remote's keys: one step
+                // of 60 is hard to hear without it. It takes focus, so the
+                // launcher never counts it as the app in front.
+                android.media.AudioManager.FLAG_SHOW_UI,
             )
         }
         val dpad = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU

@@ -696,9 +696,17 @@
     if (!buzzed) haptic(8);
     send({ type: "key", name, action });
   }
+  // Held volume keys repeat, like the remote's (one step is 1/60).
+  const REPEATS = ["volume_up", "volume_down"];
+  let repeat = 0, repeated = false;
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-key]");
-    if (button) press(button.dataset.key, "press", !!navigator.vibrate);
+    if (!button) return;
+    if (repeated) {
+      repeated = false;
+      return;
+    }
+    press(button.dataset.key, "press", !!navigator.vibrate);
   });
   // Feedback the moment a finger lands on a key, not when it lifts.
   let pressed = null;
@@ -706,10 +714,21 @@
     const button = event.target.closest(".key, .volume button");
     if (!button) return;
     pressed = button;
+    repeated = false;
     button.classList.add("pressed");
     if (navigator.vibrate) navigator.vibrate(10);
+    if (REPEATS.includes(button.dataset.key)) {
+      clearTimeout(repeat);
+      const again = () => {
+        repeated = true;
+        press(button.dataset.key, "press", true);
+        repeat = setTimeout(again, 150);
+      };
+      repeat = setTimeout(again, 450);
+    }
   });
   const release = () => {
+    clearTimeout(repeat);
     pressed?.classList.remove("pressed");
     pressed = null;
   };
