@@ -4,7 +4,30 @@ All notable changes to RustTV. Versions follow [Semantic Versioning](https://sem
 before 1.0.0 a minor version may break the CLI/JSON contract (the `schema`
 field in `--json` output says which contract you get, CLI.md).
 
-## Unreleased
+## 0.3.0 (2026-10-27)
+
+### RustTV Remote (new)
+
+- A phone becomes the TV's remote, keyboard and touchpad: a web page served
+  by the launcher (no app to install), paired once by scanning a QR code on
+  the TV and pressing OK there; every message encrypted end to end
+  (REMOTE.md, SECURITY.md § RustTV Remote). RustTV Remote has its own Home
+  tile and page.
+- On RustTV, the phone mirrors Home: tap to open, hold for options, hold and
+  drag to move apps and make folders, tile pictures, hidden apps, typing
+  into the TV's text fields.
+- HTTPS with the TV as its own certificate authority (opt-in trust with a
+  check code compared on the phone), Add to Home Screen on iPhone and
+  Android, and Home Screen icons that start paired.
+- Magic remote in other apps through RustTV's own accessibility service
+  "RustTV Pointer", turned on from the RustTV Remote page: a cursor moved by
+  the touchpad, clicks and two-finger scrolls on the element under it,
+  arrows / OK / Back / Home, play/pause and volume (held keys repeat),
+  typing into the focused field with the TV's keyboard hidden, and whole
+  searches for apps with their own keyboard (YouTube). The phone picks
+  pointer or arrows per app and remembers the person's choice.
+- Paired phones are recorded in the TV's history (names only, never keys);
+  a restore can only remove phones.
 
 ### Launcher
 
