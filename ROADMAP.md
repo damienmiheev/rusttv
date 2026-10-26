@@ -178,6 +178,40 @@ Decided "not for now"; raise again when the core launcher is done.
   - Phone layout: the deck stays one line; the slider opens over the
     touchpad and closes by itself after a few seconds.
 
+- **Skip intro / skip ad from the phone** — parked 2026-10-27 (owner idea).
+  A "Skip" button on the phone that lights up when the app in front shows
+  its own skip button, and presses it. Notes so far:
+  - Only skips the app offers: RustTV finds the button by its name through
+    the pointer's service (as Done finds a search button) and clicks it. It
+    never skips what has no skip button and never blocks ads (app rules,
+    accounts).
+  - Works where apps expose their buttons (web players in the browsers,
+    Kyivstar TV in the 2026-10-26 tests); not in apps that draw everything
+    themselves (YouTube, Netflix, Megogo showed almost no elements). In
+    YouTube the skip button takes focus, so the phone's OK usually skips.
+  - Needs the names in the launcher's languages ("Skip intro", "Пропустити
+    заставку", …), like the search-button words.
+
+- **Paste from the phone's clipboard** — parked 2026-10-27 (owner idea). One
+  tap puts the phone's clipboard (a link, a password) into the TV's focused
+  text field. Notes so far:
+  - The page reads the clipboard with the browser's clipboard API, only
+    after a tap and only over HTTPS; iOS asks "Paste?" each time. The text
+    goes through the existing encrypted typing path (set-text on the
+    field), so it works in fields RustTV can already type into.
+  - Never stored on the TV or logged; password fields stay masked.
+
+- **Open a link on the TV** — parked 2026-10-27 (owner idea). Send a link
+  from the phone (YouTube video, article, stream) and it opens on the TV in
+  the right app. Notes so far:
+  - The phone's share menu can list RustTV Remote only for an installed web
+    app with a share target (Chrome on Android); iOS has no share target for
+    web apps, so there it's paste-a-link on the page (or the clipboard idea
+    above).
+  - The TV opens it with a typed intent: known hosts to their apps
+    (YouTube links to YouTube, like the search address), others to the TV's
+    browser; only http(s) links, checked like other phone input.
+
 - **Phone remote and second screen** — **planned 2026-10-25 as RustTV
   Remote, see REMOTE.md** (0.3.0). The owner's decisions there replace the
   discussion that was here; per-app second-screen views remain research
