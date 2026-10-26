@@ -407,3 +407,9 @@ msgstr "चालू · फ़ोन का टचपैड दूसरे ऐ�
 
 msgid "Not on this device"
 msgstr "इस डिवाइस पर उपलब्ध नहीं"
+
+msgid "Paired the phone {}"
+msgstr "फ़ोन {} जोड़ा गया"
+
+msgid "Removed the phone {}"
+msgstr "फ़ोन {} हटाया गया"

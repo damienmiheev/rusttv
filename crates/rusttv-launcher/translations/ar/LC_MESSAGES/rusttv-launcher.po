@@ -407,3 +407,9 @@ msgstr "يعمل · لوحة لمس الهاتف تحرّك مؤشرًا في ا
 
 msgid "Not on this device"
 msgstr "غير متاح على هذا الجهاز"
+
+msgid "Paired the phone {}"
+msgstr "تم إقران الهاتف {}"
+
+msgid "Removed the phone {}"
+msgstr "تمت إزالة الهاتف {}"

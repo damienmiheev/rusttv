@@ -407,3 +407,9 @@ msgstr "オン · スマホのタッチパッドで他のアプリのポイン�
 
 msgid "Not on this device"
 msgstr "このデバイスでは使えません"
+
+msgid "Paired the phone {}"
+msgstr "スマホ {} をペア設定"
+
+msgid "Removed the phone {}"
+msgstr "スマホ {} を削除"

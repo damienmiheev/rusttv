@@ -407,3 +407,9 @@ msgstr "Ativado · o touchpad do celular move um ponteiro em outros apps · OK a
 
 msgid "Not on this device"
 msgstr "Indisponível neste dispositivo"
+
+msgid "Paired the phone {}"
+msgstr "Celular {} pareado"
+
+msgid "Removed the phone {}"
+msgstr "Celular {} removido"

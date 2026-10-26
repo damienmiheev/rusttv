@@ -407,3 +407,9 @@ msgstr "פועל · משטח המגע של הטלפון מזיז סמן באפל
 
 msgid "Not on this device"
 msgstr "לא זמין במכשיר הזה"
+
+msgid "Paired the phone {}"
+msgstr "הטלפון {} הותאם"
+
+msgid "Removed the phone {}"
+msgstr "הטלפון {} הוסר"

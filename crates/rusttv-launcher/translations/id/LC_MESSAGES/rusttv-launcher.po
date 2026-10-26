@@ -407,3 +407,9 @@ msgstr "Aktif · touchpad ponsel menggerakkan penunjuk di aplikasi lain · OK me
 
 msgid "Not on this device"
 msgstr "Tidak tersedia di perangkat ini"
+
+msgid "Paired the phone {}"
+msgstr "Ponsel {} dipasangkan"
+
+msgid "Removed the phone {}"
+msgstr "Ponsel {} dihapus"

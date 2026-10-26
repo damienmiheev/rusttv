@@ -51,6 +51,9 @@ update_check = true
 name = "Video"
 apps = ["com.example.films/.Main", "com.example.series/.Main"]
 
+[launcher.phones]              # format 3; only while a phone is paired
+"0a1b2c3d4e5f60718293a4b5c6d7e8f9" = "iPhone (Safari)"
+
 [settings.global]              # SettingKey allowlist; absent key = unset
 animator_duration_scale = "0.5"
 
@@ -79,6 +82,15 @@ takeover = "active"
   `HISTORY_FORMAT_NEWER`). The changes it adds: a folder made, removed or
   renamed, and an app put in or taken out of a folder; an app moving into a
   folder is not "removed from Home".
+- **Phones** (*added 2026-10-27*): `[launcher.phones]` holds the phones
+  paired with RustTV Remote, id (32 hex digits) → name (1–40 characters, no
+  control characters). **Never their keys.** A snapshot with a phone is
+  written as `format = 3`, so builds that read up to format 2 keep reading a
+  history until the first paired phone. Pairing or removing a phone on the
+  RustTV Remote page records a `tv` entry (changes `phone_paired`,
+  `phone_removed`). A restore can only **remove** phones: one paired since
+  stays, one removed since can't come back (its keys are gone) and must be
+  paired again; the listener drops removed phones at once.
 - **`[settings.global]`:** the `SettingKey` keys, values
   `[0-9]{1,2}(\.[0-9]{1,3})?`. For these three keys **absent ≡ "1"**
   (Android's default), so the TV restores "absent" by writing "1" and

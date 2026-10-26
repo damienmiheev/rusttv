@@ -407,3 +407,9 @@ msgstr "Açık · telefonun dokunmatik yüzeyi diğer uygulamalarda işaretçi t
 
 msgid "Not on this device"
 msgstr "Bu cihazda yok"
+
+msgid "Paired the phone {}"
+msgstr "{} telefonu eşlendi"
+
+msgid "Removed the phone {}"
+msgstr "{} telefonu kaldırıldı"

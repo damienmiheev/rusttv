@@ -261,6 +261,9 @@ impl Controller {
         };
         if let Some(phone) = link.remote().revoke(&id) {
             link.save_phones();
+            if let Some(history) = crate::history::History::get() {
+                history.launcher_edited();
+            }
             self.settings_status = (settings_view::REMOVED_PHONE, phone.name);
         }
         self.phones_changed();

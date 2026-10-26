@@ -407,3 +407,9 @@ msgstr "Activado · el panel táctil del teléfono mueve un puntero en otras app
 
 msgid "Not on this device"
 msgstr "No disponible en este dispositivo"
+
+msgid "Paired the phone {}"
+msgstr "Teléfono {} emparejado"
+
+msgid "Removed the phone {}"
+msgstr "Teléfono {} quitado"

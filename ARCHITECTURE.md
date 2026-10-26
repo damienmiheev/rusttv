@@ -91,7 +91,7 @@ There is intentionally no `shell(&str)`. Values that end up in `adb shell` argum
 ## rusttv-cli
 
 - `clap` derive. Commands map 1:1 to core functions; no logic in the CLI beyond formatting.
-- Default output: human text; `--json` gives the versioned `rusttv.v9` envelope. The output contract, exit codes and every error code are in [CLI.md](CLI.md); `rusttv_core::ERROR_CODES` is the canonical list, and tests keep code, list and CLI.md in sync.
+- Default output: human text; `--json` gives the versioned `rusttv.v10` envelope. The output contract, exit codes and every error code are in [CLI.md](CLI.md); `rusttv_core::ERROR_CODES` is the canonical list, and tests keep code, list and CLI.md in sync.
 - Device-targeting commands pick the only connected device, or require `--serial` when there are several (exit code 2). With `--json`, errors are also a JSON envelope on stdout.
 - CLI tests run the real binary against `tests/fixtures/fake-adb` (selected with `RUSTTV_ADB`), so they need no device.
 - Logging via `tracing` to stderr (`-v`/`RUST_LOG`); stdout reserved for results.
@@ -165,7 +165,7 @@ Rust: trait Platform { list_apps(), launch(), take_apps_changed(), update_status
 
 - Built on the official Rust SDK `rmcp` (D13). `RustTvServer<A: Adb>` is generic so tests use `FakeAdb`; the binary uses `SystemAdb`.
 - The core stays sync (D10): each tool call runs the core function on tokio's blocking pool, holding a mutex around the `Adb`, so calls run one at a time and `Adb` need not be `Sync`.
-- Results are the CLI's `rusttv.v9` envelope as `structuredContent`; core errors are tool errors (`isError`) with the CLI's error codes, bad arguments are rejected before any device access.
+- Results are the CLI's `rusttv.v10` envelope as `structuredContent`; core errors are tool errors (`isError`) with the CLI's error codes, bad arguments are rejected before any device access.
 - No tool runs above R0 and none approves anything. Plan tools only return a dry run and the `rusttv` command a person runs to apply it; they read journals from the CLI's state directory (`rusttv_core::journals_dir`) and write none (SECURITY.md § AI agents).
 
 ## Initial dependencies (Milestone 1)

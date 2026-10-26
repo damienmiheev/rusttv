@@ -21,6 +21,8 @@ field in `--json` output says which contract you get, CLI.md).
 - Schema `rusttv.v9`: history changes have the new kinds `folder_added`,
   `folder_removed`, `folder_renamed` and `in_folder`, and `history show` may
   include `launcher.folders` (CLI.md).
+- Schema `rusttv.v10`: history changes have the new kinds `phone_paired` and
+  `phone_removed`, and `history show` may include `launcher.phones` (CLI.md).
 
 ### Releases
 

@@ -407,3 +407,9 @@ msgstr "Activé · le pavé tactile du téléphone déplace un pointeur dans les
 
 msgid "Not on this device"
 msgstr "Indisponible sur cet appareil"
+
+msgid "Paired the phone {}"
+msgstr "Téléphone {} associé"
+
+msgid "Removed the phone {}"
+msgstr "Téléphone {} retiré"

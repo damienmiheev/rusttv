@@ -226,7 +226,7 @@ pub(crate) fn save(
 pub(crate) const UPDATE_CHECK_OFF: &str = "update-check-off";
 
 /// The launcher's own state as history records it: tiles in order,
-/// folders, hidden apps and the update switch. `dir` holds `order.toml` and
+/// folders, hidden apps, the paired phones and the update switch. `dir` holds `order.toml` and
 /// the flag file.
 pub(crate) fn launcher_state(dir: &Path) -> rusttv_history::Launcher {
     let loaded = load(&dir.join("order.toml"));
@@ -255,6 +255,7 @@ pub(crate) fn launcher_state(dir: &Path) -> rusttv_history::Launcher {
             })
             .collect(),
         hidden: loaded.hidden,
+        phones: crate::remote::phone_names(dir),
         update_check: !dir.join(UPDATE_CHECK_OFF).exists(),
     }
 }
@@ -281,6 +282,8 @@ pub(crate) fn write_launcher_state(dir: &Path, state: &rusttv_history::Launcher)
         )
     }));
     save(&path, &order, &folders, &state.hidden, focus.as_ref())?;
+    // Phones can only be removed; ui.rs drops them from the listener too.
+    crate::remote::keep_phones(dir, &state.phones).map_err(io::Error::other)?;
     let flag = dir.join(UPDATE_CHECK_OFF);
     if state.update_check {
         match fs::remove_file(&flag) {

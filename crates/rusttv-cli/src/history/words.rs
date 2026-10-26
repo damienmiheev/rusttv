@@ -117,6 +117,10 @@ pub(crate) enum ChangeView {
     },
     /// An app hidden or shown again.
     Hidden { tile: String, hidden: bool },
+    /// A phone paired with RustTV Remote.
+    PhonePaired { phone: String, name: String },
+    /// A paired phone removed.
+    PhoneRemoved { phone: String, name: String },
     /// The launcher's update switch.
     UpdateCheck { on: bool },
     /// A global setting; null = unset.
@@ -177,6 +181,14 @@ impl ChangeView {
                 tile: tile.clone(),
                 hidden: *hidden,
             },
+            Change::PhonePaired { id, name } => Self::PhonePaired {
+                phone: id.clone(),
+                name: name.clone(),
+            },
+            Change::PhoneRemoved { id, name } => Self::PhoneRemoved {
+                phone: id.clone(),
+                name: name.clone(),
+            },
             Change::UpdateCheck { on } => Self::UpdateCheck { on: *on },
             Change::Setting { key, old, new } => Self::Setting {
                 key: key.clone(),
@@ -231,6 +243,12 @@ pub(crate) fn change(change: &Change) -> String {
             tile,
             hidden: false,
         } => format!("Showed {tile} again"),
+        Change::PhonePaired { name, .. } => {
+            format!("Paired the phone \"{name}\" with RustTV Remote")
+        }
+        Change::PhoneRemoved { name, .. } => {
+            format!("Removed the phone \"{name}\" from RustTV Remote")
+        }
         Change::UpdateCheck { on } => format!(
             "Check for updates automatically: {}",
             if *on { "on" } else { "off" }

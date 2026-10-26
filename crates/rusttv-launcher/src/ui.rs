@@ -1275,6 +1275,10 @@ impl Controller {
                 if let Some(link) = &self.remote {
                     link.save_phones();
                 }
+                // A `tv` entry: the phone's name, never its keys.
+                if let Some(history) = History::get() {
+                    history.launcher_edited();
+                }
                 self.phones_changed();
                 self.render();
             }
