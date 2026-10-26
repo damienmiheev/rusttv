@@ -323,13 +323,6 @@ impl Link {
             .as_ref()
             .map(|authority| (authority.name(), authority.check_code()))
     }
-
-    /// A phone connected: it gets the current view again.
-    pub(crate) fn resend(&mut self) {
-        if let Some(message) = self.last.take() {
-            self.push(message);
-        }
-    }
 }
 
 /// How long the picture thread ignores asking again for the same picture:

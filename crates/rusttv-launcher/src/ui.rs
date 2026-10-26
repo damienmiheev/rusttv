@@ -1284,10 +1284,8 @@ impl Controller {
             }
             RemoteEvent::PairingClosed => self.pairing_closed(),
             RemoteEvent::Connected(phone) => {
+                // The listener already sent this phone the latest view.
                 self.connected.insert(phone);
-                if let Some(link) = &mut self.remote {
-                    link.resend();
-                }
                 if let Some(page) = &mut self.remote_page
                     && let Some(link) = &self.remote
                 {
