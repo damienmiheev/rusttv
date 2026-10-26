@@ -395,3 +395,15 @@ msgstr "Sebelum memasang, periksa di ponsel bahwa sidik jari SHA-256-nya diawali
 
 msgid "If it doesn't match, don't install it: someone on your network may be interfering."
 msgstr "Jika tidak cocok, jangan pasang: seseorang di jaringan Anda mungkin mengganggu."
+
+msgid "Pointer in other apps"
+msgstr "Penunjuk di aplikasi lain"
+
+msgid "Off · OK opens Accessibility: turn on RustTV Pointer there"
+msgstr "Nonaktif · OK membuka Aksesibilitas: aktifkan RustTV Pointer di sana"
+
+msgid "On · the phone's touchpad moves a pointer in other apps · OK opens Accessibility"
+msgstr "Aktif · touchpad ponsel menggerakkan penunjuk di aplikasi lain · OK membuka Aksesibilitas"
+
+msgid "Not on this device"
+msgstr "Tidak tersedia di perangkat ini"

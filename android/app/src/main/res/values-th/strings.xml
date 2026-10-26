@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pointer_description">ให้โทรศัพท์ที่จับคู่กับ RustTV Remote ควบคุมแอปอื่นได้ ทั้งเลื่อนตัวชี้ คลิก เลื่อนหน้าจอ กดปุ่ม และพิมพ์ โดยอ่านเฉพาะสิ่งที่จำเป็นและไม่เก็บอะไรไว้</string>
+</resources>

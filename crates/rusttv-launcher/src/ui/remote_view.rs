@@ -1,6 +1,6 @@
 //! The RustTV Remote page (REMOTE.md § 2), opened from its Home tile: the
 //! pairing screen (QR code, then "Allow?" with the match code and OK on the
-//! remote), the paired phones, and removing one. Phones can never do any of
+//! remote), the pointer's row, the paired phones, and removing one. Phones can never do any of
 //! this themselves: ui.rs passes them only Back on this page and nothing
 //! while the pairing screen is open.
 
@@ -10,6 +10,7 @@ use slint::{ComponentHandle, Image, Model, Rgba8Pixel, SharedPixelBuffer, Timer}
 
 use super::{Controller, HomeWindow, SettingsRow, Strings, settings_view};
 use crate::model::Input;
+use crate::platform::PointerState;
 use crate::remote;
 use crate::remote_page::{Action, RemotePage};
 
@@ -59,7 +60,9 @@ enum Phase {
 impl Controller {
     /// OK on the RustTV Remote tile: the page, with the paired phones.
     pub(super) fn open_remote_page(&mut self) {
-        self.remote_page = Some(RemotePage::default());
+        let mut page = RemotePage::default();
+        page.set_pointer(self.platform.pointer_state());
+        self.remote_page = Some(page);
         self.settings_status = (settings_view::NO_STATUS, String::new());
         self.phones_changed();
     }
@@ -85,6 +88,7 @@ impl Controller {
             }
             Some(Action::PairPhone) => self.open_pairing(),
             Some(Action::RemovePhone(id)) => self.remove_phone(id),
+            Some(Action::PointerSettings) => self.platform.open_pointer_settings(),
             None => {}
         }
     }
@@ -289,19 +293,32 @@ impl Controller {
             return;
         };
         let strings = window.global::<Strings>();
-        let mut rows = vec![SettingsRow {
-            title: strings.invoke_pair_phone(),
-            detail: strings.invoke_pair_phone_detail(),
-            current: false,
-            dim: false,
-        }];
+        let pointer = match page.pointer() {
+            PointerState::Unavailable => 0,
+            PointerState::Off => 1,
+            PointerState::Ready => 2,
+        };
+        let mut rows = vec![
+            SettingsRow {
+                title: strings.invoke_pair_phone(),
+                detail: strings.invoke_pair_phone_detail(),
+                current: false,
+                dim: false,
+            },
+            SettingsRow {
+                title: strings.invoke_pointer_row(),
+                detail: strings.invoke_pointer_detail(pointer),
+                current: pointer == 2,
+                dim: pointer == 0,
+            },
+        ];
         rows.extend(
             page.phones()
                 .iter()
                 .enumerate()
                 .map(|(i, phone)| SettingsRow {
                     title: phone.name.as_str().into(),
-                    detail: strings.invoke_phone_detail(page.removing() == Some(i + 1)),
+                    detail: strings.invoke_phone_detail(page.removing() == Some(i + 2)),
                     current: false,
                     dim: false,
                 }),

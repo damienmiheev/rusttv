@@ -73,6 +73,22 @@
             android:name=".InstallResultReceiver"
             android:exported="false" />
 
+        <!-- The pointer in other apps (REMOTE.md § 5): gestures and an overlay only
+             (res/xml/pointer_service.xml). Off until the person turns it on in
+             Android's accessibility settings; only the system can bind it. -->
+        <service
+            android:name=".PointerService"
+            android:label="@string/pointer_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/pointer_service" />
+        </service>
+
         <!-- The history door (HISTORY.md § 5). Exported without a permission
              because the adb shell holds none of ours; every entry point checks
              that the caller is the shell (HistoryProvider.checkShell). -->

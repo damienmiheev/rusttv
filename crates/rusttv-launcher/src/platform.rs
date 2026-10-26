@@ -12,7 +12,7 @@ use material_colors::hct::Hct;
 use material_colors::quantize::{Quantizer, QuantizerCelebi};
 use material_colors::score::Score;
 
-use rusttv_remote::protocol::PictureKind;
+use rusttv_remote::protocol::{Key, PictureKind, PointerAction, TextEdit, TextField};
 
 use crate::model::App;
 
@@ -105,6 +105,85 @@ pub trait Platform {
     /// then show their stand-ins.
     fn pictures(&self) -> Option<Pictures> {
         None
+    }
+
+    /// Where the pointer in other apps stands (REMOTE.md § 5). Cheap (a
+    /// field read).
+    fn pointer_state(&self) -> PointerState {
+        PointerState::Unavailable
+    }
+
+    /// The package of the app in front, as the pointer's service last read
+    /// it; `None` while it is off or hasn't seen one.
+    fn front_app(&self) -> Option<String> {
+        None
+    }
+
+    /// Whether the app in front draws for the D-pad only, as the pointer's
+    /// service judged it (nothing on screen to click).
+    fn front_app_dpad(&self) -> bool {
+        false
+    }
+
+    /// The focused text field in the app in front, as the pointer's service
+    /// last read it.
+    fn front_field(&self) -> Option<TextField> {
+        None
+    }
+
+    /// Whether `app` (a package) takes a search from the phone.
+    fn can_search(&self, _app: &str) -> bool {
+        false
+    }
+
+    /// Searches `query` in `app`.
+    fn search(&mut self, _app: &str, _query: &str) {}
+
+    /// Types a phone's edit into that field. Never blocks.
+    fn pointer_text(&mut self, _edit: TextEdit) {}
+
+    /// Hides the TV's on-screen keyboard while a phone types (`true`), or
+    /// lets it show again.
+    fn hide_tv_keyboard(&mut self, _hide: bool) {}
+
+    /// Moves the pointer, clicks or scrolls at it. Never blocks.
+    fn pointer(&mut self, _dx: i16, _dy: i16, _action: PointerAction) {}
+
+    /// Hides the pointer (RustTV is in front again, or no phone is
+    /// connected).
+    fn pointer_stop(&mut self) {}
+
+    /// Presses a phone's key in the app in front, through the pointer's
+    /// service: Back, Home, arrows and OK as the system's actions; media and
+    /// volume through the audio service. Others do nothing.
+    fn pointer_key(&mut self, _key: Key) {}
+
+    /// Opens Android's accessibility settings, where the person switches the
+    /// pointer's service on or off.
+    fn open_pointer_settings(&mut self) {}
+}
+
+/// The pointer in other apps (REMOTE.md § 5).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PointerState {
+    /// Not on this platform (the desktop dev mode).
+    #[default]
+    Unavailable,
+    /// Its accessibility service is off.
+    Off,
+    /// The service is on: the touchpad moves the pointer.
+    Ready,
+}
+
+impl PointerState {
+    /// The state from `Bridge.pointerState`; anything unknown is
+    /// [`PointerState::Unavailable`].
+    pub fn from_bridge(text: &str) -> Self {
+        match text {
+            "off" => Self::Off,
+            "ready" => Self::Ready,
+            _ => Self::Unavailable,
+        }
     }
 }
 
@@ -474,6 +553,13 @@ pub struct FakePlatform {
     update_installs: usize,
     /// What `set_secure` last set (the review and pairing screens).
     secure: bool,
+    pointer: PointerState,
+    pointer_moves: Vec<(i16, i16, PointerAction)>,
+    pointer_stops: usize,
+    pointer_settings: usize,
+    pointer_keys: Vec<Key>,
+    pointer_edits: Vec<TextEdit>,
+    searches: Vec<(String, String)>,
 }
 
 #[cfg(any(test, feature = "test-util"))]
@@ -579,6 +665,41 @@ impl FakePlatform {
     pub fn update_installs(&self) -> usize {
         self.update_installs
     }
+
+    /// What [`Platform::pointer_state`] answers from now on.
+    pub fn set_pointer(&mut self, state: PointerState) {
+        self.pointer = state;
+    }
+
+    /// The [`Platform::pointer`] calls so far.
+    pub fn pointer_moves(&self) -> &[(i16, i16, PointerAction)] {
+        &self.pointer_moves
+    }
+
+    /// How many times [`Platform::pointer_stop`] was called.
+    pub fn pointer_stops(&self) -> usize {
+        self.pointer_stops
+    }
+
+    /// The [`Platform::search`] calls so far, as (app, query).
+    pub fn searches(&self) -> &[(String, String)] {
+        &self.searches
+    }
+
+    /// The [`Platform::pointer_text`] edits so far.
+    pub fn pointer_edits(&self) -> &[TextEdit] {
+        &self.pointer_edits
+    }
+
+    /// The [`Platform::pointer_key`] presses so far.
+    pub fn pointer_keys(&self) -> &[Key] {
+        &self.pointer_keys
+    }
+
+    /// How many times [`Platform::open_pointer_settings`] was called.
+    pub fn pointer_settings(&self) -> usize {
+        self.pointer_settings
+    }
 }
 
 #[cfg(any(test, feature = "test-util"))]
@@ -657,6 +778,38 @@ impl Platform for FakePlatform {
             self.update = UpdateStatus::Installing;
         }
         Ok(())
+    }
+
+    fn pointer_state(&self) -> PointerState {
+        self.pointer
+    }
+
+    fn pointer(&mut self, dx: i16, dy: i16, action: PointerAction) {
+        self.pointer_moves.push((dx, dy, action));
+    }
+
+    fn pointer_stop(&mut self) {
+        self.pointer_stops += 1;
+    }
+
+    fn open_pointer_settings(&mut self) {
+        self.pointer_settings += 1;
+    }
+
+    fn pointer_key(&mut self, key: Key) {
+        self.pointer_keys.push(key);
+    }
+
+    fn pointer_text(&mut self, edit: TextEdit) {
+        self.pointer_edits.push(edit);
+    }
+
+    fn can_search(&self, app: &str) -> bool {
+        app.contains("youtube")
+    }
+
+    fn search(&mut self, app: &str, query: &str) {
+        self.searches.push((app.to_owned(), query.to_owned()));
     }
 
     /// A fixed code (← ↑ → ↓), so tests and the desktop demo know it.

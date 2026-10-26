@@ -395,3 +395,15 @@ msgstr "Prima di installarlo, controlla sul telefono che la sua impronta SHA-256
 
 msgid "If it doesn't match, don't install it: someone on your network may be interfering."
 msgstr "Se non corrisponde, non installarlo: qualcuno sulla tua rete potrebbe interferire."
+
+msgid "Pointer in other apps"
+msgstr "Puntatore nelle altre app"
+
+msgid "Off · OK opens Accessibility: turn on RustTV Pointer there"
+msgstr "Disattivato · OK apre Accessibilità: attiva lì RustTV Pointer"
+
+msgid "On · the phone's touchpad moves a pointer in other apps · OK opens Accessibility"
+msgstr "Attivo · il touchpad del telefono muove un puntatore nelle altre app · OK apre Accessibilità"
+
+msgid "Not on this device"
+msgstr "Non disponibile su questo dispositivo"

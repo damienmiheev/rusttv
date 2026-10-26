@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pointer_description">RustTV Remote とペア設定したスマホで他のアプリを操作します：ポインタ移動、クリック、スクロール、キー操作、文字入力。必要なものだけを読み取り、何も保存しません。</string>
+</resources>

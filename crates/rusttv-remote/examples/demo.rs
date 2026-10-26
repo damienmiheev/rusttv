@@ -117,7 +117,12 @@ fn main() {
                 } else if id == "com.browser/.Main" || id == "com.netflix/.Main" {
                     TvMessage::App(AppView {
                         app: Some(id.split('/').next().unwrap_or_default().into()),
-                        pointer: id == "com.browser/.Main",
+                        // The TV's pointer service is on: other apps get the touchpad and keys.
+                        pointer: true,
+                        // Spotify stands in for an app with nothing to click.
+                        dpad: id == "com.spotify/.Main",
+                        search: id == "com.google.youtube/.Main",
+                        label: None,
                         text: (id == "com.netflix/.Main").then(|| TextField {
                             label: "Search".into(),
                             value: String::new(),

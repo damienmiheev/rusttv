@@ -62,12 +62,13 @@ to its home screen.
 14. **The touchpad and the pointer:**
     - Home on the phone is only the mirror; RustTV's own screens have no
       pointer.
-    - In browsers (and apps the person adds in Settings), the touchpad moves
-      a **pointer on the TV**: one finger moves it, a tap clicks, two fingers
-      scroll.
-    - Everywhere else, swipes become arrow keys and a tap is OK.
+    - In other apps, the touchpad moves a **pointer on the TV**: one finger
+      moves it, a tap clicks, two fingers scroll (owner decision 2026-10-26:
+      every other app, no per-app list). Apps drawn only for the D-pad (the
+      YouTube TV app, Netflix) may ignore taps.
     - The pointer needs a **narrow accessibility service**
-      (§ 5 The pointer), off until the person switches it on.
+      (§ 5 The pointer), off until the person switches it on. While it is
+      off, the phone says how to turn it on.
 15. **Name:** "RustTV Remote", used for its Home tile, its page's title and
     the home-screen icon.
 16. **The phone's name** is typed on the phone during pairing, pre-filled
@@ -470,30 +471,72 @@ talks to. Its protocol is documented by open-source clients such as
 
 ### The pointer
 
-- **What it is:** a narrow accessibility service, `PointerService.kt`. It
-  draws a round cursor in a `TYPE_ACCESSIBILITY_OVERLAY` window and performs
-  taps, drags and two-finger scrolls with `dispatchGesture`, at the pointer's
-  position.
-- **Declaration:** `canPerformGestures` only.
-  - No `canRetrieveWindowContent`.
-  - No key-event filtering (`flagRequestFilterKeyEvents` is off), so it can't
-    read key presses.
-  - The only event type is `TYPE_WINDOW_STATE_CHANGED`, read for its package
-    name, to know which app is in front.
-- **When it acts:** only while a listed app is in front. Browsers are listed
-  by default, and the person can add apps in Settings. In other apps it
-  draws nothing and the touchpad sends arrows through the Remote Service.
-- **Switching it on:** it is off by default, and the person turns it on in
-  Android's accessibility settings. A changed accessibility service shows as
-  a warning in `history sync` (HISTORY.md watchlist), once, when the person
-  turns it on.
-- **Checks:** `check-dex.sh` gains rules that only `PointerService.kt` uses
-  the accessibility APIs, and that it never calls a window-content API.
+- **What it is:** an accessibility service, `PointerService.kt` ("RustTV
+  Pointer" in Android's settings), that turns the phone into a magic remote
+  in other apps (owner decision 2026-10-26: the goal is a magic remote).
+- **Why not gestures:** Android refuses injected touch gestures on a TV
+  without a touchscreen (measured on the Philips: every `dispatchGesture`
+  cancelled within 5 ms). So the service acts on the app's elements instead.
+- **Click:** the element under the cursor, searched through every layer
+  under the point (pages draw empty full-screen layers over their content),
+  deepest first:
+  - its click action; within 32 px when the cursor is in a gap;
+  - if the app refuses it (Compose for TV cards), focus on it, then OK;
+  - a whole clickable row around a focus-only card: the card, then OK;
+  - a field that only takes focus: focus.
+- **Scroll (two fingers):** the nearest element under the cursor that
+  scrolls in the finger's direction (up/down/left/right actions), else the
+  nearest list whose items are stacked (up/down) or side by side
+  (left/right), else by shape. One step per 160 phone px.
+- **Keys:** arrows and OK as the system's D-pad actions (Android 13+), Back
+  and Home as global actions, play/pause, rewind and fast forward as media
+  keys, volume through the audio service without the Philips volume bar
+  (it takes focus, so arrows would move it).
+- **Typing:** a focused text field (editable, or one that takes set-text,
+  like the TV browser's address bar) is sent to the phone with its hint and
+  text; the phone's edits become set-text on it. While the phone's keyboard
+  is open the TV's is hidden. Done is the field's Enter; a field that
+  ignores it gets the search or go button next to it clicked (a button named
+  so, never one that clears or starts voice search).
+- **Search:** apps that draw their own keyboard (YouTube) take a whole
+  search from the phone: YouTube as its results address, others through
+  their search intent. The phone offers it as "Search in …".
+- **Pointer or arrows:** the phone starts each app with arrows when the TV
+  says it draws for the D-pad (fewer than three clickable elements 1.5 s
+  after it opens, or a click with nothing to click) or it is on the page's
+  list; the person's switch is kept per app. Only installed apps count as
+  the app in front: overlays (the volume bar, the Philips screensaver,
+  permission dialogs) don't change it.
+- **The cursor window** never covers the click point: its pointed top-left
+  tip sits 2 px right of and below it, and the window is not touchable. It
+  hides after 6 s without a move, on arrows, when a field takes focus, when
+  RustTV comes back to the front, and when the last phone disconnects.
+- **Declaration** (`res/xml/pointer_service.xml`): window content, the
+  window-state, view-focused and text-changed events (the event itself is
+  never read), all views. No key filtering, no gestures.
+- **What it reads:** bounds, flags and actions of the elements under the
+  cursor or in the app in front, the app's package, a focused field's hint
+  and text, and the names of the buttons beside a field. It keeps nothing.
+- **When it acts:** only when the launcher calls it, and the launcher does
+  that only while another app is in front (`away`) and a phone asks.
+- **Switching it on:** it is off by default. The RustTV Remote page has a
+  row, "Pointer in other apps", showing Off or On; OK opens Android's
+  accessibility settings, where the person turns "RustTV Pointer" on or off
+  (on the Philips: Налаштування → Доступність → СЕРВІСИ). A changed
+  accessibility service shows as a warning in `history sync` (HISTORY.md
+  watchlist), once, when the person turns it on.
+- **Checks:** `check-dex.sh` fails the build if a launcher class other than
+  `PointerService` (and its inner classes) calls an accessibility API, or if
+  `PointerService` reads anything outside that list (window lists,
+  screenshots, events, ids, searches by text).
+- **Limits found on the Philips:** the Play Store's top tabs and the TV
+  browser's own cursor answer only the physical remote; Vewd's address bar
+  ignores Enter and has no search button.
 
 ## 6. Safety (SECURITY.md § RustTV Remote)
 
 - **What a phone can do:** what a remote can do — keys, text, opening an app
-  and, in a listed app, pointer taps.
+  and, in other apps, pointer taps and scrolls.
 - **What a phone can never do:**
   - change a setting or a package;
   - pair or revoke phones;

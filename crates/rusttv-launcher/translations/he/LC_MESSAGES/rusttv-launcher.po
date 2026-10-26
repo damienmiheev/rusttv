@@ -395,3 +395,15 @@ msgstr "לפני ההתקנה, ודאו בטלפון שטביעת האצבע SHA
 
 msgid "If it doesn't match, don't install it: someone on your network may be interfering."
 msgstr "אם היא לא תואמת, אל תתקינו: ייתכן שמישהו ברשת שלכם מתערב."
+
+msgid "Pointer in other apps"
+msgstr "סמן באפליקציות אחרות"
+
+msgid "Off · OK opens Accessibility: turn on RustTV Pointer there"
+msgstr "כבוי · OK פותח את 'נגישות': הפעילו שם את RustTV Pointer"
+
+msgid "On · the phone's touchpad moves a pointer in other apps · OK opens Accessibility"
+msgstr "פועל · משטח המגע של הטלפון מזיז סמן באפליקציות אחרות · OK פותח את 'נגישות'"
+
+msgid "Not on this device"
+msgstr "לא זמין במכשיר הזה"

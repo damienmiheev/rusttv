@@ -395,3 +395,15 @@ msgstr "ก่อนติดตั้ง ให้ตรวจสอบบน�
 
 msgid "If it doesn't match, don't install it: someone on your network may be interfering."
 msgstr "หากไม่ตรงกัน อย่าติดตั้ง: อาจมีคนในเครือข่ายของคุณกำลังแทรกแซง"
+
+msgid "Pointer in other apps"
+msgstr "ตัวชี้ในแอปอื่น"
+
+msgid "Off · OK opens Accessibility: turn on RustTV Pointer there"
+msgstr "ปิด · OK เปิดการช่วยเหลือพิเศษ: เปิด RustTV Pointer ที่นั่น"
+
+msgid "On · the phone's touchpad moves a pointer in other apps · OK opens Accessibility"
+msgstr "เปิด · ทัชแพดของโทรศัพท์เลื่อนตัวชี้ในแอปอื่น · OK เปิดการช่วยเหลือพิเศษ"
+
+msgid "Not on this device"
+msgstr "ไม่มีในอุปกรณ์นี้"

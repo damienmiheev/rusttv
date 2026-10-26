@@ -61,7 +61,8 @@ else
     ./gradlew -q assembleRelease
     suffix=release
 fi
-# Only SecureSettings may write a system setting (HISTORY.md § 7).
+# Only SecureSettings may write a system setting (HISTORY.md § 7), and only
+# PointerService may use accessibility APIs (REMOTE.md § 5).
 for abi in arm64-v8a armeabi-v7a x86_64; do
     ./check-dex.sh "app/build/outputs/apk/release/app-$abi-$suffix.apk"
 done

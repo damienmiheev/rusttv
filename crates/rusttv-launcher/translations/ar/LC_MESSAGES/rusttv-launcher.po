@@ -395,3 +395,15 @@ msgstr "قبل التثبيت، تحقّق على الهاتف من أن بصم�
 
 msgid "If it doesn't match, don't install it: someone on your network may be interfering."
 msgstr "إذا لم تتطابق فلا تثبّتها: قد يكون أحد على شبكتك يتدخّل."
+
+msgid "Pointer in other apps"
+msgstr "المؤشر في التطبيقات الأخرى"
+
+msgid "Off · OK opens Accessibility: turn on RustTV Pointer there"
+msgstr "متوقف · OK يفتح «سهولة الاستخدام»: شغّل RustTV Pointer هناك"
+
+msgid "On · the phone's touchpad moves a pointer in other apps · OK opens Accessibility"
+msgstr "يعمل · لوحة لمس الهاتف تحرّك مؤشرًا في التطبيقات الأخرى · OK يفتح «سهولة الاستخدام»"
+
+msgid "Not on this device"
+msgstr "غير متاح على هذا الجهاز"

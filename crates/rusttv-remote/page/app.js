@@ -11,9 +11,46 @@
   const encoder = new TextEncoder(), decoder = new TextDecoder();
   const random = (length) => crypto.getRandomValues(new Uint8Array(length));
   const STORE = "rusttv-remote";
-  // Phase 2 (REMOTE.md § 5): until the TV controls other apps through its
-  // remote service, their buttons stay hidden instead of doing nothing.
-  const CAN_CONTROL_APPS = false;
+  // Other apps (REMOTE.md § 5): their keys work only while the TV's pointer
+  // service is on (view.pointer). Apps drawn for the D-pad ignore clicks, so
+  // they start with arrow keys; the person's switch is remembered per app.
+  const DPAD_APPS = [
+    "com.google.android.youtube.tv", "com.google.android.youtube.tvkids", "com.google.android.youtube.tvmusic",
+    "com.netflix.ninja", "com.amazon.amazonvideo.livingroom", "com.disney.disneyplus",
+    "com.apple.atve.androidtv.appletv", "com.wbd.stream", "com.hbo.hbonow", "tv.twitch.android.app",
+    "com.spotify.tv.android", "com.plexapp.android", "org.jellyfin.androidtv", "com.google.android.videos",
+  ];
+  const MODES = "rusttv-remote-modes";
+  let arrowsNow = false; // an app the TV didn't name
+  function chosenModes() {
+    try {
+      return JSON.parse(localStorage.getItem(MODES)) || {};
+    } catch {
+      return {};
+    }
+  }
+  function wantsArrows() {
+    const app = view?.app;
+    if (!app) return arrowsNow;
+    const chosen = chosenModes()[app];
+    return chosen ? chosen === "arrows" : !!view.dpad || DPAD_APPS.includes(app);
+  }
+  function chooseArrows(arrows) {
+    const app = view?.app;
+    if (!app) {
+      arrowsNow = arrows;
+      return;
+    }
+    const modes = chosenModes();
+    modes[app] = arrows ? "arrows" : "pointer";
+    try {
+      localStorage.setItem(MODES, JSON.stringify(modes));
+    } catch {
+      // Private browsing: the choice lasts until the page closes.
+    }
+  }
+  // App names by package, from the Home tiles the TV last showed.
+  const appNames = new Map();
   const MAX_TEXT = 1024;
 
   // --- Storage (the phone's keys for this TV's address) ----------------------
@@ -329,11 +366,16 @@
     if (message.type === "banner") return gotPicture(message);
     if (message.type !== "home" && message.type !== "app") return;
     view = message;
+    if (message.type === "home") {
+      for (const tile of (message.tiles || []).concat(message.hidden || [])) {
+        if (tile.id.includes("/")) appNames.set(tile.id.split("/")[0], tile.label);
+      }
+    }
     if (message.type !== lastKind) {
       lastKind = message.type;
       setTab(message.type === "home" ? "apps" : "touchpad");
     }
-    setStatus(true, message.type === "home" ? t("rusttv_front") : message.app ? t("app_front", message.app) : t("other_front"));
+    setStatus(true, message.type === "home" ? t("rusttv_front") : message.app ? t("app_front", message.label || appNames.get(message.app) || message.app) : t("other_front"));
     render();
   }
 
@@ -590,26 +632,42 @@
       $("moving-title").textContent = moved ? t("moving", moved.label) : t("moving_any");
     }
 
-    for (const element of document.querySelectorAll("[data-other-apps]")) element.hidden = !CAN_CONTROL_APPS;
-    const pointer = !home && view.pointer;
-    $("mode").textContent = t(pointer ? "mode_pointer" : "mode_arrows");
+    const controls = !home && !!view.pointer;
+    for (const element of document.querySelectorAll("[data-other-apps]")) element.hidden = !controls;
+    $("touchpad").classList.toggle("decked", controls);
+    const pointer = controls && !wantsArrows();
+    $("mode").disabled = !controls;
+    $("mode-text").textContent = t(pointer ? "mode_pointer" : "mode_arrows");
     $("mode").className = "mode" + (pointer ? " pointer" : "");
     $("pad-hint").textContent = pointer
       ? t("hint_pointer")
       : home
         ? t("hint_home")
-        : CAN_CONTROL_APPS
+        : controls
           ? t("hint_app")
-          : t("hint_soon");
-    if (!home && !CAN_CONTROL_APPS) $("mode").textContent = t("mode_soon");
+          : t("hint_off");
+    if (!home && !controls) $("mode-text").textContent = t("mode_off");
     const field = view.text;
-    $("wants").hidden = !field;
+    // Apps with their own keyboard (YouTube) take a whole search instead.
+    const search = controls && !field && !!view.search;
+    $("wants").hidden = !field && !search;
     $("keyboard").hidden = !field;
-    $("nav").hidden = $("back").hidden && $("keyboard").hidden;
+    // In other apps the deck has Back and the banner opens the keyboard.
+    $("nav").hidden = controls || ($("back").hidden && $("keyboard").hidden);
     if (field) $("wants-text").textContent = field.label ? t("wants", field.label) : t("wants_any");
+    if (search) $("wants-text").textContent = t("search_app", view.label || appNames.get(view.app) || view.app);
     if (field && !$("typing").hidden) syncTyping(field);
     if (field && home && view.mode === "text" && $("typing").hidden) openTyping();
-    if (!field && !$("typing").hidden && typingAsked) closeTyping();
+    // A field just took focus in another app: the banner calls for a tap.
+    // Browsers open the keyboard only on a tap, so nothing opens by itself.
+    if (field && !home && !hadField) {
+      $("wants").classList.remove("calling");
+      void $("wants").offsetWidth;
+      $("wants").classList.add("calling");
+      haptic(12);
+    }
+    hadField = !!field;
+    if (!field && !$("typing").hidden && typingAsked && !searching) closeTyping();
   }
 
   // A short tap felt in the hand. iOS has no navigator.vibrate, but since
@@ -633,14 +691,29 @@
   }
 
   // --- Keys -------------------------------------------------------------------
-  function press(name, action = "press") {
-    haptic(8);
+  // Buttons already buzzed on touch-down where vibration exists.
+  function press(name, action = "press", buzzed = false) {
+    if (!buzzed) haptic(8);
     send({ type: "key", name, action });
   }
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-key]");
-    if (button) press(button.dataset.key);
+    if (button) press(button.dataset.key, "press", !!navigator.vibrate);
   });
+  // Feedback the moment a finger lands on a key, not when it lifts.
+  let pressed = null;
+  document.addEventListener("pointerdown", (event) => {
+    const button = event.target.closest(".key, .volume button");
+    if (!button) return;
+    pressed = button;
+    button.classList.add("pressed");
+    if (navigator.vibrate) navigator.vibrate(10);
+  });
+  const release = () => {
+    pressed?.classList.remove("pressed");
+    pressed = null;
+  };
+  for (const type of ["pointerup", "pointercancel", "pointerleave"]) document.addEventListener(type, release);
 
   // --- Tiles: tap, hold, drag ---------------------------------------------------
   const HOLD = 450, SLOP = 12, DWELL = 150;
@@ -787,8 +860,15 @@
     flashTimer = setTimeout(() => flash.classList.remove("on"), 600);
   }
 
+  $("mode").addEventListener("pointerdown", (event) => event.stopPropagation());
+  $("mode").addEventListener("click", () => {
+    chooseArrows(!wantsArrows());
+    haptic(8);
+    render();
+  });
+
   function pointerMode() {
-    return view?.type === "app" && view.pointer;
+    return view?.type === "app" && view.pointer && !wantsArrows();
   }
 
   function flushPointer() {
@@ -877,7 +957,7 @@
   pad.addEventListener("pointercancel", padUp);
 
   // --- Typing -------------------------------------------------------------------
-  let typed = "", typingAsked = false;
+  let typed = "", typingAsked = false, hadField = false, searching = false;
   const input = $("typing-input");
 
   function openTyping(free = false) {
@@ -889,12 +969,41 @@
     input.value = typed;
     $("typing").hidden = false;
     input.focus();
+    // The TV hides its own keyboard while this one is up.
+    if (view?.type === "app") send({ type: "typing", open: true });
   }
 
   function closeTyping() {
     $("typing").hidden = true;
     input.blur();
+    if (!searching) send({ type: "typing", open: false });
+    searching = false;
   }
+
+  // A search for an app that draws its own keyboard: typed here, sent whole
+  // on Done.
+  function openSearch() {
+    searching = true;
+    typingAsked = false;
+    $("typing-eyebrow").textContent = t("search_app", view?.label || appNames.get(view?.app) || view?.app || "");
+    $("typing-label").textContent = t("text_label");
+    typed = "";
+    input.value = "";
+    $("typing").hidden = false;
+    input.focus();
+  }
+
+  // iOS can leave the page scrolled after its keyboard closes: buttons then
+  // take taps below where they are drawn. The page never scrolls, so put it
+  // back whenever the keyboard goes or the visible area changes.
+  const unshift = () => {
+    if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+  };
+  input.addEventListener("blur", () => setTimeout(unshift, 50));
+  window.visualViewport?.addEventListener("resize", unshift);
+  window.addEventListener("scroll", () => {
+    if ($("typing").hidden) unshift();
+  }, { passive: true });
 
   // Follows the TV's value while the phone isn't typing.
   function syncTyping(field) {
@@ -929,6 +1038,7 @@
   // Sends the change since the last value: the common prefix stays, the rest
   // is deleted and typed again (the TV's cursor is at the end).
   input.addEventListener("input", () => {
+    if (searching) return;
     const now = [...input.value], before = [...typed];
     let same = 0;
     while (same < now.length && same < before.length && now[same] === before[same]) same++;
@@ -937,19 +1047,24 @@
     typed = input.value;
   });
   $("typing-clear").addEventListener("click", () => {
-    sendDelete([...typed].length);
+    if (!searching) sendDelete([...typed].length);
     typed = "";
     input.value = "";
     input.focus();
   });
   $("typing-form").addEventListener("submit", (event) => {
     event.preventDefault();
-    send({ type: "text", edit: { op: "submit" } });
+    const query = input.value.replace(/[\u0000-\u001f\u007f-\u009f]/g, "").trim();
+    if (searching) {
+      if (query && encoder.encode(query).length <= MAX_TEXT) send({ type: "search", query });
+    } else {
+      send({ type: "text", edit: { op: "submit" } });
+    }
     closeTyping();
   });
   $("typing-close").addEventListener("click", closeTyping);
   $("keyboard").addEventListener("click", () => openTyping(!view?.text));
-  $("wants").addEventListener("click", () => openTyping(false));
+  $("wants").addEventListener("click", () => (view?.text ? openTyping(false) : openSearch()));
 
   // iOS Safari shows :active only on pages that listen for touches.
   document.addEventListener("touchstart", () => {}, { passive: true });

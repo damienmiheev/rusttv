@@ -395,3 +395,15 @@ msgstr "Yüklemeden önce telefonda SHA-256 parmak izinin şununla başladığı
 
 msgid "If it doesn't match, don't install it: someone on your network may be interfering."
 msgstr "Eşleşmiyorsa yüklemeyin: ağınızdaki biri araya giriyor olabilir."
+
+msgid "Pointer in other apps"
+msgstr "Diğer uygulamalarda işaretçi"
+
+msgid "Off · OK opens Accessibility: turn on RustTV Pointer there"
+msgstr "Kapalı · OK Erişilebilirlik'i açar: oradan RustTV Pointer'ı açın"
+
+msgid "On · the phone's touchpad moves a pointer in other apps · OK opens Accessibility"
+msgstr "Açık · telefonun dokunmatik yüzeyi diğer uygulamalarda işaretçi taşır · OK Erişilebilirlik'i açar"
+
+msgid "Not on this device"
+msgstr "Bu cihazda yok"

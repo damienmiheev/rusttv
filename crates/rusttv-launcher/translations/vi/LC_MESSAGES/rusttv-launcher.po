@@ -395,3 +395,15 @@ msgstr "Trước khi cài, hãy kiểm tra trên điện thoại rằng dấu v�
 
 msgid "If it doesn't match, don't install it: someone on your network may be interfering."
 msgstr "Nếu không khớp, đừng cài: có thể ai đó trong mạng của bạn đang can thiệp."
+
+msgid "Pointer in other apps"
+msgstr "Con trỏ trong ứng dụng khác"
+
+msgid "Off · OK opens Accessibility: turn on RustTV Pointer there"
+msgstr "Tắt · OK mở Hỗ trợ tiếp cận: bật RustTV Pointer ở đó"
+
+msgid "On · the phone's touchpad moves a pointer in other apps · OK opens Accessibility"
+msgstr "Bật · bàn di chuột của điện thoại di chuyển con trỏ trong ứng dụng khác · OK mở Hỗ trợ tiếp cận"
+
+msgid "Not on this device"
+msgstr "Không có trên thiết bị này"

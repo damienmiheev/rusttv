@@ -395,3 +395,15 @@ msgstr "安装前，请在手机上确认其 SHA-256 指纹以此开头："
 
 msgid "If it doesn't match, don't install it: someone on your network may be interfering."
 msgstr "如果不一致，请勿安装：可能有人在干扰你的网络。"
+
+msgid "Pointer in other apps"
+msgstr "其他应用中的指针"
+
+msgid "Off · OK opens Accessibility: turn on RustTV Pointer there"
+msgstr "已关闭 · 按 OK 打开“无障碍”，在那里开启 RustTV Pointer"
+
+msgid "On · the phone's touchpad moves a pointer in other apps · OK opens Accessibility"
+msgstr "已开启 · 手机触控板可在其他应用中移动指针 · 按 OK 打开“无障碍”"
+
+msgid "Not on this device"
+msgstr "此设备不支持"

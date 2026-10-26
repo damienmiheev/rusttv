@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pointer_description">Pozwala telefonowi sparowanemu z RustTV Remote sterować innymi aplikacjami: przesuwać wskaźnik, klikać, przewijać, naciskać klawisze i pisać. Czyta tylko to, co potrzebne, i niczego nie zapisuje.</string>
+</resources>

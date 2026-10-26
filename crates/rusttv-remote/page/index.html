@@ -94,25 +94,41 @@ header { position: relative; display: flex; align-items: center; gap: 12px; padd
 
 /* Touchpad */
 #touchpad { flex: 1; display: flex; flex-direction: column; padding-top: 14px; padding-bottom: calc(var(--bottom) + 96px); }
+/* With the deck the dock is hidden: Back lives in the deck. */
+#touchpad.decked { padding-bottom: calc(var(--bottom) + 16px); }
 #wants { margin: 0 16px 12px 16px; height: 54px; border-radius: 18px; background: #F5A5241A; box-shadow: inset 0 0 0 1px #F5A52433; display: flex; align-items: center; gap: 12px; padding: 0 16px; text-align: start; }
 #wants span { flex: 1; font-size: 14px; color: #E7D9BC; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #wants em { font-style: normal; font-size: 14px; font-weight: 600; color: var(--accent); }
+/* A field took focus on the TV: the banner nudges twice, then settles. */
+#wants.calling { animation: calling 900ms var(--ease) 2; }
+@keyframes calling { 0%, 100% { transform: scale(1); box-shadow: inset 0 0 0 1px #F5A52433; } 40% { transform: scale(1.025); box-shadow: inset 0 0 0 1.5px #F5A524AA, 0 0 0 6px #F5A5241A; } }
 #pad { position: relative; flex: 1; margin: 0 16px; border-radius: 32px; overflow: hidden; touch-action: none;
   background: linear-gradient(180deg, #1B1E25 0%, #15171C 100%); box-shadow: inset 0 1px 0 #FFFFFF14, inset 0 0 0 1px #FFFFFF0A, 0 24px 48px -20px #00000099; }
 #pad::before { content: ""; position: absolute; inset: 0; pointer-events: none; background-image: radial-gradient(#FFFFFF0D 1px, transparent 1.2px); background-size: 18px 18px; }
-.padtop { position: absolute; left: 20px; right: 20px; top: 18px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
+.padtop { position: absolute; left: 20px; right: 14px; top: 14px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
 .padtop small { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #6E7480; }
 .mode { height: 26px; padding: 0 10px; border-radius: 13px; display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; background: #FFFFFF0F; color: #C9CDD5; }
 .mode.pointer { background: #F5A5241F; color: var(--accent); }
+/* The only control on the pad: it takes touches itself (.padtop passes them
+   to the pad), with a hit area larger than it looks. */
+button.mode { position: relative; pointer-events: auto; height: 34px; padding: 0 12px; border-radius: 17px; border: 0; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+button.mode::after { content: ""; position: absolute; inset: -8px -6px; }
+button.mode:disabled { cursor: default; }
+button.mode:disabled #mode-swap { display: none; }
 .hint { position: absolute; left: 20px; right: 20px; bottom: 20px; font-size: 13px; line-height: 1.5; color: var(--dim); pointer-events: none; }
 #touch { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 32px; background: #FFFFFF14; box-shadow: inset 0 0 0 1.5px #FFFFFF40; pointer-events: none; opacity: 0; transition: opacity 200ms ease; }
 #flash { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(0.94); opacity: 0; height: 52px; padding: 0 20px; border-radius: 26px; background: var(--raised);
   display: flex; align-items: center; font-size: 16px; font-weight: 600; pointer-events: none; transition: opacity 180ms ease, transform 180ms var(--ease); }
 #flash.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-.keys { display: flex; align-items: center; gap: 10px; padding: 14px 16px 0 16px; }
-.key { width: 52px; height: 52px; border-radius: 26px; background: var(--surface); box-shadow: inset 0 0 0 1px #FFFFFF0F; display: flex; align-items: center; justify-content: center; }
-.volume { margin-left: auto; height: 52px; border-radius: 26px; background: var(--surface); box-shadow: inset 0 0 0 1px #FFFFFF0F; display: flex; align-items: center; color: #6E7480; }
-.volume button { width: 56px; height: 52px; display: flex; align-items: center; justify-content: center; color: var(--text); }
+.deck { display: flex; align-items: center; gap: 10px; padding: 14px 16px 0 16px; }
+.key { width: 56px; height: 56px; border-radius: 28px; flex: none; background: var(--surface); box-shadow: inset 0 1px 0 #FFFFFF12, inset 0 0 0 1px #FFFFFF0A; display: flex; align-items: center; justify-content: center; }
+.volume { margin-inline-start: auto; height: 56px; border-radius: 28px; background: var(--surface); box-shadow: inset 0 1px 0 #FFFFFF12, inset 0 0 0 1px #FFFFFF0A; display: flex; align-items: center; color: #6E7480; padding: 0 2px; }
+.volume button { width: 50px; height: 52px; border-radius: 26px; display: flex; align-items: center; justify-content: center; color: var(--text); }
+/* Pressed: set on touch-down by app.js (iOS keeps :active for a scroll
+   check), so the key answers the finger at once. */
+.key, .volume button { transition: transform 140ms var(--ease), background-color 90ms ease; }
+.key.pressed { transform: scale(0.93); background: var(--raised); transition-duration: 60ms; }
+.volume button.pressed { transform: scale(0.9); background: #FFFFFF14; transition-duration: 60ms; }
 
 /* Dock */
 nav { position: absolute; z-index: 25; inset-inline-start: 16px; bottom: calc(var(--bottom) + 18px); height: 64px; padding: 0 8px; border-radius: 32px;
@@ -249,7 +265,7 @@ input { font: inherit; height: 52px; border-radius: 14px; border: 2px solid var(
     <button class="round" id="trust-open" type="button" data-t-label="trust_title" hidden>
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9.5" rx="2.5"/><path d="M8.5 11V8a3.5 3.5 0 0 1 6.8-1.2"/></svg>
     </button>
-    <button class="round" data-key="power" data-t-label="power" data-other-apps hidden>
+    <button class="round" data-key="power" data-t-label="power" hidden>
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M12 3.5v7.5"/><path d="M6.6 7a7.5 7.5 0 1 0 10.8 0"/></svg>
     </button>
   </header>
@@ -267,12 +283,14 @@ input { font: inherit; height: 52px; border-radius: 14px; border: 2px solid var(
   <div id="touchpad" hidden>
     <button id="wants" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F5A524" stroke-width="1.75" stroke-linecap="round"><rect x="2.5" y="6" width="19" height="12" rx="3"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M8 14h8"/></svg><span id="wants-text"></span><em data-t="type"></em></button>
     <div id="pad">
-      <div class="padtop"><small data-t="touchpad"></small><span class="mode" id="mode"></span></div>
+      <div class="padtop"><small data-t="touchpad"></small><button class="mode" id="mode" type="button" data-t-label="mode_switch"><span id="mode-text"></span><svg id="mode-swap" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4 3 8l4 4"/><path d="M3 8h14"/><path d="m17 20 4-4-4-4"/><path d="M21 16H7"/></svg></button></div>
       <div id="flash"></div>
       <div class="hint" id="pad-hint"></div>
       <div id="touch"></div>
     </div>
-    <div class="keys" data-other-apps hidden>
+    <!-- Other apps, while the TV's pointer service is on (REMOTE.md § 5). -->
+    <div class="deck" data-other-apps hidden>
+      <button class="key" data-key="back" data-t-label="back"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
       <button class="key" data-key="home" data-t-label="home"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 11 12 4l8.5 7"/><path d="M6 9.5V20h12V9.5"/></svg></button>
       <button class="key" data-key="play_pause" data-t-label="play_pause"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M5 5.5v13l7.5-6.5z"/><rect x="14.5" y="6" width="2.2" height="12" rx="1"/><rect x="18.5" y="6" width="2.2" height="12" rx="1"/></svg></button>
       <div class="volume">

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The pointer's accessibility service as Android's settings show it (REMOTE.md § 5). -->
+<resources>
+    <string name="pointer_label" translatable="false">RustTV Pointer</string>
+    <string name="pointer_description">Lets a phone paired with RustTV Remote control other apps: move a pointer, click, scroll, press keys and type. It reads only what that needs and keeps nothing.</string>
+</resources>

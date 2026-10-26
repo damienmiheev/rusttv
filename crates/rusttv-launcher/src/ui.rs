@@ -19,7 +19,9 @@ use crate::model::{
     MenuItem, Scroll, State, TileId,
 };
 use crate::order_file;
-use crate::platform::{AppEntry, Artwork, Bitmap, Platform, PlatformError, UpdateStatus};
+use crate::platform::{
+    AppEntry, Artwork, Bitmap, Platform, PlatformError, PointerState, UpdateStatus,
+};
 use rusttv_remote::Event as RemoteEvent;
 use rusttv_remote::protocol::{
     AppView as PhoneAppView, DragPhase, Gesture, Key as PhoneKey, KeyAction, MenuChoice,
@@ -196,6 +198,19 @@ impl std::fmt::Debug for Lifecycle {
             .field("running", &running)
             .finish()
     }
+}
+
+/// The pointer's accessibility service went on or off (REMOTE.md § 5);
+/// from any thread. Phones and the RustTV Remote page hear of it.
+#[cfg_attr(
+    not(target_os = "android"),
+    allow(dead_code, reason = "called by the Android bridge")
+)]
+pub(crate) fn pointer_changed() {
+    // Fails only once the event loop has stopped.
+    let _ = slint::invoke_from_event_loop(|| {
+        settings_view::with_controller(Controller::pointer_changed);
+    });
 }
 
 /// Shows the home screen and runs the UI event loop until the window closes.
@@ -441,6 +456,15 @@ struct Controller {
     /// Another app is on screen (Android paused the launcher): phones get
     /// the touchpad, not the Home mirror.
     away: bool,
+    /// The phones connected now; the pointer hides with the last.
+    connected: std::collections::HashSet<rusttv_remote::PhoneId>,
+    /// The last app in front that is an installed app: overlays (the TV's
+    /// volume bar, permission dialogs) take focus without changing it.
+    front_app: Option<String>,
+    /// Whether that app draws for the D-pad only.
+    front_dpad: bool,
+    /// Whether that app takes a search from the phone.
+    front_search: bool,
 }
 
 impl Controller {
@@ -544,6 +568,10 @@ impl Controller {
                 remote_rows,
                 pairing: None,
                 away: false,
+                connected: std::collections::HashSet::new(),
+                front_app: None,
+                front_dpad: false,
+                front_search: false,
             })
         });
         *controller.borrow().options.lifecycle.0.borrow_mut() = Rc::downgrade(&controller);
@@ -566,7 +594,10 @@ impl Controller {
     /// updater's status: on Android the daily check may have just started.
     fn resume(&mut self) {
         self.away = false;
-        // Phones switch back from the touchpad to the Home mirror.
+        // Phones switch back from the touchpad to the Home mirror, and the
+        // pointer never shows over RustTV.
+        self.platform.pointer_stop();
+        self.platform.hide_tv_keyboard(false);
         self.push_remote_view();
         self.refresh_update();
         self.pack_timer.stop();
@@ -1160,7 +1191,35 @@ impl Controller {
         }
         let message = if self.away {
             // Phase 2 fills in the app and its text field (REMOTE.md § 5).
-            TvMessage::App(PhoneAppView::default())
+            if let Some(app) = self.platform.front_app() {
+                let prefix = format!("{app}/");
+                if self
+                    .apps
+                    .keys()
+                    .any(|component| component.starts_with(&prefix))
+                {
+                    if self.front_app.as_deref() != Some(app.as_str()) {
+                        self.front_search = self.platform.can_search(&app);
+                    }
+                    self.front_app = Some(app);
+                    self.front_dpad = self.platform.front_app_dpad();
+                }
+            }
+            TvMessage::App(PhoneAppView {
+                pointer: self.platform.pointer_state() == PointerState::Ready,
+                // The phone picks pointer or arrows by app.
+                app: self.front_app.clone(),
+                dpad: self.front_dpad,
+                search: self.front_search,
+                label: self.front_app.as_ref().and_then(|app| {
+                    let prefix = format!("{app}/");
+                    self.apps
+                        .iter()
+                        .find(|(component, _)| component.starts_with(&prefix))
+                        .map(|(_, view)| view.label.clone())
+                }),
+                text: self.platform.front_field(),
+            })
         } else {
             let rename = self.renaming.and(
                 self.window
@@ -1218,7 +1277,8 @@ impl Controller {
                 self.render();
             }
             RemoteEvent::PairingClosed => self.pairing_closed(),
-            RemoteEvent::Connected(_) => {
+            RemoteEvent::Connected(phone) => {
+                self.connected.insert(phone);
                 if let Some(link) = &mut self.remote {
                     link.resend();
                 }
@@ -1226,6 +1286,13 @@ impl Controller {
                     && let Some(link) = &self.remote
                 {
                     page.set_phones(link.phone_rows());
+                }
+            }
+            RemoteEvent::Disconnected(phone) => {
+                self.connected.remove(&phone);
+                if self.connected.is_empty() {
+                    self.platform.pointer_stop();
+                    self.platform.hide_tv_keyboard(false);
                 }
             }
             RemoteEvent::Input {
@@ -1270,6 +1337,28 @@ impl Controller {
 
     fn phone_input(&mut self, message: PhoneMessage) {
         match message {
+            // In other apps the pointer's service presses keys (REMOTE.md
+            // § 5): once per press, on the way down.
+            PhoneMessage::Key { name, action }
+                if self.away && self.platform.pointer_state() == PointerState::Ready =>
+            {
+                if matches!(action, KeyAction::Press | KeyAction::Down) {
+                    self.platform.pointer_key(name);
+                }
+            }
+            PhoneMessage::Text { edit }
+                if self.away && self.platform.pointer_state() == PointerState::Ready =>
+            {
+                self.platform.pointer_text(edit);
+            }
+            PhoneMessage::Typing { open } => self.platform.hide_tv_keyboard(open && self.away),
+            PhoneMessage::Search { query }
+                if self.away && self.platform.pointer_state() == PointerState::Ready =>
+            {
+                if let Some(app) = self.front_app.clone().filter(|_| self.front_search) {
+                    self.platform.search(&app, &query);
+                }
+            }
             PhoneMessage::Key { name, action } => {
                 let input = match name {
                     PhoneKey::Up => Input::Up,
@@ -1326,9 +1415,29 @@ impl Controller {
                 phase,
                 on,
             } => self.phone_drag(&id, over, phase, on),
-            // Opening apps by name and the touchpad belong to phase 2.
+            // The pointer exists only in other apps, never on RustTV's own
+            // screens (owner decision 2026-10-25).
+            PhoneMessage::Pointer { dx, dy, action }
+                if self.away && self.platform.pointer_state() == PointerState::Ready =>
+            {
+                self.platform.pointer(dx, dy, action);
+            }
+            // Opening apps by name belongs to phase 2.
             _ => {}
         }
+    }
+
+    /// The pointer's service went on or off.
+    #[cfg_attr(
+        not(target_os = "android"),
+        allow(dead_code, reason = "called by the Android bridge")
+    )]
+    fn pointer_changed(&mut self) {
+        if let Some(page) = &mut self.remote_page {
+            page.set_pointer(self.platform.pointer_state());
+        }
+        self.push_remote_view();
+        self.render();
     }
 
     /// Moving a tile by dragging it on the phone (REMOTE.md § 4): `over` is
@@ -1840,6 +1949,7 @@ fn image(bitmap: &Bitmap) -> slint::Image {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusttv_remote::protocol::PointerAction;
 
     #[test]
     fn remote_and_keyboard_keys_map_to_inputs() {
@@ -1923,6 +2033,38 @@ mod tests {
 
         fn random_code(&mut self) -> [u32; 4] {
             self.platform.borrow_mut().random_code()
+        }
+
+        fn pointer_state(&self) -> PointerState {
+            self.platform.borrow().pointer_state()
+        }
+
+        fn pointer(&mut self, dx: i16, dy: i16, action: PointerAction) {
+            self.platform.borrow_mut().pointer(dx, dy, action);
+        }
+
+        fn pointer_stop(&mut self) {
+            self.platform.borrow_mut().pointer_stop();
+        }
+
+        fn open_pointer_settings(&mut self) {
+            self.platform.borrow_mut().open_pointer_settings();
+        }
+
+        fn pointer_key(&mut self, key: PhoneKey) {
+            self.platform.borrow_mut().pointer_key(key);
+        }
+
+        fn pointer_text(&mut self, edit: TextEdit) {
+            self.platform.borrow_mut().pointer_text(edit);
+        }
+
+        fn can_search(&self, app: &str) -> bool {
+            self.platform.borrow().can_search(app)
+        }
+
+        fn search(&mut self, app: &str, query: &str) {
+            self.platform.borrow_mut().search(app, query);
         }
     }
 
@@ -2756,6 +2898,111 @@ mod tests {
             ]
         );
         assert_eq!(controller.home.state(), State::Browse);
+    }
+
+    // --- the pointer (REMOTE.md § 5) ---
+
+    fn phone_says(screen: &Screen, message: PhoneMessage) {
+        screen
+            ._controller
+            .borrow_mut()
+            .remote_event(RemoteEvent::Input {
+                phone: rusttv_remote::PhoneId([1; 16]),
+                message,
+            });
+    }
+
+    #[test]
+    fn the_touchpad_moves_the_pointer_only_in_other_apps_with_the_service_on() {
+        let screen = screen(None);
+        let moving = || PhoneMessage::Pointer {
+            dx: 12,
+            dy: -4,
+            action: PointerAction::Move,
+        };
+        let set = |state| screen.shared.platform.borrow_mut().set_pointer(state);
+        set(PointerState::Ready);
+        phone_says(&screen, moving());
+        assert!(
+            screen.shared.platform.borrow().pointer_moves().is_empty(),
+            "never on RustTV's own screens"
+        );
+        screen._controller.borrow_mut().away = true;
+        phone_says(&screen, moving());
+        assert_eq!(
+            screen.shared.platform.borrow().pointer_moves(),
+            [(12, -4, PointerAction::Move)]
+        );
+        set(PointerState::Off);
+        phone_says(&screen, moving());
+        assert_eq!(screen.shared.platform.borrow().pointer_moves().len(), 1);
+        // Keys go to the app in front, once per press.
+        set(PointerState::Ready);
+        let key = |name, action| PhoneMessage::Key { name, action };
+        phone_says(&screen, key(PhoneKey::Back, KeyAction::Press));
+        phone_says(&screen, key(PhoneKey::Down, KeyAction::Down));
+        phone_says(&screen, key(PhoneKey::Down, KeyAction::Up));
+        phone_says(&screen, key(PhoneKey::Ok, KeyAction::Long));
+        assert_eq!(
+            screen.shared.platform.borrow().pointer_keys(),
+            [PhoneKey::Back, PhoneKey::Down]
+        );
+        // Typing goes to the app's focused field.
+        phone_says(
+            &screen,
+            PhoneMessage::Text {
+                edit: TextEdit::Submit,
+            },
+        );
+        assert_eq!(
+            screen.shared.platform.borrow().pointer_edits(),
+            [TextEdit::Submit]
+        );
+        // Back on RustTV the pointer hides.
+        screen._controller.borrow_mut().resume();
+        assert_eq!(screen.shared.platform.borrow().pointer_stops(), 1);
+    }
+
+    #[test]
+    fn a_phone_searches_only_in_an_app_that_takes_searches() {
+        let screen = screen(None);
+        screen
+            .shared
+            .platform
+            .borrow_mut()
+            .set_pointer(PointerState::Ready);
+        let search = || PhoneMessage::Search {
+            query: "cliff diving".into(),
+        };
+        {
+            let mut controller = screen._controller.borrow_mut();
+            controller.away = true;
+            controller.front_app = Some("com.example.player".into());
+        }
+        phone_says(&screen, search());
+        assert!(screen.shared.platform.borrow().searches().is_empty());
+        screen._controller.borrow_mut().front_search = true;
+        phone_says(&screen, search());
+        assert_eq!(
+            screen.shared.platform.borrow().searches(),
+            [("com.example.player".to_owned(), "cliff diving".to_owned())]
+        );
+    }
+
+    #[test]
+    fn the_pointer_hides_when_the_last_phone_leaves() {
+        let screen = screen(None);
+        let event = |event| screen._controller.borrow_mut().remote_event(event);
+        let (a, b) = (
+            rusttv_remote::PhoneId([1; 16]),
+            rusttv_remote::PhoneId([2; 16]),
+        );
+        event(RemoteEvent::Connected(a));
+        event(RemoteEvent::Connected(b));
+        event(RemoteEvent::Disconnected(a));
+        assert_eq!(screen.shared.platform.borrow().pointer_stops(), 0);
+        event(RemoteEvent::Disconnected(b));
+        assert_eq!(screen.shared.platform.borrow().pointer_stops(), 1);
     }
 
     #[test]

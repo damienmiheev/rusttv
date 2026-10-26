@@ -395,3 +395,15 @@ msgstr "설치하기 전에 휴대폰에서 SHA-256 지문이 다음으로 시�
 
 msgid "If it doesn't match, don't install it: someone on your network may be interfering."
 msgstr "일치하지 않으면 설치하지 마세요. 네트워크의 누군가가 개입하고 있을 수 있습니다."
+
+msgid "Pointer in other apps"
+msgstr "다른 앱의 포인터"
+
+msgid "Off · OK opens Accessibility: turn on RustTV Pointer there"
+msgstr "꺼짐 · OK를 누르면 접근성이 열립니다. 거기서 RustTV Pointer를 켜세요"
+
+msgid "On · the phone's touchpad moves a pointer in other apps · OK opens Accessibility"
+msgstr "켜짐 · 휴대전화 터치패드로 다른 앱의 포인터를 움직입니다 · OK를 누르면 접근성이 열립니다"
+
+msgid "Not on this device"
+msgstr "이 기기에서는 사용할 수 없음"

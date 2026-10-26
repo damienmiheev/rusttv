@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The pointer's service (REMOTE.md § 5). Window content, because a TV without
+     a touchscreen refuses injected gestures: the service clicks or scrolls the
+     element under the pointer instead, reading only its bounds, flags and
+     actions, the front app's package, and a focused text field's hint and text
+     (PointerService.kt, enforced by check-dex.sh). No key filtering. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/pointer_description"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:canRetrieveWindowContent="true"
+    android:accessibilityFlags="flagIncludeNotImportantViews"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeViewFocused|typeViewTextChanged"
+    android:notificationTimeout="0" />
