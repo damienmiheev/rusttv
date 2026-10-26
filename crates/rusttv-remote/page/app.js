@@ -73,11 +73,37 @@
     clear() {
       try {
         localStorage.removeItem(STORE);
+        localStorage.removeItem(HOME);
       } catch {
         // Nothing stored.
       }
     },
   };
+
+  // The last Home the TV showed, so the page opens on it at once instead of
+  // an empty page while it connects. Written at most once a second.
+  const HOME = "rusttv-remote-home";
+  let homeTimer = 0, homeLatest = null;
+  function keepHome(message) {
+    homeLatest = message;
+    if (homeTimer) return;
+    homeTimer = setTimeout(() => {
+      homeTimer = 0;
+      try {
+        localStorage.setItem(HOME, JSON.stringify(homeLatest));
+      } catch {
+        // Full or private: the page just opens empty next time.
+      }
+    }, 1000);
+  }
+  function keptHome() {
+    try {
+      const home = JSON.parse(localStorage.getItem(HOME));
+      return home?.type === "home" && Array.isArray(home.tiles) ? home : null;
+    } catch {
+      return null;
+    }
+  }
 
   // Arriving on the HTTPS page from the plain one: the phone's keys come
   // in the address's fragment, which browsers never send, and leave it at
@@ -145,6 +171,13 @@
     }
     if (credentials || redeeming) {
       show("main");
+      const home = credentials && keptHome();
+      if (home) {
+        view = home;
+        lastKind = "home";
+        setTab("apps");
+        render();
+      }
       connect();
     } else {
       // A Home Screen icon without keys can't pair itself: a QR code always
@@ -367,6 +400,7 @@
     if (message.type !== "home" && message.type !== "app") return;
     view = message;
     if (message.type === "home") {
+      keepHome(message);
       for (const tile of (message.tiles || []).concat(message.hidden || [])) {
         if (tile.id.includes("/")) appNames.set(tile.id.split("/")[0], tile.label);
       }
@@ -376,7 +410,17 @@
       setTab(message.type === "home" ? "apps" : "touchpad");
     }
     setStatus(true, message.type === "home" ? t("rusttv_front") : message.app ? t("app_front", message.label || appNames.get(message.app) || message.app) : t("other_front"));
-    render();
+    scheduleRender();
+  }
+
+  // A burst of views (focus moving fast) draws once per frame.
+  let renderFrame = 0;
+  function scheduleRender() {
+    if (document.hidden) return render();
+    if (!renderFrame) renderFrame = requestAnimationFrame(() => {
+      renderFrame = 0;
+      render();
+    });
   }
 
   function setTab(name) {
@@ -442,7 +486,10 @@
     if (typeof id !== "string" || typeof webp !== "string" || (kind !== "banner" && kind !== "icon")) return;
     let blob;
     try {
-      blob = new Blob([Uint8Array.from(atob(webp), (c) => c.charCodeAt(0))], { type: "image/webp" });
+      // A plain loop: Uint8Array.from with a callback is ~25× slower.
+      const text = atob(webp), bytes = new Uint8Array(text.length);
+      for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
+      blob = new Blob([bytes], { type: "image/webp" });
     } catch {
       return;
     }
