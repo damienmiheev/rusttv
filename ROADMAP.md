@@ -165,6 +165,19 @@ Decided "not for now"; raise again when the core launcher is done.
     and which the system consumes.
   - Depends on the Settings page above.
 
+- **Volume on the phone: level, slider and mute** — parked 2026-10-27
+  (owner idea). Tapping a volume button on the phone opens a volume slider
+  showing the TV's current level (0–60 on the Philips), and drags set it
+  directly; a mute button next to it. Notes so far:
+  - The level is readable and settable through the audio service from the
+    pointer's service, which already changes volume (and shows the TV's own
+    volume bar); a slider would send a target level, not many steps.
+  - Mute: `ADJUST_TOGGLE_MUTE` (already wired as the phone's `mute` key, not
+    yet on the page); the phone would show muted / unmuted from the TV's
+    state.
+  - Phone layout: the deck stays one line; the slider opens over the
+    touchpad and closes by itself after a few seconds.
+
 - **Phone remote and second screen** — **planned 2026-10-25 as RustTV
   Remote, see REMOTE.md** (0.3.0). The owner's decisions there replace the
   discussion that was here; per-app second-screen views remain research
