@@ -507,10 +507,14 @@ talks to. Its protocol is documented by open-source clients such as
   list; the person's switch is kept per app. Only installed apps count as
   the app in front: overlays (the volume bar, the Philips screensaver,
   permission dialogs) don't change it.
-- **The cursor window** never covers the click point: its pointed top-left
-  tip sits 2 px right of and below it, and the window is not touchable. It
-  hides after 6 s without a move, on arrows, when a field takes focus, when
-  RustTV comes back to the front, and when the last phone disconnects.
+- **The cursor** is drawn in one full-screen, untouchable overlay and moved
+  by translation (moving a small window cost a window relayout per step:
+  system_server ~20% and SurfaceFlinger ~15% of a core on the Philips while
+  the pointer moved; now ~16% of a core in all). Its pointed top-left tip
+  sits 2 px right of and below the click point. The overlay is removed
+  while the cursor is hidden: after 6 s without a move, on arrows, when a
+  field takes focus, when RustTV comes back to the front, and when the last
+  phone disconnects.
 - **Declaration** (`res/xml/pointer_service.xml`): window content, the
   window-state, view-focused and text-changed events (the event itself is
   never read), all views. No key filtering, no gestures.
