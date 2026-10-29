@@ -51,6 +51,7 @@ Report actual results. If a check fails or was skipped, say so.
 
 | Topic | Doc |
 |---|---|
+| Install and use (people and agents) | GETTING_STARTED.md |
 | Why / scope / decisions about product | PROJECT_VISION.md |
 | CLI commands, JSON contract, error codes | CLI.md |
 | MCP server tools | MCP.md |

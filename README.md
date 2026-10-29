@@ -4,7 +4,9 @@
 
 RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + Slint launcher, a safe ADB-based optimizer, and CLI/MCP tools for humans and AI agents. Local-first, no telemetry, and every performance claim backed by published benchmarks.
 
-> **Status: 0.1.0, the first public release.** Tested on one real TV, the Philips 65OLED818 (Google TV, Android 14); [compat/devices/](compat/devices/) lists what was tested there. The launcher is also developed on the Google TV emulator. Other TVs are untested: RustTV refuses changes a device's profile doesn't record as tested unless you pass `--allow-untested`. See [CHANGELOG.md](CHANGELOG.md) for what 0.1.0 does and [ROADMAP.md](ROADMAP.md) for what comes next.
+> **Status: 0.3.1.** Tested on one real TV, the Philips 65OLED818 (Google TV, Android 14); [compat/devices/](compat/devices/) lists what was tested there. The launcher is also developed on the Google TV emulator. Other TVs are untested: RustTV refuses changes a device's profile doesn't record as tested unless you pass `--allow-untested`. See [CHANGELOG.md](CHANGELOG.md) for what each version does and [ROADMAP.md](ROADMAP.md) for what comes next.
+
+**To install and use RustTV, follow [GETTING_STARTED.md](GETTING_STARTED.md).**
 
 ## What it is
 
@@ -27,6 +29,7 @@ RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + 
 
 | Doc | Contents |
 |---|---|
+| [GETTING_STARTED.md](GETTING_STARTED.md) | Install, connect, use, update and remove RustTV (release files or a build from source); notes for AI agents |
 | [PROJECT_VISION.md](PROJECT_VISION.md) | Mission, scope, product decisions, non-goals |
 | [CLI.md](CLI.md) | Commands, `--json` output contract, exit and error codes |
 | [MCP.md](MCP.md) | MCP server for AI agents: tools, results, setup |
@@ -40,7 +43,9 @@ RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + 
 | [CHANGELOG.md](CHANGELOG.md) | Changes per release |
 | [CLAUDE.md](CLAUDE.md) | Rules for AI coding agents working on this repo |
 
-## Getting started
+## Development
+
+Installing and using RustTV: [GETTING_STARTED.md](GETTING_STARTED.md). For working on the code:
 
 Requirements: [Rust via rustup](https://rustup.rs) (the pinned toolchain in `rust-toolchain.toml` installs automatically) and Android platform-tools (`adb`) for the device commands.
 
