@@ -4,7 +4,14 @@ All notable changes to RustTV. Versions follow [Semantic Versioning](https://sem
 before 1.0.0 a minor version may break the CLI/JSON contract (the `schema`
 field in `--json` output says which contract you get, CLI.md).
 
-## 0.3.0 (2026-10-27)
+## 0.3.1 (2026-10-29)
+
+The 0.3.0 release was published without its files, and its tag can't take
+another release, so this is 0.3.0 again under a new version. No code changes
+since 0.3.0; what's new is in the 0.3.0 section of
+[CHANGELOG.md](https://github.com/damienmiheev/rusttv/blob/v0.3.1/CHANGELOG.md).
+
+## 0.3.0 (2026-10-27, never published with files)
 
 ### RustTV Remote (new)
 
