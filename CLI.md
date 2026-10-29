@@ -175,10 +175,11 @@ Before anything is installed or replaced, `SHA256SUMS` must carry a valid
 minisign signature (`SHA256SUMS.minisig`) by the release signing key compiled
 into `rusttv`, and the file's size and SHA-256 must match the release and
 `SHA256SUMS`; otherwise `UPDATE_VERIFY_FAILED` and nothing changes
-(SECURITY.md § Updates). **This build has no release signing key yet**, so
-`update launcher` and `update cli` refuse with `UPDATE_VERIFY_FAILED` ("this
-build has no release signing key"), also with `--dry-run`; `update check`
-works and reports `can_verify: false`. Not available as MCP tools.
+(SECURITY.md § Updates). The key is `RELEASE_SIGNING_KEY` in
+`crates/rusttv-core/src/update.rs`. A build without it refuses `update
+launcher` and `update cli` with `UPDATE_VERIFY_FAILED` ("this build has no
+release signing key"), also with `--dry-run`; `update check` still works and
+reports `can_verify: false`. Not available as MCP tools.
 
 ### Privacy choices
 

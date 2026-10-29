@@ -1,6 +1,8 @@
 
 ## Install
 
+The full guide, including building from source: [GETTING_STARTED.md](https://github.com/damienmiheev/rusttv/blob/v{version}/GETTING_STARTED.md).
+
 1. Download the CLI archive for your computer, `rusttv-{version}-<target>.tar.gz`, and unpack it. On macOS the binaries are not notarized: run `xattr -d com.apple.quarantine rusttv rusttv-mcp` once.
 2. On the TV, turn on network or wireless debugging, then `rusttv device connect <tv-ip>`.
 3. Download the APK for the TV's ABI (`rusttv device inspect` shows it) and `rusttv launcher install --apk rusttv-launcher-{version}-<abi>.apk`. Optional: `rusttv launcher takeover` makes RustTV the Home screen; `rusttv launcher restore` undoes it.
