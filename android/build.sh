@@ -15,8 +15,9 @@ export ANDROID_HOME="$SDK"
 # undefined (a shared library may), installed fine and then died in
 # NativeActivity.onCreate on Android 11, whose platform libc++ does not export
 # it either. Android 14's does, which is why the tested TV ran it. An override
-# is still honoured, but only when it is this version.
-NDK_VERSION=30.0.16248370
+# is still honoured, but only when it is this version. The version lives in
+# ndk-version, which the workflows read too.
+NDK_VERSION=$(cat ndk-version)
 export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$SDK/ndk/$NDK_VERSION}"
 NDK_REVISION=$(sed -n 's/^Pkg.Revision *= *//p' "$ANDROID_NDK_HOME/source.properties" 2>/dev/null || true)
 if [ "$NDK_REVISION" != "$NDK_VERSION" ]; then

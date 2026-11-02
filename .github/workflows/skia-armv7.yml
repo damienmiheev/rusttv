@@ -39,7 +39,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ninja-build
       - name: Install NDK 30 and SDK platform 34
         # `|| true`: yes dies of SIGPIPE when sdkmanager exits, which pipefail would report.
-        run: (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;30.0.16248370" "platforms;android-34" > /dev/null
+        # android/ndk-version is the one place the version is pinned; the runner
+        # exports ANDROID_NDK_HOME for its own older NDK, so point it at this one.
+        run: |
+          ndk=$(cat android/ndk-version)
+          (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$ndk" "platforms;android-34" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk" >> "$GITHUB_ENV"
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --version 4.1.2 --locked
       - name: Build the launcher for armeabi-v7a with Skia from source
@@ -50,7 +55,6 @@ jobs:
         # cargo-ndk sets. bindgen uses the NDK's own libclang: the runner's is too
         # old for NDK 30's libc++ headers.
         run: |
-          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/30.0.16248370"
           export LIBCLANG_PATH="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/lib"
           ls "$LIBCLANG_PATH"/libclang.so*
           export ANDROID_JAR="$ANDROID_HOME/platforms/android-34/android.jar"
