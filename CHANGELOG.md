@@ -4,7 +4,11 @@ All notable changes to RustTV. Versions follow [Semantic Versioning](https://sem
 before 1.0.0 a minor version may break the CLI/JSON contract (the `schema`
 field in `--json` output says which contract you get, CLI.md).
 
-## Unreleased
+## 0.3.2 (2026-11-02)
+
+Fixes the armeabi-v7a launcher, which crashed at startup on Android 11 and
+12. If your TV runs 0.3.1's armeabi-v7a APK, update to this one. The
+arm64-v8a and x86_64 APKs and the CLI behave as in 0.3.1.
 
 ### Launcher
 
@@ -20,7 +24,12 @@ field in `--json` output says which contract you get, CLI.md).
   Android 14 exports it, Android 11 does not. build.sh now refuses any NDK but
   the pinned one, Android APK points `ANDROID_NDK_HOME` at it, and
   android/check-so.sh fails the build when an APK leaves a C++ runtime symbol
-  undefined. The arm64-v8a and x86_64 APKs of 0.3.1 are unaffected.
+  undefined. The arm64-v8a and x86_64 APKs of 0.3.1 are unaffected. Found
+  and fixed by @Capka3i (#30).
+
+### Dependencies
+
+- pulldown-cmark 0.13.6 (through Slint), for RUSTSEC-2026-0433.
 
 ## 0.3.1 (2026-10-29)
 
