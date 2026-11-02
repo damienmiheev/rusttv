@@ -6,17 +6,19 @@
 # NativeActivity.onCreate wherever the platform libc++ does not happen to export
 # it (0.3.1 armeabi-v7a on Android 11: dlopen failed: cannot locate symbol
 # "_ZNSt6__ndk113__hash_memoryEPKvj"). __cxa_atexit and __cxa_finalize come from
-# libc and are expected. Fails (exit 1) and names each symbol otherwise.
+# libc and are expected. Otherwise names every such symbol in every ABI's
+# library, then fails (exit 1).
 # Usage: check-so.sh <apk>
 set -eu
 APK=$1
 SDK="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
-NDK="${ANDROID_NDK_HOME:-$SDK/ndk/30.0.16248370}"
+NDK="${ANDROID_NDK_HOME:-$SDK/ndk/$(cat "$(dirname "$0")/ndk-version")}"
 READELF=$(ls -d "$NDK"/toolchains/llvm/prebuilt/*/bin/llvm-readelf 2>/dev/null | sort -V | tail -1)
 [ -x "$READELF" ] || { echo "check-so: llvm-readelf not found under $NDK" >&2; exit 2; }
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 unzip -q -o "$APK" 'lib/*/librusttv_launcher.so' -d "$WORK"
+bad=0
 for so in "$WORK"/lib/*/librusttv_launcher.so; do
     "$READELF" --dyn-symbols "$so" | awk -v so="$so" '
         # llvm-readelf marks an undefined symbol with UND in its Ndx column;
@@ -33,6 +35,7 @@ for so in "$WORK"/lib/*/librusttv_launcher.so; do
             }
         }
         END { exit bad }
-    '
+    ' || bad=1
 done
+[ "$bad" = 0 ] || exit 1
 echo "check-so: ok ($APK)"

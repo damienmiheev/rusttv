@@ -200,7 +200,7 @@ Needs, in addition:
 | What | Version | Note |
 |---|---|---|
 | Android SDK | platform 34, build-tools | `ANDROID_HOME`; default `~/Library/Android/sdk` (macOS only: set it on Linux) |
-| Android NDK | 30.0.16248370 | `ANDROID_NDK_HOME`; default `$ANDROID_HOME/ndk/30.0.16248370` |
+| Android NDK | 30.0.16248370 | `ANDROID_NDK_HOME`; default `$ANDROID_HOME/ndk/30.0.16248370`. Exactly this version (pinned in `android/ndk-version`): `build.sh` stops on any other |
 | JDK | 17 (not 21) | `JAVA_HOME`; on macOS found with `/usr/libexec/java_home -v 17` |
 | Rust Android targets | — | from the repository root, after the first `cargo build` installed the pinned toolchain: `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android` |
 | cargo-ndk | 4.1.2 (as CI) | `cargo install cargo-ndk --version 4.1.2 --locked` |

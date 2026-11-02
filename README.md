@@ -84,6 +84,10 @@ cargo deny check   # cargo install --locked cargo-deny
 
 The project is at an early stage. The most useful contributions right now are feedback on the design docs (open an issue) and a compatibility profile for your TV (see [compat/README.md](compat/README.md)). Please report security issues privately via GitHub Security Advisories, not public issues.
 
+## Contributors
+
+[![Contributors](https://contrib.rocks/image?repo=damienmiheev/rusttv)](https://github.com/damienmiheev/rusttv/graphs/contributors)
+
 ## Acknowledgements
 
 - [CleanYourTV / tv-vibehack](https://github.com/Gathin23/tv-vibehack) (MIT) — inspiration for the safety and recovery design and the launcher's hero backdrop.
