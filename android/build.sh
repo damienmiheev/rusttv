@@ -6,7 +6,24 @@ set -eu
 cd "$(dirname "$0")"
 SDK="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 export ANDROID_HOME="$SDK"
-export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$SDK/ndk/30.0.16248370}"
+# The armeabi-v7a Skia fetched below is built from source by skia-armv7.yml
+# with this NDK, and NDK 30's libc++ is where std::__ndk1::__hash_memory lives,
+# so the launcher has to be linked with the same NDK. An inherited
+# ANDROID_NDK_HOME used to win here silently, and GitHub's ubuntu runners
+# export one for their own older preinstalled NDK: 0.3.1's armeabi-v7a APK was
+# linked against a libc++ that has no __hash_memory, kept the reference
+# undefined (a shared library may), installed fine and then died in
+# NativeActivity.onCreate on Android 11, whose platform libc++ does not export
+# it either. Android 14's does, which is why the tested TV ran it. An override
+# is still honoured, but only when it is this version.
+NDK_VERSION=30.0.16248370
+export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$SDK/ndk/$NDK_VERSION}"
+NDK_REVISION=$(sed -n 's/^Pkg.Revision *= *//p' "$ANDROID_NDK_HOME/source.properties" 2>/dev/null || true)
+if [ "$NDK_REVISION" != "$NDK_VERSION" ]; then
+    echo "build.sh: ANDROID_NDK_HOME=$ANDROID_NDK_HOME is NDK ${NDK_REVISION:-unknown}, not $NDK_VERSION." >&2
+    echo "build.sh: Skia and the launcher must come from one NDK. Unset ANDROID_NDK_HOME or point it at $SDK/ndk/$NDK_VERSION." >&2
+    exit 1
+fi
 # cargo-ndk sets ANDROID_PLATFORM=26, which makes Slint's build script look
 # for the API 26 SDK platform; point it at the installed android.jar instead.
 export ANDROID_JAR="${ANDROID_JAR:-$SDK/platforms/android-34/android.jar}"
@@ -63,7 +80,9 @@ else
 fi
 # Only SecureSettings may write a system setting (HISTORY.md § 7), and only
 # PointerService may use accessibility APIs (REMOTE.md § 5).
+# check-so.sh: no C++ runtime symbol left for the platform's libc++ to supply.
 for abi in arm64-v8a armeabi-v7a x86_64; do
     ./check-dex.sh "app/build/outputs/apk/release/app-$abi-$suffix.apk"
+    ./check-so.sh "app/build/outputs/apk/release/app-$abi-$suffix.apk"
 done
 ls -la app/build/outputs/apk/release/app-*-$suffix.apk

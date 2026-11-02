@@ -4,6 +4,24 @@ All notable changes to RustTV. Versions follow [Semantic Versioning](https://sem
 before 1.0.0 a minor version may break the CLI/JSON contract (the `schema`
 field in `--json` output says which contract you get, CLI.md).
 
+## Unreleased
+
+### Launcher
+
+- The armeabi-v7a APK installed and the launcher then died at startup on an
+  Android 11 TV: `dlopen failed: cannot locate symbol
+  "_ZNSt6__ndk113__hash_memoryEPKvj"`. The armv7 Skia is built by
+  skia-armv7.yml with NDK 30, whose libc++ holds that function, but
+  android/build.sh took an inherited `ANDROID_NDK_HOME` ahead of its own pin
+  and GitHub's ubuntu runners export one for their older preinstalled NDK, so
+  the launcher was linked against a libc++ without the symbol. A shared
+  library may keep an undefined symbol, so the link, the build and
+  `pm install` all passed, and the reference fell to the platform's libc++:
+  Android 14 exports it, Android 11 does not. build.sh now refuses any NDK but
+  the pinned one, Android APK points `ANDROID_NDK_HOME` at it, and
+  android/check-so.sh fails the build when an APK leaves a C++ runtime symbol
+  undefined. The arm64-v8a and x86_64 APKs of 0.3.1 are unaffected.
+
 ## 0.3.1 (2026-10-29)
 
 The 0.3.0 release was published without its files, and its tag can't take

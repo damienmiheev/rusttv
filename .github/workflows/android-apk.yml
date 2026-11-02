@@ -51,7 +51,12 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install NDK 30 and SDK platform 34
         # `|| true`: yes dies of SIGPIPE when sdkmanager exits, which pipefail would report.
-        run: (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;30.0.16248370" "platforms;android-34" > /dev/null
+        # ANDROID_NDK_HOME: the runner image exports one for its own, older,
+        # preinstalled NDK, which android/build.sh would have taken over the NDK
+        # installed here. skia-armv7.yml already sets it the same way.
+        run: |
+          (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;30.0.16248370" "platforms;android-34" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --version 4.1.2 --locked
       # build.sh writes the third-party notices that go into the APK.
