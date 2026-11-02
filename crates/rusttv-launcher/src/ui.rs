@@ -2823,23 +2823,43 @@ mod tests {
     }
 
     /// The process's one history thread and its directory, shared by the
-    /// tests that use it (each with its own order file in it).
-    fn history_dir() -> PathBuf {
+    /// tests that use it (each with its own order file in it). Hold the
+    /// guard for the whole test: one test's entries and changes would
+    /// otherwise land in the middle of another's.
+    fn history_dir() -> (PathBuf, std::sync::MutexGuard<'static, ()>) {
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
         static DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-        DIR.get_or_init(|| {
+        // A test that failed holding it poisons it; the next may still run.
+        let guard = LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let dir = DIR.get_or_init(|| {
             let dir =
                 std::env::temp_dir().join(format!("rusttv-ui-history-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
             crate::history::desktop::start(dir.clone());
             dir
-        })
-        .clone()
+        });
+        (dir.clone(), guard)
     }
 
     /// Lets the history thread answer and the UI pick the answer up.
     fn settle(screen: &Screen) {
         for _ in 0..100 {
+            std::thread::sleep(Duration::from_millis(5));
+            screen.wait(20);
+        }
+    }
+
+    /// Like [`settle`], but until an approved change has been applied in
+    /// the background: the status says "Busy" until then, which on a slow
+    /// machine outlasts `settle`. Gives up after about ten seconds.
+    fn settle_apply(screen: &Screen) {
+        for _ in 0..2000 {
+            if screen.window.get_settings_status() != "Busy — try again in a moment." {
+                return;
+            }
             std::thread::sleep(Duration::from_millis(5));
             screen.wait(20);
         }
@@ -3136,8 +3156,11 @@ mod tests {
 
     #[test]
     fn faster_animations_are_reviewed_approved_with_the_code_and_recorded() {
-        let dir = history_dir();
+        let (dir, _history) = history_dir();
         let screen = screen(Some(dir.join("order.toml")));
+        // An entry to compare the change with, whether or not another test
+        // recorded one already.
+        crate::history::History::get().unwrap().launcher_edited();
         // A, B, C, About, Settings.
         for _ in 0..4 {
             screen.tap(RIGHT);
@@ -3176,7 +3199,7 @@ mod tests {
         assert!(screen.window.get_review_holding());
         screen.wait(2_100);
         screen.key(OK, false);
-        settle(&screen);
+        settle_apply(&screen);
         assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
         assert_eq!(screen.window.get_settings_status(), "Applied.");
 
@@ -3191,7 +3214,7 @@ mod tests {
 
     #[test]
     fn a_wrong_arrow_changes_nothing_and_says_so() {
-        let dir = history_dir();
+        let (dir, _history) = history_dir();
         let screen = screen(Some(dir.join("order.toml")));
         for _ in 0..4 {
             screen.tap(RIGHT);
