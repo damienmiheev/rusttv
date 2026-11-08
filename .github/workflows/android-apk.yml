@@ -39,7 +39,7 @@ jobs:
       # distribution it fetches is pinned in gradle-wrapper.properties.
       - name: Check the Gradle wrapper jar
         run: echo "91a239400bb638f36a1795d8fdf7939d532cdc7d794d1119b7261aac158b1e60  android/gradle/wrapper/gradle-wrapper.jar" | sha256sum --check --strict
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: "17"
