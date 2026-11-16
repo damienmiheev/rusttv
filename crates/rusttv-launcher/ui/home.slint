@@ -698,6 +698,8 @@ export component HomeWindow inherits Window {
     in property <int> settings-section;
     in property <int> settings-row: -1;
     in property <string> settings-panel-title;
+    // The device's settings are being read (ui/settings_view.rs): a spinner.
+    in property <bool> settings-loading;
     in property <string> settings-note;
     in property <[SettingsRow]> settings-rows;
     // The first row shown (long lists scroll by rows).
@@ -1435,6 +1437,34 @@ export component HomeWindow inherits Window {
             font-size: 25 * u;
             color: settings-status != "" ? Theme.text : Theme.text-dim;
             overflow: elide;
+        }
+        if settings-loading: Rectangle {
+            x: (parent.width - 72 * u) / 2;
+            y: (parent.height - 72 * u) / 2;
+            width: 72 * u;
+            height: 72 * u;
+            // A ring with a gap, turning once a second.
+            Path {
+                width: parent.width;
+                height: parent.height;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: "M 12 2 A 10 10 0 1 1 2 12";
+                stroke: Theme.text;
+                stroke-width: 4 * u;
+                fill: transparent;
+                transform-origin: { x: self.width / 2, y: self.height / 2 };
+                transform-rotation: mod(animation-tick(), 1s) / 1s * 360deg;
+            }
+        }
+        if settings-loading: Text {
+            x: 0;
+            y: (parent.height + 72 * u) / 2 + 24 * u;
+            width: parent.width;
+            horizontal-alignment: center;
+            text: @tr("Loading…");
+            font-size: 28 * u;
+            color: Theme.text-dim;
         }
         for name[i] in settings-sections: MenuRow {
             x: Dir.x(90 * u, self.width, root.width);

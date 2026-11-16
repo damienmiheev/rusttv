@@ -509,6 +509,7 @@ impl Controller {
         };
         // Until the platform's tabs are read the page stays empty (a
         // moment), so the section list doesn't grow while it is shown.
+        window.set_settings_loading(!page.is_loaded());
         if !page.is_loaded() {
             if self.settings_sections.row_count() > 0 {
                 self.settings_sections.set_vec(Vec::new());

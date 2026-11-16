@@ -20,10 +20,12 @@ test-util = []
 # `rusttv-launcher-linux` binary, as a native Wayland client. png and resvg
 # decode the apps' icons.
 linux = [
+    "dep:ab_glyph",
     "dep:png",
     "dep:resvg",
     "dep:rustix",
     "dep:wayland-client",
+    "dep:wayland-protocols-misc",
     "dep:wayland-protocols-wlr",
     "slint/backend-winit-wayland",
     "slint/unstable-winit-030",
@@ -50,9 +52,14 @@ png = { workspace = true, optional = true }
 resvg = { version = "0.48.1", default-features = false, optional = true }
 # Linux app management (src/linux/): process groups, and the compositor's
 # window list. Already in the tree via winit's Wayland backend.
-rustix = { version = "1.1.5", features = ["process"], optional = true }
+rustix = { version = "1.1.5", features = ["fs", "process"], optional = true }
 wayland-client = { version = "0.31.15", optional = true }
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"], optional = true }
+# The on-screen keyboard over other apps (src/linux/keyboard.rs): the input
+# method and virtual keyboard protocols, and its key labels (ab_glyph is
+# already in the tree via Slint).
+wayland-protocols-misc = { version = "0.3", features = ["client"], optional = true }
+ab_glyph = { version = "0.2.32", optional = true }
 
 # Desktop dev mode: window via winit, CPU rendering (no Skia download).
 [target.'cfg(not(target_os = "android"))'.dependencies]

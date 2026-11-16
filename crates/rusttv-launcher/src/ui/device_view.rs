@@ -287,8 +287,10 @@ impl Controller {
             |controller: &mut Controller, volume: Option<Volume>| {
                 if let Some(volume) = volume {
                     controller.show_volume(volume);
-                    // The Audio panel shows the new level too.
+                    // The Audio panel and the Sound settings show the new
+                    // level too.
                     controller.refresh_quick();
+                    controller.refresh_device_tabs();
                 }
             },
         );

@@ -431,3 +431,6 @@ msgstr "Schatten und Hintergrundbilder"
 
 msgid "No shadows or background pictures: smoother on a slow graphics chip"
 msgstr "Keine Schatten oder Hintergrundbilder: flüssiger bei einem langsamen Grafikchip"
+
+msgid "Loading…"
+msgstr "Wird geladen…"

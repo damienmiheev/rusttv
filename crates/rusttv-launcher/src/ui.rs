@@ -391,6 +391,60 @@ fn apply_tune(window: &HomeWindow, reduced: bool) {
     }
 }
 
+/// Shows or hides the mouse pointer over the whole window, at once (a
+/// TouchArea's `mouse-cursor` only changes with the next pointer event).
+fn show_pointer(window: &HomeWindow, shown: bool) {
+    window.global::<Pointer>().set_shown(shown);
+    #[cfg(all(target_os = "linux", feature = "linux"))]
+    {
+        use slint::winit_030::WinitWindowAccessor as _;
+        window
+            .window()
+            .with_winit_window(|winit| winit.set_cursor_visible(shown));
+    }
+}
+
+/// Air-mouse remotes send OK as a left click, at wherever the pointer
+/// is. While the pointer is hidden (the D-pad is in use), a click is OK on
+/// the focused item instead.
+#[cfg(all(target_os = "linux", feature = "linux"))]
+fn click_is_ok_while_pointer_hidden(window: &HomeWindow, controller: &Rc<RefCell<Controller>>) {
+    use slint::winit_030::winit::event::{ElementState, MouseButton, WindowEvent};
+    use slint::winit_030::{EventResult, WinitWindowAccessor as _};
+
+    let weak = Rc::downgrade(controller);
+    let home = window.as_weak();
+    window.window().on_winit_window_event(move |_, event| {
+        let WindowEvent::MouseInput {
+            state,
+            button: MouseButton::Left,
+            ..
+        } = event
+        else {
+            return EventResult::Propagate;
+        };
+        let hidden = home
+            .upgrade()
+            .is_some_and(|window| !window.global::<Pointer>().get_shown());
+        let Some(controller) = weak.upgrade().filter(|_| hidden) else {
+            return EventResult::Propagate;
+        };
+        let Ok(mut controller) = controller.try_borrow_mut() else {
+            return EventResult::Propagate;
+        };
+        controller.key(
+            "
+",
+            *state == ElementState::Pressed,
+            false,
+        );
+        EventResult::PreventDefault
+    });
+}
+
+#[cfg(not(all(target_os = "linux", feature = "linux")))]
+fn click_is_ok_while_pointer_hidden(_: &HomeWindow, _: &Rc<RefCell<Controller>>) {}
+
 /// Shows how many frames were drawn in the last second, in a corner.
 /// Showing the count draws one more frame a second; at rest it stays put.
 fn count_frames(window: &HomeWindow) {
@@ -443,12 +497,15 @@ fn start(
         count_frames(&window);
     }
     let controller = Controller::new(Box::new(platform), &window, options, clock);
+    // The pointer hides once it rests, also before the mouse first moves.
+    controller.borrow_mut().pointer_moved();
 
     let weak = Rc::downgrade(&controller);
     window.on_key(move |text, pressed, repeat| {
         weak.upgrade()
             .is_some_and(|controller| controller.borrow_mut().key(&text, pressed, repeat))
     });
+    click_is_ok_while_pointer_hidden(&window, &controller);
     let weak = Rc::downgrade(&controller);
     window.on_tile_pointer(move |folder, index, action| {
         if let Some(controller) = weak.upgrade() {
@@ -1177,7 +1234,7 @@ impl Controller {
     /// Shows the mouse pointer until it rests for [`POINTER_REST`].
     fn pointer_moved(&mut self) {
         if let Some(window) = self.window.upgrade() {
-            window.global::<Pointer>().set_shown(true);
+            show_pointer(&window, true);
         }
         let me = self.me.clone();
         self.pointer_timer
@@ -1191,7 +1248,7 @@ impl Controller {
     fn hide_pointer(&mut self) {
         self.pointer_timer.stop();
         if let Some(window) = self.window.upgrade() {
-            window.global::<Pointer>().set_shown(false);
+            show_pointer(&window, false);
         }
     }
 

@@ -293,6 +293,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         freeze_background: config.freeze_background,
     };
     log::info!("app limits: {limits:?}");
+    // The launcher's keyboard for text fields in other apps.
+    rusttv_launcher::start_keyboard();
     let platform = LinuxPlatform::from_env()
         .with_events(events)
         .with_tasks(limits);

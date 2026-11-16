@@ -9,6 +9,7 @@
 //! manager's job, so the launcher's updater does nothing here.
 
 mod device;
+mod keyboard;
 mod tasks;
 mod toplevels;
 
@@ -24,6 +25,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 pub use device::LinuxDevice;
+pub use keyboard::start as start_keyboard;
 pub use tasks::Limits;
 use tasks::Tasks;
 use toplevels::Toplevels;

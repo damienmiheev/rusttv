@@ -29,7 +29,7 @@ pub use device::{
     Control, ControlKind, DeviceSettings, QuickPanel, Tab, Value, Volume, VolumeChange,
 };
 #[cfg(all(target_os = "linux", feature = "linux"))]
-pub use linux::{AppEvent, AppEvents, Limits, LinuxDevice, LinuxPlatform};
+pub use linux::{AppEvent, AppEvents, Limits, LinuxDevice, LinuxPlatform, start_keyboard};
 pub use model::{
     App, Effect, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT, MenuItem, Order,
     QuickAction, Scroll, State, TileId,

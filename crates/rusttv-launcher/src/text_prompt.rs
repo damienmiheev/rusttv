@@ -2,7 +2,8 @@
 //! password, later search): four rows of ten keys and a bottom row with the
 //! layer key, space, delete and done. The D-pad moves over the keys, OK
 //! types one; a hardware keyboard or the phone remote types directly.
-//! No UI code here (ui/text_prompt in home.slint draws it).
+//! No UI code here: `TextPromptView` (quick.slint) draws it in the launcher,
+//! `linux/keyboard` over other apps.
 
 use crate::model::Input;
 
@@ -86,6 +87,16 @@ impl TextPrompt {
         }
     }
 
+    /// The text typed so far (not masked).
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// The bottom row's key under focus, if focus is there.
+    pub fn bottom_key(&self) -> Option<BottomKey> {
+        (self.row == CHAR_ROWS).then(|| BOTTOM[self.column])
+    }
+
     /// The focused key: row (`CHAR_ROWS` is the bottom row) and column.
     pub fn focus(&self) -> (usize, usize) {
         (self.row, self.column)
@@ -137,6 +148,15 @@ impl TextPrompt {
             _ => {}
         }
         None
+    }
+
+    /// Focuses a key (the pointer over it).
+    pub fn focus_on(&mut self, row: usize, column: usize) {
+        if row > CHAR_ROWS {
+            return;
+        }
+        self.row = row;
+        self.column = column.min(self.row_len() - 1);
     }
 
     /// A click on a key: focuses it and presses it.
