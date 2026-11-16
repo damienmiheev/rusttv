@@ -413,3 +413,21 @@ msgstr "تم إقران الهاتف {}"
 
 msgid "Removed the phone {}"
 msgstr "تمت إزالة الهاتف {}"
+
+msgid "Effects"
+msgstr "المؤثرات"
+
+msgid "Effects: {}"
+msgstr "المؤثرات: {}"
+
+msgid "Full"
+msgstr "كاملة"
+
+msgid "Reduced"
+msgstr "مخفّضة"
+
+msgid "Shadows and backdrop"
+msgstr "الظلال والخلفية"
+
+msgid "No shadows or backdrop: smoother on a slow graphics chip"
+msgstr "بلا ظلال أو خلفية: أكثر سلاسة مع شريحة رسوميات بطيئة"

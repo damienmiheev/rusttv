@@ -91,7 +91,7 @@ There is intentionally no `shell(&str)`. Values that end up in `adb shell` argum
 ## rusttv-cli
 
 - `clap` derive. Commands map 1:1 to core functions; no logic in the CLI beyond formatting.
-- Default output: human text; `--json` gives the versioned `rusttv.v10` envelope. The output contract, exit codes and every error code are in [CLI.md](CLI.md); `rusttv_core::ERROR_CODES` is the canonical list, and tests keep code, list and CLI.md in sync.
+- Default output: human text; `--json` gives the versioned `rusttv.v11` envelope. The output contract, exit codes and every error code are in [CLI.md](CLI.md); `rusttv_core::ERROR_CODES` is the canonical list, and tests keep code, list and CLI.md in sync.
 - Device-targeting commands pick the only connected device, or require `--serial` when there are several (exit code 2). With `--json`, errors are also a JSON envelope on stdout.
 - CLI tests run the real binary against `tests/fixtures/fake-adb` (selected with `RUSTTV_ADB`), so they need no device.
 - Logging via `tracing` to stderr (`-v`/`RUST_LOG`); stdout reserved for results.
@@ -104,7 +104,7 @@ There is intentionally no `shell(&str)`. Values that end up in `adb shell` argum
 |---|---|
 | `model.rs` | Pure state machine `Home`: tile order, folders, D-pad focus, shelf/grid scroll, long-press menu, move mode, hidden apps, launch in flight. Time is passed in; returns `Effect`s. No Slint, no platform. |
 | `i18n.rs` | Which bundled translation fits the device's language tag (Chinese by script or region, Portuguese to `pt_BR`, else English), and whether it is right-to-left. Translations: `translations/<lang>/LC_MESSAGES/rusttv-launcher.po`, compiled in by `build.rs` (Slint bundled translations, `@tr` in `home.slint`; texts Rust puts together go through the `Strings` global). Right-to-left mirrors positions through the `Dir` global and swaps Left/Right in the model. |
-| `order_file.rs` | Tile order, folders (`[folders."folder:<n>"]`), hidden apps and last focused tile in `order.toml` (app files dir): atomic write, unreadable file kept as `.bak`. The history's `[launcher]` section is read from and written to it; the update switch is the `update-check-off` flag file next to it (also read by `Updater.kt`). |
+| `order_file.rs` | Tile order, folders (`[folders."folder:<n>"]`), hidden apps and last focused tile in `order.toml` (app files dir): atomic write, unreadable file kept as `.bak`. The history's `[launcher]` section is read from and written to it; the update switch is the `update-check-off` flag file next to it (also read by `Updater.kt`), the effects switch the `effects-reduced` flag file (an image can create it before the first start). |
 | `remote.rs` | RustTV Remote (REMOTE.md): starts the `rusttv-remote` listener when a phone is paired (`files/remote/phones.toml`, a damaged file is kept as `.bak` and means no phones), forwards its events to the UI thread with `slint::invoke_from_event_loop` (a thread blocked on the event channel, no polling), and builds the Home view phones mirror (`home_view`). Phone keys, taps (`Home::point`), long presses (`Home::long_press`) and typing (the folder name field) go through the same model calls as the remote's keys; the review screen drops them. Randomness from the OS (`getrandom`). |
 | `history.rs` | The one history thread per process (`History::global`): owns `rusttv_history::tv::TvHistory`; the UI and the door send it jobs. `HistoryPlatform` is what it needs from the platform (desktop: in-memory settings; Android: `android/history.rs`). Packing at background priority, 5 s after a pause, interrupted on resume. |
 | `settings.rs`, `review.rs` | Pure state machines for the Settings page (sections, panel rows, what OK asks for) and the review screen (read, Approve, the 4-arrow code, hold OK 2 s). |
@@ -165,7 +165,7 @@ Rust: trait Platform { list_apps(), launch(), take_apps_changed(), update_status
 
 - Built on the official Rust SDK `rmcp` (D13). `RustTvServer<A: Adb>` is generic so tests use `FakeAdb`; the binary uses `SystemAdb`.
 - The core stays sync (D10): each tool call runs the core function on tokio's blocking pool, holding a mutex around the `Adb`, so calls run one at a time and `Adb` need not be `Sync`.
-- Results are the CLI's `rusttv.v10` envelope as `structuredContent`; core errors are tool errors (`isError`) with the CLI's error codes, bad arguments are rejected before any device access.
+- Results are the CLI's `rusttv.v11` envelope as `structuredContent`; core errors are tool errors (`isError`) with the CLI's error codes, bad arguments are rejected before any device access.
 - No tool runs above R0 and none approves anything. Plan tools only return a dry run and the `rusttv` command a person runs to apply it; they read journals from the CLI's state directory (`rusttv_core::journals_dir`) and write none (SECURITY.md § AI agents).
 
 ## Initial dependencies (Milestone 1)

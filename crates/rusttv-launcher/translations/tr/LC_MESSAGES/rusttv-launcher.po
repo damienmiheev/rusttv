@@ -413,3 +413,21 @@ msgstr "{} telefonu eşlendi"
 
 msgid "Removed the phone {}"
 msgstr "{} telefonu kaldırıldı"
+
+msgid "Effects"
+msgstr "Efektler"
+
+msgid "Effects: {}"
+msgstr "Efektler: {}"
+
+msgid "Full"
+msgstr "Tam"
+
+msgid "Reduced"
+msgstr "Azaltılmış"
+
+msgid "Shadows and backdrop"
+msgstr "Gölgeler ve arka plan"
+
+msgid "No shadows or backdrop: smoother on a slow graphics chip"
+msgstr "Gölge ve arka plan yok: yavaş grafik çipinde daha akıcı"

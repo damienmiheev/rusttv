@@ -413,3 +413,21 @@ msgstr "Teléfono {} emparejado"
 
 msgid "Removed the phone {}"
 msgstr "Teléfono {} quitado"
+
+msgid "Effects"
+msgstr "Efectos"
+
+msgid "Effects: {}"
+msgstr "Efectos: {}"
+
+msgid "Full"
+msgstr "Completos"
+
+msgid "Reduced"
+msgstr "Reducidos"
+
+msgid "Shadows and backdrop"
+msgstr "Sombras y fondo"
+
+msgid "No shadows or backdrop: smoother on a slow graphics chip"
+msgstr "Sin sombras ni fondo: más fluido con un chip gráfico lento"

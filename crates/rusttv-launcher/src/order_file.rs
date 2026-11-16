@@ -225,6 +225,11 @@ pub(crate) fn save(
 /// `Updater`, so both see the same switch from the first resume.
 pub(crate) const UPDATE_CHECK_OFF: &str = "update-check-off";
 
+/// The file whose presence reduces the effects (no shadows, no backdrop).
+/// An image for a device with a weak GPU can create it before the first
+/// start; Settings changes it.
+pub(crate) const REDUCED_EFFECTS: &str = "effects-reduced";
+
 /// The launcher's own state as history records it: tiles in order,
 /// folders, hidden apps, the paired phones and the update switch. `dir` holds `order.toml` and
 /// the flag file.
@@ -257,6 +262,7 @@ pub(crate) fn launcher_state(dir: &Path) -> rusttv_history::Launcher {
         hidden: loaded.hidden,
         phones: crate::remote::phone_names(dir),
         update_check: !dir.join(UPDATE_CHECK_OFF).exists(),
+        reduced_effects: dir.join(REDUCED_EFFECTS).exists(),
     }
 }
 
@@ -284,16 +290,19 @@ pub(crate) fn write_launcher_state(dir: &Path, state: &rusttv_history::Launcher)
     save(&path, &order, &folders, &state.hidden, focus.as_ref())?;
     // Phones can only be removed; ui.rs drops them from the listener too.
     crate::remote::keep_phones(dir, &state.phones).map_err(io::Error::other)?;
-    let flag = dir.join(UPDATE_CHECK_OFF);
-    if state.update_check {
-        match fs::remove_file(&flag) {
-            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
-            _ => {}
-        }
-    } else {
-        fs::write(&flag, b"")?;
+    set_flag(&dir.join(UPDATE_CHECK_OFF), !state.update_check)?;
+    set_flag(&dir.join(REDUCED_EFFECTS), state.reduced_effects)
+}
+
+/// Creates or removes an empty flag file.
+fn set_flag(path: &Path, on: bool) -> io::Result<()> {
+    if on {
+        return fs::write(path, b"");
     }
-    Ok(())
+    match fs::remove_file(path) {
+        Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+        _ => Ok(()),
+    }
 }
 
 fn with_suffix(path: &Path, suffix: &str) -> PathBuf {

@@ -236,12 +236,17 @@ Without `--json`: human-readable text on stdout, errors and hints on stderr.
 With `--json`, stdout carries exactly one JSON object, success or failure:
 
 ```json
-{"schema":"rusttv.v10","ok":true,"data":{}}
-{"schema":"rusttv.v10","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
+{"schema":"rusttv.v11","ok":true,"data":{}}
+{"schema":"rusttv.v11","ok":false,"error":{"code":"DEVICE_UNAUTHORIZED","message":"device `192.168.1.20:5555` is unauthorized; accept the debugging prompt on the TV"}}
 ```
 
-- `schema` identifies the contract version. Within `rusttv.v10`, fields are only
+- `schema` identifies the contract version. Within `rusttv.v11`, fields are only
   added, never renamed, removed or changed in meaning; anything else bumps it.
+  - `rusttv.v11`: [HistoryChange](#historychange) has a new kind for the
+    launcher's Effects setting (`effects`, with `reduced`), and `history
+    show`'s `state` may hold `launcher.reduced_effects` (TV history snapshots
+    in format 4, written only while effects are reduced). Everything else is
+    unchanged.
   - `rusttv.v10`: [HistoryChange](#historychange) has new kinds for phones
     paired with RustTV Remote (`phone_paired`, `phone_removed`, each with
     `phone`, the phone's id, and `name`), and `history show`'s `state` may
@@ -560,7 +565,7 @@ folder), `added` / `removed` (`tile`), `folder_added` / `folder_removed`
 `new`), `in_folder` (`tile`, `folder`, `name`, `inside`: the app went into
 the folder, or out of it), `phone_paired` / `phone_removed` (`phone`: the
 phone's id, 32 hex digits; `name`), `hidden` (`tile`,
-`hidden`), `update_check` (`on`), `setting` (`key`, `old`, `new`; null =
+`hidden`), `update_check` (`on`), `effects` (`reduced`), `setting` (`key`, `old`, `new`; null =
 unset), `package` (`package`, `old`, `new`: `enabled` \| `disabled`, null =
 not observed), `firmware` (`old`, `new`), `takeover` (`active`).
 

@@ -4,6 +4,20 @@ All notable changes to RustTV. Versions follow [Semantic Versioning](https://sem
 before 1.0.0 a minor version may break the CLI/JSON contract (the `schema`
 field in `--json` output says which contract you get, CLI.md).
 
+## Unreleased
+
+### Launcher
+
+- Settings → Effects: Reduced turns the tile shadows and the backdrop glow
+  off, for a weak GPU. The choice is in the TV's history and kept as the
+  `effects-reduced` flag file next to `order.toml`, so an image can preset
+  it. `RUSTTV_FPS=1` shows the frame rate in a corner.
+
+### CLI
+
+- Schema `rusttv.v11`: history changes have the new kind `effects`, and
+  `history show` may include `launcher.reduced_effects` (CLI.md).
+
 ## 0.3.2 (2026-11-02)
 
 Fixes the armeabi-v7a launcher, which crashed at startup on Android 11 and
