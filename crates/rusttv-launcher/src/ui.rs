@@ -3791,6 +3791,87 @@ mod tests {
     }
 
     #[test]
+    fn a_held_ok_on_the_on_screen_keyboard_keeps_it_working() {
+        let platform = abc().with_device();
+        let screen = screen_with(platform, None);
+        click_settings(&screen.window);
+        settle(&screen);
+        let display = screen
+            .window
+            .get_settings_sections()
+            .iter()
+            .position(|section| section == "Display")
+            .unwrap();
+        for _ in 0..display {
+            screen.tap(DOWN);
+        }
+        screen.tap(RIGHT);
+        screen.tap(DOWN);
+        screen.tap(DOWN);
+        screen.tap(OK);
+        assert!(screen.window.get_prompt_shown());
+        // Held OK on q: key-down repeats, then the release.
+        screen.key(OK, true);
+        for _ in 0..20 {
+            screen.window.invoke_key(
+                "
+"
+                .into(),
+                true,
+                true,
+            );
+            screen.wait(50);
+        }
+        screen.key(OK, false);
+        settle(&screen);
+        assert!(screen.window.get_prompt_shown());
+        assert_eq!(screen.window.get_prompt_text(), "q");
+        screen.tap(RIGHT);
+        assert_eq!(screen.window.get_prompt_column(), 1, "arrows still move");
+        screen.tap(OK);
+        assert_eq!(screen.window.get_prompt_text(), "qw");
+    }
+
+    #[test]
+    fn a_long_click_on_the_on_screen_keyboard_leaves_the_keys_working() {
+        use slint::platform::{PointerEventButton, WindowEvent};
+        let screen = screen_with(abc().with_device(), None);
+        click_settings(&screen.window);
+        settle(&screen);
+        let display = screen
+            .window
+            .get_settings_sections()
+            .iter()
+            .position(|section| section == "Display")
+            .unwrap();
+        for _ in 0..display {
+            screen.tap(DOWN);
+        }
+        screen.tap(RIGHT);
+        screen.tap(DOWN);
+        screen.tap(DOWN);
+        screen.tap(OK);
+        assert!(screen.window.get_prompt_shown());
+        // A held click beside the keys (an air-mouse's held OK).
+        let position = slint::LogicalPosition::new(20.0, 20.0);
+        let window = screen.window.window();
+        window.dispatch_event(WindowEvent::PointerMoved { position });
+        window.dispatch_event(WindowEvent::PointerPressed {
+            position,
+            button: PointerEventButton::Left,
+        });
+        screen.wait(1000);
+        window.dispatch_event(WindowEvent::PointerReleased {
+            position,
+            button: PointerEventButton::Left,
+        });
+        settle(&screen);
+        assert!(screen.window.get_prompt_shown());
+        screen.tap(RIGHT);
+        assert_eq!(screen.window.get_prompt_column(), 1, "arrows still move");
+    }
+
+    #[test]
     fn kde_connect_opens_its_app_without_a_splash() {
         let screen = screen_with(abc().with_device(), None);
         screen.tap(UP);

@@ -17,10 +17,11 @@ crate-type = ["lib", "cdylib"]
 # Test doubles such as FakePlatform (M-TEST-UTIL). Never enable in release builds.
 test-util = []
 # Linux home screen: apps from the XDG desktop entries (src/linux.rs) and the
-# `rusttv-launcher-linux` binary, as a native Wayland client. png decodes the
-# apps' icons.
+# `rusttv-launcher-linux` binary, as a native Wayland client. png and resvg
+# decode the apps' icons.
 linux = [
     "dep:png",
+    "dep:resvg",
     "dep:rustix",
     "dep:wayland-client",
     "dep:wayland-protocols-wlr",
@@ -44,6 +45,9 @@ rusttv-remote.workspace = true
 getrandom.workspace = true
 qrcode.workspace = true
 png = { workspace = true, optional = true }
+# SVG app icons (most KDE and GNOME apps ship only these). Already in the
+# tree via Slint; no text or raster images needed in icons.
+resvg = { version = "0.48.1", default-features = false, optional = true }
 # Linux app management (src/linux/): process groups, and the compositor's
 # window list. Already in the tree via winit's Wayland backend.
 rustix = { version = "1.1.5", features = ["process"], optional = true }

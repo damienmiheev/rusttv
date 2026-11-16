@@ -4,7 +4,8 @@
 //! Apps are the `Type=Application` entries under `applications/` in
 //! `$XDG_DATA_HOME` and `$XDG_DATA_DIRS` (Desktop Entry Specification 1.5),
 //! so packages and Flatpaks show up without extra work. Icons come from the
-//! `hicolor` theme or `pixmaps` (PNG only). Updates are the system package
+//! `hicolor` theme, `pixmaps`, or the Breeze and Adwaita themes (PNG, else
+//! SVG). Updates are the system package
 //! manager's job, so the launcher's updater does nothing here.
 
 mod device;
@@ -52,6 +53,18 @@ const LAUNCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 const ICON_SIZES: [&str; 7] = [
     "128x128", "256x256", "96x96", "192x192", "512x512", "64x64", "48x48",
 ];
+
+/// Where SVG app icons are, under a data dir: the hicolor fallback theme,
+/// then the themes KDE and GNOME apps ship their icons in.
+const SVG_ICON_DIRS: [&str; 4] = [
+    "icons/hicolor/scalable/apps",
+    "icons/breeze/apps/48",
+    "icons/breeze-dark/apps/48",
+    "icons/Adwaita/scalable/apps",
+];
+
+/// The longer side, in pixels, SVG icons are drawn at.
+const SVG_PIXELS: f32 = 256.0;
 
 /// KDE Connect's desktop entry, opened by its entry in the top-right menu.
 const KDE_CONNECT: &str = "org.kde.kdeconnect.app.desktop";
@@ -185,22 +198,28 @@ impl LinuxPlatform {
         found
     }
 
+    /// A PNG of the icon in the hicolor theme or `pixmaps`, else an SVG
+    /// there or in the Breeze or Adwaita theme.
     fn find_icon(&self, icon: &str) -> Option<PathBuf> {
         if icon.contains('/') {
             let path = PathBuf::from(icon);
             return path.is_file().then_some(path);
         }
-        let file = format!("{icon}.png");
-        let file = file.as_str();
-        self.data_dirs
-            .iter()
-            .flat_map(|dir| {
-                ICON_SIZES
-                    .iter()
-                    .map(move |size| dir.join("icons/hicolor").join(size).join("apps").join(file))
-                    .chain(std::iter::once(dir.join("pixmaps").join(file)))
-            })
-            .find(|path| path.is_file())
+        let png = format!("{icon}.png");
+        let svg = format!("{icon}.svg");
+        let pngs = self.data_dirs.iter().flat_map(|dir| {
+            ICON_SIZES
+                .iter()
+                .map(|size| dir.join("icons/hicolor").join(size).join("apps").join(&png))
+                .chain(std::iter::once(dir.join("pixmaps").join(&png)))
+        });
+        let svgs = self.data_dirs.iter().flat_map(|dir| {
+            SVG_ICON_DIRS
+                .iter()
+                .map(|place| dir.join(place).join(&svg))
+                .chain(std::iter::once(dir.join("pixmaps").join(&svg)))
+        });
+        pngs.chain(svgs).find(|path| path.is_file())
     }
 }
 
@@ -329,7 +348,12 @@ impl Platform for LinuxPlatform {
         let Some(path) = entry.icon.as_deref().and_then(|icon| self.find_icon(icon)) else {
             return Ok(Artwork::Missing);
         };
-        match decode_png(&path) {
+        let decoded = if path.extension().is_some_and(|extension| extension == "svg") {
+            decode_svg(&path)
+        } else {
+            decode_png(&path)
+        };
+        match decoded {
             Ok(bitmap) => Ok(Artwork::Icon(bitmap)),
             Err(error) => {
                 log::warn!("icon {} of {id}: {error}", path.display());
@@ -680,6 +704,35 @@ fn program_exists(program: &str) -> bool {
 }
 
 /// Decodes a PNG file into an RGBA [`Bitmap`].
+/// Draws an SVG icon with its longer side [`SVG_PIXELS`] long.
+fn decode_svg(path: &Path) -> Result<Bitmap, String> {
+    use resvg::{tiny_skia, usvg};
+
+    let data = fs::read(path).map_err(|error| error.to_string())?;
+    let tree = usvg::Tree::from_data(&data, &usvg::Options::default())
+        .map_err(|error| error.to_string())?;
+    let size = tree.size();
+    let scale = SVG_PIXELS / size.width().max(size.height());
+    let side = |length: f32| (length * scale).ceil().clamp(1.0, SVG_PIXELS) as u32;
+    let (width, height) = (side(size.width()), side(size.height()));
+    let mut pixmap = tiny_skia::Pixmap::new(width, height).ok_or("empty icon")?;
+    resvg::render(
+        &tree,
+        tiny_skia::Transform::from_scale(scale, scale),
+        &mut pixmap.as_mut(),
+    );
+    // tiny-skia keeps premultiplied alpha; bitmaps are straight.
+    let rgba = pixmap
+        .pixels()
+        .iter()
+        .flat_map(|pixel| {
+            let color = pixel.demultiply();
+            [color.red(), color.green(), color.blue(), color.alpha()]
+        })
+        .collect();
+    Bitmap::new(width, height, rgba).ok_or_else(|| "wrong pixel count".to_owned())
+}
+
 fn decode_png(path: &Path) -> Result<Bitmap, String> {
     let file = File::open(path).map_err(|error| error.to_string())?;
     let mut decoder = png::Decoder::new(BufReader::new(file));
@@ -726,6 +779,24 @@ mod tests {
             Path::new("/usr/share/applications/test.desktop"),
             Some("de_DE.UTF-8"),
         )
+    }
+
+    #[test]
+    fn an_svg_icon_is_drawn_256_pixels_wide_with_straight_alpha() {
+        let path = std::env::temp_dir().join(format!("rusttv-icon-{}.svg", std::process::id()));
+        fs::write(
+            &path,
+            "<svg xmlns='http://www.w3.org/2000/svg' width='48' height='24'>             <rect width='24' height='24' fill='#ff0000' fill-opacity='0.5'/></svg>",
+        )
+        .unwrap();
+        let bitmap = decode_svg(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        assert_eq!((bitmap.width(), bitmap.height()), (256, 128));
+        // Top left: half-transparent red, not premultiplied; top right: empty.
+        let first = &bitmap.rgba()[..4];
+        assert_eq!(first[0], 255);
+        assert!((126..=129).contains(&first[3]), "{first:?}");
+        assert_eq!(bitmap.rgba()[255 * 4 + 3], 0);
     }
 
     #[test]
