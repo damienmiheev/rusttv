@@ -18,7 +18,7 @@ use crate::history::History;
 use crate::model::Input;
 use crate::order_file;
 use crate::review::{Arrow, Outcome, Phase, Review};
-use crate::settings::{Action, Draft, EntryView, Overview, Section, SettingsPage};
+use crate::settings::{AboutRow, Action, Draft, EntryView, Overview, Section, SettingsPage};
 
 /// How long after leaving the screen the history is packed (HISTORY.md § 3):
 /// not at once, so it doesn't compete with the app being opened.
@@ -58,7 +58,7 @@ const POLL: Duration = Duration::from_millis(16);
 /// Runs `work` on a new thread and `done` with its result on the UI thread.
 /// The UI picks the result up with a short timer that runs only until it
 /// arrives (no event-loop proxy needed, and it works with mocked time).
-fn in_background<T: Send + 'static>(
+pub(super) fn in_background<T: Send + 'static>(
     name: &str,
     work: impl FnOnce() -> T + Send + 'static,
     done: impl FnOnce(&mut Controller, T) + 'static,
@@ -113,7 +113,7 @@ pub(super) const REMOVED_PHONE: i32 = status::REMOVED_PHONE;
 pub(super) const NO_STATUS: i32 = status::NONE;
 
 impl Controller {
-    /// OK on the Settings tile.
+    /// OK on the Settings entry of the top-right menu.
     pub(super) fn open_settings(&mut self) {
         self.settings = Some(SettingsPage::new(
             Overview::default(),
@@ -121,6 +121,18 @@ impl Controller {
         ));
         self.settings_status = (status::READING, String::new());
         self.refresh_settings_data();
+        if self.device.is_some() {
+            // The list shows once the platform's tabs are read, so it does
+            // not grow under the person's eyes.
+            self.refresh_device_tabs();
+        } else if let Some(page) = &mut self.settings {
+            page.mark_loaded();
+        }
+    }
+
+    /// A change to the device failed: says why under the Settings title.
+    pub(super) fn settings_failed(&mut self, reason: String) {
+        self.settings_status = (status::NOTHING_CHANGED, reason);
     }
 
     /// Asks the history thread for the page's data; it arrives later.
@@ -193,6 +205,16 @@ impl Controller {
                     Ok(draft) => self.open_review(draft),
                     Err(error) => self.settings_status = (status::NOTHING_CHANGED, error),
                 }
+            }
+            Some(Action::Set {
+                tab,
+                control,
+                value,
+            }) => self.change_device(tab, control, value),
+            Some(Action::Update) => self.update_action(),
+            Some(Action::Notices) => {
+                let effect = self.home.open_about();
+                self.apply(effect);
             }
             None => {}
         }
@@ -476,10 +498,31 @@ impl Controller {
         let Some(page) = &self.settings else {
             return;
         };
+        // Until the platform's tabs are read the page stays empty (a
+        // moment), so the section list doesn't grow while it is shown.
+        if !page.is_loaded() {
+            if self.settings_sections.row_count() > 0 {
+                self.settings_sections.set_vec(Vec::new());
+            }
+            if self.settings_rows.row_count() > 0 {
+                self.settings_rows.set_vec(Vec::new());
+            }
+            window.set_settings_panel_title(SharedString::new());
+            window.set_settings_note(SharedString::new());
+            window.set_settings_row(-1);
+            return;
+        }
         let names: Vec<SharedString> = page
             .sections()
             .iter()
-            .map(|section| strings.invoke_section_name(section_value(*section)))
+            .map(|section| match section {
+                Section::Tab(index) => page
+                    .tabs()
+                    .get(*index)
+                    .map(|tab| tab.title.as_str().into())
+                    .unwrap_or_default(),
+                _ => strings.invoke_section_name(section_value(*section)),
+            })
             .collect();
         if !self.settings_sections.iter().eq(names.iter().cloned()) {
             self.settings_sections.set_vec(names);
@@ -530,6 +573,7 @@ impl Controller {
                                 detail: "".into(),
                                 current: page.animation_choice() == Some(choice),
                                 dim: !overview.can_write_settings,
+                                ..SettingsRow::default()
                             })
                             .collect()
                     }
@@ -540,6 +584,7 @@ impl Controller {
                             detail: "".into(),
                             current: overview.launcher.update_check == on,
                             dim: false,
+                            ..SettingsRow::default()
                         })
                         .collect(),
                     Section::History => {
@@ -564,6 +609,21 @@ impl Controller {
                             })
                             .collect()
                     }
+                    Section::Tab(index) => page
+                        .tabs()
+                        .get(index)
+                        .map(|tab| {
+                            tab.controls
+                                .iter()
+                                .map(|control| super::device_view::control_row(window, control))
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    Section::About => page
+                        .about_rows()
+                        .into_iter()
+                        .map(|about| self.about_row(window, page, about))
+                        .collect(),
                     Section::Waiting => overview
                         .pending
                         .iter()
@@ -580,6 +640,11 @@ impl Controller {
                 };
                 let title = if section == Section::Updates {
                     strings.invoke_update_check_title()
+                } else if let Section::Tab(index) = section {
+                    page.tabs()
+                        .get(index)
+                        .map(|tab| tab.title.as_str().into())
+                        .unwrap_or_default()
                 } else {
                     strings.invoke_section_name(section_value(section))
                 };
@@ -592,6 +657,30 @@ impl Controller {
         window.set_settings_row(focused.map_or(-1, to_i32));
         if !self.settings_rows.iter().eq(rows.iter().cloned()) {
             self.settings_rows.set_vec(rows);
+        }
+    }
+
+    /// A row of the About tab: RustTV, the updater, the host's facts.
+    fn about_row(&self, window: &HomeWindow, page: &SettingsPage, about: AboutRow) -> SettingsRow {
+        let strings = window.global::<Strings>();
+        let fixed = |kind: i32| SettingsRow {
+            title: strings.invoke_about_row(kind, env!("CARGO_PKG_VERSION").into()),
+            detail: strings.invoke_about_detail(kind),
+            ..SettingsRow::default()
+        };
+        match about {
+            AboutRow::RustTv => fixed(0),
+            AboutRow::Update => SettingsRow {
+                title: strings.invoke_about_row(1, "".into()),
+                detail: window.get_update_status(),
+                current: self.update.is_available(),
+                ..SettingsRow::default()
+            },
+            AboutRow::Source => fixed(2),
+            AboutRow::Host(index) => {
+                let (label, value) = page.host().get(index).cloned().unwrap_or_default();
+                row(label.into(), &value)
+            }
         }
     }
 
@@ -618,6 +707,7 @@ fn row(title: SharedString, detail: &str) -> SettingsRow {
         detail: detail.into(),
         current: false,
         dim: false,
+        ..SettingsRow::default()
     }
 }
 
@@ -631,6 +721,8 @@ fn section_value(section: Section) -> i32 {
         Section::Updates => 1,
         Section::History => 2,
         Section::Waiting => 3,
+        // Tabs are named by the platform.
+        Section::About | Section::Tab(_) => 4,
     }
 }
 

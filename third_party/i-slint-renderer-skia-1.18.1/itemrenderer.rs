@@ -940,12 +940,31 @@ impl ItemRenderer for SkiaItemRenderer<'_> {
         _size: LogicalSize,
     ) -> RenderingResult {
         let opacity = opacity_item.opacity();
+        // Fully transparent: nothing to draw. Without this, an element with
+        // children at opacity 0 (a hidden overlay) is still rendered into an
+        // offscreen layer on every frame; on a tile-based GPU each layer is a
+        // render-pass switch (RustTV: third_party/README.md).
+        if opacity <= 0.0 {
+            return RenderingResult::ContinueRenderingWithoutChildren;
+        }
         if Opacity::need_layer(item_rc, opacity) {
-            self.canvas.save_layer_alpha(None, (opacity * 255.) as u32);
+            let window_adapter = WindowInner::from_pub(self.window).window_adapter();
+            // Only as large as what the children draw. Unbounded, the layer is
+            // as large as the current clip: the whole screen on a full
+            // repaint, so fading a small card costs two full-screen passes
+            // (RustTV: third_party/README.md).
+            let bounds = i_slint_core::properties::evaluate_no_tracking(|| {
+                i_slint_core::item_rendering::item_children_bounding_rect(
+                    item_rc,
+                    &window_adapter,
+                )
+            });
+            self.canvas.save_layer_alpha(
+                Some(to_skia_rect(&(bounds * self.scale_factor))),
+                (opacity * 255.) as u32,
+            );
             self.state_stack.push(self.current_state);
             self.current_state.alpha = 1.0;
-
-            let window_adapter = WindowInner::from_pub(self.window).window_adapter();
 
             i_slint_core::item_rendering::render_item_children(
                 self,

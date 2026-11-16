@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0
 
 // cSpell: ignore fboid
+use std::cell::OnceCell;
+use std::ffi::{CStr, c_char, c_void};
 use std::num::NonZeroU32;
 use std::{cell::RefCell, sync::Arc};
 
@@ -70,6 +72,35 @@ pub struct OpenGLSurface {
     gr_context: RefCell<skia_safe::gpu::DirectContext>,
     glutin_context: GlutinContext,
     glutin_surface: glutin::surface::Surface<glutin::surface::WindowSurface>,
+    /// `eglSetDamageRegionKHR`, if the driver has `EGL_KHR_partial_update`.
+    partial_update: OnceCell<Option<PartialUpdate>>,
+}
+
+/// `EGL_KHR_partial_update` for one window surface. Telling the driver which
+/// parts of the back buffer a frame redraws lets tile-based GPUs (Mali,
+/// Adreno, PowerVR) load and store only those tiles instead of the whole
+/// framebuffer, which otherwise makes partial rendering slower than redrawing
+/// everything (RustTV: third_party/README.md).
+struct PartialUpdate {
+    set_damage_region: unsafe extern "C" fn(*const c_void, *const c_void, *const i32, i32) -> u32,
+    display: *const c_void,
+    surface: *const c_void,
+}
+
+/// The rectangles of `region` in physical pixels with the origin at the
+/// bottom left, as EGL wants them: `[x, y, width, height]` each.
+fn egl_rects(region: &DirtyRegion, scale_factor: f32, height: i32) -> Vec<i32> {
+    let mut rects = Vec::new();
+    for rect in region.iter() {
+        let x0 = (rect.min.x * scale_factor).floor() as i32;
+        let y0 = (rect.min.y * scale_factor).floor() as i32;
+        let x1 = (rect.max.x * scale_factor).ceil() as i32;
+        let y1 = (rect.max.y * scale_factor).ceil() as i32;
+        if x1 > x0 && y1 > y0 {
+            rects.extend([x0, height - y1, x1 - x0, y1 - y0]);
+        }
+    }
+    rects
 }
 
 impl super::Surface for OpenGLSurface {
@@ -109,9 +140,17 @@ impl super::Surface for OpenGLSurface {
         Ok(())
     }
 
+    fn use_partial_rendering(&self) -> bool {
+        self.partial_update().is_some()
+    }
+
+    fn flushes_after_render(&self) -> bool {
+        true
+    }
+
     fn render(
         &self,
-        _window: &Window,
+        window: &Window,
         size: PhysicalWindowSize,
         callback: &dyn Fn(
             &skia_safe::Canvas,
@@ -145,23 +184,53 @@ impl super::Surface for OpenGLSurface {
 
         let skia_canvas = surface.canvas();
 
+        let buffer_age = u8::try_from(self.glutin_surface.buffer_age()).unwrap_or_default();
         skia_canvas.save();
-        callback(
-            skia_canvas,
-            Some(gr_context),
-            u8::try_from(self.glutin_surface.buffer_age()).unwrap_or_default(),
-        );
+        let dirty_region = callback(skia_canvas, Some(gr_context), buffer_age);
         skia_canvas.restore();
+
+        // What this frame redrew: the GPU loads and stores only that (set
+        // before Skia sends its draws), and the compositor recomposites only
+        // that. A new buffer (age 0) or no region means all of it.
+        let damage = dirty_region
+            .filter(|_| buffer_age > 0)
+            .map(|region| egl_rects(&region, window.scale_factor(), surface.height()));
+        if let (Some(partial_update), Some(rects)) = (self.partial_update(), &damage) {
+            unsafe {
+                (partial_update.set_damage_region)(
+                    partial_update.display,
+                    partial_update.surface,
+                    rects.as_ptr(),
+                    (rects.len() / 4) as i32,
+                );
+            }
+        }
+        gr_context.flush_and_submit();
 
         if let Some(pre_present_callback) = pre_present_callback.borrow_mut().as_mut() {
             pre_present_callback();
         }
 
-        self.glutin_surface.swap_buffers(current_context).map(|_| DrawOutcome::Success).map_err(
-            |glutin_error| {
-                format!("Skia OpenGL Renderer: Error swapping buffers: {glutin_error}").into()
-            },
-        )
+        let swapped = match (&damage, &self.glutin_surface, &**current_context) {
+            #[cfg(not(target_vendor = "apple"))]
+            (
+                Some(rects),
+                glutin::surface::Surface::Egl(egl_surface),
+                glutin::context::PossiblyCurrentContext::Egl(egl_context),
+            ) if !rects.is_empty() => {
+                let rects: Vec<glutin::surface::Rect> = rects
+                    .chunks_exact(4)
+                    .map(|r| glutin::surface::Rect::new(r[0], r[1], r[2], r[3]))
+                    .collect();
+                egl_surface
+                    .swap_buffers_with_damage(egl_context, &rects)
+                    .or_else(|_| self.glutin_surface.swap_buffers(current_context))
+            }
+            _ => self.glutin_surface.swap_buffers(current_context),
+        };
+        swapped.map(|_| DrawOutcome::Success).map_err(|glutin_error| {
+            format!("Skia OpenGL Renderer: Error swapping buffers: {glutin_error}").into()
+        })
     }
 
     fn resize_event(&self, size: PhysicalWindowSize) -> Result<(), PlatformError> {
@@ -230,6 +299,46 @@ impl super::Surface for OpenGLSurface {
 }
 
 impl OpenGLSurface {
+    /// `EGL_KHR_partial_update` for this surface, looked up once.
+    fn partial_update(&self) -> Option<&PartialUpdate> {
+        self.partial_update.get_or_init(|| self.load_partial_update()).as_ref()
+    }
+
+    fn load_partial_update(&self) -> Option<PartialUpdate> {
+        use glutin::display::{AsRawDisplay, RawDisplay};
+        use glutin::surface::{AsRawSurface, RawSurface};
+        if std::env::var_os("SLINT_SKIA_NO_PARTIAL_UPDATE").is_some() {
+            return None;
+        }
+        let display = self.glutin_context.display();
+        let RawDisplay::Egl(egl_display) = display.raw_display() else { return None };
+        let RawSurface::Egl(egl_surface) = self.glutin_surface.raw_surface() else { return None };
+        const EGL_EXTENSIONS: i32 = 0x3055;
+        let query_string = display.get_proc_address(c"eglQueryString");
+        if query_string.is_null() {
+            return None;
+        }
+        let query_string: unsafe extern "C" fn(*const c_void, i32) -> *const c_char =
+            unsafe { std::mem::transmute(query_string) };
+        let extensions = unsafe { query_string(egl_display, EGL_EXTENSIONS) };
+        if extensions.is_null() {
+            return None;
+        }
+        let extensions = unsafe { CStr::from_ptr(extensions) }.to_string_lossy();
+        if !extensions.split(' ').any(|name| name == "EGL_KHR_partial_update") {
+            return None;
+        }
+        let set_damage_region = display.get_proc_address(c"eglSetDamageRegionKHR");
+        if set_damage_region.is_null() {
+            return None;
+        }
+        Some(PartialUpdate {
+            set_damage_region: unsafe { std::mem::transmute(set_damage_region) },
+            display: egl_display,
+            surface: egl_surface,
+        })
+    }
+
     pub fn new_with_config(
         window_handle: Arc<dyn raw_window_handle::HasWindowHandle>,
         display_handle: Arc<dyn raw_window_handle::HasDisplayHandle>,
@@ -328,6 +437,7 @@ impl OpenGLSurface {
             gr_context: RefCell::new(gr_context),
             glutin_context: GlutinContext::new(current_glutin_context),
             glutin_surface,
+            partial_update: OnceCell::new(),
         })
     }
 
@@ -380,6 +490,7 @@ impl OpenGLSurface {
             gr_context: RefCell::new(gr_context),
             glutin_context: GlutinContext::new(context),
             glutin_surface,
+            partial_update: OnceCell::new(),
         })
     }
 

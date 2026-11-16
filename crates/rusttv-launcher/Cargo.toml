@@ -16,6 +16,21 @@ crate-type = ["lib", "cdylib"]
 [features]
 # Test doubles such as FakePlatform (M-TEST-UTIL). Never enable in release builds.
 test-util = []
+# Linux home screen: apps from the XDG desktop entries (src/linux.rs) and the
+# `rusttv-launcher-linux` binary, as a native Wayland client. png decodes the
+# apps' icons.
+linux = [
+    "dep:png",
+    "dep:rustix",
+    "dep:wayland-client",
+    "dep:wayland-protocols-wlr",
+    "slint/backend-winit-wayland",
+    "slint/unstable-winit-030",
+]
+# Draw with OpenGL ES (FemtoVG) instead of the CPU, for slow CPUs with a GPU.
+gpu = ["slint/renderer-femtovg"]
+# Draw with Skia on OpenGL ES; redraws only what changed (EGL buffer age).
+gpu-skia = ["slint/renderer-skia-opengl"]
 
 [dependencies]
 slint.workspace = true
@@ -28,6 +43,12 @@ rusttv-history.workspace = true
 rusttv-remote.workspace = true
 getrandom.workspace = true
 qrcode.workspace = true
+png = { workspace = true, optional = true }
+# Linux app management (src/linux/): process groups, and the compositor's
+# window list. Already in the tree via winit's Wayland backend.
+rustix = { version = "1.1.5", features = ["process"], optional = true }
+wayland-client = { version = "0.31.15", optional = true }
+wayland-protocols-wlr = { version = "0.3.12", features = ["client"], optional = true }
 
 # Desktop dev mode: window via winit, CPU rendering (no Skia download).
 [target.'cfg(not(target_os = "android"))'.dependencies]
@@ -51,6 +72,11 @@ png.workspace = true
 name = "rusttv-launcher-desktop"
 path = "src/bin/desktop.rs"
 required-features = ["test-util"]
+
+[[bin]]
+name = "rusttv-launcher-linux"
+path = "src/bin/linux.rs"
+required-features = ["linux"]
 
 # Same as [workspace.lints], except `unsafe_code` is "deny" instead of "forbid", so that
 # Slint's generated code (src/ui.rs) and later the JNI bridge module can opt out per module.

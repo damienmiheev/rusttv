@@ -900,7 +900,11 @@ impl SkiaRenderer {
             }
         }
 
-        if let Some(ctx) = gr_context.as_mut() {
+        // A surface that sets the frame's damage region before flushing
+        // flushes itself (OpenGL: EGL_KHR_partial_update).
+        if !surface.is_some_and(|surface| surface.flushes_after_render())
+            && let Some(ctx) = gr_context.as_mut()
+        {
             ctx.flush(None);
         }
 
@@ -1084,6 +1088,12 @@ pub trait Surface {
     fn bits_per_pixel(&self) -> Result<u8, PlatformError>;
 
     fn use_partial_rendering(&self) -> bool {
+        false
+    }
+
+    /// Whether `render` flushes Skia itself after the render callback
+    /// (instead of the callback flushing at its end).
+    fn flushes_after_render(&self) -> bool {
         false
     }
 

@@ -8,8 +8,11 @@
 
 #[cfg(target_os = "android")]
 mod android;
+mod device;
 mod history;
 mod i18n;
+#[cfg(all(target_os = "linux", feature = "linux"))]
+mod linux;
 mod model;
 mod order_file;
 mod platform;
@@ -19,9 +22,16 @@ mod review;
 mod settings;
 mod ui;
 
+#[cfg(any(test, feature = "test-util"))]
+pub use device::FakeDevice;
+pub use device::{
+    Control, ControlKind, DeviceSettings, QuickPanel, Tab, Value, Volume, VolumeChange,
+};
+#[cfg(all(target_os = "linux", feature = "linux"))]
+pub use linux::{AppEvent, AppEvents, Limits, LinuxDevice, LinuxPlatform};
 pub use model::{
     App, Effect, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT, MenuItem, Order,
-    Scroll, State, TileId,
+    QuickAction, Scroll, State, TileId,
 };
 #[cfg(any(test, feature = "test-util"))]
 pub use platform::FakePlatform;

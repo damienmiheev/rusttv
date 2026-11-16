@@ -14,7 +14,8 @@ use material_colors::score::Score;
 
 use rusttv_remote::protocol::{Key, PictureKind, PointerAction, TextEdit, TextField};
 
-use crate::model::App;
+use crate::device::DeviceSettings;
+use crate::model::{App, QuickAction};
 
 /// Draws one app's tile picture as WebP: its banner, else its icon; `None`
 /// with neither.
@@ -45,6 +46,12 @@ pub trait Platform {
     /// Returns once the request is handed over; the launcher learns that the
     /// app opened when it is paused.
     fn launch(&mut self, id: &str) -> Result<(), PlatformError>;
+
+    /// How long an app may take to open before the launch counts as failed.
+    /// The launch splash shows until then.
+    fn launch_timeout(&self) -> std::time::Duration {
+        crate::model::LAUNCH_TIMEOUT
+    }
 
     /// Whether apps were installed, updated or removed since the last call;
     /// clears the flag. Lets the launcher skip re-reading the list on resume.
@@ -161,6 +168,28 @@ pub trait Platform {
     /// Opens Android's accessibility settings, where the person switches the
     /// pointer's service on or off.
     fn open_pointer_settings(&mut self) {}
+
+    /// The entries of the top-right menu this platform can do, besides
+    /// Modify and Settings (always there): Search and KDE Connect when
+    /// [`Platform::quick_action_app`] names an app for them, Audio, Network
+    /// and Power when [`Platform::device_settings`] has their quick panel.
+    /// Called once at start; should be cheap.
+    fn quick_actions(&self) -> Vec<QuickAction> {
+        Vec::new()
+    }
+
+    /// The app (as [`Platform::list_apps`] names it) that a quick action
+    /// opens: Search, KDE Connect.
+    fn quick_action_app(&self, _action: QuickAction) -> Option<String> {
+        None
+    }
+
+    /// The device's own settings: Settings tabs, quick panels, the volume
+    /// and facts for About. Used from worker threads only. `None` where
+    /// the platform has none.
+    fn device_settings(&self) -> Option<std::sync::Arc<dyn DeviceSettings>> {
+        None
+    }
 }
 
 /// The pointer in other apps (REMOTE.md § 5).
@@ -354,6 +383,72 @@ pub(crate) struct Glow {
     pub y: f32,
     /// How strongly the glow shows, 0..1; 0 when there is no main colour.
     pub strength: f32,
+}
+
+impl Glow {
+    /// How far down the backdrop reaches, in rows of a 1080-row screen: the
+    /// end of the title scrim and of the fade into the page colour.
+    pub const HEIGHT: f32 = 780.0;
+
+    /// The hero backdrop as a small RGB picture of a 16:9 screen `width`
+    /// wide: the base, the glow (a circle 1.3 screens wide, fading out at
+    /// 70 % of its radius), the scrim behind the title (from the start side)
+    /// and the fade into the page colour `page` above the grid. Only the top
+    /// `height` rows: below [`Glow::HEIGHT`] it is plain page colour, which
+    /// the page itself already shows.
+    ///
+    /// The GPU scales it up; its gradients are smooth, so it looks the same
+    /// as drawing them at full size but costs one texture draw instead of
+    /// six full-screen fills (a weak TV GPU cannot cross-fade those at 60 fps).
+    pub fn paint(&self, width: u32, height: u32, page: [u8; 3], right_to_left: bool) -> Vec<u8> {
+        let mix = |colour: [f32; 3], over: [f32; 3], alpha: f32| {
+            [0, 1, 2].map(|i| colour[i] + (over[i] - colour[i]) * alpha)
+        };
+        let float = |colour: [u8; 3]| colour.map(f32::from);
+        let (w, h) = (width as f32, width as f32 * 9.0 / 16.0);
+        let (base, glow, page) = (float(self.base), float(self.colour), float(page));
+        let glow_x = if right_to_left { 1.0 - self.x } else { self.x } * w;
+        let glow_y = self.y * h;
+        let radius = w * 1.3 / 2.0;
+        // In screen units of 1080 rows: the title scrim ends at 780, the fade
+        // to the page colour runs from 400 to 780.
+        let scrim_end = h * Self::HEIGHT / 1080.0;
+        let fade_start = h * 400.0 / 1080.0;
+        let mut rgb = Vec::with_capacity((width * height * 3) as usize);
+        for row in 0..height {
+            let py = row as f32 + 0.5;
+            for column in 0..width {
+                let px = column as f32 + 0.5;
+                let distance = ((px - glow_x).powi(2) + (py - glow_y).powi(2)).sqrt() / radius;
+                let glow_alpha = if distance < 0.3 {
+                    1.0 - 0.55 * distance / 0.3
+                } else if distance < 0.7 {
+                    0.45 * (1.0 - (distance - 0.3) / 0.4)
+                } else {
+                    0.0
+                };
+                let mut colour = mix(base, glow, glow_alpha * self.strength);
+                if py < scrim_end {
+                    let from_start = if right_to_left { 1.0 - px / w } else { px / w };
+                    let scrim = if from_start < 0.4 {
+                        0.85 - 0.45 * from_start / 0.4
+                    } else if from_start < 0.7 {
+                        0.4 * (1.0 - (from_start - 0.4) / 0.3)
+                    } else {
+                        0.0
+                    };
+                    colour = mix(colour, page, scrim);
+                    if py >= fade_start {
+                        colour = mix(colour, page, (py - fade_start) / (scrim_end - fade_start));
+                    }
+                } else {
+                    colour = page;
+                }
+                rgb.extend(colour.map(|value| value.round().clamp(0.0, 255.0) as u8));
+            }
+        }
+        rgb
+    }
 }
 
 impl Bitmap {
@@ -560,10 +655,26 @@ pub struct FakePlatform {
     pointer_keys: Vec<Key>,
     pointer_edits: Vec<TextEdit>,
     searches: Vec<(String, String)>,
+    /// Settings tabs, quick panels and a volume (`with_device`).
+    device: Option<std::sync::Arc<crate::device::FakeDevice>>,
 }
 
 #[cfg(any(test, feature = "test-util"))]
 impl FakePlatform {
+    /// Adds a made-up device: a Display settings tab, the Audio, Network
+    /// and Power quick panels, a volume, and KDE Connect opening the first
+    /// app.
+    #[must_use]
+    pub fn with_device(mut self) -> Self {
+        self.device = Some(std::sync::Arc::new(crate::device::FakeDevice::new()));
+        self
+    }
+
+    /// The made-up device, if [`FakePlatform::with_device`] added one.
+    pub fn device(&self) -> Option<std::sync::Arc<crate::device::FakeDevice>> {
+        self.device.clone()
+    }
+
     /// A platform with these apps, each with a generated banner.
     pub fn new(apps: impl IntoIterator<Item = App>) -> Self {
         Self {
@@ -819,6 +930,33 @@ impl Platform for FakePlatform {
 
     fn random_code(&mut self) -> [u32; 4] {
         [2, 0, 3, 1]
+    }
+
+    fn quick_actions(&self) -> Vec<QuickAction> {
+        if self.device.is_none() {
+            return Vec::new();
+        }
+        vec![
+            QuickAction::Audio,
+            QuickAction::Network,
+            QuickAction::KdeConnect,
+            QuickAction::Power,
+        ]
+    }
+
+    fn quick_action_app(&self, action: QuickAction) -> Option<String> {
+        match action {
+            QuickAction::KdeConnect if self.device.is_some() => {
+                self.apps.first().map(|entry| entry.app.id.clone())
+            }
+            _ => None,
+        }
+    }
+
+    fn device_settings(&self) -> Option<std::sync::Arc<dyn DeviceSettings>> {
+        self.device
+            .clone()
+            .map(|device| device as std::sync::Arc<dyn DeviceSettings>)
     }
 }
 
@@ -1172,9 +1310,8 @@ mod tests {
         );
         home.set_apps(&apps);
 
-        // 14 apps + About + Settings + RustTV Remote: three rows, the last
-        // one short.
-        assert_eq!(home.tiles().len(), 17);
+        // 14 apps + RustTV Remote: three rows, the last one short.
+        assert_eq!(home.tiles().len(), 15);
         for entry in &entries {
             assert!(home.tiles().contains(&TileId::App(entry.app.id.clone())));
             platform.launch(&entry.app.id).unwrap();
