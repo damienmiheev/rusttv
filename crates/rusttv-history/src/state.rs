@@ -9,10 +9,11 @@ use crate::HistoryError;
 
 /// Version of the snapshot format. Bump on any incompatible change.
 ///
-/// 2 added `[launcher.folders]`, 3 `[launcher.phones]`. A snapshot is
-/// written in the oldest format that holds it (no folders and no phones:
-/// format 1), so older readers keep reading it until it needs more.
-pub const STATE_FORMAT: u32 = 3;
+/// 2 added `[launcher.folders]`, 3 `[launcher.phones]`, 4
+/// `reduced_effects`. A snapshot is written in the oldest format that holds
+/// it (no folders, no phones, full effects: format 1), so older readers keep
+/// reading it until it needs more.
+pub const STATE_FORMAT: u32 = 4;
 
 /// The longest folder name, in characters (the launcher's limit).
 const FOLDER_NAME_MAX: usize = 40;
@@ -72,6 +73,10 @@ pub struct Launcher {
     /// Whether the launcher checks for updates by itself.
     #[serde(default = "yes")]
     pub update_check: bool,
+    /// Whether the launcher draws fewer effects (no shadows, no backdrop)
+    /// for a weak GPU.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reduced_effects: bool,
 }
 
 impl Default for Launcher {
@@ -82,6 +87,7 @@ impl Default for Launcher {
             hidden: BTreeSet::new(),
             phones: BTreeMap::new(),
             update_check: true,
+            reduced_effects: false,
         }
     }
 }
@@ -191,7 +197,9 @@ impl State {
 
     /// The oldest format that can hold this snapshot.
     pub fn needed_format(&self) -> u32 {
-        if !self.launcher.phones.is_empty() {
+        if self.launcher.reduced_effects {
+            4
+        } else if !self.launcher.phones.is_empty() {
             3
         } else if !self.launcher.folders.is_empty() {
             2
@@ -441,8 +449,8 @@ mod tests {
     #[test]
     fn a_newer_format_says_so() {
         assert!(matches!(
-            State::parse("format = 4\nsomething_new = true\n"),
-            Err(HistoryError::FormatNewer(4))
+            State::parse("format = 5\nsomething_new = true\n"),
+            Err(HistoryError::FormatNewer(5))
         ));
     }
 
@@ -470,6 +478,29 @@ mod tests {
             State::parse(&downgraded),
             Err(HistoryError::Invalid(_))
         ));
+    }
+
+    #[test]
+    fn reduced_effects_need_format_four() {
+        let mut reduced = sample();
+        reduced.launcher.reduced_effects = true;
+        let text = reduced.to_toml().unwrap();
+        assert!(
+            text.starts_with(
+                "format = 4
+"
+            ),
+            "{text}"
+        );
+        assert!(text.contains("reduced_effects = true"), "{text}");
+        assert_eq!(State::parse(&text).unwrap().launcher, reduced.launcher);
+        let downgraded = text.replacen("format = 4", "format = 3", 1);
+        assert!(matches!(
+            State::parse(&downgraded),
+            Err(HistoryError::Invalid(_))
+        ));
+        let full = sample().to_toml().unwrap();
+        assert!(!full.contains("reduced_effects"), "{full}");
     }
 
     #[test]

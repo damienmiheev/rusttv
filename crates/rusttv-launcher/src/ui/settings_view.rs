@@ -162,6 +162,9 @@ impl Controller {
             }
             None => {}
         }
+        if let Some(window) = self.window.upgrade() {
+            super::apply_tune(&window, overview.launcher.reduced_effects);
+        }
         page.refresh(overview);
         self.render();
     }
@@ -583,6 +586,16 @@ impl Controller {
                             })
                             .collect()
                     }
+                    Section::Effects => [false, true]
+                        .into_iter()
+                        .map(|reduced| SettingsRow {
+                            title: strings.invoke_effects_choice(reduced),
+                            detail: strings.invoke_effects_detail(reduced),
+                            current: overview.launcher.reduced_effects == reduced,
+                            dim: false,
+                            ..SettingsRow::default()
+                        })
+                        .collect(),
                     Section::Updates => [true, false]
                         .into_iter()
                         .map(|on| SettingsRow {
@@ -727,6 +740,7 @@ fn section_value(section: Section) -> i32 {
         Section::Updates => 1,
         Section::History => 2,
         Section::Waiting => 3,
+        Section::Effects => 5,
         // Tabs are named by the platform.
         Section::About | Section::Tab(_) => 4,
     }
@@ -789,6 +803,12 @@ fn change_line(
             "".into(),
         ),
         Change::UpdateCheck { on } => (3, "".into(), "".into(), strings.invoke_on_off(*on)),
+        Change::Effects { reduced } => (
+            18,
+            "".into(),
+            "".into(),
+            strings.invoke_effects_choice(*reduced),
+        ),
         Change::Setting { key, old, new } => {
             let index = SETTING_KEYS
                 .iter()

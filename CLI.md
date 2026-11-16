@@ -560,7 +560,7 @@ folder), `added` / `removed` (`tile`), `folder_added` / `folder_removed`
 `new`), `in_folder` (`tile`, `folder`, `name`, `inside`: the app went into
 the folder, or out of it), `phone_paired` / `phone_removed` (`phone`: the
 phone's id, 32 hex digits; `name`), `hidden` (`tile`,
-`hidden`), `update_check` (`on`), `setting` (`key`, `old`, `new`; null =
+`hidden`), `update_check` (`on`), `effects` (`reduced`), `setting` (`key`, `old`, `new`; null =
 unset), `package` (`package`, `old`, `new`: `enabled` \| `disabled`, null =
 not observed), `firmware` (`old`, `new`), `takeover` (`active`).
 

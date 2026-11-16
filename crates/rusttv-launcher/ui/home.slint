@@ -88,6 +88,7 @@ export global Strings {
         if section == 2 { return @tr("History"); }
         if section == 3 { return @tr("Waiting for your computer"); }
         if section == 4 { return @tr("About"); }
+        if section == 5 { return @tr("Effects"); }
         return @tr("Animations");
     }
     // Settings' About tab (ui/settings_view.rs `AboutRow`): 0 RustTV and
@@ -145,6 +146,13 @@ export global Strings {
     public pure function on-off(on: bool) -> string {
         return on ? @tr("On") : @tr("Off");
     }
+    // Settings' Effects section (settings.rs `Section::Effects`).
+    public pure function effects-choice(reduced: bool) -> string {
+        return reduced ? @tr("Reduced") : @tr("Full");
+    }
+    public pure function effects-detail(reduced: bool) -> string {
+        return reduced ? @tr("No shadows or background pictures: smoother on a slow graphics chip") : @tr("Shadows and background pictures");
+    }
     // SETTING_KEYS order: animator, transition, window.
     public pure function setting-name(key: int) -> string {
         if key == 1 { return @tr("Transition animations"); }
@@ -192,6 +200,7 @@ export global Strings {
         if kind == 15 { return @tr("Took {} out of {}", name, old); }
         if kind == 16 { return @tr("Paired the phone {}", name); }
         if kind == 17 { return @tr("Removed the phone {}", name); }
+        if kind == 18 { return @tr("Effects: {}", new); }
         return @tr("No change");
     }
     // 0 changed on the TV now, 1 applied by the computer later.
@@ -754,6 +763,9 @@ export component HomeWindow inherits Window {
     callback quick-dismissed();
     // The text prompt with its on-screen keyboard (src/text_prompt.rs).
     in property <bool> prompt-shown;
+    // Frames drawn in the last second (`RUSTTV_FPS=1`, ui.rs `count_frames`);
+    // empty hides it.
+    in property <string> fps-text;
     in property <string> prompt-title;
     in property <string> prompt-text;
     in property <[string]> prompt-labels;
@@ -1861,5 +1873,18 @@ export component HomeWindow inherits Window {
         shown: volume-shown;
         level: volume-level;
         muted: volume-muted;
+    }
+    if fps-text != "": Rectangle {
+        x: 16 * u;
+        y: 16 * u;
+        width: fps-label.preferred-width + 24 * u;
+        height: fps-label.preferred-height + 12 * u;
+        background: #000000B0;
+        border-radius: 8 * u;
+        fps-label := Text {
+            text: fps-text;
+            color: #ffffff;
+            font-size: 24 * u;
+        }
     }
 }

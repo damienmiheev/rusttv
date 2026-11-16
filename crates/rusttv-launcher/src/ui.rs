@@ -374,20 +374,51 @@ impl Demo {
     }
 }
 
-/// `RUSTTV_TUNE=no-shadows,no-backdrop,no-clip,no-hero,zoom-transform` turns
-/// effects off, to measure what costs frames on a weak GPU.
-fn apply_tune(window: &HomeWindow) {
-    let Ok(tune) = std::env::var("RUSTTV_TUNE") else {
-        return;
-    };
+/// Sets the effects: `reduced` (Settings → Effects) turns shadows and the
+/// backdrop off. `RUSTTV_TUNE=no-shadows,no-backdrop,no-clip,no-hero,zoom-transform`
+/// turns effects off on top, to measure what costs frames on a weak GPU.
+fn apply_tune(window: &HomeWindow, reduced: bool) {
+    let tune = std::env::var("RUSTTV_TUNE").unwrap_or_default();
     let on = |name: &str| tune.split(',').any(|item| item.trim() == name);
     let global = window.global::<Tune>();
-    global.set_shadows(!on("no-shadows"));
-    global.set_backdrop(!on("no-backdrop"));
+    global.set_shadows(!reduced && !on("no-shadows"));
+    global.set_backdrop(!reduced && !on("no-backdrop"));
     global.set_clip_tiles(!on("no-clip"));
     global.set_hero(!on("no-hero"));
     global.set_zoom_transform(on("zoom-transform"));
-    log::info!("rendering tuned: {tune}");
+    if !tune.is_empty() {
+        log::info!("rendering tuned: {tune}");
+    }
+}
+
+/// Shows how many frames were drawn in the last second, in a corner.
+/// Showing the count draws one more frame a second; at rest it stays put.
+fn count_frames(window: &HomeWindow) {
+    let weak = window.as_weak();
+    let mut frames = 0_u32;
+    let mut since = Instant::now();
+    let notifier = window.window().set_rendering_notifier(move |state, _| {
+        if !matches!(state, slint::RenderingState::AfterRendering) {
+            return;
+        }
+        frames += 1;
+        let elapsed = since.elapsed();
+        if elapsed >= Duration::from_secs(1) {
+            let fps = f64::from(frames) / elapsed.as_secs_f64();
+            frames = 0;
+            since = Instant::now();
+            let weak = weak.clone();
+            // Not while rendering: a property change now would be lost.
+            Timer::single_shot(Duration::ZERO, move || {
+                if let Some(window) = weak.upgrade() {
+                    window.set_fps_text(format!("{fps:.0} fps").into());
+                }
+            });
+        }
+    });
+    if let Err(error) = notifier {
+        log::warn!("no frame counter: {error}");
+    }
 }
 
 /// Creates the window and its controller; the caller runs the event loop.
@@ -402,7 +433,15 @@ fn start(
         options.right_to_left |= i18n::is_right_to_left(language);
     }
     window.global::<Dir>().set_rtl(options.right_to_left);
-    apply_tune(&window);
+    let reduced = options
+        .order_file
+        .as_deref()
+        .and_then(std::path::Path::parent)
+        .is_some_and(|dir| dir.join(order_file::REDUCED_EFFECTS).exists());
+    apply_tune(&window, reduced);
+    if std::env::var_os("RUSTTV_FPS").is_some_and(|value| value != "0") {
+        count_frames(&window);
+    }
     let controller = Controller::new(Box::new(platform), &window, options, clock);
 
     let weak = Rc::downgrade(&controller);
@@ -3522,6 +3561,17 @@ mod tests {
     }
 
     #[test]
+    fn a_reduced_effects_flag_turns_shadows_and_the_backdrop_off() {
+        let (dir, _history) = history_dir();
+        std::fs::write(dir.join(order_file::REDUCED_EFFECTS), b"").unwrap();
+        let screen = screen(Some(dir.join("order.toml")));
+        let tune = screen.window.global::<Tune>();
+        assert!(!tune.get_shadows());
+        assert!(!tune.get_backdrop());
+        assert!(tune.get_hero(), "pictures stay");
+    }
+
+    #[test]
     fn faster_animations_are_reviewed_approved_with_the_code_and_recorded() {
         let (dir, _history) = history_dir();
         let screen = screen(Some(dir.join("order.toml")));
@@ -3531,8 +3581,8 @@ mod tests {
         click_settings(&screen.window);
         assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
         settle(&screen);
-        // Animations, Updates, History, About.
-        assert_eq!(screen.window.get_settings_sections().row_count(), 4);
+        // Animations, Effects, Updates, History, About.
+        assert_eq!(screen.window.get_settings_sections().row_count(), 5);
         assert_eq!(screen.window.get_settings_rows().row_count(), 7);
         screen.tap(RIGHT); // focus on Normal, the current choice
         assert_eq!(screen.window.get_settings_row(), 4);
