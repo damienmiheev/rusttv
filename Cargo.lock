@@ -4912,6 +4912,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
 
 [[package]]
+name = "reis"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b967ec6489a42067a20724f11987bb96178ea796873cbe1afd25fb93ee6f85f"
+dependencies = [
+ "calloop 0.14.5",
+ "enumflags2",
+ "log",
+ "rustix 1.1.5",
+]
+
+[[package]]
 name = "renderdoc-sys"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5167,6 +5179,8 @@ dependencies = [
  "ab_glyph",
  "android-activity 0.6.1",
  "android_logger",
+ "calloop 0.14.5",
+ "enumflags2",
  "getrandom 0.4.3",
  "i-slint-backend-testing",
  "jni 0.21.1",
@@ -5174,6 +5188,7 @@ dependencies = [
  "material-colors",
  "png",
  "qrcode",
+ "reis",
  "resvg",
  "rustix 1.1.5",
  "rusttv-history",
@@ -5186,6 +5201,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols-misc",
  "wayland-protocols-wlr",
+ "zbus",
 ]
 
 [[package]]

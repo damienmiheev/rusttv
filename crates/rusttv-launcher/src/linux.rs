@@ -10,6 +10,7 @@
 
 mod device;
 mod keyboard;
+mod portal;
 mod tasks;
 mod toplevels;
 
@@ -26,6 +27,7 @@ use std::time::SystemTime;
 
 pub use device::LinuxDevice;
 pub use keyboard::start as start_keyboard;
+pub use portal::run as run_portal;
 pub use tasks::Limits;
 use tasks::Tasks;
 use toplevels::Toplevels;

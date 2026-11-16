@@ -21,12 +21,16 @@ test-util = []
 # decode the apps' icons.
 linux = [
     "dep:ab_glyph",
+    "dep:calloop",
+    "dep:enumflags2",
     "dep:png",
+    "dep:reis",
     "dep:resvg",
     "dep:rustix",
     "dep:wayland-client",
     "dep:wayland-protocols-misc",
     "dep:wayland-protocols-wlr",
+    "dep:zbus",
     "slint/backend-winit-wayland",
     "slint/unstable-winit-030",
 ]
@@ -60,6 +64,13 @@ wayland-protocols-wlr = { version = "0.3.12", features = ["client"], optional = 
 # already in the tree via Slint).
 wayland-protocols-misc = { version = "0.3", features = ["client"], optional = true }
 ab_glyph = { version = "0.2.32", optional = true }
+# The remote desktop portal (src/linux/portal.rs, `rusttv-portal`): its
+# D-Bus side, and the libei server apps like KDE Connect send input over.
+# zbus and calloop are already in the tree via Slint's winit backend.
+zbus = { version = "5.19", optional = true }
+calloop = { version = "0.14.5", optional = true }
+reis = { version = "0.7.1", features = ["calloop"], optional = true }
+enumflags2 = { version = "0.7.12", optional = true }
 
 # Desktop dev mode: window via winit, CPU rendering (no Skia download).
 [target.'cfg(not(target_os = "android"))'.dependencies]
@@ -87,6 +98,11 @@ required-features = ["test-util"]
 [[bin]]
 name = "rusttv-launcher-linux"
 path = "src/bin/linux.rs"
+required-features = ["linux"]
+
+[[bin]]
+name = "rusttv-portal"
+path = "src/bin/portal.rs"
 required-features = ["linux"]
 
 # Same as [workspace.lints], except `unsafe_code` is "deny" instead of "forbid", so that

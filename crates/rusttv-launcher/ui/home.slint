@@ -515,8 +515,9 @@ component Tile inherits Rectangle {
         }
     }
 
-    // Name under the focused tile only. Slint has no text shadow, so a dark copy
-    // offset by (0, 2) stands in for a soft label shadow.
+    // Name under the focused tile only, unless the tile shows it already (an
+    // icon or no artwork). Slint has no text shadow, so a dark copy offset by
+    // (0, 2) stands in for a soft label shadow.
     label-shadow := Text {
         x: 0;
         y: parent.height + 24 * u + 2 * u;
@@ -527,7 +528,7 @@ component Tile inherits Rectangle {
         color: #00000066;
         horizontal-alignment: center;
         overflow: elide;
-        opacity: focused && !launching ? 1 : 0;
+        opacity: focused && !launching && data.kind != 1 && data.kind != 2 ? 1 : 0;
         animate opacity { duration: 150ms; }
     }
     Text {
