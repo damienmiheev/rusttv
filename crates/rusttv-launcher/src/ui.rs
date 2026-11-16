@@ -435,6 +435,12 @@ fn start(
         }
     });
     let weak = Rc::downgrade(&controller);
+    window.on_prompt_key(move |row, column| {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow_mut().prompt_clicked(row, column);
+        }
+    });
+    let weak = Rc::downgrade(&controller);
     window.on_scrolled(move |delta| {
         if let Some(controller) = weak.upgrade() {
             controller.borrow_mut().scrolled(delta);
@@ -662,6 +668,8 @@ struct Controller {
     scroll_rest: f32,
     /// Hides the mouse pointer once it rests.
     pointer_timer: Timer,
+    /// The open text prompt, and the device control its text is for.
+    prompt: Option<device_view::Prompt>,
 }
 
 impl Controller {
@@ -791,6 +799,7 @@ impl Controller {
                 links_timer: Timer::default(),
                 scroll_rest: 0.0,
                 pointer_timer: Timer::default(),
+                prompt: None,
             })
         });
         *controller.borrow().options.lifecycle.0.borrow_mut() = Rc::downgrade(&controller);
@@ -967,6 +976,12 @@ impl Controller {
     /// swallowed here: passed on, each restarted the long-press timer, so move
     /// mode only began on release. Held arrows keep repeating, to scroll.
     fn key(&mut self, text: &str, pressed: bool, repeat: bool) -> bool {
+        // The on-screen keyboard also takes typed characters.
+        if self.prompt.is_some() {
+            self.hide_pointer();
+            self.prompt_key(text, pressed);
+            return true;
+        }
         let Some(input) = input_for_key(text, pressed) else {
             return false;
         };
@@ -987,6 +1002,13 @@ impl Controller {
             self.pairing_input(input);
             return;
         }
+        // The on-screen keyboard takes the remote's keys while it is open.
+        if self.prompt.is_some()
+            && !matches!(input, Input::Tick | Input::Paused | Input::LaunchFailed)
+        {
+            self.prompt_input(input);
+            return;
+        }
         let effect = self.home.handle(input, (self.clock)());
         if input != Input::Tick {
             self.pressed = input == Input::OkPressed
@@ -1000,6 +1022,7 @@ impl Controller {
             self.save_order();
         }
         if input == Input::Paused {
+            self.prompt = None;
             self.close_settings_view();
             self.close_quick_view();
             self.schedule_pack();
@@ -1435,6 +1458,7 @@ impl Controller {
         });
         self.render_settings(&window);
         self.render_quick(&window);
+        self.render_prompt(&window);
         self.render_remote_page(&window);
         self.render_pairing(&window);
         window.set_pressed(self.pressed);
@@ -1795,6 +1819,10 @@ impl Controller {
 
     /// Typing on the phone, into the folder name being edited.
     fn phone_text(&mut self, edit: TextEdit) {
+        if self.prompt.is_some() {
+            self.prompt_text(edit);
+            return;
+        }
         if self.renaming.is_none() {
             return;
         }
@@ -3674,6 +3702,42 @@ mod tests {
         assert!(!screen.window.global::<Pointer>().get_shown());
         screen.window.invoke_tile_pointer(false, 0, 1);
         assert_eq!(screen.launched(), ["a/.Main"]);
+    }
+
+    #[test]
+    fn a_text_control_asks_with_the_on_screen_keyboard_and_sends_the_text() {
+        let platform = abc().with_device();
+        let device = platform.device().unwrap();
+        let screen = screen_with(platform, None);
+        click_settings(&screen.window);
+        settle(&screen);
+        // Display is the first platform tab; Device name its third row.
+        let display = screen
+            .window
+            .get_settings_sections()
+            .iter()
+            .position(|section| section == "Display")
+            .unwrap();
+        for _ in 0..display {
+            screen.tap(DOWN);
+        }
+        screen.tap(RIGHT);
+        screen.tap(DOWN);
+        screen.tap(DOWN);
+        screen.tap(OK);
+        assert!(screen.window.get_prompt_shown());
+        assert_eq!(screen.window.get_prompt_title(), "Device name");
+        // q from the keyboard, then a typed letter, then Done by click.
+        screen.tap(OK);
+        assert!(screen.window.invoke_key("x".into(), true, false));
+        screen.window.invoke_prompt_key(4, 3);
+        settle(&screen);
+        assert!(!screen.window.get_prompt_shown());
+        assert!(
+            device
+                .changes()
+                .contains(&"display/name=Text(\"qx\")".to_owned())
+        );
     }
 
     #[test]

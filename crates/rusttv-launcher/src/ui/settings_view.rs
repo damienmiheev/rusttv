@@ -211,6 +211,12 @@ impl Controller {
                 control,
                 value,
             }) => self.change_device(tab, control, value),
+            Some(Action::AskText {
+                tab,
+                control,
+                title,
+                secret,
+            }) => self.ask_text(tab, control, title, secret),
             Some(Action::Update) => self.update_action(),
             Some(Action::Notices) => {
                 let effect = self.home.open_about();

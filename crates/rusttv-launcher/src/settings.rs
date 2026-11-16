@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use rusttv_history::door::{ApprovedChange, PendingApproval};
 use rusttv_history::{Author, Change, EntryId, Launcher, SETTING_KEYS};
 
-use crate::device::{Adjust, Tab, Value, adjust};
+use crate::device::{Adjust, ControlKind, Tab, Value, adjust};
 use crate::model::Input;
 
 /// What the history thread knows when the page opens.
@@ -100,6 +100,14 @@ pub(crate) enum Action {
         tab: String,
         control: String,
         value: Value,
+    },
+    /// Ask for a text (on-screen keyboard), then send it to the device as
+    /// [`Value::Text`].
+    AskText {
+        tab: String,
+        control: String,
+        title: String,
+        secret: bool,
     },
     /// Install the available launcher update, else check for one.
     Update,
@@ -398,6 +406,12 @@ impl SettingsPage {
                 tab: tab.id.clone(),
                 control: control.id.clone(),
                 value,
+            })),
+            Adjust::AskText => Some(Some(Action::AskText {
+                tab: tab.id.clone(),
+                control: control.id.clone(),
+                title: control.label.clone(),
+                secret: matches!(control.kind, ControlKind::Text { secret: true }),
             })),
         }
     }

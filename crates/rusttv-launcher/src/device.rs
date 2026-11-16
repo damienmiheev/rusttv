@@ -97,6 +97,9 @@ pub enum ControlKind {
     },
     /// OK does something (connect, restart).
     Action,
+    /// OK asks for a text (a Wi-Fi password: `secret`, shown as dots) and
+    /// sends it as [`Value::Text`].
+    Text { secret: bool },
     /// Shows `detail` only.
     Info,
 }
@@ -112,6 +115,8 @@ pub enum Value {
     Choice(usize),
     /// A [`ControlKind::Action`] was chosen.
     Action,
+    /// The text entered for a [`ControlKind::Text`].
+    Text(String),
 }
 
 /// A volume key.
@@ -193,6 +198,8 @@ pub(crate) enum Adjust {
     Kept,
     /// The control has this new value now; send it to the device.
     Changed(Value),
+    /// Ask for a text for this [`ControlKind::Text`] (ui/text_prompt).
+    AskText,
 }
 
 /// Applies a key to the focused control: OK flips a toggle, chooses an
@@ -211,6 +218,7 @@ pub(crate) fn adjust(control: &mut Control, input: Input, right_to_left: bool) -
             Adjust::Changed(Value::Toggle(*on))
         }
         (ControlKind::Action, Input::OkReleased, _) => Adjust::Changed(Value::Action),
+        (ControlKind::Text { .. }, Input::OkReleased, _) => Adjust::AskText,
         (
             ControlKind::Slider {
                 value,
@@ -320,7 +328,7 @@ impl PanelPage {
                         value,
                     });
                 }
-                Adjust::Kept => return None,
+                Adjust::Kept | Adjust::AskText => return None,
                 Adjust::Ignored => {}
             }
         }
@@ -420,6 +428,12 @@ impl DeviceSettings for FakeDevice {
                     },
                 ),
                 control("resolution", "Resolution", "1920 × 1080", ControlKind::Info),
+                control(
+                    "name",
+                    "Device name",
+                    "",
+                    ControlKind::Text { secret: false },
+                ),
             ],
         }]
     }
@@ -511,6 +525,7 @@ impl DeviceSettings for FakeDevice {
             ("wifi", Value::Toggle(on)) => state.wifi = on,
             ("bluetooth", Value::Toggle(on)) => state.bluetooth = on,
             ("night-light", Value::Toggle(on)) => state.night_light = on,
+            ("name", Value::Text(_)) => {}
             (control, Value::Action) if control.starts_with("connect:") => {
                 state.network = control.strip_prefix("connect:").map(str::to_owned);
             }

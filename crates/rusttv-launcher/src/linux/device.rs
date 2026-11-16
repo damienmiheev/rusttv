@@ -33,6 +33,15 @@ const MAX_NETWORKS: usize = 8;
 /// Control ids of Wi-Fi networks are this prefix and the SSID.
 const CONNECT: &str = "connect:";
 
+/// Control ids of paired Bluetooth devices: this prefix and the address.
+const BT: &str = "bt:";
+
+/// Control ids of found, unpaired Bluetooth devices.
+const PAIR: &str = "pair:";
+
+/// How long a Bluetooth search runs, in seconds.
+const BT_SCAN_SECONDS: &str = "8";
+
 /// [`DeviceSettings`] through the tools found in `PATH` at start.
 #[derive(Debug, Clone, Default)]
 pub struct LinuxDevice {
@@ -40,6 +49,8 @@ pub struct LinuxDevice {
     nmcli: bool,
     bluetoothctl: bool,
     systemctl: bool,
+    /// Whether a Bluetooth search ran: Devices then lists what it found.
+    scanned: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl LinuxDevice {
@@ -50,6 +61,7 @@ impl LinuxDevice {
             nmcli: program_exists("nmcli"),
             bluetoothctl: program_exists("bluetoothctl"),
             systemctl: program_exists("systemctl"),
+            scanned: std::sync::Arc::default(),
         }
     }
 
@@ -57,7 +69,7 @@ impl LinuxDevice {
     pub(super) fn has(&self, panel: QuickPanel) -> bool {
         match panel {
             QuickPanel::Audio => self.wpctl,
-            QuickPanel::Network => self.nmcli || self.bluetoothctl,
+            QuickPanel::Network => self.nmcli,
             QuickPanel::Power => self.systemctl,
         }
     }
@@ -116,82 +128,126 @@ impl LinuxDevice {
     }
 
     fn network(&self) -> Option<Tab> {
-        if !self.has(QuickPanel::Network) {
+        if !self.nmcli {
             return None;
         }
         let mut controls = Vec::new();
-        if self.nmcli {
-            if let Ok(devices) = run("nmcli", &["-t", "-f", "TYPE,STATE,CONNECTION", "device"]) {
-                for fields in devices.lines().map(split_terse) {
-                    if let [kind, state, connection] = fields.as_slice()
-                        && kind == "ethernet"
-                        && state == "connected"
-                    {
-                        controls.push(control(
-                            "ethernet",
-                            "Ethernet",
-                            connection,
-                            ControlKind::Info,
-                        ));
-                    }
-                }
-            }
-            let wifi = run("nmcli", &["-t", "-f", "WIFI", "radio"])
-                .is_ok_and(|text| text.trim() == "enabled");
-            controls.push(control(
-                "wifi",
-                "Wi-Fi",
-                "",
-                ControlKind::Toggle { on: wifi },
-            ));
-            if wifi {
-                let networks = run(
-                    "nmcli",
-                    &[
-                        "-t",
-                        "-f",
-                        "IN-USE,SSID,SIGNAL,SECURITY",
-                        "device",
-                        "wifi",
-                        "list",
-                    ],
-                )
-                .map(|text| parse_networks(&text))
-                .unwrap_or_default();
-                let current = networks.iter().find(|network| network.in_use);
-                controls.push(control(
-                    "current",
-                    "Connected to",
-                    current.map_or("Not connected", |network| network.ssid.as_str()),
-                    ControlKind::Info,
-                ));
-                for network in networks.iter().filter(|network| !network.in_use) {
-                    let security = if network.security.is_empty() {
-                        "open".to_owned()
-                    } else {
-                        network.security.clone()
-                    };
+        if let Ok(devices) = run("nmcli", &["-t", "-f", "TYPE,STATE,CONNECTION", "device"]) {
+            for fields in devices.lines().map(split_terse) {
+                if let [kind, state, connection] = fields.as_slice()
+                    && kind == "ethernet"
+                    && state == "connected"
+                {
                     controls.push(control(
-                        &format!("{CONNECT}{}", network.ssid),
-                        &network.ssid,
-                        &format!("{} % · {security}", network.signal),
-                        ControlKind::Action,
+                        "ethernet",
+                        "Ethernet",
+                        connection,
+                        ControlKind::Info,
                     ));
                 }
             }
         }
-        if self.bluetoothctl
-            && let Ok(text) = run("bluetoothctl", &["show"])
-            && let Some(on) = parse_powered(&text)
-        {
+        let wifi =
+            run("nmcli", &["-t", "-f", "WIFI", "radio"]).is_ok_and(|text| text.trim() == "enabled");
+        controls.push(control(
+            "wifi",
+            "Wi-Fi",
+            "",
+            ControlKind::Toggle { on: wifi },
+        ));
+        if !wifi {
+            return Some(tab(QuickPanel::Network, "Network", controls));
+        }
+        let networks = run(
+            "nmcli",
+            &[
+                "-t",
+                "-f",
+                "IN-USE,SSID,SIGNAL,SECURITY",
+                "device",
+                "wifi",
+                "list",
+                "--rescan",
+                "no",
+            ],
+        )
+        .map(|text| parse_networks(&text))
+        .unwrap_or_default();
+        let saved = run("nmcli", &["-t", "-f", "NAME,TYPE", "connection", "show"])
+            .map(|text| parse_saved(&text))
+            .unwrap_or_default();
+        for network in &networks {
+            controls.push(network_control(network, saved.contains(&network.ssid)));
+        }
+        controls.push(control(
+            "rescan",
+            "Search for networks",
+            "",
+            ControlKind::Action,
+        ));
+        Some(tab(QuickPanel::Network, "Network", controls))
+    }
+
+    /// Bluetooth: on or off, the paired devices (OK connects or
+    /// disconnects one), and after a search the new ones nearby (OK pairs).
+    fn devices(&self) -> Option<Tab> {
+        if !self.bluetoothctl {
+            return None;
+        }
+        let on = run("bluetoothctl", &["show"])
+            .ok()
+            .and_then(|text| parse_powered(&text))?;
+        let mut controls = vec![control(
+            "bluetooth",
+            "Bluetooth",
+            "",
+            ControlKind::Toggle { on },
+        )];
+        if on {
+            let list = |filter: &str| {
+                run("bluetoothctl", &["devices", filter])
+                    .map(|text| parse_bt_devices(&text))
+                    .unwrap_or_default()
+            };
+            let paired = list("Paired");
+            let connected = list("Connected");
+            for (address, name) in &paired {
+                let up = connected.iter().any(|(other, _)| other == address);
+                controls.push(control(
+                    &format!("{BT}{address}"),
+                    name,
+                    if up { "Connected" } else { "Not connected" },
+                    ControlKind::Action,
+                ));
+            }
+            if self.scanned.load(std::sync::atomic::Ordering::Relaxed) {
+                let all = run("bluetoothctl", &["devices"])
+                    .map(|text| parse_bt_devices(&text))
+                    .unwrap_or_default();
+                for (address, name) in all
+                    .iter()
+                    .filter(|(address, _)| !paired.iter().any(|(other, _)| other == address))
+                {
+                    controls.push(control(
+                        &format!("{PAIR}{address}"),
+                        name,
+                        "New",
+                        ControlKind::Action,
+                    ));
+                }
+            }
             controls.push(control(
-                "bluetooth",
-                "Bluetooth",
+                "bt-scan",
+                "Search for devices",
                 "",
-                ControlKind::Toggle { on },
+                ControlKind::Action,
             ));
         }
-        Some(tab(QuickPanel::Network, "Network", controls))
+        Some(Tab {
+            id: "devices".to_owned(),
+            title: "Devices".to_owned(),
+            controls,
+        })
     }
 
     fn power(&self) -> Option<Tab> {
@@ -217,6 +273,7 @@ impl DeviceSettings for LinuxDevice {
             tabs.push(audio);
         }
         tabs.extend(self.network());
+        tabs.extend(self.devices());
         tabs
     }
 
@@ -247,10 +304,48 @@ impl DeviceSettings for LinuxDevice {
             ("bluetooth", Value::Toggle(on)) => run("bluetoothctl", &["power", on_off(on)]),
             (control, Value::Action) if control.starts_with(CONNECT) => {
                 let ssid = &control[CONNECT.len()..];
-                // A saved network first; else a new one (open networks
-                // only: there is no password entry yet).
+                // A saved network first; else a new, open one.
                 run("nmcli", &["connection", "up", "id", ssid])
                     .or_else(|_| run("nmcli", &["device", "wifi", "connect", ssid]))
+            }
+            (control, Value::Text(password)) if control.starts_with(CONNECT) => {
+                let ssid = &control[CONNECT.len()..];
+                // `--ask` reads the password from stdin.
+                run_with_input(
+                    "nmcli",
+                    &["--ask", "device", "wifi", "connect", ssid],
+                    Some(&password),
+                )
+            }
+            ("rescan", Value::Action) => run(
+                "nmcli",
+                &[
+                    "-t", "-f", "SSID", "device", "wifi", "list", "--rescan", "yes",
+                ],
+            ),
+            ("bt-scan", Value::Action) => {
+                let scanned = run(
+                    "bluetoothctl",
+                    &["--timeout", BT_SCAN_SECONDS, "scan", "on"],
+                );
+                self.scanned
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+                scanned
+            }
+            (control, Value::Action) if control.starts_with(BT) => {
+                let address = &control[BT.len()..];
+                let connected = run("bluetoothctl", &["info", address])
+                    .is_ok_and(|text| text.contains("Connected: yes"));
+                run(
+                    "bluetoothctl",
+                    &[if connected { "disconnect" } else { "connect" }, address],
+                )
+            }
+            (control, Value::Action) if control.starts_with(PAIR) => {
+                let address = &control[PAIR.len()..];
+                run("bluetoothctl", &["pair", address])
+                    .and_then(|_| run("bluetoothctl", &["trust", address]))
+                    .and_then(|_| run("bluetoothctl", &["connect", address]))
             }
             ("reboot", Value::Action) => run("systemctl", &["reboot"]),
             ("poweroff", Value::Action) => run("systemctl", &["poweroff"]),
@@ -397,13 +492,28 @@ fn percent(level: f32) -> i32 {
 /// Runs a tool and returns its output; stops it after [`TOOL_TIMEOUT`].
 /// `Err` is the tool's error message or why it didn't run.
 fn run(program: &str, args: &[&str]) -> Result<String, String> {
+    run_with_input(program, args, None)
+}
+
+/// [`run`] with `input` on the tool's stdin (a password, so it is never
+/// on a command line other users can read).
+fn run_with_input(program: &str, args: &[&str], input: Option<&str>) -> Result<String, String> {
     let mut child = Command::new(program)
         .args(args)
-        .stdin(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| format!("{program}: {error}"))?;
+    if let (Some(input), Some(mut stdin)) = (input, child.stdin.take()) {
+        use std::io::Write as _;
+        // Dropped after writing: the tool sees the end of its input.
+        let _ = writeln!(stdin, "{input}");
+    }
     let deadline = Instant::now() + TOOL_TIMEOUT;
     let status = loop {
         match child.try_wait() {
@@ -557,6 +667,55 @@ fn parse_networks(text: &str) -> Vec<Network> {
     networks
 }
 
+/// How a Wi-Fi network shows: saved and open ones connect on OK, a new
+/// secured one asks for its password first.
+fn network_control(network: &Network, saved: bool) -> Control {
+    let id = format!("{CONNECT}{}", network.ssid);
+    let open = network.security.is_empty() || network.security == "--";
+    let state = if network.in_use {
+        "Connected"
+    } else if saved {
+        "Saved"
+    } else if open {
+        "Open"
+    } else {
+        "Secured"
+    };
+    let detail = format!("{state} · {} %", network.signal);
+    let kind = if network.in_use {
+        ControlKind::Info
+    } else if saved || open {
+        ControlKind::Action
+    } else {
+        ControlKind::Text { secret: true }
+    };
+    control(&id, &network.ssid, &detail, kind)
+}
+
+/// The names of saved Wi-Fi connections, from
+/// `nmcli -t -f NAME,TYPE connection show`.
+fn parse_saved(text: &str) -> Vec<String> {
+    text.lines()
+        .map(split_terse)
+        .filter_map(|fields| match fields.as_slice() {
+            [name, kind] if kind == "802-11-wireless" => Some(name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// `bluetoothctl devices`: "Device AA:BB:CC:DD:EE:FF Name" lines, as
+/// (address, name); a device without a name shows its address.
+fn parse_bt_devices(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|line| {
+            let rest = line.trim().strip_prefix("Device ")?;
+            let (address, name) = rest.split_once(' ').unwrap_or((rest, rest));
+            Some((address.to_owned(), name.trim().to_owned()))
+        })
+        .collect()
+}
+
 /// `bluetoothctl show`: "Powered: yes"; `None` without a controller.
 fn parse_powered(text: &str) -> Option<bool> {
     text.lines()
@@ -665,6 +824,61 @@ mod tests {
         assert!(networks[0].in_use);
         assert_eq!(networks[0].signal, 80);
         assert_eq!(networks[1].security, "");
+    }
+
+    #[test]
+    fn new_secured_networks_ask_for_a_password_and_saved_ones_connect() {
+        let saved =
+            parse_saved("Home:802-11-wireless\nWired:802-3-ethernet\nLab\\:2:802-11-wireless\n");
+        assert_eq!(saved, ["Home", "Lab:2"]);
+        let network = |ssid: &str, security: &str, in_use: bool| Network {
+            in_use,
+            ssid: ssid.to_owned(),
+            signal: 70,
+            security: security.to_owned(),
+        };
+        let kind = |control: Control| (control.detail, control.kind);
+        assert_eq!(
+            kind(network_control(&network("Home", "WPA2", false), true)),
+            ("Saved · 70 %".to_owned(), ControlKind::Action)
+        );
+        assert_eq!(
+            kind(network_control(&network("Cafe", "", false), false)),
+            ("Open · 70 %".to_owned(), ControlKind::Action)
+        );
+        assert_eq!(
+            kind(network_control(
+                &network("Next door", "WPA2 WPA3", false),
+                false
+            )),
+            (
+                "Secured · 70 %".to_owned(),
+                ControlKind::Text { secret: true }
+            )
+        );
+        assert_eq!(
+            kind(network_control(&network("Home", "WPA2", true), true)).1,
+            ControlKind::Info
+        );
+    }
+
+    #[test]
+    fn reads_bluetooth_devices() {
+        let text =
+            "Device AA:BB:CC:DD:EE:FF Bluetooth remote\nDevice 11:22:33:44:55:66\nController x\n";
+        assert_eq!(
+            parse_bt_devices(text),
+            [
+                (
+                    "AA:BB:CC:DD:EE:FF".to_owned(),
+                    "Bluetooth remote".to_owned()
+                ),
+                (
+                    "11:22:33:44:55:66".to_owned(),
+                    "11:22:33:44:55:66".to_owned()
+                ),
+            ]
+        );
     }
 
     #[test]
