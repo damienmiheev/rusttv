@@ -7,7 +7,8 @@
 //! keys (`layout.rs`); each key types straight into the app, and the
 //! launcher's own text fields (a Wi-Fi password) take it the same way. ✓ closes it and presses Enter (through a virtual keyboard); Back
 //! closes it and gives the keys back to the app until a text field gets
-//! focus again.
+//! focus again. Typing on a real keyboard (or a phone's, through the
+//! remote desktop portal) closes it and passes the keys on to the app.
 
 mod draw;
 mod layout;
@@ -61,6 +62,17 @@ mod code {
     pub const DOWN: u32 = 108;
     pub const BACK: u32 = 158;
     pub const SELECT: u32 = 353;
+
+    /// Keys that type or edit text on a real keyboard (letters, digits,
+    /// punctuation, space, Tab, the keypad, Home/End, Page Up/Down,
+    /// Insert/Delete) rather than steer the on-screen keyboard.
+    pub fn types(key: u32) -> bool {
+        matches!(
+            key,
+            2..=13 | 15..=27 | 30..=41 | 43..=53 | 55 | 57 | 71..=83 | 86 | 98 | 102 | 104 | 107
+                | 109..=111
+        )
+    }
 }
 
 /// `text-input-v3` content purposes the keyboard tells apart.
@@ -82,6 +94,9 @@ enum Effect {
     Enter,
     /// Close the keyboard; the app gets the keys again.
     Hide,
+    /// Someone types on a real keyboard (or a phone's, through the remote
+    /// desktop portal): close the keyboard and pass this key on to the app.
+    Pass,
 }
 
 /// Applies a remote key to the keyboard.
@@ -97,6 +112,7 @@ fn key(prompt: &mut TextPrompt, key: u32, pressed: bool) -> Effect {
             return Effect::Delete;
         }
         (code::ENTER | code::KP_ENTER | code::SELECT, false) => Input::OkReleased,
+        (key, true) if code::types(key) => return Effect::Pass,
         _ => return Effect::Redraw(false),
     };
     if input != Input::OkReleased {
@@ -183,6 +199,9 @@ fn run(font: FontVec) -> Result<(), String> {
         purpose: 0,
         grab: None,
         virtual_keyboard: None,
+        passthrough: None,
+        passing: false,
+        modifiers: [0; 4],
         surface: None,
         prompt: TextPrompt::new("", false),
         pointer_at: None,
@@ -220,6 +239,14 @@ struct State {
     purpose: u32,
     grab: Option<ZwpInputMethodKeyboardGrabV2>,
     virtual_keyboard: Option<ZwpVirtualKeyboardV1>,
+    /// Passes a real keyboard's keys on to the app, with the keymap of
+    /// whichever keyboard sent them last (the grab says which).
+    passthrough: Option<ZwpVirtualKeyboardV1>,
+    /// A real keyboard is typing: keys still coming through the grab go on
+    /// to the app, until a text field asks for the keyboard again.
+    passing: bool,
+    /// The grab's modifiers: depressed, latched, locked, group.
+    modifiers: [u32; 4],
     surface: Option<Surface>,
     prompt: TextPrompt,
     /// Where the pointer is over the keyboard, if it is.
@@ -239,6 +266,7 @@ impl State {
     fn show(&mut self, qh: &QueueHandle<Self>) {
         let (title, secret) = title(self.purpose);
         self.prompt = TextPrompt::new(title, secret);
+        self.passing = false;
         if self.grab.is_none() {
             self.grab = Some(self.input_method.grab_keyboard(qh, ()));
         }
@@ -328,7 +356,16 @@ impl State {
         Ok(buffer)
     }
 
-    fn apply(&mut self, effect: Effect, time: u32, qh: &QueueHandle<Self>) {
+    /// Passes a key on to the app through the pass-through keyboard.
+    fn pass(&self, time: u32, key: u32, pressed: bool) {
+        if let Some(keyboard) = &self.passthrough {
+            let [depressed, latched, locked, group] = self.modifiers;
+            keyboard.modifiers(depressed, latched, locked, group);
+            keyboard.key(time, key, u32::from(pressed));
+        }
+    }
+
+    fn apply(&mut self, effect: Effect, time: u32, key: u32, qh: &QueueHandle<Self>) {
         match effect {
             Effect::Redraw(false) => {}
             Effect::Redraw(true) => self.redraw(qh),
@@ -351,6 +388,12 @@ impl State {
                 self.redraw(qh);
             }
             Effect::Hide => self.hide(),
+            Effect::Pass => {
+                // The grab goes first, so the following keys reach the app.
+                self.hide();
+                self.passing = true;
+                self.pass(time, key, true);
+            }
             Effect::Enter => {
                 // The grab goes first, so the Enter reaches the app.
                 self.hide();
@@ -428,6 +471,27 @@ impl Dispatch<ZwpInputMethodKeyboardGrabV2, ()> for State {
                     keyboard.keymap(format as u32, fd.as_fd(), size);
                     state.virtual_keyboard = Some(keyboard);
                 }
+                // Keys passed on mean what they meant on their keyboard.
+                if let (Some(manager), WEnum::Value(format)) = (&state.virtual_keyboards, format) {
+                    let keyboard = state.passthrough.get_or_insert_with(|| {
+                        manager.create_virtual_keyboard(&state.seat, qh, ())
+                    });
+                    keyboard.keymap(format as u32, fd.as_fd(), size);
+                }
+            }
+            grab::Event::Modifiers {
+                mods_depressed,
+                mods_latched,
+                mods_locked,
+                group,
+                ..
+            } => {
+                state.modifiers = [mods_depressed, mods_latched, mods_locked, group];
+                if state.passing
+                    && let Some(keyboard) = &state.passthrough
+                {
+                    keyboard.modifiers(mods_depressed, mods_latched, mods_locked, group);
+                }
             }
             grab::Event::Key {
                 time,
@@ -435,10 +499,14 @@ impl Dispatch<ZwpInputMethodKeyboardGrabV2, ()> for State {
                 state: key_state,
                 ..
             } => {
+                let pressed = matches!(key_state, WEnum::Value(wl_keyboard::KeyState::Pressed));
+                if state.passing {
+                    state.pass(time, pressed_key, pressed);
+                    return;
+                }
                 if !state.active || state.surface.is_none() {
                     return;
                 }
-                let pressed = matches!(key_state, WEnum::Value(wl_keyboard::KeyState::Pressed));
                 if pressed_key == code::BACKSPACE && state.echoes > 0 {
                     if !pressed {
                         state.echoes -= 1;
@@ -446,7 +514,7 @@ impl Dispatch<ZwpInputMethodKeyboardGrabV2, ()> for State {
                     return;
                 }
                 let effect = key(&mut state.prompt, pressed_key, pressed);
-                state.apply(effect, time, qh);
+                state.apply(effect, time, pressed_key, qh);
             }
             _ => {}
         }
@@ -481,7 +549,7 @@ impl State {
         };
         self.prompt.focus_on(row, column);
         let effect = key(&mut self.prompt, code::ENTER, false);
-        self.apply(effect, time, qh);
+        self.apply(effect, time, code::ENTER, qh);
     }
 }
 
@@ -669,11 +737,19 @@ mod tests {
     }
 
     #[test]
-    fn back_hides_and_other_keys_do_nothing() {
+    fn back_hides_typing_passes_on_and_other_keys_do_nothing() {
         let mut prompt = TextPrompt::new("Type", false);
         assert_eq!(key(&mut prompt, code::BACK, true), Effect::Hide);
         assert_eq!(key(&mut prompt, code::ESC, true), Effect::Hide);
+        // Volume up and a lone Shift.
         assert_eq!(key(&mut prompt, 115, true), Effect::Redraw(false));
+        assert_eq!(key(&mut prompt, 42, true), Effect::Redraw(false));
+        // H, space and Delete from a real keyboard go to the app.
+        assert_eq!(key(&mut prompt, 35, true), Effect::Pass);
+        assert_eq!(key(&mut prompt, 57, true), Effect::Pass);
+        assert_eq!(key(&mut prompt, 111, true), Effect::Pass);
+        assert_eq!(key(&mut prompt, 35, false), Effect::Redraw(false));
+        assert_eq!(prompt.text(), "");
         assert_eq!(key(&mut prompt, code::BACKSPACE, true), Effect::Delete);
     }
 
