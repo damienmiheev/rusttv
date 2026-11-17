@@ -120,6 +120,8 @@ export component QuickBar inherits Rectangle {
     in property <[int]> links;
     // A click on entry `index`.
     callback clicked(int);
+    // The pointer moved onto entry `index`.
+    callback hovered(int);
 
     property <length> size: 72 * u;
     property <length> gap: 18 * u;
@@ -228,6 +230,11 @@ export component QuickBar inherits Rectangle {
         }
         TouchArea {
             mouse-cursor: pointer;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.move {
+                    root.hovered(i);
+                }
+            }
             clicked => { root.clicked(i); }
         }
     }
@@ -257,6 +264,8 @@ export component QuickPanel inherits Rectangle {
     in property <int> focused-row;
     in property <int> first-row;
     callback row-clicked(int);
+    // The pointer moved onto row `index`.
+    callback row-hovered(int);
 
     property <length> pitch: 104 * u;
     property <int> shown: min(6, max(1, rows.length - first-row));
@@ -318,6 +327,11 @@ export component QuickPanel inherits Rectangle {
             height: pitch;
             visible: i >= first-row;
             mouse-cursor: pointer;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.move {
+                    root.row-hovered(i);
+                }
+            }
             clicked => { root.row-clicked(i); }
         }
     }
@@ -333,6 +347,8 @@ export component PowerMenu inherits Rectangle {
     in property <[SettingsRow]> rows;
     in property <int> focused-row;
     callback row-clicked(int);
+    // The pointer moved onto row `index`.
+    callback row-hovered(int);
     // A click beside the actions closes the menu.
     callback dismissed();
 
@@ -382,6 +398,11 @@ export component PowerMenu inherits Rectangle {
         }
         TouchArea {
             mouse-cursor: pointer;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.move {
+                    root.row-hovered(i);
+                }
+            }
             clicked => { root.row-clicked(i); }
         }
     }

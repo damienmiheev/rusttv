@@ -24,12 +24,12 @@ use wayland_client::protocol::{
     wl_keyboard,
     wl_pointer::{self, WlPointer},
     wl_registry::WlRegistry,
-    wl_seat::WlSeat,
+    wl_seat::{self, WlSeat},
     wl_shm::{self, WlShm},
     wl_shm_pool::WlShmPool,
     wl_surface::WlSurface,
 };
-use wayland_client::{Connection, Dispatch, QueueHandle, WEnum, delegate_noop};
+use wayland_client::{Connection, Dispatch, Proxy as _, QueueHandle, WEnum, delegate_noop};
 use wayland_protocols_misc::zwp_input_method_v2::client::{
     zwp_input_method_keyboard_grab_v2::{self as grab, ZwpInputMethodKeyboardGrabV2},
     zwp_input_method_manager_v2::ZwpInputMethodManagerV2,
@@ -160,7 +160,7 @@ fn run(font: FontVec) -> Result<(), String> {
     let (globals, mut queue) =
         registry_queue_init::<State>(&connection).map_err(|error| error.to_string())?;
     let qh = queue.handle();
-    let seat: WlSeat = globals.bind(&qh, 1..=1, ()).map_err(bind_error("seat"))?;
+    let seat: WlSeat = globals.bind(&qh, 1..=5, ()).map_err(bind_error("seat"))?;
     let manager: ZwpInputMethodManagerV2 = globals
         .bind(&qh, 1..=1, ())
         .map_err(bind_error("input method"))?;
@@ -187,9 +187,8 @@ fn run(font: FontVec) -> Result<(), String> {
         prompt: TextPrompt::new("", false),
         pointer_at: None,
         echoes: 0,
+        pointer: None,
     };
-    // The air mouse: hovering focuses a key, a click presses it.
-    let _pointer = state.seat.get_pointer(&qh, ());
     log::info!("on-screen keyboard for apps ready");
     let mut state = state;
     loop {
@@ -229,6 +228,11 @@ struct State {
     /// back through the grab (compositors that don't pass the input
     /// method's own keys around it); ignored, so they don't delete again.
     echoes: u32,
+    /// The seat's pointer (the air mouse: hovering focuses a key, a click
+    /// presses it), taken when the seat says it has one: a Bluetooth remote
+    /// often connects after the launcher started, and a pointer asked for
+    /// before that never gets events.
+    pointer: Option<WlPointer>,
 }
 
 impl State {
@@ -592,7 +596,34 @@ impl Dispatch<WlRegistry, GlobalListContents> for State {
     }
 }
 
-delegate_noop!(State: ignore WlSeat);
+impl Dispatch<WlSeat, ()> for State {
+    fn event(
+        state: &mut Self,
+        seat: &WlSeat,
+        event: wl_seat::Event,
+        _: &(),
+        _: &Connection,
+        qh: &QueueHandle<Self>,
+    ) {
+        if let wl_seat::Event::Capabilities {
+            capabilities: WEnum::Value(capabilities),
+        } = event
+        {
+            let has_pointer = capabilities.contains(wl_seat::Capability::Pointer);
+            match (has_pointer, state.pointer.take()) {
+                (true, None) => state.pointer = Some(seat.get_pointer(qh, ())),
+                (true, Some(pointer)) => state.pointer = Some(pointer),
+                (false, Some(pointer)) => {
+                    state.pointer_at = None;
+                    if pointer.version() >= 3 {
+                        pointer.release();
+                    }
+                }
+                (false, None) => {}
+            }
+        }
+    }
+}
 delegate_noop!(State: WlCompositor);
 delegate_noop!(State: ignore WlSurface);
 delegate_noop!(State: ignore WlShm);

@@ -851,6 +851,20 @@ impl Home {
 
     /// A click on entry `index` of the top-right menu: as moving to it and
     /// pressing OK. From Home, the menu or an open quick panel.
+    /// The pointer over entry `index` of the top-right menu: it gets the
+    /// focus, as the D-pad would give it. Returns whether anything changed.
+    pub fn hover_quick(&mut self, index: usize) -> bool {
+        if index >= self.quick_actions.len()
+            || !matches!(self.mode, Mode::Browse | Mode::Bar { .. })
+        {
+            return false;
+        }
+        let moved = self.mode != (Mode::Bar { selected: index });
+        self.mode = Mode::Bar { selected: index };
+        self.ok_since = None;
+        moved
+    }
+
     pub fn point_quick(&mut self, index: usize) -> Option<Effect> {
         if index >= self.quick_actions.len()
             || !matches!(

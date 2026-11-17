@@ -420,7 +420,9 @@ impl Controller {
         if let Some(open) = self.prompt.take() {
             self.change_device(open.tab, open.control, Value::Text(text.to_owned()));
         }
-        self.after_prompt = true;
+        // Enter closed it on key-down: its key-up is not an OK for the
+        // page below (it would open the prompt again).
+        self.swallow_ok_release = true;
         self.prompt_closed();
     }
 

@@ -74,6 +74,9 @@ const HERO_DELAY: Duration = Duration::from_millis(150);
 /// How long the "couldn't open" message stays.
 const TOAST_TIME: Duration = Duration::from_secs(3);
 
+/// Tiles per row of Hidden apps (home.slint).
+const HIDDEN_COLUMNS: usize = 6;
+
 /// Size of the small copy of each banner kept to compute its hero glow.
 const GLOW_SOURCE_SIZE: (u32, u32) = (48, 27);
 
@@ -517,6 +520,26 @@ fn start(
         }
     });
     let weak = Rc::downgrade(&controller);
+    window.on_list_pointer(move |list, index, action| {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow_mut().list_pointer(list, index, action);
+        }
+    });
+    let weak = Rc::downgrade(&controller);
+    window.on_quick_hovered(move |index| {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow_mut().quick_hovered(index);
+        }
+    });
+    let weak = Rc::downgrade(&controller);
+    window.on_settings_pointer(move |panel, index, action| {
+        if let Some(controller) = weak.upgrade() {
+            controller
+                .borrow_mut()
+                .settings_pointer(panel, index, action);
+        }
+    });
+    let weak = Rc::downgrade(&controller);
     window.on_quick_clicked(move |index| {
         if let Some(controller) = weak.upgrade() {
             controller.borrow_mut().quick_clicked(index);
@@ -776,9 +799,6 @@ struct Controller {
     pointer_timer: Timer,
     /// The open text prompt, and the device control its text is for.
     prompt: Option<device_view::Prompt>,
-    /// Enter closed the prompt on key-down: its key-up is not an OK for the
-    /// page under it (it would open the prompt again).
-    after_prompt: bool,
 }
 
 impl Controller {
@@ -909,7 +929,6 @@ impl Controller {
                 scroll_rest: 0.0,
                 pointer_timer: Timer::default(),
                 prompt: None,
-                after_prompt: false,
             })
         });
         *controller.borrow().options.lifecycle.0.borrow_mut() = Rc::downgrade(&controller);
@@ -1093,11 +1112,6 @@ impl Controller {
         let Some(input) = input_for_key(text, pressed) else {
             return false;
         };
-        match input {
-            Input::OkReleased if std::mem::take(&mut self.after_prompt) => return true,
-            Input::OkPressed => self.after_prompt = false,
-            _ => {}
-        }
         // The keys took over from the mouse.
         self.hide_pointer();
         if !(repeat && input == Input::OkPressed) {
@@ -1231,6 +1245,83 @@ impl Controller {
         };
         let effect = self.home.point_quick(index);
         self.after_pointer(effect);
+    }
+
+    /// The pointer over entry `index` of the top-right menu.
+    fn quick_hovered(&mut self, index: i32) {
+        self.pointer_moved();
+        if let Ok(index) = usize::try_from(index)
+            && self.home.hover_quick(index)
+        {
+            self.after_pointer(None);
+        }
+    }
+
+    /// The pointer on item `index` of a list (home.slint `list-pointer`):
+    /// hovering walks the focus there with the D-pad's own steps, so the
+    /// pointer and the remote can't disagree; a click then presses OK.
+    fn list_pointer(&mut self, list: i32, index: i32, action: i32) {
+        self.pointer_moved();
+        let Ok(target) = usize::try_from(index) else {
+            return;
+        };
+        let (read, columns): (fn(&HomeWindow) -> i32, usize) = match list {
+            0 => (HomeWindow::get_menu_selected, 1),
+            1 => (HomeWindow::get_hidden_focus, HIDDEN_COLUMNS),
+            2 => (HomeWindow::get_remote_row, 1),
+            3 => (HomeWindow::get_quick_row, 1),
+            4 => (HomeWindow::get_review_row, 1),
+            _ => return,
+        };
+        self.walk_focus(target, columns, read);
+        if action == 1 {
+            self.input(Input::OkPressed);
+            self.input(Input::OkReleased);
+        }
+        self.restart_idle();
+        self.schedule_tick();
+        self.render();
+    }
+
+    /// Moves the focus of a list (or a grid of `columns`) to `target` with
+    /// arrow keys, reading where it is from the window after each step.
+    fn walk_focus(&mut self, target: usize, columns: usize, read: fn(&HomeWindow) -> i32) {
+        let focus = |this: &Self| {
+            this.window
+                .upgrade()
+                .and_then(|window| usize::try_from(read(&window)).ok())
+        };
+        // Right moves back in right-to-left layouts: learnt on the way.
+        let mut flipped = false;
+        for _ in 0..64 {
+            let Some(now) = focus(self) else {
+                return;
+            };
+            if now == target {
+                return;
+            }
+            let (row, column) = (now / columns, now % columns);
+            let (to_row, to_column) = (target / columns, target % columns);
+            let sideways = row == to_row;
+            let step = if !sideways {
+                if to_row > row { Input::Down } else { Input::Up }
+            } else if (to_column > column) != flipped {
+                Input::Right
+            } else {
+                Input::Left
+            };
+            self.input(step);
+            self.render();
+            let Some(after) = focus(self) else {
+                return;
+            };
+            if after == now {
+                return;
+            }
+            if sideways && after.abs_diff(target) > now.abs_diff(target) {
+                flipped = !flipped;
+            }
+        }
     }
 
     fn after_pointer(&mut self, effect: Option<Effect>) {
@@ -3898,6 +3989,49 @@ mod tests {
             screen.window.get_prompt_shown(),
             "the keys are back on Settings"
         );
+    }
+
+    #[test]
+    fn the_pointer_focuses_and_picks_in_the_tile_menu() {
+        let screen = screen(None);
+        screen.long_press_ok();
+        screen.window.invoke_list_pointer(0, 1, 0);
+        assert_eq!(screen.window.get_menu_selected(), 1, "hover focuses");
+        assert_eq!(screen.window.get_mode(), mode_value(State::Menu));
+        screen.window.invoke_list_pointer(0, 0, 1); // Move
+        assert_eq!(screen.window.get_mode(), mode_value(State::Moving));
+    }
+
+    #[test]
+    fn the_pointer_focuses_and_picks_in_settings() {
+        let screen = screen_with(abc().with_device(), None);
+        click_settings(&screen.window);
+        settle(&screen);
+        let display = screen
+            .window
+            .get_settings_sections()
+            .iter()
+            .position(|section| section == "Display")
+            .unwrap();
+        let display = i32::try_from(display).unwrap();
+        screen.window.invoke_settings_pointer(false, display, 0);
+        assert_eq!(screen.window.get_settings_section(), display);
+        assert_eq!(screen.window.get_settings_row(), -1);
+        // Device name, the third row: a click opens its prompt.
+        screen.window.invoke_settings_pointer(true, 2, 0);
+        assert_eq!(screen.window.get_settings_row(), 2);
+        screen.window.invoke_settings_pointer(true, 2, 1);
+        assert!(screen.window.get_prompt_shown());
+        assert_eq!(screen.window.get_prompt_title(), "Device name");
+    }
+
+    #[test]
+    fn the_pointer_focuses_the_top_right_menu() {
+        let screen = screen_with(abc().with_device(), None);
+        assert_eq!(screen.window.get_quick_selected(), -1);
+        screen.window.invoke_quick_hovered(0);
+        assert_eq!(screen.window.get_quick_selected(), 0);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Bar));
     }
 
     #[test]

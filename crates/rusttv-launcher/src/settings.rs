@@ -291,6 +291,21 @@ impl SettingsPage {
         self.section
     }
 
+    /// The pointer is over section `index`: the list has focus, on it.
+    pub fn point_section(&mut self, index: usize) {
+        if index < self.sections().len() {
+            self.section = index;
+            self.focus = Focus::List;
+        }
+    }
+
+    /// The pointer is over row `row` of the panel: it has focus.
+    pub fn point_row(&mut self, row: usize) {
+        if row < self.rows() && !matches!(self.focus, Focus::Detail(_)) {
+            self.focus = Focus::Panel(row);
+        }
+    }
+
     /// The focused panel row, `None` while the section list has focus.
     pub fn panel_row(&self) -> Option<usize> {
         match self.focus {
