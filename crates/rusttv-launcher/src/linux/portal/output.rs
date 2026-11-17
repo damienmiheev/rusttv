@@ -333,6 +333,11 @@ impl Dispatch<WlKeyboard, ()> for Devices {
             fd,
             size,
         } = event
+            // Only the first: the seat's own keymap. Later ones are mostly
+            // our virtual keyboards' (the compositor passes on the keymap of
+            // the keyboard used last); answering those sent a keymap back and
+            // forth until the connection broke.
+            && devices.keymap.is_none()
         {
             let keyboard = devices.keyboard.get_or_insert_with(|| {
                 devices

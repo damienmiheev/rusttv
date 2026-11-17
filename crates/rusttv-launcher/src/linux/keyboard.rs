@@ -4,13 +4,13 @@
 //! When a text field in an app gets focus, the compositor activates the
 //! input method: the keyboard shows at the bottom of the screen (a
 //! `wlr-layer-shell` overlay that never takes focus) and takes the remote's
-//! keys. It is the launcher's keyboard (`TextPrompt`, the same keys and
-//! layout as the Wi-Fi password's), but each key types straight into the
-//! app. ✓ closes it and presses Enter (through a virtual keyboard); Back
+//! keys (`layout.rs`); each key types straight into the app, and the
+//! launcher's own text fields (a Wi-Fi password) take it the same way. ✓ closes it and presses Enter (through a virtual keyboard); Back
 //! closes it and gives the keys back to the app until a text field gets
 //! focus again.
 
 mod draw;
+mod layout;
 
 use std::fs::File;
 use std::io::Write as _;
@@ -47,7 +47,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::{
 };
 
 use crate::model::Input;
-use crate::text_prompt::{BottomKey, TextPrompt};
+use layout::{BottomKey, TextPrompt};
 
 /// Linux input event codes (`linux/input-event-codes.h`) the keyboard uses.
 mod code {
@@ -186,6 +186,7 @@ fn run(font: FontVec) -> Result<(), String> {
         surface: None,
         prompt: TextPrompt::new("", false),
         pointer_at: None,
+        echoes: 0,
     };
     // The air mouse: hovering focuses a key, a click presses it.
     let _pointer = state.seat.get_pointer(&qh, ());
@@ -224,6 +225,10 @@ struct State {
     prompt: TextPrompt,
     /// Where the pointer is over the keyboard, if it is.
     pointer_at: Option<(f64, f64)>,
+    /// Backspaces sent through the virtual keyboard that may still come
+    /// back through the grab (compositors that don't pass the input
+    /// method's own keys around it); ignored, so they don't delete again.
+    echoes: u32,
 }
 
 impl State {
@@ -258,6 +263,7 @@ impl State {
     }
 
     fn hide(&mut self) {
+        self.echoes = 0;
         if let Some(grab) = self.grab.take() {
             grab.release();
         }
@@ -328,8 +334,16 @@ impl State {
                 self.redraw(qh);
             }
             Effect::Delete => {
-                self.input_method.delete_surrounding_text(1, 0);
-                self.input_method.commit(self.serial);
+                // A Backspace key rather than delete_surrounding_text, which
+                // some toolkits ignore (winit, so RustTV's own text fields).
+                if let Some(keyboard) = &self.virtual_keyboard {
+                    self.echoes += 1;
+                    keyboard.key(time, code::BACKSPACE, 1);
+                    keyboard.key(time.saturating_add(1), code::BACKSPACE, 0);
+                } else {
+                    self.input_method.delete_surrounding_text(1, 0);
+                    self.input_method.commit(self.serial);
+                }
                 self.redraw(qh);
             }
             Effect::Hide => self.hide(),
@@ -421,6 +435,12 @@ impl Dispatch<ZwpInputMethodKeyboardGrabV2, ()> for State {
                     return;
                 }
                 let pressed = matches!(key_state, WEnum::Value(wl_keyboard::KeyState::Pressed));
+                if pressed_key == code::BACKSPACE && state.echoes > 0 {
+                    if !pressed {
+                        state.echoes -= 1;
+                    }
+                    return;
+                }
                 let effect = key(&mut state.prompt, pressed_key, pressed);
                 state.apply(effect, time, qh);
             }

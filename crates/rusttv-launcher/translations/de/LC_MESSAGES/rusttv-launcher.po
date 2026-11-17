@@ -434,3 +434,6 @@ msgstr "Keine Schatten oder Hintergrundbilder: flüssiger bei einem langsamen Gr
 
 msgid "Loading…"
 msgstr "Wird geladen…"
+
+msgid "✓ on the keyboard confirms, Back cancels"
+msgstr "✓ auf der Tastatur bestätigt, Zurück bricht ab"

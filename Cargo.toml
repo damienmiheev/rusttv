@@ -126,3 +126,4 @@ panic = "abort"
 [patch.crates-io]
 i-slint-backend-android-activity = { path = "third_party/i-slint-backend-android-activity-1.18.1" }
 i-slint-renderer-skia = { path = "third_party/i-slint-renderer-skia-1.18.1" }
+reis = { path = "third_party/reis-0.7.1" }

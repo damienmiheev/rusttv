@@ -1,0 +1,14 @@
+--- src/eiproto_eis.rs	2006-07-24 03:21:28.000000000 +0200
++++ src/eiproto_eis.rs	2026-11-16 22:12:10.856992900 +0100
+@@ -332,7 +332,10 @@
+                     Ok(Self::ContextType { context_type })
+                 }
+                 3 => {
+-                    let name = _bytes.read_arg()?;
++                    // libei sends NULL when the client set no name (KDE
++                    // Connect); it is optional there (rusttv patch).
++                    let name: Option<String> = _bytes.read_arg()?;
++                    let name = name.unwrap_or_default();
+ 
+                     Ok(Self::Name { name })
+                 }

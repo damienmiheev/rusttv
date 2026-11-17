@@ -764,19 +764,16 @@ export component HomeWindow inherits Window {
     // A click on a row of the open quick panel, or beside the power menu.
     callback quick-row-clicked(int);
     callback quick-dismissed();
-    // The text prompt with its on-screen keyboard (src/text_prompt.rs).
+    // The text prompt (quick.slint `TextPromptView`, ui/device_view.rs).
     in property <bool> prompt-shown;
     // Frames drawn in the last second (`RUSTTV_FPS=1`, ui.rs `count_frames`);
     // empty hides it.
     in property <string> fps-text;
     in property <string> prompt-title;
-    in property <string> prompt-text;
-    in property <[string]> prompt-labels;
-    in property <bool> prompt-symbols;
-    in property <bool> prompt-capitals;
-    in property <int> prompt-row;
-    in property <int> prompt-column;
-    callback prompt-key(/* row */ int, /* column */ int);
+    in property <bool> prompt-secret;
+    in-out property <string> prompt-text;
+    callback prompt-done(string);
+    callback prompt-cancelled();
     // The volume bar (ui/device_view.rs `show_volume`).
     in property <bool> volume-shown;
     in property <float> volume-level;
@@ -1881,19 +1878,16 @@ export component HomeWindow inherits Window {
         }
     }
 
-    // The on-screen keyboard over Settings (src/text_prompt.rs).
+    // The text prompt over Settings.
     if prompt-shown: TextPromptView {
         width: root.width;
         height: root.height;
         u: root.u;
         title: prompt-title;
-        text: prompt-text;
-        labels: prompt-labels;
-        symbols: prompt-symbols;
-        capitals: prompt-capitals;
-        focus-row: prompt-row;
-        focus-column: prompt-column;
-        key-clicked(row, column) => { root.prompt-key(row, column); }
+        secret: prompt-secret;
+        text <=> root.prompt-text;
+        done(text) => { root.prompt-done(text); }
+        cancelled => { root.prompt-cancelled(); }
     }
 
     // The volume bar, over everything (ui/device_view.rs).

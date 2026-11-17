@@ -198,7 +198,7 @@ pub(crate) enum Adjust {
     Kept,
     /// The control has this new value now; send it to the device.
     Changed(Value),
-    /// Ask for a text for this [`ControlKind::Text`] (ui/text_prompt).
+    /// Ask for a text for this [`ControlKind::Text`] (a text field; the system's on-screen keyboard types into it).
     AskText,
 }
 

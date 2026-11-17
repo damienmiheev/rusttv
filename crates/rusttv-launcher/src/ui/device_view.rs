@@ -18,7 +18,6 @@ use crate::device::{
 };
 use crate::model::{Input, QuickAction};
 use crate::platform::Platform;
-use crate::text_prompt::{PromptAction, TextPrompt};
 use rusttv_remote::protocol::TextEdit;
 
 /// How long the volume bar stays after the last volume key.
@@ -29,7 +28,8 @@ const PANEL_ROWS: usize = 6;
 
 /// An open text prompt and the device control its text goes to.
 pub(super) struct Prompt {
-    prompt: TextPrompt,
+    title: String,
+    secret: bool,
     tab: String,
     control: String,
 }
@@ -400,101 +400,65 @@ impl Controller {
             self.quick_rows.set_vec(rows);
         }
     }
-    /// Opens the on-screen keyboard for a text control of a Settings tab.
+    /// Opens the text prompt for a text control of a Settings tab: its field
+    /// takes the focus, and with it the system's on-screen keyboard opens.
     pub(super) fn ask_text(&mut self, tab: String, control: String, title: String, secret: bool) {
+        if let Some(window) = self.window.upgrade() {
+            window.set_prompt_text(SharedString::new());
+        }
         self.prompt = Some(Prompt {
-            prompt: TextPrompt::new(title, secret),
+            title,
+            secret,
             tab,
             control,
         });
     }
 
-    /// A remote key while the prompt is open.
-    pub(super) fn prompt_input(&mut self, input: Input) {
-        let Some(open) = &mut self.prompt else {
-            return;
-        };
-        let action = open.prompt.handle(input);
-        self.prompt_action(action);
-        self.render();
+    /// Enter in the prompt's field (or the phone's Done): the text goes to
+    /// its control.
+    pub(super) fn prompt_done(&mut self, text: &str) {
+        if let Some(open) = self.prompt.take() {
+            self.change_device(open.tab, open.control, Value::Text(text.to_owned()));
+        }
+        self.after_prompt = true;
+        self.prompt_closed();
     }
 
-    /// A key from the window while the prompt is open: arrows, OK and Back
-    /// as on the remote, typed characters into the text, Backspace deletes
-    /// (and closes an empty prompt: it is the Back key of some remotes).
-    pub(super) fn prompt_key(&mut self, text: &str, pressed: bool) {
-        let Some(open) = &mut self.prompt else {
-            return;
-        };
-        let typed = !text.is_empty()
-            && text
-                .chars()
-                .all(|c| !c.is_control() && !('\u{F700}'..='\u{F8FF}').contains(&c));
-        if text == "\u{8}" || text == "\u{7f}" {
-            if pressed {
-                if open.prompt.shown().is_empty() {
-                    self.prompt_action(Some(PromptAction::Cancel));
-                } else {
-                    open.prompt.delete();
-                }
-            }
-        } else if typed {
-            if pressed {
-                open.prompt.type_text(text);
-            }
-        } else if let Some(input) = super::input_for_key(text, pressed) {
-            self.prompt_input(input);
-            return;
+    /// Back or Escape in the prompt.
+    pub(super) fn prompt_cancelled(&mut self) {
+        self.prompt = None;
+        self.prompt_closed();
+    }
+
+    /// The keys go back to the page under the prompt.
+    fn prompt_closed(&mut self) {
+        if let Some(window) = self.window.upgrade() {
+            window.invoke_focus_keys();
         }
         self.render();
     }
 
     /// Text from the phone remote.
     pub(super) fn prompt_text(&mut self, edit: TextEdit) {
-        let Some(open) = &mut self.prompt else {
+        let Some(window) = self.window.upgrade() else {
             return;
         };
-        let action = match edit {
-            TextEdit::Insert { text } => {
-                open.prompt.type_text(&text);
-                None
+        let mut text = window.get_prompt_text().to_string();
+        match edit {
+            TextEdit::Insert { text: typed } => {
+                text.extend(typed.chars().filter(|c| !c.is_control()));
             }
             TextEdit::Delete { count } => {
                 for _ in 0..count {
-                    open.prompt.delete();
-                }
-                None
-            }
-            TextEdit::Submit => Some(open.prompt.submit()),
-        };
-        self.prompt_action(action);
-        self.render();
-    }
-
-    /// A click on a key of the on-screen keyboard.
-    pub(super) fn prompt_clicked(&mut self, row: i32, column: i32) {
-        let (Some(open), Ok(row), Ok(column)) = (
-            &mut self.prompt,
-            usize::try_from(row),
-            usize::try_from(column),
-        ) else {
-            return;
-        };
-        let action = open.prompt.click(row, column);
-        self.prompt_action(action);
-        self.render();
-    }
-
-    fn prompt_action(&mut self, action: Option<PromptAction>) {
-        match action {
-            Some(PromptAction::Done(text)) => {
-                if let Some(open) = self.prompt.take() {
-                    self.change_device(open.tab, open.control, Value::Text(text));
+                    text.pop();
                 }
             }
-            Some(PromptAction::Cancel) => self.prompt = None,
-            None => {}
+            TextEdit::Submit => {
+                self.prompt_done(&text);
+                return;
+            }
         }
+        window.set_prompt_text(text.into());
     }
 
     /// Draws the text prompt, or hides it.
@@ -503,16 +467,8 @@ impl Controller {
             window.set_prompt_shown(false);
             return;
         };
-        let prompt = &open.prompt;
+        window.set_prompt_title(open.title.as_str().into());
+        window.set_prompt_secret(open.secret);
         window.set_prompt_shown(true);
-        window.set_prompt_title(prompt.title().into());
-        window.set_prompt_text(prompt.shown().into());
-        let labels: Vec<SharedString> = prompt.labels().into_iter().map(Into::into).collect();
-        window.set_prompt_labels(slint::ModelRc::new(slint::VecModel::from(labels)));
-        window.set_prompt_symbols(prompt.symbols());
-        window.set_prompt_capitals(prompt.capitals());
-        let (row, column) = prompt.focus();
-        window.set_prompt_row(i32::try_from(row).unwrap_or(0));
-        window.set_prompt_column(i32::try_from(column).unwrap_or(0));
     }
 }

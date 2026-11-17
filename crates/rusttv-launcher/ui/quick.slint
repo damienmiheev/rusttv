@@ -448,38 +448,28 @@ export component VolumeOsd inherits Rectangle {
     }
 }
 
-// A text prompt with an on-screen keyboard (src/text_prompt.rs): a Wi-Fi
-// password, a name. Four rows of ten keys, then the layer key, space,
-// delete and done. Rust gives the labels (capitals already applied) and
-// the focused key; a click on a key calls `key-clicked`.
+// A text prompt: a Wi-Fi password, a name. A text field in the upper half;
+// the system's on-screen keyboard (on Linux RustTV's, `linux/keyboard`)
+// opens at the bottom when the field takes focus, as for any app. Enter
+// confirms (`done`), Back or Escape cancels.
 export component TextPromptView inherits Rectangle {
     in property <length> u;
     in property <string> title;
-    in property <string> text;
-    in property <[string]> labels;
-    in property <bool> symbols;
-    in property <bool> capitals;
-    in property <int> focus-row;
-    in property <int> focus-column;
-    callback key-clicked(/* row */ int, /* column */ int);
+    in property <bool> secret;
+    in-out property <string> text;
+    callback done(string);
+    callback cancelled();
 
-    property <length> key-w: 100 * u;
-    property <length> key-h: 84 * u;
-    property <length> gap: 12 * u;
-    property <length> rows-w: 10 * key-w + 9 * gap;
-    property <length> left: (root.width - rows-w) / 2;
-    property <length> top: (root.height - 5 * (key-h + gap) - 220 * u) / 2;
-    // The bottom row: layer, space, delete, done.
-    property <[length]> bottom-x: [0, 228 * u, 712 * u, 914 * u];
-    property <[length]> bottom-w: [220 * u, 476 * u, 194 * u, 194 * u];
+    property <length> field-w: 1100 * u;
+    property <length> left: (root.width - field-w) / 2;
 
     background: #000000E0;
     TouchArea { }
 
     Text {
         x: left;
-        y: top;
-        width: rows-w;
+        y: 160 * u;
+        width: field-w;
         text: title;
         font-size: 36 * u;
         color: Colours.text;
@@ -487,72 +477,50 @@ export component TextPromptView inherits Rectangle {
     }
     Rectangle {
         x: left;
-        y: top + 64 * u;
-        width: rows-w;
+        y: 224 * u;
+        width: field-w;
         height: 92 * u;
         border-radius: 12 * u;
         background: Colours.surface;
         border-width: 2 * u;
-        border-color: Colours.text-dim;
-        Text {
-            x: 28 * u;
-            width: parent.width - 56 * u;
-            text: root.text + "|";
-            font-size: 40 * u;
-            color: Colours.text;
-            overflow: elide;
-        }
-    }
-    for label[i] in labels: Rectangle {
-        property <int> key-row: floor(i / 10);
-        property <int> key-column: mod(i, 10);
-        property <bool> focused: key-row == focus-row && key-column == focus-column;
-        x: left + key-column * (key-w + gap);
-        y: top + 220 * u + key-row * (key-h + gap);
-        width: key-w;
-        height: key-h;
-        border-radius: 12 * u;
-        background: focused ? Colours.text : Colours.surface;
-        Text {
-            text: label;
-            font-size: 36 * u;
-            color: parent.focused ? Colours.bg : Colours.text;
-        }
-        TouchArea {
-            mouse-cursor: pointer;
-            clicked => { root.key-clicked(parent.key-row, parent.key-column); }
-        }
-    }
-    for x[j] in bottom-x: Rectangle {
-        property <bool> focused: focus-row == 4 && focus-column == j;
-        property <color> ink: focused ? Colours.bg : Colours.text;
-        x: left + x;
-        y: top + 220 * u + 4 * (key-h + gap);
-        width: bottom-w[j];
-        height: key-h;
-        border-radius: 12 * u;
-        background: focused ? Colours.text : (j == 3 ? Colours.accent.with-alpha(0.35) : Colours.surface);
-        if j == 0: Text {
-            text: symbols ? "abc" : (capitals ? "?123" : "⇧");
-            font-size: 32 * u;
-            color: parent.ink;
-        }
-        if j > 1: Path {
-            x: (parent.width - 44 * u) / 2;
-            y: (parent.height - 44 * u) / 2;
-            width: 44 * u;
-            height: 44 * u;
-            viewbox-width: 24;
-            viewbox-height: 24;
-            // Delete: a key with a cross; done: a tick.
-            commands: j == 2 ? "M 9 5 L 21 5 L 21 19 L 9 19 L 2 12 Z M 12 9 L 17 15 M 17 9 L 12 15" : "M 4 12 L 10 18 L 20 6";
-            stroke: parent.ink;
-            stroke-width: 2.4 * u;
-            fill: transparent;
+        border-color: Colours.accent;
+        FocusScope {
+            key-pressed(event) => {
+                if event.text == Key.Escape || event.text == "\u{F748}" {
+                    root.cancelled();
+                    return accept;
+                }
+                reject
+            }
+            field := TextInput {
+                x: 28 * u;
+                width: parent.width - 56 * u;
+                height: parent.height;
+                text <=> root.text;
+                input-type: root.secret ? InputType.password : InputType.text;
+                single-line: true;
+                font-size: 40 * u;
+                color: Colours.text;
+                vertical-alignment: center;
+                accepted => {
+                    root.done(self.text);
+                }
+                init => {
+                    self.focus();
+                }
+            }
         }
         TouchArea {
-            mouse-cursor: pointer;
-            clicked => { root.key-clicked(4, j); }
+            clicked => { field.focus(); }
         }
+    }
+    Text {
+        x: left;
+        y: 340 * u;
+        width: field-w;
+        text: @tr("✓ on the keyboard confirms, Back cancels");
+        font-size: 28 * u;
+        color: Colours.text-dim;
+        overflow: elide;
     }
 }

@@ -1,9 +1,6 @@
-//! A text prompt with an on-screen keyboard for the remote (a Wi-Fi
-//! password, later search): four rows of ten keys and a bottom row with the
-//! layer key, space, delete and done. The D-pad moves over the keys, OK
-//! types one; a hardware keyboard or the phone remote types directly.
-//! No UI code here: `TextPromptView` (quick.slint) draws it in the launcher,
-//! `linux/keyboard` over other apps.
+//! The on-screen keyboard's keys for the remote: four rows of ten keys and a
+//! bottom row with the layer key, space, delete and done. The D-pad moves
+//! over the keys, OK types one. No drawing here (`draw.rs`).
 
 use crate::model::Input;
 
@@ -159,28 +156,12 @@ impl TextPrompt {
         self.column = column.min(self.row_len() - 1);
     }
 
-    /// A click on a key: focuses it and presses it.
-    pub fn click(&mut self, row: usize, column: usize) -> Option<PromptAction> {
-        if row > CHAR_ROWS {
-            return None;
-        }
-        self.row = row;
-        self.column = column.min(self.row_len() - 1);
-        self.press(self.row, self.column)
-    }
-
-    /// Text from a hardware keyboard or the phone remote.
-    pub fn type_text(&mut self, text: &str) {
-        self.text.extend(text.chars().filter(|c| !c.is_control()));
-    }
-
     /// Deletes the last character.
     pub fn delete(&mut self) {
         self.text.pop();
     }
 
-    /// Enter on a keyboard, or the phone's Done.
-    pub fn submit(&self) -> PromptAction {
+    fn submit(&self) -> PromptAction {
         PromptAction::Done(self.text.clone())
     }
 
@@ -266,27 +247,39 @@ mod tests {
     #[test]
     fn the_layer_key_gives_capitals_then_symbols_then_letters() {
         let mut prompt = TextPrompt::new("Name", false);
-        prompt.click(CHAR_ROWS, 0);
-        assert!(prompt.capitals());
-        prompt.click(1, 0);
-        assert_eq!(prompt.shown(), "Q");
-        prompt.click(CHAR_ROWS, 0);
-        assert!(prompt.symbols());
-        assert_eq!(prompt.labels()[0], "!");
-        prompt.click(0, 0);
-        prompt.click(CHAR_ROWS, 0);
+        let mut click = |row, column| {
+            prompt.focus_on(row, column);
+            prompt.handle(Input::OkReleased)
+        };
+        click(CHAR_ROWS, 0);
+        click(1, 0);
+        click(CHAR_ROWS, 0);
+        click(0, 0);
+        click(CHAR_ROWS, 0);
+        click(CHAR_ROWS, 1);
+        click(CHAR_ROWS, 2);
+        assert_eq!(click(CHAR_ROWS, 3), Some(PromptAction::Done("Q!".into())));
         assert!(!prompt.symbols() && !prompt.capitals());
-        prompt.click(CHAR_ROWS, 1);
-        prompt.click(CHAR_ROWS, 2);
-        assert_eq!(prompt.submit(), PromptAction::Done("Q!".into()));
     }
 
     #[test]
-    fn keyboards_type_directly_and_back_cancels() {
+    fn the_layer_key_shows_capitals_and_symbols() {
+        let mut prompt = TextPrompt::new("Name", false);
+        prompt.focus_on(CHAR_ROWS, 0);
+        prompt.handle(Input::OkReleased);
+        assert!(prompt.capitals());
+        assert_eq!(prompt.labels()[10], "Q");
+        prompt.handle(Input::OkReleased);
+        assert!(prompt.symbols());
+        assert_eq!(prompt.labels()[0], "!");
+    }
+
+    #[test]
+    fn delete_and_back_cancels() {
         let mut prompt = TextPrompt::new("Password", true);
-        prompt.type_text("ab\u{8}c");
+        press(&mut prompt, &[Input::OkReleased, Input::OkReleased]);
         prompt.delete();
-        assert_eq!(prompt.submit(), PromptAction::Done("ab".into()));
+        assert_eq!(prompt.text(), "q");
         assert_eq!(prompt.title(), "Password");
         assert_eq!(
             press(&mut prompt, &[Input::Back]),

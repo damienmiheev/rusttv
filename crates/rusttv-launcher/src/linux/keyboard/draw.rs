@@ -8,7 +8,7 @@ use resvg::tiny_skia::{
     Color, FillRule, LineCap, LineJoin, Paint, PathBuilder, Pixmap, Rect, Stroke, Transform,
 };
 
-use crate::text_prompt::{BOTTOM_KEYS, CHAR_ROWS, COLUMNS, TextPrompt};
+use super::layout::{BOTTOM_KEYS, CHAR_ROWS, COLUMNS, TextPrompt};
 
 /// The design width the sizes below are for (a 1080p screen).
 const DESIGN_WIDTH: f32 = 1920.0;

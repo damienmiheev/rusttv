@@ -432,6 +432,10 @@ fn click_is_ok_while_pointer_hidden(window: &HomeWindow, controller: &Rc<RefCell
         let Ok(mut controller) = controller.try_borrow_mut() else {
             return EventResult::Propagate;
         };
+        // A text prompt's field takes clicks as they are.
+        if controller.prompt.is_some() {
+            return EventResult::Propagate;
+        }
         controller.key(
             "
 ",
@@ -531,9 +535,15 @@ fn start(
         }
     });
     let weak = Rc::downgrade(&controller);
-    window.on_prompt_key(move |row, column| {
+    window.on_prompt_done(move |text| {
         if let Some(controller) = weak.upgrade() {
-            controller.borrow_mut().prompt_clicked(row, column);
+            controller.borrow_mut().prompt_done(&text);
+        }
+    });
+    let weak = Rc::downgrade(&controller);
+    window.on_prompt_cancelled(move || {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow_mut().prompt_cancelled();
         }
     });
     let weak = Rc::downgrade(&controller);
@@ -766,6 +776,9 @@ struct Controller {
     pointer_timer: Timer,
     /// The open text prompt, and the device control its text is for.
     prompt: Option<device_view::Prompt>,
+    /// Enter closed the prompt on key-down: its key-up is not an OK for the
+    /// page under it (it would open the prompt again).
+    after_prompt: bool,
 }
 
 impl Controller {
@@ -896,6 +909,7 @@ impl Controller {
                 scroll_rest: 0.0,
                 pointer_timer: Timer::default(),
                 prompt: None,
+                after_prompt: false,
             })
         });
         *controller.borrow().options.lifecycle.0.borrow_mut() = Rc::downgrade(&controller);
@@ -1072,15 +1086,18 @@ impl Controller {
     /// swallowed here: passed on, each restarted the long-press timer, so move
     /// mode only began on release. Held arrows keep repeating, to scroll.
     fn key(&mut self, text: &str, pressed: bool, repeat: bool) -> bool {
-        // The on-screen keyboard also takes typed characters.
+        // The prompt's text field has the keys; this sees only what it left.
         if self.prompt.is_some() {
-            self.hide_pointer();
-            self.prompt_key(text, pressed);
-            return true;
+            return false;
         }
         let Some(input) = input_for_key(text, pressed) else {
             return false;
         };
+        match input {
+            Input::OkReleased if std::mem::take(&mut self.after_prompt) => return true,
+            Input::OkPressed => self.after_prompt = false,
+            _ => {}
+        }
         // The keys took over from the mouse.
         self.hide_pointer();
         if !(repeat && input == Input::OkPressed) {
@@ -1098,11 +1115,14 @@ impl Controller {
             self.pairing_input(input);
             return;
         }
-        // The on-screen keyboard takes the remote's keys while it is open.
+        // The text prompt takes the remote's keys while it is open; Back
+        // from the phone remote closes it.
         if self.prompt.is_some()
             && !matches!(input, Input::Tick | Input::Paused | Input::LaunchFailed)
         {
-            self.prompt_input(input);
+            if input == Input::Back {
+                self.prompt_cancelled();
+            }
             return;
         }
         let effect = self.home.handle(input, (self.clock)());
@@ -3811,13 +3831,10 @@ mod tests {
         assert_eq!(screen.launched(), ["a/.Main"]);
     }
 
-    #[test]
-    fn a_text_control_asks_with_the_on_screen_keyboard_and_sends_the_text() {
-        let platform = abc().with_device();
-        let device = platform.device().unwrap();
-        let screen = screen_with(platform, None);
+    /// Settings → Display → Device name, OK: its text prompt.
+    fn open_name_prompt(screen: &Screen) {
         click_settings(&screen.window);
-        settle(&screen);
+        settle(screen);
         // Display is the first platform tab; Device name its third row.
         let display = screen
             .window
@@ -3834,10 +3851,19 @@ mod tests {
         screen.tap(OK);
         assert!(screen.window.get_prompt_shown());
         assert_eq!(screen.window.get_prompt_title(), "Device name");
-        // q from the keyboard, then a typed letter, then Done by click.
+    }
+
+    #[test]
+    fn a_text_control_asks_in_a_text_field_and_sends_the_text() {
+        let platform = abc().with_device();
+        let device = platform.device().unwrap();
+        let screen = screen_with(platform, None);
+        open_name_prompt(&screen);
+        // The field has the keys (the system keyboard types into it).
+        screen.tap("q");
+        screen.tap("x");
+        assert_eq!(screen.window.get_prompt_text(), "qx");
         screen.tap(OK);
-        assert!(screen.window.invoke_key("x".into(), true, false));
-        screen.window.invoke_prompt_key(4, 3);
         settle(&screen);
         assert!(!screen.window.get_prompt_shown());
         assert!(
@@ -3845,87 +3871,33 @@ mod tests {
                 .changes()
                 .contains(&"display/name=Text(\"qx\")".to_owned())
         );
+        // The keys are back on Settings.
+        screen.tap(OK);
+        assert!(screen.window.get_prompt_shown());
+        assert_eq!(screen.window.get_prompt_text(), "", "a new prompt is empty");
     }
 
     #[test]
-    fn a_held_ok_on_the_on_screen_keyboard_keeps_it_working() {
+    fn back_closes_the_text_prompt_without_a_change() {
         let platform = abc().with_device();
+        let device = platform.device().unwrap();
         let screen = screen_with(platform, None);
-        click_settings(&screen.window);
+        open_name_prompt(&screen);
+        screen.tap("q");
+        screen.tap(BACK);
         settle(&screen);
-        let display = screen
-            .window
-            .get_settings_sections()
-            .iter()
-            .position(|section| section == "Display")
-            .unwrap();
-        for _ in 0..display {
-            screen.tap(DOWN);
-        }
-        screen.tap(RIGHT);
-        screen.tap(DOWN);
-        screen.tap(DOWN);
+        assert!(!screen.window.get_prompt_shown());
+        assert!(
+            !device
+                .changes()
+                .iter()
+                .any(|change| change.starts_with("display/name"))
+        );
         screen.tap(OK);
-        assert!(screen.window.get_prompt_shown());
-        // Held OK on q: key-down repeats, then the release.
-        screen.key(OK, true);
-        for _ in 0..20 {
-            screen.window.invoke_key(
-                "
-"
-                .into(),
-                true,
-                true,
-            );
-            screen.wait(50);
-        }
-        screen.key(OK, false);
-        settle(&screen);
-        assert!(screen.window.get_prompt_shown());
-        assert_eq!(screen.window.get_prompt_text(), "q");
-        screen.tap(RIGHT);
-        assert_eq!(screen.window.get_prompt_column(), 1, "arrows still move");
-        screen.tap(OK);
-        assert_eq!(screen.window.get_prompt_text(), "qw");
-    }
-
-    #[test]
-    fn a_long_click_on_the_on_screen_keyboard_leaves_the_keys_working() {
-        use slint::platform::{PointerEventButton, WindowEvent};
-        let screen = screen_with(abc().with_device(), None);
-        click_settings(&screen.window);
-        settle(&screen);
-        let display = screen
-            .window
-            .get_settings_sections()
-            .iter()
-            .position(|section| section == "Display")
-            .unwrap();
-        for _ in 0..display {
-            screen.tap(DOWN);
-        }
-        screen.tap(RIGHT);
-        screen.tap(DOWN);
-        screen.tap(DOWN);
-        screen.tap(OK);
-        assert!(screen.window.get_prompt_shown());
-        // A held click beside the keys (an air-mouse's held OK).
-        let position = slint::LogicalPosition::new(20.0, 20.0);
-        let window = screen.window.window();
-        window.dispatch_event(WindowEvent::PointerMoved { position });
-        window.dispatch_event(WindowEvent::PointerPressed {
-            position,
-            button: PointerEventButton::Left,
-        });
-        screen.wait(1000);
-        window.dispatch_event(WindowEvent::PointerReleased {
-            position,
-            button: PointerEventButton::Left,
-        });
-        settle(&screen);
-        assert!(screen.window.get_prompt_shown());
-        screen.tap(RIGHT);
-        assert_eq!(screen.window.get_prompt_column(), 1, "arrows still move");
+        assert!(
+            screen.window.get_prompt_shown(),
+            "the keys are back on Settings"
+        );
     }
 
     #[test]

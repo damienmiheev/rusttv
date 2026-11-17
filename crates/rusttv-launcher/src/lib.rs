@@ -20,7 +20,6 @@ mod remote;
 mod remote_page;
 mod review;
 mod settings;
-mod text_prompt;
 mod ui;
 
 #[cfg(any(test, feature = "test-util"))]
