@@ -18,11 +18,12 @@ crate-type = ["lib", "cdylib"]
 test-util = []
 # Linux home screen: apps from the XDG desktop entries (src/linux.rs) and the
 # `rusttv-launcher-linux` binary, as a native Wayland client. png and resvg
-# decode the apps' icons.
+# decode the apps' icons; evdev reads game controllers.
 linux = [
     "dep:ab_glyph",
     "dep:calloop",
     "dep:enumflags2",
+    "dep:evdev",
     "dep:png",
     "dep:reis",
     "dep:resvg",
@@ -71,6 +72,7 @@ zbus = { version = "5.19", optional = true }
 calloop = { version = "0.14.5", optional = true }
 reis = { version = "0.7.1", features = ["calloop"], optional = true }
 enumflags2 = { version = "0.7.12", optional = true }
+evdev = { version = "0.13.2", default-features = false, optional = true }
 
 # Desktop dev mode: window via winit, CPU rendering (no Skia download).
 [target.'cfg(not(target_os = "android"))'.dependencies]

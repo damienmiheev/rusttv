@@ -1228,6 +1228,9 @@ impl Controller {
         };
         let effect = match action {
             0 => {
+                // The tile takes the move from the background's TouchArea:
+                // show the pointer here too.
+                self.pointer_moved();
                 if !self.home.hover(&tile) {
                     return;
                 }
@@ -3918,6 +3921,9 @@ mod tests {
         screen.window.invoke_scrolled(SCROLL_STEP);
         screen.tap(LEFT);
         assert!(!screen.window.global::<Pointer>().get_shown());
+        // Moving over a tile brings the pointer back.
+        screen.window.invoke_tile_pointer(false, 1, 0);
+        assert!(screen.window.global::<Pointer>().get_shown());
         screen.window.invoke_tile_pointer(false, 0, 1);
         assert_eq!(screen.launched(), ["a/.Main"]);
     }

@@ -29,7 +29,8 @@ pub use device::{
 };
 #[cfg(all(target_os = "linux", feature = "linux"))]
 pub use linux::{
-    AppEvent, AppEvents, Limits, LinuxDevice, LinuxPlatform, run_portal, start_keyboard,
+    AppEvent, AppEvents, Limits, LinuxDevice, LinuxPlatform, run_portal, start_gamepads,
+    start_keyboard,
 };
 pub use model::{
     App, Effect, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT, MenuItem, Order,

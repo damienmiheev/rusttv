@@ -295,6 +295,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     log::info!("app limits: {limits:?}");
     // The launcher's keyboard for text fields in other apps.
     rusttv_launcher::start_keyboard();
+    // Game controllers steer the home screen like the remote.
+    rusttv_launcher::start_gamepads();
     let platform = LinuxPlatform::from_env()
         .with_events(events)
         .with_tasks(limits);

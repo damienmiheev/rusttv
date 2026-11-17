@@ -16,6 +16,7 @@ mod layout;
 use std::fs::File;
 use std::io::Write as _;
 use std::os::fd::{AsFd as _, OwnedFd};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use ab_glyph::FontVec;
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
@@ -73,6 +74,14 @@ mod code {
                 | 109..=111
         )
     }
+}
+
+/// Whether the keyboard is on screen (game controllers steer it then).
+static SHOWN: AtomicBool = AtomicBool::new(false);
+
+/// Whether the on-screen keyboard is showing.
+pub fn shown() -> bool {
+    SHOWN.load(Ordering::Relaxed)
 }
 
 /// `text-input-v3` content purposes the keyboard tells apart.
@@ -267,6 +276,7 @@ impl State {
         let (title, secret) = title(self.purpose);
         self.prompt = TextPrompt::new(title, secret);
         self.passing = false;
+        SHOWN.store(true, Ordering::Relaxed);
         if self.grab.is_none() {
             self.grab = Some(self.input_method.grab_keyboard(qh, ()));
         }
@@ -295,6 +305,7 @@ impl State {
     }
 
     fn hide(&mut self) {
+        SHOWN.store(false, Ordering::Relaxed);
         self.echoes = 0;
         if let Some(grab) = self.grab.take() {
             grab.release();

@@ -9,6 +9,7 @@
 //! manager's job, so the launcher's updater does nothing here.
 
 mod device;
+mod gamepad;
 mod keyboard;
 mod portal;
 mod tasks;
@@ -26,6 +27,7 @@ use std::sync::Arc;
 use std::time::SystemTime;
 
 pub use device::LinuxDevice;
+pub use gamepad::start as start_gamepads;
 pub use keyboard::start as start_keyboard;
 pub use portal::run as run_portal;
 pub use tasks::Limits;
@@ -152,7 +154,12 @@ impl LinuxPlatform {
     pub fn with_tasks(mut self, limits: Limits) -> Self {
         let tasks = Tasks::start(limits);
         let used = tasks.clone();
-        self.windows = Toplevels::start(Box::new(move |app_id| used.activated(app_id)));
+        self.windows = Toplevels::start(Box::new(move |app_id| {
+            // The home screen's own window has no app ID.
+            let home = app_id.is_empty() || app_id.to_lowercase().contains("rusttv");
+            gamepad::HOME_IN_FRONT.store(home, std::sync::atomic::Ordering::Relaxed);
+            used.activated(app_id);
+        }));
         self.tasks = Some(tasks);
         self
     }
