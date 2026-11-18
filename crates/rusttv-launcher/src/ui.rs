@@ -3395,8 +3395,15 @@ mod tests {
         assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
         settle(&screen);
         // Updates, then its Off row.
-        screen.window.invoke_settings_pointer(false, 1, 0);
-        assert_eq!(screen.window.get_settings_section(), 1);
+        let updates = screen
+            .window
+            .get_settings_sections()
+            .iter()
+            .position(|section| section == "Updates")
+            .unwrap();
+        let updates = i32::try_from(updates).unwrap();
+        screen.window.invoke_settings_pointer(false, updates, 0);
+        assert_eq!(screen.window.get_settings_section(), updates);
         assert_eq!(screen.window.get_settings_row(), -1);
         screen.window.invoke_settings_pointer(true, 1, 0);
         assert_eq!(screen.window.get_settings_row(), 1, "hover focuses");
