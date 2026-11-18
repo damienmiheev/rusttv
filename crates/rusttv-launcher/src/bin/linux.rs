@@ -153,8 +153,9 @@ fn deliver(signal: Signal) {
 /// # Close background apps while less memory than this (MiB) is available.
 /// min_available_mib = 120
 /// # Stop apps in the background (they keep their memory, take no CPU);
-/// # also pauses music playing in them.
-/// freeze_background = true
+/// # also pauses music playing in them. Off unless set: a device with
+/// # little CPU (the HY320F image) turns it on.
+/// freeze_background = false
 /// ```
 #[derive(Debug, serde::Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -169,7 +170,7 @@ impl Default for Config {
         Self {
             max_apps: Some(3),
             min_available_mib: Some(120),
-            freeze_background: true,
+            freeze_background: false,
         }
     }
 }
