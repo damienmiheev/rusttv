@@ -269,6 +269,42 @@ pub enum MenuItem {
     Move,
     /// Take the app off Home; it stays installed and is listed under Hidden apps.
     Hide,
+    /// The app's size on screen (its UI scale): OK steps through the sizes,
+    /// Left and Right make it smaller or bigger. Only where the platform can
+    /// scale apps ([`Home::set_app_sizes`]).
+    Size,
+}
+
+/// The sizes an app can have on screen, in percent.
+pub const APP_SIZES: [u32; 8] = [75, 90, 100, 110, 125, 150, 175, 200];
+
+impl SizeStep {
+    /// The size after `current` (in percent); a size between two steps
+    /// counts as the nearest step below it.
+    pub fn apply(self, current: u32) -> u32 {
+        let index = APP_SIZES
+            .iter()
+            .rposition(|size| *size <= current)
+            .unwrap_or(0);
+        let last = APP_SIZES.len() - 1;
+        let next = match self {
+            Self::Cycle if index == last => 0,
+            Self::Cycle | Self::Bigger => (index + 1).min(last),
+            Self::Smaller => index.saturating_sub(1),
+        };
+        APP_SIZES[next]
+    }
+}
+
+/// How [`Effect::ResizeApp`] changes an app's size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SizeStep {
+    /// The next size, from the biggest back to the smallest (OK).
+    Cycle,
+    /// One size bigger, if there is one (Right).
+    Bigger,
+    /// One size smaller, if there is one (Left).
+    Smaller,
 }
 
 /// Something the caller must do after [`Home::handle`].
@@ -305,6 +341,8 @@ pub enum Effect {
     RenameFolder(u32),
     /// Tell the user this app (component name) could not be opened.
     ShowLaunchError(String),
+    /// Change this app's size on screen; the menu stays open.
+    ResizeApp(String, SizeStep),
 }
 
 /// Vertical scroll state of the grid.
@@ -561,10 +599,12 @@ enum Mode {
         selected: usize,
     },
     /// `selected` indexes [`menu_items`] of the focused tile, or of the
-    /// focused app in `folder`.
+    /// focused app in `folder`. `back_to_app`: opened over a running app
+    /// ([`Home::open_app_menu`]), so Back goes back to it.
     Menu {
         selected: usize,
         folder: Option<OpenFolder>,
+        back_to_app: bool,
     },
     /// `focus` indexes `Home::hidden_apps`.
     Hidden {
@@ -574,8 +614,10 @@ enum Mode {
 }
 
 /// What the long-press menu offers for a tile; empty means no menu.
-fn menu_items(tile: Option<&TileId>) -> &'static [MenuItem] {
+/// `sizes`: apps can be scaled ([`Home::set_app_sizes`]).
+fn menu_items(tile: Option<&TileId>, sizes: bool) -> &'static [MenuItem] {
     match tile {
+        Some(TileId::App(_)) if sizes => &[MenuItem::Move, MenuItem::Hide, MenuItem::Size],
         Some(TileId::App(_)) => &[MenuItem::Move, MenuItem::Hide],
         Some(TileId::Settings | TileId::Remote | TileId::Folder(_)) => &[MenuItem::Move],
         Some(TileId::Hidden) | None => &[],
@@ -609,6 +651,8 @@ pub struct Home {
     folder_names: FolderNames,
     /// How long a launch may take before it counts as failed.
     launch_timeout: Duration,
+    /// Whether app menus have a Size entry.
+    app_sizes: bool,
     /// The top-right menu's entries; empty hides it.
     quick_actions: Vec<QuickAction>,
 }
@@ -637,6 +681,7 @@ impl Home {
             right_to_left,
             folder_names: FolderNames::default(),
             launch_timeout: LAUNCH_TIMEOUT,
+            app_sizes: false,
             quick_actions: Vec::new(),
         }
     }
@@ -677,6 +722,66 @@ impl Home {
     /// How long a launch may take before it counts as failed.
     pub fn launch_timeout(&self) -> Duration {
         self.launch_timeout
+    }
+
+    /// Gives app menus a Size entry ([`MenuItem::Size`]), for platforms
+    /// that can scale an app's UI.
+    pub fn set_app_sizes(&mut self, on: bool) {
+        self.app_sizes = on;
+    }
+
+    /// Opens the menu of app `id`, as holding Home over that app does: its
+    /// tile gets the focus (in its folder, if it is in one), Size is
+    /// selected where there is one, and Back from the menu opens the app
+    /// again. Leaves any page or menu first. `false` if the app has no tile
+    /// (hidden or unknown); Home then shows the tiles.
+    pub fn open_app_menu(&mut self, id: &str) -> bool {
+        if matches!(self.mode, Mode::Moving { .. }) {
+            self.cancel_move();
+        }
+        self.mode = Mode::Browse;
+        self.ok_held = false;
+        self.ok_since = None;
+        if !self.focus_on(&TileId::App(id.to_owned())) {
+            let Some((folder, index)) = self.folders.iter().find_map(|(folder, contents)| {
+                let index = contents.apps.iter().position(|app| app == id)?;
+                Some((*folder, index))
+            }) else {
+                return false;
+            };
+            if !self.focus_on(&TileId::Folder(folder)) {
+                return false;
+            }
+            self.mode = Mode::Folder(OpenFolder {
+                id: folder,
+                focus: Some(index),
+            });
+        }
+        let items = self.items();
+        if items.is_empty() {
+            return false;
+        }
+        self.mode = Mode::Menu {
+            selected: items
+                .iter()
+                .position(|item| *item == MenuItem::Size)
+                .unwrap_or(0),
+            folder: self.open_folder(),
+            back_to_app: true,
+        };
+        true
+    }
+
+    /// The tile the open menu is for.
+    pub fn menu_tile(&self) -> Option<TileId> {
+        matches!(self.mode, Mode::Menu { .. })
+            .then(|| self.current())
+            .flatten()
+    }
+
+    /// The menu entries of the tile OK acts on.
+    fn items(&self) -> &'static [MenuItem] {
+        menu_items(self.current().as_ref(), self.app_sizes)
     }
 
     /// Sets the first names of new folders (in the UI's language).
@@ -891,7 +996,7 @@ impl Home {
     /// The phone remote picked `item` in the open menu: as selecting it and
     /// pressing OK.
     pub fn menu_pick(&mut self, item: MenuItem, now: Duration) -> Option<Effect> {
-        let items = menu_items(self.current().as_ref());
+        let items = self.items();
         let index = items.iter().position(|entry| *entry == item)?;
         let Mode::Menu { selected, .. } = &mut self.mode else {
             return None;
@@ -1138,7 +1243,7 @@ impl Home {
     /// The open long-press menu's items and the selected index.
     pub fn menu(&self) -> Option<(&'static [MenuItem], usize)> {
         match self.mode {
-            Mode::Menu { selected, .. } => Some((menu_items(self.current().as_ref()), selected)),
+            Mode::Menu { selected, .. } => Some((self.items(), selected)),
             _ => None,
         }
     }
@@ -1654,23 +1759,54 @@ impl Home {
     /// Up and Down pick an item, OK runs it (the release of the long press
     /// that opened the menu is ignored), Back closes the menu.
     fn handle_menu(&mut self, input: Input, now: Duration) -> Option<Effect> {
-        let items = menu_items(self.current().as_ref());
-        let Mode::Menu { selected, folder } = &mut self.mode else {
+        let items = self.items();
+        let Mode::Menu {
+            selected,
+            folder,
+            back_to_app,
+        } = self.mode
+        else {
             return None;
         };
-        let folder = *folder;
+        let select = |this: &mut Self, index: usize| {
+            if let Mode::Menu { selected, .. } = &mut this.mode {
+                *selected = index;
+            }
+        };
+        let item = items.get(selected).copied();
         match input {
-            Input::Up => *selected = selected.saturating_sub(1),
-            Input::Down => *selected = (*selected + 1).min(items.len().saturating_sub(1)),
-            Input::OkPressed => match items.get(*selected) {
+            Input::Up => select(self, selected.saturating_sub(1)),
+            Input::Down => select(self, (selected + 1).min(items.len().saturating_sub(1))),
+            Input::OkPressed => match item {
                 Some(MenuItem::Move) => self.start_move(now),
                 Some(MenuItem::Hide) => return self.hide_current(),
+                Some(MenuItem::Size) => return self.resize_current(SizeStep::Cycle),
                 None => self.mode = folder.map_or(Mode::Browse, Mode::Folder),
             },
-            Input::Back => self.mode = folder.map_or(Mode::Browse, Mode::Folder),
+            Input::Left | Input::Right if item == Some(MenuItem::Size) => {
+                let step = match self.direction(input) {
+                    Some(Direction::Right) => SizeStep::Bigger,
+                    _ => SizeStep::Smaller,
+                };
+                return self.resize_current(step);
+            }
+            Input::Back => {
+                self.mode = folder.map_or(Mode::Browse, Mode::Folder);
+                if back_to_app {
+                    return self.activate(now);
+                }
+            }
             _ => {}
         }
         None
+    }
+
+    /// [`Effect::ResizeApp`] for the app the menu is open for.
+    fn resize_current(&self, step: SizeStep) -> Option<Effect> {
+        match self.current()? {
+            TileId::App(id) => Some(Effect::ResizeApp(id, step)),
+            _ => None,
+        }
     }
 
     /// The D-pad moves within the page, OK puts the focused app back on Home,
@@ -1808,10 +1944,11 @@ impl Home {
     }
 
     fn open_menu(&mut self) {
-        if !menu_items(self.current().as_ref()).is_empty() {
+        if !self.items().is_empty() {
             self.mode = Mode::Menu {
                 selected: 0,
                 folder: self.open_folder(),
+                back_to_app: false,
             };
         }
     }
@@ -1954,6 +2091,17 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::*;
+
+    #[test]
+    fn app_sizes_step_and_cycle() {
+        assert_eq!(SizeStep::Bigger.apply(100), 110);
+        assert_eq!(SizeStep::Smaller.apply(100), 90);
+        assert_eq!(SizeStep::Smaller.apply(75), 75);
+        assert_eq!(SizeStep::Bigger.apply(200), 200);
+        assert_eq!(SizeStep::Cycle.apply(200), 75);
+        // Between two steps: from the step below.
+        assert_eq!(SizeStep::Bigger.apply(130), 150);
+    }
 
     const ALL_DIRECTIONS: [Direction; 4] = [
         Direction::Up,

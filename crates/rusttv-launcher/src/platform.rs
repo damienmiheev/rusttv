@@ -190,6 +190,35 @@ pub trait Platform {
     fn device_settings(&self) -> Option<std::sync::Arc<dyn DeviceSettings>> {
         None
     }
+
+    /// Whether this platform can scale an app's UI ([`Platform::app_scale`]);
+    /// then app menus have a Size entry. Asked once at start.
+    fn scales_apps(&self) -> bool {
+        false
+    }
+
+    /// App `id`'s size on screen in percent (100: as the app comes).
+    fn app_scale(&self, _id: &str) -> u32 {
+        100
+    }
+
+    /// Stores app `id`'s size; it applies from the app's next start.
+    fn set_app_scale(&mut self, _id: &str, _percent: u32) {}
+
+    /// Whether app `id` runs (started by the launcher and not closed).
+    fn is_running(&self, _id: &str) -> bool {
+        false
+    }
+
+    /// Closes app `id`. Where apps are processes (Linux), its end arrives
+    /// as for any app ([`crate::Lifecycle::app_ended`]).
+    fn close_app(&mut self, _id: &str) {}
+
+    /// The app that was last in front of the launcher, for the app menu
+    /// that holding Home opens; `None` if none runs.
+    fn last_app(&self) -> Option<String> {
+        None
+    }
 }
 
 /// The pointer in other apps (REMOTE.md § 5).
@@ -657,6 +686,11 @@ pub struct FakePlatform {
     searches: Vec<(String, String)>,
     /// Settings tabs, quick panels and a volume (`with_device`).
     device: Option<std::sync::Arc<crate::device::FakeDevice>>,
+    /// App sizes in percent, when apps can be scaled (`with_app_sizes`).
+    app_sizes: Option<std::collections::HashMap<String, u32>>,
+    /// Launched and not closed.
+    running: BTreeSet<String>,
+    closed: Vec<String>,
 }
 
 #[cfg(any(test, feature = "test-util"))]
@@ -668,6 +702,19 @@ impl FakePlatform {
     pub fn with_device(mut self) -> Self {
         self.device = Some(std::sync::Arc::new(crate::device::FakeDevice::new()));
         self
+    }
+
+    /// Apps can be scaled: app menus get a Size entry, launched apps count
+    /// as running until closed, and the last launched app is in front.
+    #[must_use]
+    pub fn with_app_sizes(mut self) -> Self {
+        self.app_sizes = Some(std::collections::HashMap::new());
+        self
+    }
+
+    /// The apps closed with [`Platform::close_app`], in order.
+    pub fn closed(&self) -> &[String] {
+        &self.closed
     }
 
     /// The made-up device, if [`FakePlatform::with_device`] added one.
@@ -836,6 +883,9 @@ impl Platform for FakePlatform {
             ));
         }
         self.launched.push(id.to_owned());
+        if self.app_sizes.is_some() {
+            self.running.insert(id.to_owned());
+        }
         Ok(())
     }
 
@@ -930,6 +980,40 @@ impl Platform for FakePlatform {
 
     fn random_code(&mut self) -> [u32; 4] {
         [2, 0, 3, 1]
+    }
+
+    fn scales_apps(&self) -> bool {
+        self.app_sizes.is_some()
+    }
+
+    fn app_scale(&self, id: &str) -> u32 {
+        self.app_sizes
+            .as_ref()
+            .and_then(|sizes| sizes.get(id).copied())
+            .unwrap_or(100)
+    }
+
+    fn set_app_scale(&mut self, id: &str, percent: u32) {
+        if let Some(sizes) = &mut self.app_sizes {
+            sizes.insert(id.to_owned(), percent);
+        }
+    }
+
+    fn is_running(&self, id: &str) -> bool {
+        self.running.contains(id)
+    }
+
+    fn close_app(&mut self, id: &str) {
+        self.running.remove(id);
+        self.closed.push(id.to_owned());
+    }
+
+    fn last_app(&self) -> Option<String> {
+        self.launched
+            .iter()
+            .rev()
+            .find(|id| self.running.contains(*id))
+            .cloned()
     }
 
     fn quick_actions(&self) -> Vec<QuickAction> {

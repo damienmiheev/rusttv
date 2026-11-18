@@ -484,9 +484,11 @@ pub(crate) fn home_view(
         .map(|(items, selected)| MenuView {
             items: items
                 .iter()
-                .map(|item| match item {
-                    MenuItem::Move => MenuChoice::Move,
-                    MenuItem::Hide => MenuChoice::Hide,
+                // The phone has no Size control; the TV shows it.
+                .filter_map(|item| match item {
+                    MenuItem::Move => Some(MenuChoice::Move),
+                    MenuItem::Hide => Some(MenuChoice::Hide),
+                    MenuItem::Size => None,
                 })
                 .collect(),
             selected: u8::try_from(selected).unwrap_or(u8::MAX),

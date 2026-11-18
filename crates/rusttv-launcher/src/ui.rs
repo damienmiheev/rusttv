@@ -205,6 +205,14 @@ impl Lifecycle {
     )]
     pub fn app_ended(&self, id: String) {
         self.deliver(move |controller| {
+            // Closed for a new size: it starts again at that size.
+            if controller.relaunch.as_deref() == Some(id.as_str()) {
+                controller.relaunch = None;
+                if controller.home.launching() == Some(id.as_str()) {
+                    controller.launch(&id);
+                }
+                return;
+            }
             if controller.home.launching() == Some(id.as_str()) {
                 controller.input(Input::Paused);
             }
@@ -220,6 +228,25 @@ impl Lifecycle {
     )]
     pub fn volume(&self, change: crate::device::VolumeChange) {
         self.deliver(move |controller| controller.volume_key(change));
+    }
+
+    /// Home held (Linux: `--app-menu`): like Home, then the menu of the app
+    /// that was in front (its size, moving, hiding); Back from it goes back
+    /// to that app. Without one, just Home.
+    #[cfg_attr(
+        not(feature = "linux"),
+        allow(dead_code, reason = "called by the Linux binary")
+    )]
+    pub fn app_menu(&self) {
+        self.deliver(|controller| {
+            controller.away = true;
+            controller.input(Input::Paused);
+            controller.resume();
+            if let Some(id) = controller.platform.last_app() {
+                controller.home.open_app_menu(&id);
+            }
+            controller.after_pointer(None);
+        });
     }
 
     /// The power key: like Home, then the power menu (restart, power off)
@@ -763,6 +790,12 @@ struct Controller {
     /// Another app is on screen (Android paused the launcher): phones get
     /// the touchpad, not the Home mirror.
     away: bool,
+    /// The app whose size changed in the open menu; it restarts at the new
+    /// size once the menu closes.
+    resized: Option<String>,
+    /// The app closed to restart at a new size; it opens again when its
+    /// process has ended.
+    relaunch: Option<String>,
     /// The phones connected now; the pointer hides with the last.
     connected: std::collections::HashSet<rusttv_remote::PhoneId>,
     /// The last app in front that is an installed app: overlays (the TV's
@@ -849,6 +882,7 @@ impl Controller {
         // Focus is restored before the app list arrives, which keeps it by identity.
         let mut home = Home::new(order, folders, hidden, options.right_to_left);
         home.set_launch_timeout(platform.launch_timeout());
+        home.set_app_sizes(platform.scales_apps());
         home.set_quick_actions(device_view::quick_actions(platform.as_ref()));
         let device = platform.device_settings();
         let strings = window.global::<Strings>();
@@ -912,6 +946,8 @@ impl Controller {
                 remote_rows,
                 pairing: None,
                 away: false,
+                resized: None,
+                relaunch: None,
                 connected: std::collections::HashSet::new(),
                 front_app: None,
                 front_dpad: false,
@@ -1206,8 +1242,24 @@ impl Controller {
             }
             Some(Effect::Update) => self.update_action(),
             Some(Effect::RenameFolder(id)) => self.start_rename(id),
+            Some(Effect::ResizeApp(id, step)) => {
+                let size = self.platform.app_scale(&id);
+                let new = step.apply(size);
+                if new != size {
+                    self.platform.set_app_scale(&id, new);
+                    self.resized = Some(id);
+                }
+            }
             // `render` fills the page and queues its artwork.
             Some(Effect::OpenHidden) | None => {}
+        }
+        // A resized app that stays in the background closes, so it opens
+        // at its new size next time (a launch restarts it right away).
+        if self.home.state() != State::Menu
+            && let Some(id) = self.resized.take()
+            && self.platform.is_running(&id)
+        {
+            self.platform.close_app(&id);
         }
     }
 
@@ -1479,6 +1531,16 @@ impl Controller {
     }
 
     fn launch(&mut self, id: &str) {
+        // Resized while it ran: close it first; it opens again when it has
+        // ended (`Lifecycle::app_ended`), at the new size.
+        if self.resized.as_deref() == Some(id) {
+            self.resized = None;
+            if self.platform.is_running(id) {
+                self.platform.close_app(id);
+                self.relaunch = Some(id.to_owned());
+                return;
+            }
+        }
         match self.platform.launch(id) {
             Ok(()) => {
                 if let Some(delay) = self.options.simulated_pause {
@@ -1638,9 +1700,13 @@ impl Controller {
         }
         self.render_folder(&window);
         let (items, selected) = self.home.menu().unwrap_or_default();
+        let size = match self.home.menu_tile() {
+            Some(TileId::App(id)) => self.platform.app_scale(&id),
+            _ => 100,
+        };
         let labels: Vec<SharedString> = items
             .iter()
-            .map(|item| menu_label(&window, *item))
+            .map(|item| menu_label(&window, *item, size))
             .collect();
         if !self.menu_items.iter().eq(labels.iter().cloned()) {
             self.menu_items.set_vec(labels);
@@ -2429,13 +2495,15 @@ fn mode_value(state: State) -> i32 {
     }
 }
 
-/// What the long-press menu shows for an item.
-fn menu_label(window: &HomeWindow, item: MenuItem) -> SharedString {
-    let item = match item {
-        MenuItem::Move => 0,
-        MenuItem::Hide => 1,
-    };
-    window.global::<Strings>().invoke_menu_label(item)
+/// What the long-press menu shows for an item; `size` is the app's size
+/// in percent.
+fn menu_label(window: &HomeWindow, item: MenuItem, size: u32) -> SharedString {
+    let strings = window.global::<Strings>();
+    match item {
+        MenuItem::Move => strings.invoke_menu_label(0),
+        MenuItem::Hide => strings.invoke_menu_label(1),
+        MenuItem::Size => strings.invoke_menu_size(size.to_string().into()),
+    }
 }
 
 /// The About page's update line for a status, in the current language
@@ -2636,6 +2704,30 @@ mod tests {
 
         fn device_settings(&self) -> Option<std::sync::Arc<dyn crate::device::DeviceSettings>> {
             self.platform.borrow().device_settings()
+        }
+
+        fn scales_apps(&self) -> bool {
+            self.platform.borrow().scales_apps()
+        }
+
+        fn app_scale(&self, id: &str) -> u32 {
+            self.platform.borrow().app_scale(id)
+        }
+
+        fn set_app_scale(&mut self, id: &str, percent: u32) {
+            self.platform.borrow_mut().set_app_scale(id, percent);
+        }
+
+        fn is_running(&self, id: &str) -> bool {
+            self.platform.borrow().is_running(id)
+        }
+
+        fn close_app(&mut self, id: &str) {
+            self.platform.borrow_mut().close_app(id);
+        }
+
+        fn last_app(&self) -> Option<String> {
+            self.platform.borrow().last_app()
         }
     }
 
@@ -3908,6 +4000,72 @@ mod tests {
         assert!(screen.window.get_quick_power());
         screen.window.invoke_quick_dismissed();
         assert_ne!(screen.window.get_mode(), mode_value(State::Quick));
+    }
+
+    fn menu_texts(screen: &Screen) -> Vec<String> {
+        screen
+            .window
+            .get_menu_items()
+            .iter()
+            .map(String::from)
+            .collect()
+    }
+
+    #[test]
+    fn holding_home_opens_the_apps_menu_and_a_new_size_restarts_it() {
+        let screen = screen_with(abc().with_app_sizes(), None);
+        screen.tap(RIGHT);
+        screen.launch_and_leave();
+        screen.lifecycle.app_menu();
+        screen.wait(1);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Menu));
+        assert_eq!(
+            menu_texts(&screen),
+            ["Move", "Hide from Home", "Size: 100 %"]
+        );
+        assert_eq!(screen.window.get_menu_selected(), 2, "Size is selected");
+        screen.tap(RIGHT);
+        assert_eq!(menu_texts(&screen)[2], "Size: 110 %");
+        // Back: B closes, and opens again at its new size once it ended.
+        screen.tap(BACK);
+        assert_eq!(screen.shared.platform.borrow().closed(), ["b/.Main"]);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Launching));
+        assert_eq!(screen.launched(), ["b/.Main"]);
+        screen.lifecycle.app_ended("b/.Main".into());
+        screen.wait(1);
+        assert_eq!(screen.launched(), ["b/.Main", "b/.Main"]);
+        assert_eq!(screen.shared.platform.borrow().app_scale("b/.Main"), 110);
+    }
+
+    #[test]
+    fn back_from_the_apps_menu_without_a_change_goes_back_to_the_app() {
+        let screen = screen_with(abc().with_app_sizes(), None);
+        screen.launch_and_leave();
+        screen.lifecycle.app_menu();
+        screen.wait(1);
+        screen.tap(BACK);
+        assert!(screen.shared.platform.borrow().closed().is_empty());
+        assert_eq!(screen.launched(), ["a/.Main", "a/.Main"]);
+    }
+
+    #[test]
+    fn the_pointer_and_ok_step_an_apps_size_in_its_tile_menu() {
+        let screen = screen_with(abc().with_app_sizes(), None);
+        screen.window.invoke_tile_pointer(false, 0, 2);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Menu));
+        screen.window.invoke_list_pointer(0, 2, 0);
+        assert_eq!(screen.window.get_menu_selected(), 2, "hover focuses");
+        screen.window.invoke_list_pointer(0, 2, 1);
+        assert_eq!(menu_texts(&screen)[2], "Size: 110 %");
+        screen.tap(OK);
+        assert_eq!(menu_texts(&screen)[2], "Size: 125 %");
+        screen.tap(LEFT);
+        assert_eq!(menu_texts(&screen)[2], "Size: 110 %");
+        // A does not run: nothing to restart; it opens at 110 % next time.
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert!(screen.shared.platform.borrow().closed().is_empty());
+        assert!(screen.launched().is_empty());
     }
 
     #[test]

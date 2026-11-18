@@ -41,6 +41,9 @@ msgstr "OK drücken, um nach Updates zu suchen"
 msgid "Hide from Home"
 msgstr "Auf dem Startbildschirm ausblenden"
 
+msgid "Size: {} %"
+msgstr "Größe: {} %"
+
 msgid "Move"
 msgstr "Verschieben"
 

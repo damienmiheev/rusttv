@@ -34,7 +34,7 @@ pub use linux::{
 };
 pub use model::{
     App, Effect, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT, MenuItem, Order,
-    QuickAction, Scroll, State, TileId,
+    QuickAction, Scroll, SizeStep, State, TileId,
 };
 #[cfg(any(test, feature = "test-util"))]
 pub use platform::FakePlatform;

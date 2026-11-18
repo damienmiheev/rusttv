@@ -35,6 +35,8 @@ const MEMORY_POLL: Duration = Duration::from_secs(2);
 pub struct Tasks {
     limits: Limits,
     running: Mutex<Vec<Task>>,
+    /// The app whose window was last in front (not the launcher's).
+    front: Mutex<Option<String>>,
 }
 
 #[derive(Debug, Clone)]
@@ -55,6 +57,7 @@ impl Tasks {
         let tasks = Arc::new(Self {
             limits,
             running: Mutex::default(),
+            front: Mutex::default(),
         });
         if let Some(min) = limits.min_available_mib {
             let weak = Arc::downgrade(&tasks);
@@ -78,6 +81,33 @@ impl Tasks {
 
     fn lock(&self) -> MutexGuard<'_, Vec<Task>> {
         self.running.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The running app whose window was last in front of the launcher.
+    pub fn front(&self) -> Option<String> {
+        let front = self
+            .front
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()?;
+        self.is_running(&front).then_some(front)
+    }
+
+    /// Closes app `id` if it runs.
+    pub fn close_app(&self, id: &str) {
+        let task = {
+            let mut running = self.lock();
+            let Some(task) = running
+                .iter_mut()
+                .find(|task| task.id == id && !task.closing)
+            else {
+                return;
+            };
+            task.closing = true;
+            task.clone()
+        };
+        log::info!("closing {id} (asked for)");
+        self.close(task);
     }
 
     /// Whether `id` runs (and is not being closed).
@@ -158,10 +188,12 @@ impl Tasks {
     /// other app stops.
     pub fn activated(&self, app_id: &str) {
         let app_id = app_id.to_lowercase();
+        let mut front_id = None;
         for task in self.lock().iter_mut() {
             let front = task.keys.contains(&app_id);
             if front {
                 task.used = Instant::now();
+                front_id = Some(task.id.clone());
             }
             if front && task.frozen {
                 task.frozen = false;
@@ -171,6 +203,9 @@ impl Tasks {
                 log::info!("freezing {} in the background", task.id);
                 signal(task.group, Signal::STOP);
             }
+        }
+        if front_id.is_some() {
+            *self.front.lock().unwrap_or_else(PoisonError::into_inner) = front_id;
         }
     }
 
@@ -252,5 +287,26 @@ mod tests {
         assert_eq!(tasks.reuse("kodi.desktop"), Some(vec!["kodi".to_owned()]));
         tasks.ended(4_000_000);
         assert_eq!(tasks.reuse("kodi.desktop"), None);
+    }
+
+    #[test]
+    fn remembers_the_app_last_in_front_but_not_the_launcher() {
+        let limits = Limits {
+            freeze_background: false,
+            ..Limits::default()
+        };
+        let tasks = Tasks::start(limits);
+        assert_eq!(tasks.front(), None);
+        tasks.started(
+            "org.kde.dolphin.desktop",
+            4_000_001,
+            vec!["org.kde.dolphin".into()],
+        );
+        tasks.activated("org.kde.dolphin");
+        // The launcher's own window comes to the front: Dolphin stays the one.
+        tasks.activated("");
+        assert_eq!(tasks.front().as_deref(), Some("org.kde.dolphin.desktop"));
+        tasks.ended(4_000_001);
+        assert_eq!(tasks.front(), None);
     }
 }

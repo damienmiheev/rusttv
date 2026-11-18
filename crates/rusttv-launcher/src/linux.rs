@@ -90,6 +90,8 @@ pub struct LinuxPlatform {
     windows: Option<Toplevels>,
     /// Audio, networks and power through the system's tools.
     device: Arc<LinuxDevice>,
+    /// Each app's size on screen (`with_sizes`).
+    sizes: Option<AppSizes>,
 }
 
 impl fmt::Debug for LinuxPlatform {
@@ -143,7 +145,18 @@ impl LinuxPlatform {
             tasks: None,
             windows: None,
             device: Arc::new(LinuxDevice::detect()),
+            sizes: None,
         }
+    }
+
+    /// Lets each app have its own size on screen, kept in `path` (TOML).
+    /// Qt apps get it as `QT_SCALE_FACTOR`, GTK apps as `GDK_DPI_SCALE`
+    /// (their text; GTK scales the rest only by whole factors); other
+    /// toolkits ignore it.
+    #[must_use]
+    pub fn with_sizes(mut self, path: PathBuf) -> Self {
+        self.sizes = Some(AppSizes::load(path));
+        self
     }
 
     /// Manages the apps it starts: opening a running app brings its window to
@@ -307,6 +320,13 @@ impl Platform for LinuxPlatform {
         if let Some(dir) = &entry.working_dir {
             command.current_dir(dir);
         }
+        let percent = self.app_scale(id);
+        if percent != 100 {
+            let factor = format!("{}", f64::from(percent) / 100.0);
+            command
+                .env("QT_SCALE_FACTOR", &factor)
+                .env("GDK_DPI_SCALE", &factor);
+        }
         // A process group of its own, so closing the app also ends the
         // processes it started (e.g. a wrapper script's real program).
         command.process_group(0);
@@ -423,6 +443,84 @@ impl Platform for LinuxPlatform {
 
     fn device_settings(&self) -> Option<Arc<dyn DeviceSettings>> {
         Some(self.device.clone())
+    }
+
+    fn scales_apps(&self) -> bool {
+        self.sizes.is_some()
+    }
+
+    fn app_scale(&self, id: &str) -> u32 {
+        self.sizes
+            .as_ref()
+            .and_then(|sizes| sizes.percent.get(id).copied())
+            .unwrap_or(100)
+    }
+
+    fn set_app_scale(&mut self, id: &str, percent: u32) {
+        if let Some(sizes) = &mut self.sizes {
+            sizes.set(id, percent);
+        }
+    }
+
+    fn is_running(&self, id: &str) -> bool {
+        self.tasks
+            .as_ref()
+            .is_some_and(|tasks| tasks.is_running(id))
+    }
+
+    fn close_app(&mut self, id: &str) {
+        if let Some(tasks) = &self.tasks {
+            tasks.close_app(id);
+        }
+    }
+
+    fn last_app(&self) -> Option<String> {
+        self.tasks.as_ref().and_then(|tasks| tasks.front())
+    }
+}
+
+/// Each app's size on screen in percent, by desktop file ID, in a TOML file
+/// (`"org.kde.dolphin.desktop" = 125`); 100 is not stored.
+#[derive(Debug)]
+struct AppSizes {
+    path: PathBuf,
+    percent: HashMap<String, u32>,
+}
+
+impl AppSizes {
+    /// The sizes in `path`; none if it is missing or unreadable.
+    fn load(path: PathBuf) -> Self {
+        let percent = fs::read_to_string(&path)
+            .ok()
+            .and_then(|text| match toml::from_str(&text) {
+                Ok(sizes) => Some(sizes),
+                Err(error) => {
+                    log::warn!("{}: {error}; app sizes reset", path.display());
+                    None
+                }
+            })
+            .unwrap_or_default();
+        Self { path, percent }
+    }
+
+    /// Sets `id`'s size and writes the file (through a temporary file, so
+    /// a crash leaves the old one).
+    fn set(&mut self, id: &str, percent: u32) {
+        if percent == 100 {
+            self.percent.remove(id);
+        } else {
+            self.percent.insert(id.to_owned(), percent);
+        }
+        let written = toml::to_string(&self.percent)
+            .map_err(std::io::Error::other)
+            .and_then(|text| {
+                let temporary = self.path.with_extension("toml.new");
+                fs::write(&temporary, text)?;
+                fs::rename(&temporary, &self.path)
+            });
+        if let Err(error) = written {
+            log::warn!("app sizes not saved to {}: {error}", self.path.display());
+        }
     }
 }
 
@@ -894,6 +992,20 @@ mod tests {
             category(&names(&["Network", "WebBrowser"])),
             Category::Other
         );
+    }
+
+    #[test]
+    fn keeps_app_sizes_in_a_file() {
+        let path = std::env::temp_dir().join(format!("rusttv-sizes-{}.toml", std::process::id()));
+        let mut sizes = AppSizes::load(path.clone());
+        assert!(sizes.percent.is_empty());
+        sizes.set("org.kde.dolphin.desktop", 150);
+        sizes.set("vlc.desktop", 125);
+        sizes.set("vlc.desktop", 100);
+        let again = AppSizes::load(path.clone());
+        assert_eq!(again.percent.len(), 1);
+        assert_eq!(again.percent.get("org.kde.dolphin.desktop"), Some(&150));
+        fs::remove_file(&path).expect("remove");
     }
 
     #[test]

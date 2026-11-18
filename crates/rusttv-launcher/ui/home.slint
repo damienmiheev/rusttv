@@ -73,6 +73,10 @@ export global Strings {
         if item == 1 { return @tr("Hide from Home"); }
         return @tr("Move");
     }
+    // The app's size on screen (its UI scale), in percent.
+    public pure function menu-size(percent: string) -> string {
+        return @tr("Size: {} %", percent);
+    }
     public pure function couldnt-open(app: string) -> string {
         return @tr("Couldn't open {}", app);
     }

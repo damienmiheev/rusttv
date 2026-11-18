@@ -14,6 +14,10 @@
 //! remote's Home key in the compositor, together with raising the window
 //! titled `RustTV` (labwc: `ForEach` + `Raise` + `Focus` + `Execute`).
 //!
+//! `rusttv-launcher-linux --app-menu` does the same and then opens the menu
+//! of the app that was in front (its size on screen): bind it to holding
+//! Home (the remote's daemon sends `XF86Launch1` for a held Home).
+//!
 //! `rusttv-launcher-linux --power` does the same and then opens the power
 //! menu (restart, power off): bind it to the remote's power key like Home.
 //!
@@ -102,6 +106,8 @@ enum Signal {
     App(AppEvent),
     /// Home was pressed (`--home`).
     Home,
+    /// Home was held (`--app-menu`).
+    AppMenu,
     /// A volume key (`--volume`).
     Volume(VolumeChange),
     /// The power key (`--power`).
@@ -125,6 +131,7 @@ fn deliver(signal: Signal) {
                         lifecycle.paused();
                         lifecycle.resumed();
                     }
+                    Signal::AppMenu => lifecycle.app_menu(),
                     Signal::Volume(change) => lifecycle.volume(change),
                     Signal::Power => lifecycle.power_menu(),
                 }
@@ -215,6 +222,8 @@ fn listen_for_home(path: PathBuf) {
                 let message = message.trim();
                 if message == "home" {
                     deliver(Signal::Home);
+                } else if message == "app-menu" {
+                    deliver(Signal::AppMenu);
                 } else if message == "power" {
                     deliver(Signal::Power);
                 } else if let Some(change) = message
@@ -257,7 +266,8 @@ fn send_volume(change: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-const USAGE: &str = "usage: rusttv-launcher-linux [--home | --power | --volume up|down|mute]";
+const USAGE: &str =
+    "usage: rusttv-launcher-linux [--home | --app-menu | --power | --volume up|down|mute]";
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -269,6 +279,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     {
         [] => {}
         ["--home"] => return send_key("home"),
+        ["--app-menu"] => return send_key("app-menu"),
         ["--power"] => return send_key("power"),
         ["--volume", change] => return send_volume(change),
         _ => return Err(USAGE.into()),
@@ -299,7 +310,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     rusttv_launcher::start_gamepads();
     let platform = LinuxPlatform::from_env()
         .with_events(events)
-        .with_tasks(limits);
+        .with_tasks(limits)
+        .with_sizes(dir.join("app-sizes.toml"));
     let language = language();
     let right_to_left = language
         .as_deref()

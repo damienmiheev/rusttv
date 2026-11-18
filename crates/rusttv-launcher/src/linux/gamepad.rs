@@ -48,7 +48,13 @@ mod key {
     pub const RIGHT: u32 = 106;
     pub const DOWN: u32 = 108;
     pub const HOMEPAGE: u32 = 172;
+    /// `KEY_PROG1` (`XF86Launch1`): Home held, the app menu.
+    pub const PROG1: u32 = 148;
 }
+
+/// How long Guide is held before it opens the app menu (as holding the
+/// remote's Home does).
+const HOLD: Duration = Duration::from_millis(600);
 
 /// Gamepad button codes read.
 mod button {
@@ -186,16 +192,30 @@ fn run() -> Result<(), String> {
     let mut scanned = Instant::now()
         .checked_sub(RESCAN)
         .unwrap_or_else(Instant::now);
+    // Since when Guide (Home) is down, until the app menu opened.
+    let mut home_down: Option<Instant> = None;
     loop {
         if scanned.elapsed() >= RESCAN {
             scanned = Instant::now();
             scan(&mut open, &sender);
         }
-        match messages.recv_timeout(RESCAN) {
+        let wait = home_down.map_or(RESCAN, |since| HOLD.saturating_sub(since.elapsed()));
+        match messages.recv_timeout(wait) {
             Ok(Message::Keys(changes)) => {
                 for (key, down) in changes {
+                    if key == key::HOMEPAGE {
+                        home_down = down.then(Instant::now);
+                    }
                     send(&keyboard, &mut pressed, key, down);
                 }
+                keyboard.flush()?;
+            }
+            Err(RecvTimeoutError::Timeout)
+                if home_down.is_some_and(|since| since.elapsed() >= HOLD) =>
+            {
+                home_down = None;
+                keyboard.key(key::PROG1, true);
+                keyboard.key(key::PROG1, false);
                 keyboard.flush()?;
             }
             Ok(Message::Gone(path)) => {
@@ -216,7 +236,7 @@ fn run() -> Result<(), String> {
 fn send(keyboard: &VirtualKeys, pressed: &mut HashSet<u32>, key: u32, down: bool) {
     if down {
         let to_home = HOME_IN_FRONT.load(Ordering::Relaxed) || super::keyboard::shown();
-        if (key == key::HOMEPAGE || to_home) && pressed.insert(key) {
+        if (key == key::HOMEPAGE || key == key::PROG1 || to_home) && pressed.insert(key) {
             keyboard.key(key, true);
         }
     } else if pressed.remove(&key) {
@@ -342,6 +362,7 @@ fn keymap() -> String {
         (key::RIGHT, "Right"),
         (key::DOWN, "Down"),
         (key::HOMEPAGE, "XF86HomePage"),
+        (key::PROG1, "XF86Launch1"),
     ];
     let mut keycodes = String::new();
     let mut symbols = String::new();
