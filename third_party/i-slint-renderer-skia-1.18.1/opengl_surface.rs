@@ -3,7 +3,7 @@
 
 // cSpell: ignore fboid
 use std::cell::OnceCell;
-use std::ffi::{CStr, c_char, c_void};
+use std::ffi::c_void;
 use std::num::NonZeroU32;
 use std::{cell::RefCell, sync::Arc};
 
@@ -304,7 +304,15 @@ impl OpenGLSurface {
         self.partial_update.get_or_init(|| self.load_partial_update()).as_ref()
     }
 
+    /// macOS has no EGL (glutin uses CGL there).
+    #[cfg(target_vendor = "apple")]
     fn load_partial_update(&self) -> Option<PartialUpdate> {
+        None
+    }
+
+    #[cfg(not(target_vendor = "apple"))]
+    fn load_partial_update(&self) -> Option<PartialUpdate> {
+        use std::ffi::{CStr, c_char};
         use glutin::display::{AsRawDisplay, RawDisplay};
         use glutin::surface::{AsRawSurface, RawSurface};
         if std::env::var_os("SLINT_SKIA_NO_PARTIAL_UPDATE").is_some() {
