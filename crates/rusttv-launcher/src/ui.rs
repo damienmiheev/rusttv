@@ -686,15 +686,19 @@ fn volume_change(
 fn pause_when_covered(window: &HomeWindow, controller: &Rc<RefCell<Controller>>) {
     use slint::winit_030::{EventResult, WinitWindowAccessor as _, winit::event::WindowEvent};
 
-    controller.borrow_mut().parks_pointer = true;
     let weak = Rc::downgrade(controller);
     window.window().on_winit_window_event(move |_, event| {
         // Before Slint turns it into a hover: is this a move of the person's?
-        if let WindowEvent::CursorMoved { position, .. } = event
-            && let Some(controller) = weak.upgrade()
+        if let Some(controller) = weak.upgrade()
             && let Ok(mut controller) = controller.try_borrow_mut()
         {
-            controller.pointer_at(position.x, position.y);
+            match event {
+                WindowEvent::CursorEntered { .. } => controller.park_pointer(),
+                WindowEvent::CursorMoved { position, .. } => {
+                    controller.pointer_at(position.x, position.y);
+                }
+                _ => {}
+            }
         }
         // Volume keys while the launcher has the keyboard (the compositor
         // may bind them itself: see `--volume` in src/bin/linux.rs).
@@ -836,15 +840,13 @@ struct Controller {
     relaunch: Option<String>,
     /// Whether the app overlay is open (holding Home over an app).
     overlay: bool,
-    /// The compositor reports where the pointer is when the launcher comes
-    /// back (an air mouse left resting over some tile); that is no move of
-    /// the person's. Until the pointer moves [`PARKED_SLACK`] away from
-    /// there, hovering focuses nothing. `parked_at`: that first report.
+    /// The compositor reports where the pointer is when it enters the
+    /// window again, as an app in front closes or goes (an air mouse left
+    /// resting over some tile); that is no move of the person's. Until the
+    /// pointer moves [`PARKED_SLACK`] away from there, hovering focuses
+    /// nothing. `parked_at`: that first report.
     parked: bool,
     parked_at: Option<(f64, f64)>,
-    /// Whether the window reports pointer positions (`pause_when_covered`);
-    /// without them nothing parks.
-    parks_pointer: bool,
     /// The app closed in the app overlay to restart at a new size; it
     /// opens again when its process has ended.
     restart: Option<String>,
@@ -1003,7 +1005,6 @@ impl Controller {
                 overlay: false,
                 parked: false,
                 parked_at: None,
-                parks_pointer: false,
                 restart: None,
                 connected: std::collections::HashSet::new(),
                 front_app: None,
@@ -1045,8 +1046,6 @@ impl Controller {
     /// updater's status: on Android the daily check may have just started.
     fn resume(&mut self) {
         self.away = false;
-        self.parked = self.parks_pointer;
-        self.parked_at = None;
         // Phones switch back from the touchpad to the Home mirror, and the
         // pointer never shows over RustTV.
         self.platform.pointer_stop();
@@ -1488,8 +1487,14 @@ impl Controller {
         self.parked
     }
 
+    /// The pointer entered the window (see [`Controller::parked`]).
+    fn park_pointer(&mut self) {
+        self.parked = true;
+        self.parked_at = None;
+    }
+
     /// The pointer is at (`x`, `y`) in the window: the first report after
-    /// the launcher came back is where it rests; moving away from there
+    /// it entered is where it rests; moving away from there
     /// lets hovering focus again.
     fn pointer_at(&mut self, x: f64, y: f64) {
         if !self.parked {
@@ -4276,9 +4281,8 @@ mod tests {
         let screen = screen_with(abc(), None);
         screen.tap(RIGHT);
         screen.launch_and_leave();
-        screen._controller.borrow_mut().parks_pointer = true;
-        screen.lifecycle.resumed();
-        screen.wait(1);
+        // The app went: the pointer enters the window again.
+        screen._controller.borrow_mut().park_pointer();
         // The compositor's report of where the pointer rests: no focus.
         screen._controller.borrow_mut().pointer_at(800.0, 900.0);
         screen.window.invoke_tile_pointer(false, 2, 0);
