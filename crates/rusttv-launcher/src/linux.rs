@@ -179,6 +179,7 @@ impl LinuxPlatform {
             // The home screen's own window has no app ID.
             let home = app_id.is_empty() || app_id.to_lowercase().contains("rusttv");
             gamepad::HOME_IN_FRONT.store(home, Ordering::Relaxed);
+            keyboard::window_switched();
             let reads_pads = used.activated(app_id);
             gamepad::KEYS_TO_APP.store(reads_pads == Some(false), Ordering::Relaxed);
         }));
@@ -499,19 +500,19 @@ impl Platform for LinuxPlatform {
         }
     }
 
-    fn overlay_volume(&mut self, volume: crate::device::Volume) {
+    fn show_volume(&mut self, volume: crate::device::Volume) -> bool {
         if overlay::shown()
             && let Some(overlay) = &self.overlay
         {
             overlay.volume(volume);
-            return;
         }
         if self.volume_bar.is_none() {
             self.volume_bar = overlay::VolumeBar::start();
         }
-        if let Some(bar) = &self.volume_bar {
+        self.volume_bar.as_ref().is_some_and(|bar| {
             bar.show(volume);
-        }
+            true
+        })
     }
 }
 

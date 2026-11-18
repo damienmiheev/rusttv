@@ -79,6 +79,31 @@ mod code {
 /// Whether the keyboard is on screen (game controllers steer it then).
 static SHOWN: AtomicBool = AtomicBool::new(false);
 
+/// When another window came to the front, or the app overlay closed.
+static SWITCHED: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+/// A text field that gets the focus this soon after a window came to the
+/// front got it from the app, not from the person: no keyboard for it.
+const SWITCH_GRACE: std::time::Duration = std::time::Duration::from_millis(1500);
+
+/// Another window came to the front (or the app overlay gave the keys back
+/// to the app). An app that puts its text field in focus as it opens or
+/// comes back (Dolphin's location bar) brings up no keyboard; moving to a
+/// field does.
+pub fn window_switched() {
+    *SWITCHED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(std::time::Instant::now());
+}
+
+/// Whether a window came to the front within [`SWITCH_GRACE`].
+fn just_switched() -> bool {
+    SWITCHED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .is_some_and(|at| at.elapsed() < SWITCH_GRACE)
+}
+
 /// Whether the on-screen keyboard is showing.
 pub fn shown() -> bool {
     SHOWN.load(Ordering::Relaxed)
@@ -444,7 +469,11 @@ impl Dispatch<ZwpInputMethodV2, ()> for State {
                 match state.pending_active.take() {
                     Some(true) => {
                         state.active = true;
-                        state.show(qh);
+                        if just_switched() {
+                            log::info!("text field focused as its window came up: no keyboard");
+                        } else {
+                            state.show(qh);
+                        }
                     }
                     Some(false) => {
                         state.active = false;

@@ -132,6 +132,8 @@ impl Overlay {
                         }
                     });
                 SHOWN.store(false, Ordering::Relaxed);
+                // The app gets the keys back: its text field may ask again.
+                crate::linux::keyboard::window_switched();
                 crate::ui::overlay_closed(closed);
             });
         if let Err(error) = spawned {

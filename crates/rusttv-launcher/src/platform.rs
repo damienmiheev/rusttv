@@ -231,9 +231,12 @@ pub trait Platform {
     /// Closes the app overlay, if it is open; `to_home`: Home was pressed.
     fn close_overlay(&mut self, _to_home: bool) {}
 
-    /// The volume changed (a volume key) while an app is in front: the app
-    /// overlay shows it if it is open, else a volume bar over the app.
-    fn overlay_volume(&mut self, _volume: crate::device::Volume) {}
+    /// The volume changed (a volume key): shows it over everything, the
+    /// home screen and apps alike (and in the app overlay, if it is open).
+    /// `false` where the platform can't; the launcher shows its own bar.
+    fn show_volume(&mut self, _volume: crate::device::Volume) -> bool {
+        false
+    }
 }
 
 /// What the app overlay shows (see [`Platform::open_overlay`]).
