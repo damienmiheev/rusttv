@@ -286,6 +286,7 @@ pub(crate) fn main() -> Result<(), Box<dyn Error>> {
         lifecycle,
         remote_pairing: false,
         remote_port: None,
+        no_key_hints: true,
     };
     Ok(run(platform, options)?)
 }

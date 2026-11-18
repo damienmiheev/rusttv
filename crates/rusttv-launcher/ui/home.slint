@@ -153,7 +153,7 @@ export global Strings {
     public pure function pairing-failure(kind: int) -> string {
         if kind == 1 { return @tr("RustTV Remote can't start: another app uses its network port (8484)."); }
         if kind == 2 { return @tr("This TV has no network address. Connect it to your network and try again."); }
-        if kind == 4 { return @tr("Pairing stopped after three wrong tries. Open Pair a phone again for a new code."); }
+        if kind == 4 { return @tr("Pairing stopped after three wrong tries. Back returns; open Pair a phone again for a new code."); }
         return @tr("Couldn't make the code.");
     }
     public pure function on-off(on: bool) -> string {
@@ -300,6 +300,12 @@ export global Pointer {
 // Mode values, kept in sync with `mode_value` in ui.rs.
 // Settings → Effects (ui.rs `apply_effects`): Reduced turns the costly
 // parts off for a weak GPU. The defaults are the normal look.
+// Hints that only say which keys move around (Back returns, Up and Down
+// choose). Off for a pointer-driven home screen (RunOptions::no_key_hints).
+export global Hints {
+    in property <bool> keys: true;
+}
+
 export global Effects {
     in property <bool> shadows: true;
     in property <bool> backdrop: true;
@@ -1094,7 +1100,7 @@ export component HomeWindow inherits Window {
         horizontal-alignment: center;
         text: renaming ? @tr("Type a name, then press ✓. Back keeps the old one.")
             : mode == Mode.moving ? @tr("Move past the edge to take the app out. OK drops it.")
-            : "";
+            : Hints.keys ? @tr("Back closes the folder. Up reaches its name.") : "";
         font-size: 25 * u;
         color: Theme.text-dim;
     }
@@ -1265,7 +1271,7 @@ export component HomeWindow inherits Window {
             y: 176 * u;
             width: 1740 * u;
             horizontal-alignment: Dir.start;
-            text: @tr("OK puts the app back on Home.");
+            text: @tr("OK puts the app back on Home. Back returns.");
             font-size: 25 * u;
             color: Theme.text-dim;
         }
@@ -1368,7 +1374,7 @@ export component HomeWindow inherits Window {
             }
             Text {
                 horizontal-alignment: Dir.start;
-                text: "";
+                text: Hints.keys ? @tr("Up and Down scroll the notices. Back returns.") : "";
                 font-size: 25 * u;
                 color: Theme.text-dim;
                 wrap: word-wrap;
@@ -1464,7 +1470,7 @@ export component HomeWindow inherits Window {
             y: 176 * u;
             width: 1740 * u;
             horizontal-alignment: Dir.start;
-            text: settings-status;
+            text: settings-status != "" ? settings-status : Hints.keys ? @tr("Up and Down choose, OK opens. Back returns.") : "";
             font-size: 25 * u;
             color: settings-status != "" ? Theme.text : Theme.text-dim;
             overflow: elide;
@@ -1607,7 +1613,7 @@ export component HomeWindow inherits Window {
             y: 176 * u;
             width: 1740 * u;
             horizontal-alignment: Dir.start;
-            text: settings-status;
+            text: settings-status != "" ? settings-status : Hints.keys ? @tr("Up and Down choose, OK opens. Back returns.") : "";
             font-size: 25 * u;
             color: settings-status != "" ? Theme.text : Theme.text-dim;
             overflow: elide;
@@ -1699,8 +1705,8 @@ export component HomeWindow inherits Window {
             width: 1740 * u;
             horizontal-alignment: Dir.start;
             text: settings-status != "" ? settings-status
-                : review-phase == 0 ? @tr("Choose Approve to go on.")
-                : @tr("Nothing changes until you hold OK.");
+                : review-phase == 0 ? @tr("Up and Down read the changes. Choose Approve to go on. Back cancels.")
+                : @tr("Nothing changes until you hold OK. Back cancels.");
             font-size: 25 * u;
             color: settings-status != "" ? Theme.text : Theme.text-dim;
             overflow: elide;
@@ -1836,7 +1842,7 @@ export component HomeWindow inherits Window {
             y: 176 * u;
             width: 1740 * u;
             horizontal-alignment: Dir.start;
-            text: pairing-phase == 1 ? @tr("OK allows this phone.") : "";
+            text: pairing-phase == 1 ? @tr("OK allows this phone. Back refuses.") : Hints.keys ? @tr("Back returns.") : "";
             font-size: 25 * u;
             color: Theme.text-dim;
             overflow: elide;

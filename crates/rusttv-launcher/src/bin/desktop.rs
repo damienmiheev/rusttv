@@ -264,6 +264,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         // RUSTTV_REMOTE_PAIR=1 starts the phone remote with pairing open.
         remote_pairing: std::env::var_os("RUSTTV_REMOTE_PAIR").is_some(),
         remote_port: None,
+        no_key_hints: false,
     };
     let mut script = demo_script();
     let mut args = std::env::args().skip(1);

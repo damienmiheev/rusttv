@@ -44,7 +44,9 @@ use rusttv_remote::protocol::{
 mod generated {
     slint::include_modules!();
 }
-use generated::{Dir, Effects, HomeWindow, Pointer, ReviewLine, SettingsRow, Strings, TileData};
+use generated::{
+    Dir, Effects, Hints, HomeWindow, Pointer, ReviewLine, SettingsRow, Strings, TileData,
+};
 
 mod device_view;
 mod remote_view;
@@ -182,6 +184,10 @@ pub struct RunOptions {
     /// The phone remote's port: `None` is [`rusttv_remote::PORT`]; tests use
     /// `Some(0)` for any free port.
     pub remote_port: Option<u16>,
+    /// Leave out the hints that only say which keys move around ("Back
+    /// returns", "Up and Down choose"): for a home screen driven as much by
+    /// a pointer as by keys (Linux).
+    pub no_key_hints: bool,
 }
 
 /// Reports activity lifecycle events to a running home screen.
@@ -545,6 +551,7 @@ fn start(
         .and_then(std::path::Path::parent)
         .is_some_and(|dir| dir.join(order_file::REDUCED_EFFECTS).exists());
     apply_effects(&window, reduced);
+    window.global::<Hints>().set_keys(!options.no_key_hints);
     if std::env::var_os("RUSTTV_FPS").is_some_and(|value| value != "0") {
         count_frames(&window);
     }

@@ -69,6 +69,7 @@ fn android_main(app: AndroidApp) {
         lifecycle,
         remote_pairing: false,
         remote_port: None,
+        no_key_hints: false,
     };
     if let Err(error) = run(platform, options) {
         log::error!("the home screen stopped: {error}");
