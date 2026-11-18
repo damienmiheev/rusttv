@@ -46,6 +46,8 @@ struct Task {
     group: i32,
     /// Lower-case app IDs its windows may have.
     keys: Vec<String>,
+    /// Reads game controllers itself.
+    reads_pads: bool,
     used: Instant,
     closing: bool,
     frozen: bool,
@@ -134,7 +136,7 @@ impl Tasks {
 
     /// Records a started app, then closes the least recently used others
     /// beyond [`Limits::max_apps`].
-    pub fn started(&self, id: &str, group: u32, keys: Vec<String>) {
+    pub fn started(&self, id: &str, group: u32, keys: Vec<String>, reads_pads: bool) {
         let Ok(group) = i32::try_from(group) else {
             return;
         };
@@ -144,6 +146,7 @@ impl Tasks {
                 id: id.to_owned(),
                 group,
                 keys,
+                reads_pads,
                 used: Instant::now(),
                 closing: false,
                 frozen: false,
@@ -185,15 +188,16 @@ impl Tasks {
 
     /// A window with this app ID came to the front (the launcher's own too):
     /// its app was just used, and with [`Limits::freeze_background`] every
-    /// other app stops.
-    pub fn activated(&self, app_id: &str) {
+    /// other app stops. Returns whether that app reads game controllers
+    /// itself; `None` for a window of no app started here.
+    pub fn activated(&self, app_id: &str) -> Option<bool> {
         let app_id = app_id.to_lowercase();
         let mut front_id = None;
         for task in self.lock().iter_mut() {
             let front = task.keys.contains(&app_id);
             if front {
                 task.used = Instant::now();
-                front_id = Some(task.id.clone());
+                front_id = Some((task.id.clone(), task.reads_pads));
             }
             if front && task.frozen {
                 task.frozen = false;
@@ -204,9 +208,9 @@ impl Tasks {
                 signal(task.group, Signal::STOP);
             }
         }
-        if front_id.is_some() {
-            *self.front.lock().unwrap_or_else(PoisonError::into_inner) = front_id;
-        }
+        let (id, reads_pads) = front_id?;
+        *self.front.lock().unwrap_or_else(PoisonError::into_inner) = Some(id);
+        Some(reads_pads)
     }
 
     /// Closes the least recently used app that is not the most recent one.
@@ -283,7 +287,7 @@ mod tests {
     fn reuses_a_running_app_and_forgets_it_when_it_ends() {
         let tasks = Tasks::start(Limits::default());
         assert_eq!(tasks.reuse("kodi.desktop"), None);
-        tasks.started("kodi.desktop", 4_000_000, vec!["kodi".into()]);
+        tasks.started("kodi.desktop", 4_000_000, vec!["kodi".into()], true);
         assert_eq!(tasks.reuse("kodi.desktop"), Some(vec!["kodi".to_owned()]));
         tasks.ended(4_000_000);
         assert_eq!(tasks.reuse("kodi.desktop"), None);
@@ -301,10 +305,11 @@ mod tests {
             "org.kde.dolphin.desktop",
             4_000_001,
             vec!["org.kde.dolphin".into()],
+            false,
         );
-        tasks.activated("org.kde.dolphin");
+        assert_eq!(tasks.activated("org.kde.dolphin"), Some(false));
         // The launcher's own window comes to the front: Dolphin stays the one.
-        tasks.activated("");
+        assert_eq!(tasks.activated(""), None);
         assert_eq!(tasks.front().as_deref(), Some("org.kde.dolphin.desktop"));
         tasks.ended(4_000_001);
         assert_eq!(tasks.front(), None);

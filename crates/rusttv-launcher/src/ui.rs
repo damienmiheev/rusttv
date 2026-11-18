@@ -1145,6 +1145,16 @@ impl Controller {
         if self.prompt.is_some() {
             return false;
         }
+        // The Menu key (keyboards; a controller's top button): the focused
+        // tile's menu, as a long OK.
+        if text == "\u{F735}" {
+            if pressed && !repeat {
+                self.hide_pointer();
+                self.home.long_press();
+                self.after_pointer(None);
+            }
+            return true;
+        }
         let Some(input) = input_for_key(text, pressed) else {
             return false;
         };
@@ -4046,6 +4056,17 @@ mod tests {
         screen.tap(BACK);
         assert!(screen.shared.platform.borrow().closed().is_empty());
         assert_eq!(screen.launched(), ["a/.Main", "a/.Main"]);
+    }
+
+    #[test]
+    fn the_menu_key_opens_the_focused_tiles_menu() {
+        let screen = screen(None);
+        screen.tap(RIGHT);
+        screen.tap("\u{F735}");
+        assert_eq!(screen.window.get_mode(), mode_value(State::Menu));
+        assert_eq!(menu_texts(&screen), ["Move", "Hide from Home"]);
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
     }
 
     #[test]

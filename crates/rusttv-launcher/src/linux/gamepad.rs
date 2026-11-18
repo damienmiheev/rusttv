@@ -31,6 +31,11 @@ use wayland_protocols_misc::zwp_virtual_keyboard_v1::client::{
 /// only then do the controller's arrows, OK and Back go out.
 pub static HOME_IN_FRONT: AtomicBool = AtomicBool::new(true);
 
+/// Whether the app in front takes the controller as keys: an app the
+/// launcher started that reads no controller itself (not a game, not Kodi).
+/// Games get no extra keys, so nothing happens twice.
+pub static KEYS_TO_APP: AtomicBool = AtomicBool::new(false);
+
 /// How often to look for newly connected controllers.
 const RESCAN: Duration = Duration::from_secs(3);
 
@@ -42,6 +47,8 @@ const STICK_CENTRED: f32 = 0.4;
 /// Linux input event codes (`linux/input-event-codes.h`) sent on.
 mod key {
     pub const ESC: u32 = 1;
+    /// `KEY_COMPOSE`, xkb's `Menu`: the tile menu (as a long OK).
+    pub const MENU: u32 = 127;
     pub const ENTER: u32 = 28;
     pub const UP: u32 = 103;
     pub const LEFT: u32 = 105;
@@ -60,6 +67,10 @@ const HOLD: Duration = Duration::from_millis(600);
 mod button {
     pub const SOUTH: u16 = 0x130;
     pub const EAST: u16 = 0x131;
+    /// The top and left face buttons (Y and X on Xbox pads; drivers differ
+    /// in which is which).
+    pub const NORTH: u16 = 0x133;
+    pub const WEST: u16 = 0x134;
     pub const SELECT: u16 = 0x13a;
     pub const MODE: u16 = 0x13c;
     pub const DPAD_UP: u16 = 0x220;
@@ -101,6 +112,7 @@ impl Mapper {
             button::SOUTH => key::ENTER,
             button::EAST | button::SELECT => key::ESC,
             button::MODE => key::HOMEPAGE,
+            button::NORTH | button::WEST => key::MENU,
             button::DPAD_UP => key::UP,
             button::DPAD_DOWN => key::DOWN,
             button::DPAD_LEFT => key::LEFT,
@@ -235,7 +247,9 @@ fn run() -> Result<(), String> {
 /// that went down always comes up again.
 fn send(keyboard: &VirtualKeys, pressed: &mut HashSet<u32>, key: u32, down: bool) {
     if down {
-        let to_home = HOME_IN_FRONT.load(Ordering::Relaxed) || super::keyboard::shown();
+        let to_home = HOME_IN_FRONT.load(Ordering::Relaxed)
+            || KEYS_TO_APP.load(Ordering::Relaxed)
+            || super::keyboard::shown();
         if (key == key::HOMEPAGE || key == key::PROG1 || to_home) && pressed.insert(key) {
             keyboard.key(key, true);
         }
@@ -356,6 +370,7 @@ impl VirtualKeys {
 fn keymap() -> String {
     let keys = [
         (key::ESC, "Escape"),
+        (key::MENU, "Menu"),
         (key::ENTER, "Return"),
         (key::UP, "Up"),
         (key::LEFT, "Left"),
@@ -431,13 +446,15 @@ mod tests {
         assert_eq!(Mapper::button(button::SOUTH, 0), vec![(key::ENTER, false)]);
         assert_eq!(Mapper::button(button::EAST, 1), vec![(key::ESC, true)]);
         assert_eq!(Mapper::button(button::MODE, 1), vec![(key::HOMEPAGE, true)]);
+        assert_eq!(Mapper::button(button::NORTH, 1), vec![(key::MENU, true)]);
         assert_eq!(
             Mapper::button(button::DPAD_LEFT, 1),
             vec![(key::LEFT, true)]
         );
         assert_eq!(Mapper::button(button::DPAD_LEFT, 2), vec![]);
-        // Y: nothing yet.
-        assert_eq!(Mapper::button(0x134, 1), vec![]);
+        assert_eq!(Mapper::button(button::WEST, 1), vec![(key::MENU, true)]);
+        // A shoulder button: nothing.
+        assert_eq!(Mapper::button(0x136, 1), vec![]);
     }
 
     #[test]

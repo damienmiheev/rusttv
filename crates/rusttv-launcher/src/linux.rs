@@ -168,10 +168,12 @@ impl LinuxPlatform {
         let tasks = Tasks::start(limits);
         let used = tasks.clone();
         self.windows = Toplevels::start(Box::new(move |app_id| {
+            use std::sync::atomic::Ordering;
             // The home screen's own window has no app ID.
             let home = app_id.is_empty() || app_id.to_lowercase().contains("rusttv");
-            gamepad::HOME_IN_FRONT.store(home, std::sync::atomic::Ordering::Relaxed);
-            used.activated(app_id);
+            gamepad::HOME_IN_FRONT.store(home, Ordering::Relaxed);
+            let reads_pads = used.activated(app_id);
+            gamepad::KEYS_TO_APP.store(reads_pads == Some(false), Ordering::Relaxed);
         }));
         self.tasks = Some(tasks);
         self
@@ -336,7 +338,7 @@ impl Platform for LinuxPlatform {
         let group = child.id();
         log::info!("started {id} (pid {group})");
         if let Some(tasks) = &self.tasks {
-            tasks.started(id, group, entry.window_keys(id));
+            tasks.started(id, group, entry.window_keys(id), entry.reads_pads(id));
         }
         if let Some(events) = &self.events {
             events(AppEvent::Started(id.to_owned()));
@@ -646,6 +648,16 @@ impl DesktopEntry {
             && !on(&self.not_show_in)
             && self.try_exec.as_deref().is_none_or(program_exists)
             && !self.is_launcher()
+    }
+
+    /// Whether the app reads game controllers itself (games, Kodi, RetroArch,
+    /// Steam), so the launcher sends it no keys for them.
+    fn reads_pads(&self, id: &str) -> bool {
+        let id = id.to_lowercase();
+        self.category == Category::Game
+            || ["kodi", "retroarch", "steam"]
+                .iter()
+                .any(|name| id.contains(name))
     }
 
     /// The launcher's own entry, which the home screen leaves out.
