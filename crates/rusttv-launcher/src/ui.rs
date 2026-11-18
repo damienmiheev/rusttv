@@ -461,48 +461,39 @@ fn show_pointer(window: &HomeWindow, shown: bool) {
 
 /// Air-mouse remotes send OK as a left click, at wherever the pointer
 /// is. While the pointer is hidden (the D-pad is in use), a click is OK on
-/// the focused item instead.
-#[cfg(all(target_os = "linux", feature = "linux"))]
-fn click_is_ok_while_pointer_hidden(window: &HomeWindow, controller: &Rc<RefCell<Controller>>) {
+/// the focused item instead. Returns whether `event` was such a click.
+#[cfg(feature = "linux")]
+fn click_is_ok_while_pointer_hidden(
+    home: &slint::Weak<HomeWindow>,
+    controller: &Weak<RefCell<Controller>>,
+    event: &slint::winit_030::winit::event::WindowEvent,
+) -> bool {
     use slint::winit_030::winit::event::{ElementState, MouseButton, WindowEvent};
-    use slint::winit_030::{EventResult, WinitWindowAccessor as _};
 
-    let weak = Rc::downgrade(controller);
-    let home = window.as_weak();
-    window.window().on_winit_window_event(move |_, event| {
-        let WindowEvent::MouseInput {
-            state,
-            button: MouseButton::Left,
-            ..
-        } = event
-        else {
-            return EventResult::Propagate;
-        };
-        let hidden = home
-            .upgrade()
-            .is_some_and(|window| !window.global::<Pointer>().get_shown());
-        let Some(controller) = weak.upgrade().filter(|_| hidden) else {
-            return EventResult::Propagate;
-        };
-        let Ok(mut controller) = controller.try_borrow_mut() else {
-            return EventResult::Propagate;
-        };
-        // A text prompt's field takes clicks as they are.
-        if controller.prompt.is_some() {
-            return EventResult::Propagate;
-        }
-        controller.key(
-            "
-",
-            *state == ElementState::Pressed,
-            false,
-        );
-        EventResult::PreventDefault
-    });
+    let WindowEvent::MouseInput {
+        state,
+        button: MouseButton::Left,
+        ..
+    } = event
+    else {
+        return false;
+    };
+    let hidden = home
+        .upgrade()
+        .is_some_and(|window| !window.global::<Pointer>().get_shown());
+    let Some(controller) = controller.upgrade().filter(|_| hidden) else {
+        return false;
+    };
+    let Ok(mut controller) = controller.try_borrow_mut() else {
+        return false;
+    };
+    // A text prompt's field takes clicks as they are.
+    if controller.prompt.is_some() {
+        return false;
+    }
+    controller.key("\n", *state == ElementState::Pressed, false);
+    true
 }
-
-#[cfg(not(all(target_os = "linux", feature = "linux")))]
-fn click_is_ok_while_pointer_hidden(_: &HomeWindow, _: &Rc<RefCell<Controller>>) {}
 
 /// Shows how many frames were drawn in the last second, in a corner.
 /// Showing the count draws one more frame a second; at rest it stays put.
@@ -564,7 +555,6 @@ fn start(
         weak.upgrade()
             .is_some_and(|controller| controller.borrow_mut().key(&text, pressed, repeat))
     });
-    click_is_ok_while_pointer_hidden(&window, &controller);
     let weak = Rc::downgrade(&controller);
     window.on_tile_pointer(move |folder, index, action| {
         if let Some(controller) = weak.upgrade() {
@@ -677,12 +667,19 @@ fn volume_change(
 /// compositor takes the keyboard focus from the launcher, and the launcher
 /// is back when it gets the focus again. Losing it during a launch ends the
 /// launch splash, like Android's pause.
+///
+/// This is the window's one event filter (Slint keeps only the last one
+/// set), so it also turns clicks into OK while the pointer is hidden.
 #[cfg(feature = "linux")]
 fn pause_when_covered(window: &HomeWindow, controller: &Rc<RefCell<Controller>>) {
     use slint::winit_030::{EventResult, WinitWindowAccessor as _, winit::event::WindowEvent};
 
     let weak = Rc::downgrade(controller);
+    let home = window.as_weak();
     window.window().on_winit_window_event(move |_, event| {
+        if click_is_ok_while_pointer_hidden(&home, &weak, event) {
+            return EventResult::PreventDefault;
+        }
         // Before Slint turns it into a hover: is this a move of the person's?
         if let Some(controller) = weak.upgrade()
             && let Ok(mut controller) = controller.try_borrow_mut()
