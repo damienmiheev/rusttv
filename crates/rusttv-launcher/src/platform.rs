@@ -233,8 +233,9 @@ pub trait Platform {
 
     /// The volume changed (a volume key): shows it over everything, the
     /// home screen and apps alike (and in the app overlay, if it is open).
+    /// `muted`: the word for a muted volume, in the current language.
     /// `false` where the platform can't; the launcher shows its own bar.
-    fn show_volume(&mut self, _volume: crate::device::Volume) -> bool {
+    fn show_volume(&mut self, _volume: crate::device::Volume, _muted: &str) -> bool {
         false
     }
 }

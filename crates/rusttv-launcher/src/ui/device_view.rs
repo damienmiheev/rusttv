@@ -288,7 +288,12 @@ impl Controller {
                 if let Some(volume) = volume {
                     // One volume bar: the platform's over everything where
                     // it has one, else the launcher's own.
-                    if !controller.platform.show_volume(volume) {
+                    let muted = controller
+                        .window
+                        .upgrade()
+                        .map(|window| super::overlay_texts(&window).muted)
+                        .unwrap_or_default();
+                    if !controller.platform.show_volume(volume, &muted) {
                         controller.show_volume(volume);
                     }
                     // The Audio panel and the Sound settings show the new

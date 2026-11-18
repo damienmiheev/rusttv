@@ -503,7 +503,7 @@ impl Platform for LinuxPlatform {
         }
     }
 
-    fn show_volume(&mut self, volume: crate::device::Volume) -> bool {
+    fn show_volume(&mut self, volume: crate::device::Volume, muted: &str) -> bool {
         if overlay::shown()
             && let Some(overlay) = &self.overlay
         {
@@ -513,7 +513,7 @@ impl Platform for LinuxPlatform {
             self.volume_bar = overlay::VolumeBar::start();
         }
         self.volume_bar.as_ref().is_some_and(|bar| {
-            bar.show(volume);
+            bar.show(volume, muted);
             true
         })
     }
