@@ -13,6 +13,10 @@ use serde::Deserialize;
 
 use crate::model::{Folder, KEY_STEP, Order, TileId};
 
+/// Name used for the About tile in the file. Component names always contain
+/// a `/`, so this cannot clash with an app.
+const ABOUT: &str = "about";
+
 /// Name used for the Hidden apps tile in the file (only as `focus`).
 const HIDDEN: &str = "hidden-apps";
 
@@ -101,10 +105,11 @@ pub(crate) fn load(path: &Path) -> Loaded {
 
 /// The tile a name in the file stands for. [`TileId::Hidden`] in `keys` is
 /// dropped when the order meets the app list, and so is a folder without
-/// a `[folders]` entry, and `about` (the old About tile, now a tab of
-/// Settings), which reads as an app that isn't installed.
+/// a `[folders]` entry; so are About and Settings where a top-right menu
+/// has Settings.
 pub(crate) fn tile_for_name(name: String) -> TileId {
     match name.as_str() {
+        ABOUT => TileId::About,
         SETTINGS => TileId::Settings,
         REMOTE => TileId::Remote,
         HIDDEN => TileId::Hidden,
@@ -124,6 +129,7 @@ fn folder_number(name: &str) -> Option<u32> {
 pub(crate) fn name_of(id: &TileId) -> String {
     match id {
         TileId::App(component) => component.clone(),
+        TileId::About => ABOUT.to_owned(),
         TileId::Settings => SETTINGS.to_owned(),
         TileId::Remote => REMOTE.to_owned(),
         TileId::Hidden => HIDDEN.to_owned(),
@@ -479,8 +485,7 @@ mod tests {
             loaded.order,
             Order::from_keys([
                 (TileId::App("a/.B".to_owned()), 1000),
-                // The old About tile: not an installed app, so Home drops it.
-                (TileId::App("about".to_owned()), 2000)
+                (TileId::About, 2000)
             ])
         );
     }

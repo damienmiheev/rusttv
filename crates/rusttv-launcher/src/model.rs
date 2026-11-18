@@ -60,6 +60,9 @@ pub(crate) const FOLDER_PAGE_SIZE: usize = FOLDER_PAGE;
 /// The longest folder name, in characters.
 pub const FOLDER_NAME_MAX: usize = 40;
 
+/// The id [`Effect::OpenSettingsTab`] gives Settings' own About tab.
+pub const ABOUT_TAB: &str = "about";
+
 /// Gap between order keys when keys are assigned or renumbered.
 ///
 /// Sparse keys let a moved tile take a key between its neighbours without
@@ -71,8 +74,11 @@ pub(crate) const KEY_STEP: i64 = 1000;
 pub enum TileId {
     /// An installed app, identified by its component name (`package/activity`).
     App(String),
-    /// The built-in Settings tile (HISTORY.md § 8); About is one of its
-    /// tabs.
+    /// The built-in About tile, where there is no top-right menu (Android);
+    /// it opens Settings at its About tab.
+    About,
+    /// The built-in Settings tile (HISTORY.md § 8), where there is no
+    /// top-right menu (Android); elsewhere Settings is in that menu.
     Settings,
     /// The built-in RustTV Remote tile: pair a phone, the paired phones
     /// (REMOTE.md § 2).
@@ -320,7 +326,8 @@ pub enum Effect {
     OpenHidden,
     /// Show the Settings page.
     OpenSettings,
-    /// Show the Settings page on the platform's tab with this id.
+    /// Show the Settings page on the platform's tab with this id, or on its
+    /// About tab for [`ABOUT_TAB`].
     OpenSettingsTab(&'static str),
     /// A key while Settings is open: the Settings page handles it.
     Settings(Input),
@@ -428,17 +435,19 @@ impl Order {
     ///
     /// `apps` are the apps shown outside folders, `folders` the folders on
     /// Home. New apps are appended sorted by label, then folders missing
-    /// from the order, before the built-in tile (RustTV Remote) while it is
-    /// at the end, so a first run gives an alphabetical grid ending with it.
-    /// A built-in tile the user moved elsewhere stays where it is; a missing
-    /// one is added to the end block. Settings is not a tile (it is in the
-    /// top-right menu): an older order's Settings tile is dropped.
-    fn reconcile(&mut self, apps: &[App], folders: &BTreeSet<u32>) -> bool {
+    /// from the order, before the built-in tiles (About, Settings, then
+    /// RustTV Remote) while they are at the end, so a first run gives an
+    /// alphabetical grid ending with them. A built-in tile the user moved
+    /// elsewhere stays where it is; a missing one is added to the end block.
+    /// Without `settings_tiles` (a top-right menu has Settings), the About
+    /// and Settings tiles are dropped.
+    fn reconcile(&mut self, apps: &[App], folders: &BTreeSet<u32>, settings_tiles: bool) -> bool {
         let before = self.keys.clone();
         self.keys.retain(|(id, _)| match id {
             TileId::App(component) => apps.iter().any(|app| app.id == *component),
+            TileId::About | TileId::Settings => settings_tiles,
             TileId::Remote => true,
-            TileId::Settings | TileId::Hidden => false,
+            TileId::Hidden => false,
             TileId::Folder(folder) => folders.contains(folder),
         });
         // The built-in tiles at the end stay at the end, in their order.
@@ -446,7 +455,7 @@ impl Order {
             .keys
             .iter()
             .rev()
-            .take_while(|(id, _)| matches!(id, TileId::Remote))
+            .take_while(|(id, _)| matches!(id, TileId::About | TileId::Settings | TileId::Remote))
             .count();
         let tail: Vec<(TileId, i64)> = self.keys.split_off(self.keys.len() - tail);
 
@@ -476,8 +485,15 @@ impl Order {
             }
         }
         ids.extend(tail.iter().map(|(id, _)| id.clone()));
-        if !ids.contains(&TileId::Remote) {
-            ids.push(TileId::Remote);
+        let builtins: &[TileId] = if settings_tiles {
+            &[TileId::About, TileId::Settings, TileId::Remote]
+        } else {
+            &[TileId::Remote]
+        };
+        for builtin in builtins {
+            if !ids.contains(builtin) {
+                ids.push(builtin.clone());
+            }
         }
         // Keep each tile's key while it still sorts; give later ones the next step.
         let old: Vec<(TileId, i64)> = self.keys.drain(..).chain(tail).collect();
@@ -617,7 +633,9 @@ fn menu_items(tile: Option<&TileId>, sizes: bool) -> &'static [MenuItem] {
     match tile {
         Some(TileId::App(_)) if sizes => &[MenuItem::Move, MenuItem::Hide, MenuItem::Size],
         Some(TileId::App(_)) => &[MenuItem::Move, MenuItem::Hide],
-        Some(TileId::Settings | TileId::Remote | TileId::Folder(_)) => &[MenuItem::Move],
+        Some(TileId::About | TileId::Settings | TileId::Remote | TileId::Folder(_)) => {
+            &[MenuItem::Move]
+        }
         Some(TileId::Hidden) | None => &[],
     }
 }
@@ -653,6 +671,8 @@ pub struct Home {
     app_sizes: bool,
     /// The top-right menu's entries; empty hides it.
     quick_actions: Vec<QuickAction>,
+    /// About and Settings are tiles: the platform has no top-right menu.
+    settings_tiles: bool,
 }
 
 impl Home {
@@ -681,6 +701,7 @@ impl Home {
             launch_timeout: LAUNCH_TIMEOUT,
             app_sizes: false,
             quick_actions: Vec::new(),
+            settings_tiles: false,
         }
     }
 
@@ -693,6 +714,18 @@ impl Home {
                 self.mode = Mode::Browse;
             } else {
                 *selected = (*selected).min(self.quick_actions.len() - 1);
+            }
+        }
+    }
+
+    /// About and Settings as tiles, for a platform without a top-right menu
+    /// (Android). Off by default.
+    pub fn set_settings_tiles(&mut self, tiles: bool) {
+        if tiles != self.settings_tiles {
+            self.settings_tiles = tiles;
+            // Before the app list the stored order stays as it is.
+            if !self.apps.is_empty() {
+                self.refresh();
             }
         }
     }
@@ -790,7 +823,8 @@ impl Home {
             .collect();
 
         let ids: BTreeSet<u32> = self.folders.keys().copied().collect();
-        let changed = self.order.reconcile(&top, &ids) || self.folders != folders_before;
+        let changed =
+            self.order.reconcile(&top, &ids, self.settings_tiles) || self.folders != folders_before;
         self.tiles = self.order.ids();
         if !self.hidden_apps.is_empty() {
             self.tiles.push(TileId::Hidden);
@@ -1870,6 +1904,10 @@ impl Home {
                 };
                 Some(Effect::Launch(component))
             }
+            TileId::About => {
+                self.mode = Mode::Settings;
+                Some(Effect::OpenSettingsTab(ABOUT_TAB))
+            }
             TileId::Settings => {
                 self.mode = Mode::Settings;
                 Some(Effect::OpenSettings)
@@ -2318,6 +2356,7 @@ mod tests {
         order.reconcile(
             &[app("c", "cinema"), app("a", "Bravo"), app("b", "alpha")],
             &BTreeSet::new(),
+            false,
         );
         assert_eq!(order.ids(), [id("b"), id("a"), id("c"), TileId::Remote]);
         let keys: Vec<i64> = order.keys().iter().map(|&(_, key)| key).collect();
@@ -2325,12 +2364,51 @@ mod tests {
     }
 
     #[test]
+    fn without_a_top_right_menu_about_and_settings_are_tiles() {
+        let mut order = Order::default();
+        order.reconcile(&[app("b", "B"), app("a", "A")], &BTreeSet::new(), true);
+        assert_eq!(
+            order.ids(),
+            [
+                id("a"),
+                id("b"),
+                TileId::About,
+                TileId::Settings,
+                TileId::Remote
+            ]
+        );
+        // A menu with Settings takes their place.
+        order.reconcile(&[app("b", "B"), app("a", "A")], &BTreeSet::new(), false);
+        assert_eq!(order.ids(), [id("a"), id("b"), TileId::Remote]);
+    }
+
+    #[test]
+    fn the_about_tile_opens_settings_at_its_about_tab() {
+        let mut home = Home::new(Order::default(), BTreeMap::new(), BTreeSet::new(), false);
+        home.set_settings_tiles(true);
+        home.set_apps(&[app("a", "A")]);
+        assert!(home.focus_on(&TileId::About));
+        assert_eq!(home.handle(Input::OkPressed, ms(0)), None);
+        assert_eq!(
+            home.handle(Input::OkReleased, ms(100)),
+            Some(Effect::OpenSettingsTab(ABOUT_TAB))
+        );
+        assert_eq!(home.state(), State::Settings);
+        // Turned off once the apps are known: the tiles go at once.
+        let mut home = Home::new(Order::default(), BTreeMap::new(), BTreeSet::new(), false);
+        home.set_settings_tiles(true);
+        home.set_apps(&[app("a", "A")]);
+        home.set_settings_tiles(false);
+        assert_eq!(home.tiles(), [id("a"), TileId::Remote]);
+    }
+
+    #[test]
     fn new_apps_go_after_the_last_tile_and_removed_apps_are_dropped() {
         let mut order = Order::from_keys([(TileId::Settings, 500), (id("b"), 1000)]);
-        assert!(order.reconcile(&[app("b", "B"), app("a", "A")], &BTreeSet::new()));
+        assert!(order.reconcile(&[app("b", "B"), app("a", "A")], &BTreeSet::new(), false));
         assert_eq!(order.ids(), [id("b"), id("a"), TileId::Remote]);
 
-        assert!(order.reconcile(&[app("a", "A")], &BTreeSet::new()));
+        assert!(order.reconcile(&[app("a", "A")], &BTreeSet::new(), false));
         assert_eq!(order.ids(), [id("a"), TileId::Remote]);
     }
 
@@ -2339,7 +2417,8 @@ mod tests {
         let mut order = Order::from_keys([(id("a"), 1000), (TileId::Settings, 2000)]);
         assert!(order.reconcile(
             &[app("a", "A"), app("c", "C"), app("b", "B")],
-            &BTreeSet::new()
+            &BTreeSet::new(),
+            false
         ));
         assert_eq!(order.ids(), [id("a"), id("b"), id("c"), TileId::Remote]);
         let keys: Vec<i64> = order.keys().iter().map(|&(_, key)| key).collect();
@@ -2349,7 +2428,7 @@ mod tests {
     #[test]
     fn duplicate_apps_from_the_platform_appear_once() {
         let mut order = Order::default();
-        order.reconcile(&[app("a", "A"), app("a", "A")], &BTreeSet::new());
+        order.reconcile(&[app("a", "A"), app("a", "A")], &BTreeSet::new(), false);
         assert_eq!(order.ids(), [id("a"), TileId::Remote]);
     }
 

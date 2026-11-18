@@ -83,6 +83,7 @@ const GLOW_SOURCE_SIZE: (u32, u32) = (48, 27);
 /// Size of the built-in tiles' banners (build.rs decodes them from
 /// assets/tiles, rendered by scripts/brand/render.sh).
 const BUILTIN_BANNER_SIZE: (u32, u32) = (320, 180);
+const ABOUT_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/about.rgba"));
 const SETTINGS_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/settings.rgba"));
 const HIDDEN_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/hidden.rgba"));
 const REMOTE_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/remote.rgba"));
@@ -91,6 +92,7 @@ const REMOTE_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/remote.rg
 /// for the phones' pictures.
 pub(crate) fn builtin_banner(name: &str) -> Option<(u32, u32, &'static [u8])> {
     let rgba = match name {
+        "about" => ABOUT_BANNER,
         "settings" => SETTINGS_BANNER,
         "hidden-apps" => HIDDEN_BANNER,
         "remote" => REMOTE_BANNER,
@@ -933,7 +935,10 @@ impl Controller {
         let mut home = Home::new(order, folders, hidden, options.right_to_left);
         home.set_launch_timeout(platform.launch_timeout());
         home.set_app_sizes(platform.scales_apps());
-        home.set_quick_actions(device_view::quick_actions(platform.as_ref()));
+        let quick_actions = device_view::quick_actions(platform.as_ref());
+        // Without a top-right menu (Android), About and Settings are tiles.
+        home.set_settings_tiles(quick_actions.is_empty());
+        home.set_quick_actions(quick_actions);
         let device = platform.device_settings();
         let strings = window.global::<Strings>();
         home.set_folder_names(FolderNames(Category::ALL.map(|category| {
@@ -2040,6 +2045,7 @@ impl Controller {
                 .get(number)
                 .map(|folder| folder.name.clone())
                 .unwrap_or_default(),
+            TileId::About => "About".to_owned(),
             TileId::Settings => "Settings".to_owned(),
             TileId::Remote => "RustTV Remote".to_owned(),
             TileId::Hidden => "Hidden apps".to_owned(),
@@ -2462,6 +2468,13 @@ impl Controller {
                     ..TileData::default()
                 };
             }
+            TileId::About => {
+                return TileData {
+                    image: self.builtins.about.image.clone(),
+                    kind: 3,
+                    ..TileData::default()
+                };
+            }
             TileId::Settings => {
                 return TileData {
                     image: self.builtins.settings.image.clone(),
@@ -2569,6 +2582,7 @@ impl BuiltinView {
 /// The Settings, RustTV Remote and Hidden apps tiles' banners and glows,
 /// made once.
 struct Builtins {
+    about: BuiltinView,
     settings: BuiltinView,
     remote: BuiltinView,
     hidden: BuiltinView,
@@ -2577,6 +2591,7 @@ struct Builtins {
 impl Builtins {
     fn new(right_to_left: bool) -> Self {
         Self {
+            about: BuiltinView::new(ABOUT_BANNER, right_to_left),
             settings: BuiltinView::new(SETTINGS_BANNER, right_to_left),
             remote: BuiltinView::new(REMOTE_BANNER, right_to_left),
             hidden: BuiltinView::new(HIDDEN_BANNER, right_to_left),
@@ -2586,6 +2601,7 @@ impl Builtins {
     /// The view of a built-in tile; `None` for an app.
     fn view(&self, id: &TileId) -> Option<&BuiltinView> {
         match id {
+            TileId::About => Some(&self.about),
             TileId::Settings => Some(&self.settings),
             TileId::Remote => Some(&self.remote),
             TileId::Hidden => Some(&self.hidden),
@@ -2882,6 +2898,10 @@ mod tests {
             self.platform.borrow_mut().search(app, query);
         }
 
+        fn top_right_menu(&self) -> bool {
+            self.platform.borrow().top_right_menu()
+        }
+
         fn quick_actions(&self) -> Vec<crate::model::QuickAction> {
             self.platform.borrow().quick_actions()
         }
@@ -3117,6 +3137,41 @@ mod tests {
         assert_eq!((size.width, size.height), (320, 180));
         assert!(glow.strength > 0.5);
         assert!(glow.color.red() > glow.color.blue());
+    }
+
+    #[test]
+    fn without_a_top_right_menu_about_and_settings_are_tiles() {
+        let screen = screen_with(abc().without_menu(), None);
+        let kinds: Vec<i32> = screen
+            .window
+            .get_tiles()
+            .iter()
+            .map(|tile| tile.kind)
+            .collect();
+        assert_eq!(
+            kinds[3..],
+            [3, 6, 8],
+            "A, B, C, About, Settings, RustTV Remote"
+        );
+        for tile in screen
+            .window
+            .get_tiles()
+            .iter()
+            .filter(|tile| tile.kind == 3)
+        {
+            let size = tile.image.size();
+            assert_eq!((size.width, size.height), (320, 180));
+        }
+        assert_eq!(screen.window.get_quick_actions().row_count(), 0);
+        // Up from the first row reaches no menu.
+        screen.tap(UP);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        // About opens Settings at its About tab.
+        for _ in 0..3 {
+            screen.tap(RIGHT);
+        }
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
     }
 
     #[test]
@@ -3479,8 +3534,9 @@ mod tests {
         thread_local!(static BACKEND: () = i_slint_backend_testing::init_no_event_loop());
         BACKEND.with(|_| {});
         let (window, _controller) = start(Broken, RunOptions::default(), real_clock()).unwrap();
-        // Settings from the top-right menu, then its About tab (the last)
-        // and there the notices (its first row, RustTV).
+        // No top-right menu (like Android): the About tile, focused first on
+        // an empty Home, opens Settings at its About tab; OK on its first
+        // row (RustTV) opens the notices.
         let tap = |text: &str| {
             window
                 .window()
@@ -3489,10 +3545,9 @@ mod tests {
                 .window()
                 .dispatch_event(WindowEvent::KeyReleased { text: text.into() });
         };
-        click_settings(&window);
-        for key in [DOWN; 10].into_iter().chain([RIGHT]) {
-            tap(key);
-        }
+        tap(OK);
+        assert_eq!(window.get_mode(), mode_value(State::Settings));
+        assert_eq!(window.get_quick_actions().row_count(), 0, "no menu");
         tap(OK);
         assert_eq!(window.get_mode(), mode_value(State::About));
         assert!(

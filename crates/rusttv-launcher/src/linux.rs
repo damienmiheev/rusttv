@@ -494,6 +494,10 @@ impl Platform for LinuxPlatform {
         ))
     }
 
+    fn top_right_menu(&self) -> bool {
+        true
+    }
+
     /// The quick panels whose tools are installed, and KDE Connect when
     /// its desktop entry is.
     fn quick_actions(&self) -> Vec<QuickAction> {

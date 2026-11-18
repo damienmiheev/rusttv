@@ -46,9 +46,13 @@ fn link_code(link: &Link) -> i32 {
     }
 }
 
-/// The top-right menu's entries: Modify and Settings always, the others
-/// when the platform offers them.
+/// The top-right menu's entries: Modify and Settings, and the others the
+/// platform offers. None where the platform has no menu (Android); its Home
+/// has About and Settings tiles instead.
 pub(super) fn quick_actions(platform: &dyn Platform) -> Vec<QuickAction> {
+    if !platform.top_right_menu() {
+        return Vec::new();
+    }
     let offered = platform.quick_actions();
     QuickAction::ALL
         .into_iter()

@@ -185,16 +185,22 @@ impl SettingsPage {
         self.loaded = true;
     }
 
-    /// Selects the platform tab `id` with focus on its first row; returns
+    /// Selects the platform tab `id` (or the About tab, for
+    /// [`crate::model::ABOUT_TAB`]) with focus on its first row; returns
     /// whether there is one.
     pub fn show_tab(&mut self, id: &str) -> bool {
-        let Some(index) = self.tabs.iter().position(|tab| tab.id == id) else {
-            return false;
+        let wanted = if id == crate::model::ABOUT_TAB {
+            Section::About
+        } else {
+            let Some(index) = self.tabs.iter().position(|tab| tab.id == id) else {
+                return false;
+            };
+            Section::Tab(index)
         };
         let Some(section) = self
             .sections()
             .iter()
-            .position(|section| *section == Section::Tab(index))
+            .position(|section| *section == wanted)
         else {
             return false;
         };

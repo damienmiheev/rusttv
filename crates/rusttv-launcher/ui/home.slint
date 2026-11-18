@@ -910,7 +910,7 @@ export component HomeWindow inherits Window {
             pressed: root.pressed && !root.folder-open;
             idle-phase: root.folder-open ? 0 : root.idle-phase;
             // About is a tab of Settings: its update dot is on Settings.
-            badge: tile.kind == 6 && root.update-available;
+            badge: (tile.kind == 3 || tile.kind == 6) && root.update-available;
             // The open folder's own tile: the panel grew out of it.
             opacity: root.folder-open && i == focused-index ? 0 : 1;
             hovered => { root.tile-pointer(false, i, 0); }

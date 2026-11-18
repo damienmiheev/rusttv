@@ -169,6 +169,13 @@ pub trait Platform {
     /// pointer's service on or off.
     fn open_pointer_settings(&mut self) {}
 
+    /// Whether Home has the top-right menu (Modify, Settings and
+    /// [`Platform::quick_actions`]). Without it (Android), About and
+    /// Settings are tiles.
+    fn top_right_menu(&self) -> bool {
+        false
+    }
+
     /// The entries of the top-right menu this platform can do, besides
     /// Modify and Settings (always there): Search and KDE Connect when
     /// [`Platform::quick_action_app`] names an app for them, Audio, Network
@@ -750,6 +757,8 @@ pub struct FakePlatform {
     /// App overlays opened, and whether one is open.
     overlays: Vec<AppOverlay>,
     overlay_open: bool,
+    /// No top-right menu, like Android (`without_menu`).
+    no_menu: bool,
 }
 
 #[cfg(any(test, feature = "test-util"))]
@@ -760,6 +769,13 @@ impl FakePlatform {
     #[must_use]
     pub fn with_device(mut self) -> Self {
         self.device = Some(std::sync::Arc::new(crate::device::FakeDevice::new()));
+        self
+    }
+
+    /// No top-right menu, like Android: About and Settings are tiles.
+    #[must_use]
+    pub fn without_menu(mut self) -> Self {
+        self.no_menu = true;
         self
     }
 
@@ -1096,6 +1112,10 @@ impl Platform for FakePlatform {
             .rev()
             .find(|id| self.running.contains(*id))
             .cloned()
+    }
+
+    fn top_right_menu(&self) -> bool {
+        !self.no_menu
     }
 
     fn quick_actions(&self) -> Vec<QuickAction> {

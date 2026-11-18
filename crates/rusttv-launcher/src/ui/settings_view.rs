@@ -127,6 +127,10 @@ impl Controller {
             self.refresh_device_tabs();
         } else if let Some(page) = &mut self.settings {
             page.mark_loaded();
+            // Opened from the About tile: straight to that tab.
+            if let Some(tab) = self.settings_tab.take() {
+                page.show_tab(tab);
+            }
         }
     }
 
