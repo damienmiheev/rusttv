@@ -4,8 +4,10 @@
 //!
 //! Apps such as KDE Connect (the phone as touchpad and keyboard) ask the
 //! portal for a remote desktop session and send their input over libei.
-//! This backend says yes to every session (a TV has nobody at a keyboard to
-//! ask, and the apps that ask were installed on purpose), takes the libei
+//! This backend takes calls only from the portal frontend
+//! (`org.freedesktop.portal.Desktop`) and approves sessions only for the
+//! apps in [`ALLOWED_APPS`]; every other app is refused. A TV has nobody at
+//! a keyboard to ask, so there is no dialog. It takes the libei
 //! connection (an EIS server, [`reis`]) and hands the input to the
 //! compositor through a virtual pointer and virtual keyboards
 //! ([`output`]). Screen sharing is not offered.
@@ -36,6 +38,46 @@ use output::Output;
 /// The backend's D-Bus name; `rusttv.portal` names it too.
 const BUS_NAME: &str = "org.freedesktop.impl.portal.desktop.rusttv";
 const OBJECT_PATH: &str = "/org/freedesktop/portal/desktop";
+
+/// Apps that get remote input, by the app id the portal frontend gives:
+/// KDE Connect (the phone as touchpad and keyboard), installed from Debian
+/// or from Flathub.
+const ALLOWED_APPS: [&str; 2] = ["org.kde.kdeconnect.daemon", "org.kde.kdeconnect"];
+
+/// The portal frontend's D-Bus name: the only caller this backend serves.
+const FRONTEND: &str = "org.freedesktop.portal.Desktop";
+
+/// Whether `app_id` may have a remote desktop session.
+fn allowed(app_id: &str) -> bool {
+    ALLOWED_APPS.contains(&app_id)
+}
+
+/// Whether the call came from the portal frontend, so the app id in it was
+/// set by the frontend and not by the app.
+async fn from_frontend(header: &zbus::message::Header<'_>, connection: &zbus::Connection) -> bool {
+    let Some(sender) = header.sender() else {
+        return false;
+    };
+    let Ok(bus) = zbus::fdo::DBusProxy::new(connection).await else {
+        return false;
+    };
+    let Ok(name) = zbus::names::BusName::try_from(FRONTEND) else {
+        return false;
+    };
+    bus.get_name_owner(name)
+        .await
+        .is_ok_and(|owner| owner.as_str() == sender.as_str())
+}
+
+/// Whether `session` is one this backend approved and still has open.
+async fn approved(server: &ObjectServer, session: &ObjectPath<'_>) -> bool {
+    server.interface::<_, Session>(session).await.is_ok()
+}
+
+/// The response for a refused request.
+fn refused() -> Response {
+    (2, HashMap::new())
+}
 
 /// Device types of the portal: keyboard, pointer and touchscreen. Touch is
 /// granted so that apps asking for all three get a session, but no touch
@@ -327,6 +369,10 @@ impl RemoteDesktop {
     }
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the portal's D-Bus methods fix the arguments; zbus adds the caller's"
+)]
 #[zbus::interface(name = "org.freedesktop.impl.portal.RemoteDesktop")]
 impl RemoteDesktop {
     async fn create_session(
@@ -336,14 +382,24 @@ impl RemoteDesktop {
         app_id: &str,
         _options: HashMap<String, OwnedValue>,
         #[zbus(object_server)] server: &ObjectServer,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
     ) -> Response {
+        if !from_frontend(&header, connection).await {
+            log::warn!("remote desktop session refused: not from the portal frontend");
+            return refused();
+        }
+        if !allowed(app_id) {
+            log::warn!("remote desktop session refused for {app_id:?}");
+            return refused();
+        }
         let session = Session {
             path: session_handle.to_string(),
             commands: Mutex::new(self.commands.lock().ok().map(|sender| sender.clone())),
         };
         if let Err(error) = server.at(&session_handle, session).await {
             log::warn!("session {session_handle}: {error}");
-            return (2, HashMap::new());
+            return refused();
         }
         log::info!("remote desktop session for {app_id:?}");
         (0, HashMap::new())
@@ -352,21 +408,33 @@ impl RemoteDesktop {
     async fn select_devices(
         &self,
         _handle: ObjectPath<'_>,
-        _session_handle: ObjectPath<'_>,
+        session_handle: ObjectPath<'_>,
         _app_id: &str,
         _options: HashMap<String, OwnedValue>,
+        #[zbus(object_server)] server: &ObjectServer,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
     ) -> Response {
+        if !from_frontend(&header, connection).await || !approved(server, &session_handle).await {
+            return refused();
+        }
         (0, HashMap::new())
     }
 
     async fn start(
         &self,
         _handle: ObjectPath<'_>,
-        _session_handle: ObjectPath<'_>,
+        session_handle: ObjectPath<'_>,
         _app_id: &str,
         _parent_window: &str,
         _options: HashMap<String, OwnedValue>,
+        #[zbus(object_server)] server: &ObjectServer,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
     ) -> Response {
+        if !from_frontend(&header, connection).await || !approved(server, &session_handle).await {
+            return refused();
+        }
         (
             0,
             HashMap::from([
@@ -382,7 +450,15 @@ impl RemoteDesktop {
         session_handle: ObjectPath<'_>,
         _app_id: &str,
         _options: HashMap<String, OwnedValue>,
+        #[zbus(object_server)] server: &ObjectServer,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
     ) -> zbus::fdo::Result<zvariant::OwnedFd> {
+        if !from_frontend(&header, connection).await || !approved(server, &session_handle).await {
+            return Err(zbus::fdo::Error::AccessDenied(
+                "no approved remote desktop session".into(),
+            ));
+        }
         let (ours, theirs) =
             UnixStream::pair().map_err(|error| zbus::fdo::Error::IOError(error.to_string()))?;
         self.send(Command::Connect {
@@ -428,5 +504,23 @@ impl Session {
     #[zbus(property, name = "version")]
     fn version(&self) -> u32 {
         1
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::allowed;
+
+    #[test]
+    fn only_kde_connect_gets_remote_input() {
+        assert!(allowed("org.kde.kdeconnect.daemon"));
+        assert!(allowed("org.kde.kdeconnect"));
+        for app in [
+            "",
+            "org.example.Keylogger",
+            "org.kde.kdeconnect.daemon.evil",
+        ] {
+            assert!(!allowed(app), "{app}");
+        }
     }
 }
