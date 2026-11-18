@@ -91,6 +91,7 @@ export global Strings {
         if section == 1 { return @tr("Updates"); }
         if section == 2 { return @tr("History"); }
         if section == 3 { return @tr("Waiting for your computer"); }
+        if section == 4 { return @tr("Effects"); }
         return @tr("Animations");
     }
     // settings.rs ANIMATION_CHOICES: off to slowest.
@@ -134,6 +135,13 @@ export global Strings {
     }
     public pure function on-off(on: bool) -> string {
         return on ? @tr("On") : @tr("Off");
+    }
+    // Settings' Effects section (settings.rs `Section::Effects`).
+    public pure function effects-choice(reduced: bool) -> string {
+        return reduced ? @tr("Reduced") : @tr("Full");
+    }
+    public pure function effects-detail(reduced: bool) -> string {
+        return reduced ? @tr("No shadows or backdrop: smoother on a slow graphics chip") : @tr("Shadows and backdrop");
     }
     // SETTING_KEYS order: animator, transition, window.
     public pure function setting-name(key: int) -> string {
@@ -182,6 +190,7 @@ export global Strings {
         if kind == 15 { return @tr("Took {} out of {}", name, old); }
         if kind == 16 { return @tr("Paired the phone {}", name); }
         if kind == 17 { return @tr("Removed the phone {}", name); }
+        if kind == 18 { return @tr("Effects: {}", new); }
         return @tr("No change");
     }
     // 0 changed on the TV now, 1 applied by the computer later.
@@ -266,6 +275,13 @@ export global Pointer {
 }
 
 // Mode values, kept in sync with `mode_value` in ui.rs.
+// Settings → Effects (ui.rs `apply_effects`): Reduced turns the costly
+// parts off for a weak GPU. The defaults are the normal look.
+export global Effects {
+    in property <bool> shadows: true;
+    in property <bool> backdrop: true;
+}
+
 global Mode {
     out property <int> browse: 0;
     out property <int> moving: 1;
@@ -401,8 +417,8 @@ component Tile inherits Rectangle {
             : sway-amount * 1.5deg * sin(sway-turns * 360deg);
         opacity: launching ? 0 : 1;
         border-radius: 12 * u;
-        drop-shadow-color: focused ? #00000080 : #00000040;
-        drop-shadow-blur: focused ? 40 * u : 8 * u;
+        drop-shadow-color: !Effects.shadows ? transparent : focused ? #00000080 : #00000040;
+        drop-shadow-blur: !Effects.shadows ? 0 : focused ? 40 * u : 8 * u;
         drop-shadow-offset-y: -sway-amount * 3 * u * sin(sway-turns * 360deg) + (focused ? 20 * u : 4 * u);
 
         animate width, height {
@@ -528,6 +544,7 @@ component HeroLayer inherits Rectangle {
         x: (Dir.rtl ? 1 - glow.x : glow.x) * parent.width - self.width / 2;
         y: glow.y * parent.height - self.height / 2;
         opacity: glow.strength;
+        visible: Effects.backdrop;
         background: @radial-gradient(circle, glow.color 0%, glow.color.with-alpha(0.45) 30%, glow.color.with-alpha(0) 70%);
     }
     // Scrim on the text side, so the backdrop can keep its colour on the right.
@@ -719,6 +736,9 @@ export component HomeWindow inherits Window {
     in-out property <string> rename-text;
     callback rename-done(string);
     callback rename-cancelled();
+    // Frames drawn in the last second (`RUSTTV_FPS=1`, ui.rs `count_frames`);
+    // empty hides it.
+    in property <string> fps-text;
     // Key text, pressed (false = released), repeat. Returns whether it was used.
     callback key(string, bool, bool) -> bool;
     // Pointer input (mouse, air mouse): on tile `index` of Home (`folder`
@@ -1760,6 +1780,20 @@ export component HomeWindow inherits Window {
             font-size: 41 * u;
             color: Theme.text;
             wrap: word-wrap;
+        }
+    }
+
+    if fps-text != "": Rectangle {
+        x: 16 * u;
+        y: 16 * u;
+        width: fps-label.preferred-width + 24 * u;
+        height: fps-label.preferred-height + 12 * u;
+        background: #000000B0;
+        border-radius: 8 * u;
+        fps-label := Text {
+            text: fps-text;
+            color: #ffffff;
+            font-size: 24 * u;
         }
     }
 }

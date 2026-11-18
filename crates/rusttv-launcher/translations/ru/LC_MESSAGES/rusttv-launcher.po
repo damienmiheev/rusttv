@@ -413,3 +413,21 @@ msgstr "Телефон {} подключён"
 
 msgid "Removed the phone {}"
 msgstr "Телефон {} удалён"
+
+msgid "Effects"
+msgstr "Эффекты"
+
+msgid "Effects: {}"
+msgstr "Эффекты: {}"
+
+msgid "Full"
+msgstr "Полные"
+
+msgid "Reduced"
+msgstr "Упрощённые"
+
+msgid "Shadows and backdrop"
+msgstr "Тени и фон"
+
+msgid "No shadows or backdrop: smoother on a slow graphics chip"
+msgstr "Без теней и фона: плавнее на слабом графическом чипе"

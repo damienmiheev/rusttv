@@ -44,7 +44,7 @@ use rusttv_remote::protocol::{
 mod generated {
     slint::include_modules!();
 }
-use generated::{Dir, HomeWindow, Pointer, ReviewLine, SettingsRow, Strings, TileData};
+use generated::{Dir, Effects, HomeWindow, Pointer, ReviewLine, SettingsRow, Strings, TileData};
 
 mod remote_view;
 mod settings_view;
@@ -330,6 +330,44 @@ impl Demo {
     }
 }
 
+/// Sets the effects: `reduced` (Settings → Effects) turns shadows and the
+/// backdrop glow off, for a weak GPU.
+fn apply_effects(window: &HomeWindow, reduced: bool) {
+    let effects = window.global::<Effects>();
+    effects.set_shadows(!reduced);
+    effects.set_backdrop(!reduced);
+}
+
+/// Shows how many frames were drawn in the last second, in a corner.
+/// Showing the count draws one more frame a second; at rest it stays put.
+fn count_frames(window: &HomeWindow) {
+    let weak = window.as_weak();
+    let mut frames = 0_u32;
+    let mut since = Instant::now();
+    let notifier = window.window().set_rendering_notifier(move |state, _| {
+        if !matches!(state, slint::RenderingState::AfterRendering) {
+            return;
+        }
+        frames += 1;
+        let elapsed = since.elapsed();
+        if elapsed >= Duration::from_secs(1) {
+            let fps = f64::from(frames) / elapsed.as_secs_f64();
+            frames = 0;
+            since = Instant::now();
+            let weak = weak.clone();
+            // Not while rendering: a property change now would be lost.
+            Timer::single_shot(Duration::ZERO, move || {
+                if let Some(window) = weak.upgrade() {
+                    window.set_fps_text(format!("{fps:.0} fps").into());
+                }
+            });
+        }
+    });
+    if let Err(error) = notifier {
+        log::warn!("no frame counter: {error}");
+    }
+}
+
 /// Creates the window and its controller; the caller runs the event loop.
 fn start(
     platform: impl Platform + 'static,
@@ -342,6 +380,15 @@ fn start(
         options.right_to_left |= i18n::is_right_to_left(language);
     }
     window.global::<Dir>().set_rtl(options.right_to_left);
+    let reduced = options
+        .order_file
+        .as_deref()
+        .and_then(std::path::Path::parent)
+        .is_some_and(|dir| dir.join(order_file::REDUCED_EFFECTS).exists());
+    apply_effects(&window, reduced);
+    if std::env::var_os("RUSTTV_FPS").is_some_and(|value| value != "0") {
+        count_frames(&window);
+    }
     let controller = Controller::new(Box::new(platform), &window, options, clock);
     // The pointer hides once it rests, also before the mouse first moves.
     controller.borrow_mut().pointer_moved();
@@ -3395,8 +3442,15 @@ mod tests {
         assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
         settle(&screen);
         // Updates, then its Off row.
-        screen.window.invoke_settings_pointer(false, 1, 0);
-        assert_eq!(screen.window.get_settings_section(), 1);
+        let updates = screen
+            .window
+            .get_settings_sections()
+            .iter()
+            .position(|section| section == "Updates")
+            .unwrap();
+        let updates = i32::try_from(updates).unwrap();
+        screen.window.invoke_settings_pointer(false, updates, 0);
+        assert_eq!(screen.window.get_settings_section(), updates);
         assert_eq!(screen.window.get_settings_row(), -1);
         screen.window.invoke_settings_pointer(true, 1, 0);
         assert_eq!(screen.window.get_settings_row(), 1, "hover focuses");
@@ -3406,6 +3460,16 @@ mod tests {
             7,
             "a click is OK: the review opens"
         );
+    }
+
+    #[test]
+    fn a_reduced_effects_flag_turns_shadows_and_the_backdrop_off() {
+        let (dir, _history) = history_dir();
+        std::fs::write(dir.join(order_file::REDUCED_EFFECTS), b"").unwrap();
+        let screen = screen(Some(dir.join("order.toml")));
+        let effects = screen.window.global::<Effects>();
+        assert!(!effects.get_shadows());
+        assert!(!effects.get_backdrop());
     }
 
     #[test]
@@ -3422,8 +3486,8 @@ mod tests {
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
         settle(&screen);
-        // Animations, Updates, History.
-        assert_eq!(screen.window.get_settings_sections().row_count(), 3);
+        // Animations, Effects, Updates, History.
+        assert_eq!(screen.window.get_settings_sections().row_count(), 4);
         assert_eq!(screen.window.get_settings_rows().row_count(), 7);
         screen.tap(RIGHT); // focus on Normal, the current choice
         assert_eq!(screen.window.get_settings_row(), 4);

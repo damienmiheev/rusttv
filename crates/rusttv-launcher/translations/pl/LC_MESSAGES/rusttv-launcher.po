@@ -413,3 +413,21 @@ msgstr "Sparowano telefon {}"
 
 msgid "Removed the phone {}"
 msgstr "Usunięto telefon {}"
+
+msgid "Effects"
+msgstr "Efekty"
+
+msgid "Effects: {}"
+msgstr "Efekty: {}"
+
+msgid "Full"
+msgstr "Pełne"
+
+msgid "Reduced"
+msgstr "Ograniczone"
+
+msgid "Shadows and backdrop"
+msgstr "Cienie i tło"
+
+msgid "No shadows or backdrop: smoother on a slow graphics chip"
+msgstr "Bez cieni i tła: płynniej na wolnym układzie graficznym"

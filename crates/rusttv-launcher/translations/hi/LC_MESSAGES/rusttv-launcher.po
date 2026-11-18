@@ -413,3 +413,21 @@ msgstr "फ़ोन {} जोड़ा गया"
 
 msgid "Removed the phone {}"
 msgstr "फ़ोन {} हटाया गया"
+
+msgid "Effects"
+msgstr "इफ़ेक्ट"
+
+msgid "Effects: {}"
+msgstr "इफ़ेक्ट: {}"
+
+msgid "Full"
+msgstr "पूरे"
+
+msgid "Reduced"
+msgstr "कम"
+
+msgid "Shadows and backdrop"
+msgstr "छाया और बैकग्राउंड"
+
+msgid "No shadows or backdrop: smoother on a slow graphics chip"
+msgstr "छाया या बैकग्राउंड नहीं: धीमे ग्राफ़िक्स चिप पर ज़्यादा स्मूथ"
