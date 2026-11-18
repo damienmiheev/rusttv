@@ -140,6 +140,21 @@ impl SettingsPage {
         &self.overview
     }
 
+    /// The pointer is over section `index`: the list has focus, on it.
+    pub fn point_section(&mut self, index: usize) {
+        if index < self.sections().len() {
+            self.section = index;
+            self.focus = Focus::List;
+        }
+    }
+
+    /// The pointer is over row `row` of the panel: it has focus.
+    pub fn point_row(&mut self, row: usize) {
+        if row < self.rows() && !matches!(self.focus, Focus::Detail(_)) {
+            self.focus = Focus::Panel(row);
+        }
+    }
+
     /// The sections, in order; "Waiting" only when something waits.
     pub fn sections(&self) -> Vec<Section> {
         let mut sections = vec![Section::Animations, Section::Updates, Section::History];

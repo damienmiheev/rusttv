@@ -4,6 +4,17 @@ All notable changes to RustTV. Versions follow [Semantic Versioning](https://sem
 before 1.0.0 a minor version may break the CLI/JSON contract (the `schema`
 field in `--json` output says which contract you get, CLI.md).
 
+## Unreleased
+
+### Launcher
+
+- A mouse or air mouse works on every screen: hovering focuses (tiles, the
+  open folder, the tile menu, Hidden apps, Settings, RustTV Remote, the
+  review screen), a click is OK, the secondary button opens a tile's menu,
+  and the wheel moves a row per notch. The pointer hides after 4 s at rest
+  and as soon as a key is pressed. Moving apps and making folders stay on
+  the arrow keys as before.
+
 ## 0.3.2 (2026-11-02)
 
 Fixes the armeabi-v7a launcher, which crashed at startup on Android 11 and
