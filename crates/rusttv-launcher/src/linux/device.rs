@@ -12,6 +12,8 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+mod net;
+
 use super::program_exists;
 use crate::device::{
     Control, ControlKind, DeviceSettings, Link, QuickPanel, Tab, Value, Volume, VolumeChange,
@@ -303,7 +305,17 @@ impl DeviceSettings for LinuxDevice {
             "Sound".clone_into(&mut audio.title);
             tabs.push(audio);
         }
-        tabs.extend(self.network());
+        // Settings' Network tab also shows each interface's details (not
+        // the quick panel); it is there without nmcli too.
+        let interfaces = net::rows();
+        let mut network = self.network();
+        if !interfaces.is_empty() {
+            network
+                .get_or_insert_with(|| tab(QuickPanel::Network, "Network", Vec::new()))
+                .controls
+                .extend(interfaces);
+        }
+        tabs.extend(network);
         tabs.extend(self.devices());
         tabs
     }
