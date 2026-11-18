@@ -145,6 +145,10 @@ const SCROLL_STEP: f32 = 40.0;
 /// How long the mouse pointer stays after it last moved.
 const POINTER_REST: Duration = Duration::from_secs(4);
 
+/// How far (in pixels) the pointer has to move from where it rested when
+/// the launcher came back before hovering focuses again.
+const PARKED_SLACK: f64 = 16.0;
+
 /// Settings for [`run`].
 #[derive(Debug, Clone, Default)]
 pub struct RunOptions {
@@ -682,8 +686,16 @@ fn volume_change(
 fn pause_when_covered(window: &HomeWindow, controller: &Rc<RefCell<Controller>>) {
     use slint::winit_030::{EventResult, WinitWindowAccessor as _, winit::event::WindowEvent};
 
+    controller.borrow_mut().parks_pointer = true;
     let weak = Rc::downgrade(controller);
     window.window().on_winit_window_event(move |_, event| {
+        // Before Slint turns it into a hover: is this a move of the person's?
+        if let WindowEvent::CursorMoved { position, .. } = event
+            && let Some(controller) = weak.upgrade()
+            && let Ok(mut controller) = controller.try_borrow_mut()
+        {
+            controller.pointer_at(position.x, position.y);
+        }
         // Volume keys while the launcher has the keyboard (the compositor
         // may bind them itself: see `--volume` in src/bin/linux.rs).
         if let WindowEvent::KeyboardInput { event, .. } = event
@@ -824,6 +836,15 @@ struct Controller {
     relaunch: Option<String>,
     /// Whether the app overlay is open (holding Home over an app).
     overlay: bool,
+    /// The compositor reports where the pointer is when the launcher comes
+    /// back (an air mouse left resting over some tile); that is no move of
+    /// the person's. Until the pointer moves [`PARKED_SLACK`] away from
+    /// there, hovering focuses nothing. `parked_at`: that first report.
+    parked: bool,
+    parked_at: Option<(f64, f64)>,
+    /// Whether the window reports pointer positions (`pause_when_covered`);
+    /// without them nothing parks.
+    parks_pointer: bool,
     /// The app closed in the app overlay to restart at a new size; it
     /// opens again when its process has ended.
     restart: Option<String>,
@@ -980,6 +1001,9 @@ impl Controller {
                 resized: None,
                 relaunch: None,
                 overlay: false,
+                parked: false,
+                parked_at: None,
+                parks_pointer: false,
                 restart: None,
                 connected: std::collections::HashSet::new(),
                 front_app: None,
@@ -1021,6 +1045,8 @@ impl Controller {
     /// updater's status: on Android the daily check may have just started.
     fn resume(&mut self) {
         self.away = false;
+        self.parked = self.parks_pointer;
+        self.parked_at = None;
         // Phones switch back from the touchpad to the Home mirror, and the
         // pointer never shows over RustTV.
         self.platform.pointer_stop();
@@ -1323,6 +1349,9 @@ impl Controller {
         };
         let effect = match action {
             0 => {
+                if self.hover_settling() {
+                    return;
+                }
                 // The tile takes the move from the background's TouchArea:
                 // show the pointer here too.
                 self.pointer_moved();
@@ -1331,13 +1360,17 @@ impl Controller {
                 }
                 None
             }
-            _ => self.home.point(&tile, action == 2, (self.clock)()),
+            _ => {
+                self.parked = false;
+                self.home.point(&tile, action == 2, (self.clock)())
+            }
         };
         self.after_pointer(effect);
     }
 
     /// A click on entry `index` of the top-right menu.
     fn quick_clicked(&mut self, index: i32) {
+        self.parked = false;
         let Ok(index) = usize::try_from(index) else {
             return;
         };
@@ -1347,6 +1380,9 @@ impl Controller {
 
     /// The pointer over entry `index` of the top-right menu.
     fn quick_hovered(&mut self, index: i32) {
+        if self.hover_settling() {
+            return;
+        }
         self.pointer_moved();
         if let Ok(index) = usize::try_from(index)
             && self.home.hover_quick(index)
@@ -1359,6 +1395,12 @@ impl Controller {
     /// hovering walks the focus there with the D-pad's own steps, so the
     /// pointer and the remote can't disagree; a click then presses OK.
     fn list_pointer(&mut self, list: i32, index: i32, action: i32) {
+        if action == 0 && self.hover_settling() {
+            return;
+        }
+        if action != 0 {
+            self.parked = false;
+        }
         self.pointer_moved();
         let Ok(target) = usize::try_from(index) else {
             return;
@@ -1437,6 +1479,29 @@ impl Controller {
             let down = self.scroll_rest > 0.0;
             self.scroll_rest -= SCROLL_STEP.copysign(self.scroll_rest);
             self.input(if down { Input::Down } else { Input::Up });
+        }
+    }
+
+    /// Whether the pointer still rests where it was when the launcher came
+    /// back (see [`Controller::parked`]).
+    fn hover_settling(&self) -> bool {
+        self.parked
+    }
+
+    /// The pointer is at (`x`, `y`) in the window: the first report after
+    /// the launcher came back is where it rests; moving away from there
+    /// lets hovering focus again.
+    fn pointer_at(&mut self, x: f64, y: f64) {
+        if !self.parked {
+            return;
+        }
+        match self.parked_at {
+            None => self.parked_at = Some((x, y)),
+            Some((rest_x, rest_y)) => {
+                if (x - rest_x).hypot(y - rest_y) > PARKED_SLACK {
+                    self.parked = false;
+                }
+            }
         }
     }
 
@@ -4204,6 +4269,28 @@ mod tests {
             screen.shared.platform.borrow().closed(),
             ["a/.Main", "a/.Main"]
         );
+    }
+
+    #[test]
+    fn a_pointer_resting_over_a_tile_moves_no_focus_as_the_launcher_comes_back() {
+        let screen = screen_with(abc(), None);
+        screen.tap(RIGHT);
+        screen.launch_and_leave();
+        screen._controller.borrow_mut().parks_pointer = true;
+        screen.lifecycle.resumed();
+        screen.wait(1);
+        // The compositor's report of where the pointer rests: no focus.
+        screen._controller.borrow_mut().pointer_at(800.0, 900.0);
+        screen.window.invoke_tile_pointer(false, 2, 0);
+        assert_eq!(screen.window.get_focused_index(), 1);
+        // A tremble of the air mouse: still none.
+        screen._controller.borrow_mut().pointer_at(806.0, 904.0);
+        screen.window.invoke_tile_pointer(false, 2, 0);
+        assert_eq!(screen.window.get_focused_index(), 1);
+        // Moved away: hovering focuses as ever.
+        screen._controller.borrow_mut().pointer_at(900.0, 900.0);
+        screen.window.invoke_tile_pointer(false, 2, 0);
+        assert_eq!(screen.window.get_focused_index(), 2);
     }
 
     #[test]

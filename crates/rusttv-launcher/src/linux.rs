@@ -179,7 +179,10 @@ impl LinuxPlatform {
             // The home screen's own window has no app ID.
             let home = app_id.is_empty() || app_id.to_lowercase().contains("rusttv");
             gamepad::HOME_IN_FRONT.store(home, Ordering::Relaxed);
-            keyboard::window_switched();
+            // The launcher's own fields are opened on purpose.
+            if !home {
+                keyboard::window_switched();
+            }
             let reads_pads = used.activated(app_id);
             gamepad::KEYS_TO_APP.store(reads_pads == Some(false), Ordering::Relaxed);
         }));

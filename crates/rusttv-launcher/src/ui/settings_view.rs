@@ -172,6 +172,9 @@ impl Controller {
     /// A key while Settings (or its review screen) is open.
     /// The pointer on Settings: hovering moves the focus, a click is OK.
     pub(super) fn settings_pointer(&mut self, panel: bool, index: i32, action: i32) {
+        if action == 0 && self.hover_settling() {
+            return;
+        }
         self.pointer_moved();
         if self.review.is_some() || self.pairing.is_some() || self.prompt.is_some() {
             return;

@@ -62,7 +62,13 @@ mod code {
     pub const RIGHT: u32 = 106;
     pub const DOWN: u32 = 108;
     pub const BACK: u32 = 158;
+    pub const OK: u32 = 352;
     pub const SELECT: u32 = 353;
+
+    /// OK on a remote, Enter on a keyboard.
+    pub fn is_ok(key: u32) -> bool {
+        matches!(key, ENTER | KP_ENTER | OK | SELECT)
+    }
 
     /// Keys that type or edit text on a real keyboard (letters, digits,
     /// punctuation, space, Tab, the keypad, Home/End, Page Up/Down,
@@ -79,29 +85,17 @@ mod code {
 /// Whether the keyboard is on screen (game controllers steer it then).
 static SHOWN: AtomicBool = AtomicBool::new(false);
 
-/// When another window came to the front, or the app overlay closed.
-static SWITCHED: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+/// An app window came to the front (or got the keys back from the app
+/// overlay), and no text field took the focus since.
+static FRESH: AtomicBool = AtomicBool::new(false);
 
-/// A text field that gets the focus this soon after a window came to the
-/// front got it from the app, not from the person: no keyboard for it.
-const SWITCH_GRACE: std::time::Duration = std::time::Duration::from_millis(1500);
-
-/// Another window came to the front (or the app overlay gave the keys back
-/// to the app). An app that puts its text field in focus as it opens or
-/// comes back (Dolphin's location bar) brings up no keyboard; moving to a
-/// field does.
+/// An app window came to the front, or the app overlay gave the keys back
+/// to the app. A text field that has the focus as the app comes up (Dolphin
+/// puts it in its location bar) was put there by the app, not by the
+/// person: the keyboard waits for OK on it. Moving to a field brings the
+/// keyboard up as ever.
 pub fn window_switched() {
-    *SWITCHED
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(std::time::Instant::now());
-}
-
-/// Whether a window came to the front within [`SWITCH_GRACE`].
-fn just_switched() -> bool {
-    SWITCHED
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .is_some_and(|at| at.elapsed() < SWITCH_GRACE)
+    FRESH.store(true, Ordering::Relaxed);
 }
 
 /// Whether the on-screen keyboard is showing.
@@ -235,6 +229,8 @@ fn run(font: FontVec) -> Result<(), String> {
         virtual_keyboard: None,
         passthrough: None,
         passing: false,
+        waiting: false,
+        swallow: None,
         modifiers: [0; 4],
         surface: None,
         prompt: TextPrompt::new("", false),
@@ -279,6 +275,11 @@ struct State {
     /// A real keyboard is typing: keys still coming through the grab go on
     /// to the app, until a text field asks for the keyboard again.
     passing: bool,
+    /// A text field has the focus since its app came up: keys go on to the
+    /// app, and OK brings the keyboard up ([`window_switched`]).
+    waiting: bool,
+    /// The OK that brought the keyboard up: its release is no key press.
+    swallow: Option<u32>,
     /// The grab's modifiers: depressed, latched, locked, group.
     modifiers: [u32; 4],
     surface: Option<Surface>,
@@ -301,6 +302,7 @@ impl State {
         let (title, secret) = title(self.purpose);
         self.prompt = TextPrompt::new(title, secret);
         self.passing = false;
+        self.waiting = false;
         SHOWN.store(true, Ordering::Relaxed);
         if self.grab.is_none() {
             self.grab = Some(self.input_method.grab_keyboard(qh, ()));
@@ -329,8 +331,19 @@ impl State {
         }
     }
 
+    /// A text field has the focus, but the keyboard waits for OK on it:
+    /// the keys are taken and passed on to the app meanwhile.
+    fn wait(&mut self, qh: &QueueHandle<Self>) {
+        self.waiting = true;
+        self.passing = true;
+        if self.grab.is_none() {
+            self.grab = Some(self.input_method.grab_keyboard(qh, ()));
+        }
+    }
+
     fn hide(&mut self) {
         SHOWN.store(false, Ordering::Relaxed);
+        self.waiting = false;
         self.echoes = 0;
         if let Some(grab) = self.grab.take() {
             grab.release();
@@ -469,8 +482,8 @@ impl Dispatch<ZwpInputMethodV2, ()> for State {
                 match state.pending_active.take() {
                     Some(true) => {
                         state.active = true;
-                        if just_switched() {
-                            log::info!("text field focused as its window came up: no keyboard");
+                        if FRESH.swap(false, Ordering::Relaxed) {
+                            state.wait(qh);
                         } else {
                             state.show(qh);
                         }
@@ -540,6 +553,15 @@ impl Dispatch<ZwpInputMethodKeyboardGrabV2, ()> for State {
                 ..
             } => {
                 let pressed = matches!(key_state, WEnum::Value(wl_keyboard::KeyState::Pressed));
+                if state.waiting && pressed && code::is_ok(pressed_key) {
+                    state.swallow = Some(pressed_key);
+                    state.show(qh);
+                    return;
+                }
+                if !pressed && state.swallow == Some(pressed_key) {
+                    state.swallow = None;
+                    return;
+                }
                 if state.passing {
                     state.pass(time, pressed_key, pressed);
                     return;
