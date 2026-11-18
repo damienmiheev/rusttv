@@ -59,8 +59,8 @@ mod key {
     pub const PROG1: u32 = 148;
 }
 
-/// How long Guide is held before it opens the app menu (as holding the
-/// remote's Home does).
+/// How long Guide is held before it opens the app overlay (as holding the
+/// remote's Home does); let go sooner, it is Home.
 const HOLD: Duration = Duration::from_millis(600);
 
 /// Gamepad button codes read.
@@ -204,7 +204,8 @@ fn run() -> Result<(), String> {
     let mut scanned = Instant::now()
         .checked_sub(RESCAN)
         .unwrap_or_else(Instant::now);
-    // Since when Guide (Home) is down, until the app menu opened.
+    // Since when Guide (Home) is down, while nothing went out for it yet:
+    // released before `HOLD` it is Home, held it is the app overlay.
     let mut home_down: Option<Instant> = None;
     loop {
         if scanned.elapsed() >= RESCAN {
@@ -216,7 +217,13 @@ fn run() -> Result<(), String> {
             Ok(Message::Keys(changes)) => {
                 for (key, down) in changes {
                     if key == key::HOMEPAGE {
-                        home_down = down.then(Instant::now);
+                        if down {
+                            home_down = Some(Instant::now());
+                        } else if home_down.take().is_some() {
+                            keyboard.key(key::HOMEPAGE, true);
+                            keyboard.key(key::HOMEPAGE, false);
+                        }
+                        continue;
                     }
                     send(&keyboard, &mut pressed, key, down);
                 }
@@ -249,7 +256,8 @@ fn send(keyboard: &VirtualKeys, pressed: &mut HashSet<u32>, key: u32, down: bool
     if down {
         let to_home = HOME_IN_FRONT.load(Ordering::Relaxed)
             || KEYS_TO_APP.load(Ordering::Relaxed)
-            || super::keyboard::shown();
+            || super::keyboard::shown()
+            || super::overlay::shown();
         if (key == key::HOMEPAGE || key == key::PROG1 || to_home) && pressed.insert(key) {
             keyboard.key(key, true);
         }

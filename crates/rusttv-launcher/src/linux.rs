@@ -11,6 +11,7 @@
 mod device;
 mod gamepad;
 mod keyboard;
+mod overlay;
 mod portal;
 mod tasks;
 mod toplevels;
@@ -92,6 +93,10 @@ pub struct LinuxPlatform {
     device: Arc<LinuxDevice>,
     /// Each app's size on screen (`with_sizes`).
     sizes: Option<AppSizes>,
+    /// The app overlay last opened (holding Home over an app).
+    overlay: Option<overlay::Overlay>,
+    /// The volume bar over apps, once a volume key was pressed over one.
+    volume_bar: Option<overlay::VolumeBar>,
 }
 
 impl fmt::Debug for LinuxPlatform {
@@ -146,6 +151,8 @@ impl LinuxPlatform {
             windows: None,
             device: Arc::new(LinuxDevice::detect()),
             sizes: None,
+            overlay: None,
+            volume_bar: None,
         }
     }
 
@@ -478,6 +485,33 @@ impl Platform for LinuxPlatform {
 
     fn last_app(&self) -> Option<String> {
         self.tasks.as_ref().and_then(|tasks| tasks.front())
+    }
+
+    fn open_overlay(&mut self, overlay: crate::platform::AppOverlay) -> bool {
+        let device: Arc<dyn DeviceSettings> = self.device.clone();
+        self.overlay = overlay::Overlay::open(overlay, device);
+        self.overlay.is_some()
+    }
+
+    fn close_overlay(&mut self, to_home: bool) {
+        if let Some(overlay) = &self.overlay {
+            overlay.close(to_home);
+        }
+    }
+
+    fn overlay_volume(&mut self, volume: crate::device::Volume) {
+        if overlay::shown()
+            && let Some(overlay) = &self.overlay
+        {
+            overlay.volume(volume);
+            return;
+        }
+        if self.volume_bar.is_none() {
+            self.volume_bar = overlay::VolumeBar::start();
+        }
+        if let Some(bar) = &self.volume_bar {
+            bar.show(volume);
+        }
     }
 }
 

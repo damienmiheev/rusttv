@@ -599,12 +599,10 @@ enum Mode {
         selected: usize,
     },
     /// `selected` indexes [`menu_items`] of the focused tile, or of the
-    /// focused app in `folder`. `back_to_app`: opened over a running app
-    /// ([`Home::open_app_menu`]), so Back goes back to it.
+    /// focused app in `folder`.
     Menu {
         selected: usize,
         folder: Option<OpenFolder>,
-        back_to_app: bool,
     },
     /// `focus` indexes `Home::hidden_apps`.
     Hidden {
@@ -728,48 +726,6 @@ impl Home {
     /// that can scale an app's UI.
     pub fn set_app_sizes(&mut self, on: bool) {
         self.app_sizes = on;
-    }
-
-    /// Opens the menu of app `id`, as holding Home over that app does: its
-    /// tile gets the focus (in its folder, if it is in one), Size is
-    /// selected where there is one, and Back from the menu opens the app
-    /// again. Leaves any page or menu first. `false` if the app has no tile
-    /// (hidden or unknown); Home then shows the tiles.
-    pub fn open_app_menu(&mut self, id: &str) -> bool {
-        if matches!(self.mode, Mode::Moving { .. }) {
-            self.cancel_move();
-        }
-        self.mode = Mode::Browse;
-        self.ok_held = false;
-        self.ok_since = None;
-        if !self.focus_on(&TileId::App(id.to_owned())) {
-            let Some((folder, index)) = self.folders.iter().find_map(|(folder, contents)| {
-                let index = contents.apps.iter().position(|app| app == id)?;
-                Some((*folder, index))
-            }) else {
-                return false;
-            };
-            if !self.focus_on(&TileId::Folder(folder)) {
-                return false;
-            }
-            self.mode = Mode::Folder(OpenFolder {
-                id: folder,
-                focus: Some(index),
-            });
-        }
-        let items = self.items();
-        if items.is_empty() {
-            return false;
-        }
-        self.mode = Mode::Menu {
-            selected: items
-                .iter()
-                .position(|item| *item == MenuItem::Size)
-                .unwrap_or(0),
-            folder: self.open_folder(),
-            back_to_app: true,
-        };
-        true
     }
 
     /// The tile the open menu is for.
@@ -1760,12 +1716,7 @@ impl Home {
     /// that opened the menu is ignored), Back closes the menu.
     fn handle_menu(&mut self, input: Input, now: Duration) -> Option<Effect> {
         let items = self.items();
-        let Mode::Menu {
-            selected,
-            folder,
-            back_to_app,
-        } = self.mode
-        else {
+        let Mode::Menu { selected, folder } = self.mode else {
             return None;
         };
         let select = |this: &mut Self, index: usize| {
@@ -1790,12 +1741,7 @@ impl Home {
                 };
                 return self.resize_current(step);
             }
-            Input::Back => {
-                self.mode = folder.map_or(Mode::Browse, Mode::Folder);
-                if back_to_app {
-                    return self.activate(now);
-                }
-            }
+            Input::Back => self.mode = folder.map_or(Mode::Browse, Mode::Folder),
             _ => {}
         }
         None
@@ -1948,7 +1894,6 @@ impl Home {
             self.mode = Mode::Menu {
                 selected: 0,
                 folder: self.open_folder(),
-                back_to_app: false,
             };
         }
     }

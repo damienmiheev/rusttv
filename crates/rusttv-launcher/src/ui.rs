@@ -185,6 +185,7 @@ impl Lifecycle {
     /// The launcher left the screen: an app opened or the screen turned off.
     pub fn paused(&self) {
         self.deliver(|controller| {
+            controller.close_overlay(true);
             controller.away = true;
             controller.input(Input::Paused);
         });
@@ -205,6 +206,12 @@ impl Lifecycle {
     )]
     pub fn app_ended(&self, id: String) {
         self.deliver(move |controller| {
+            // Closed for a new size in the app overlay: it starts again.
+            if controller.restart.as_deref() == Some(id.as_str()) {
+                controller.restart = None;
+                controller.launch(&id);
+                return;
+            }
             // Closed for a new size: it starts again at that size.
             if controller.relaunch.as_deref() == Some(id.as_str()) {
                 controller.relaunch = None;
@@ -230,21 +237,28 @@ impl Lifecycle {
         self.deliver(move |controller| controller.volume_key(change));
     }
 
-    /// Home held (Linux: `--app-menu`): like Home, then the menu of the app
-    /// that was in front (its size, moving, hiding); Back from it goes back
-    /// to that app. Without one, just Home.
+    /// Home held (Linux: `--app-menu`): the app overlay over the app in
+    /// front (its size, the volume, closing it), or closes it when it is
+    /// open. Over the home screen, or where there is no overlay, just Home.
     #[cfg_attr(
         not(feature = "linux"),
         allow(dead_code, reason = "called by the Linux binary")
     )]
     pub fn app_menu(&self) {
         self.deliver(|controller| {
+            if controller.overlay {
+                controller.close_overlay(false);
+                return;
+            }
+            if controller.away
+                && let Some(id) = controller.platform.last_app()
+                && controller.open_overlay(id)
+            {
+                return;
+            }
             controller.away = true;
             controller.input(Input::Paused);
             controller.resume();
-            if let Some(id) = controller.platform.last_app() {
-                controller.home.open_app_menu(&id);
-            }
             controller.after_pointer(None);
         });
     }
@@ -281,6 +295,18 @@ impl std::fmt::Debug for Lifecycle {
             .field("running", &running)
             .finish()
     }
+}
+
+/// The app overlay closed (see [`Platform::open_overlay`]); from any thread.
+#[cfg_attr(
+    not(feature = "linux"),
+    allow(dead_code, reason = "called by the Linux overlay")
+)]
+pub(crate) fn overlay_closed(closed: crate::platform::OverlayClosed) {
+    // Fails only once the event loop has stopped.
+    let _ = slint::invoke_from_event_loop(move || {
+        settings_view::with_controller(|controller| controller.overlay_closed(closed));
+    });
 }
 
 /// The pointer's accessibility service went on or off (REMOTE.md § 5);
@@ -796,6 +822,11 @@ struct Controller {
     /// The app closed to restart at a new size; it opens again when its
     /// process has ended.
     relaunch: Option<String>,
+    /// Whether the app overlay is open (holding Home over an app).
+    overlay: bool,
+    /// The app closed in the app overlay to restart at a new size; it
+    /// opens again when its process has ended.
+    restart: Option<String>,
     /// The phones connected now; the pointer hides with the last.
     connected: std::collections::HashSet<rusttv_remote::PhoneId>,
     /// The last app in front that is an installed app: overlays (the TV's
@@ -948,6 +979,8 @@ impl Controller {
                 away: false,
                 resized: None,
                 relaunch: None,
+                overlay: false,
+                restart: None,
                 connected: std::collections::HashSet::new(),
                 front_app: None,
                 front_dpad: false,
@@ -1537,6 +1570,64 @@ impl Controller {
                 "saving the tile order to {} failed: {error}",
                 path.display()
             ),
+        }
+    }
+
+    /// Opens the app overlay over app `id`; `false` if the platform has
+    /// none.
+    fn open_overlay(&mut self, id: String) -> bool {
+        let Some(window) = self.window.upgrade() else {
+            return false;
+        };
+        let title = self
+            .apps
+            .get(&id)
+            .map_or_else(|| id.clone(), |app| app.label.clone());
+        let size = self
+            .platform
+            .scales_apps()
+            .then(|| self.platform.app_scale(&id));
+        let opened = self.platform.open_overlay(crate::platform::AppOverlay {
+            app: id,
+            title,
+            size,
+            texts: overlay_texts(&window),
+        });
+        self.overlay = opened;
+        opened
+    }
+
+    /// Closes the app overlay if it is open; `to_home`: for the home screen.
+    fn close_overlay(&mut self, to_home: bool) {
+        if self.overlay {
+            self.platform.close_overlay(to_home);
+        }
+    }
+
+    /// The app overlay closed: closes the app if that was chosen; a new
+    /// size restarts it (or, when Home closed the overlay, closes it, so it
+    /// opens at that size next time).
+    fn overlay_closed(&mut self, closed: crate::platform::OverlayClosed) {
+        self.overlay = false;
+        let crate::platform::OverlayClosed {
+            app,
+            size,
+            close_app,
+            to_home,
+        } = closed;
+        if close_app {
+            self.platform.close_app(&app);
+            return;
+        }
+        let Some(size) = size.filter(|size| *size != self.platform.app_scale(&app)) else {
+            return;
+        };
+        self.platform.set_app_scale(&app, size);
+        if self.platform.is_running(&app) {
+            self.platform.close_app(&app);
+            if !to_home {
+                self.restart = Some(app);
+            }
         }
     }
 
@@ -2516,6 +2607,19 @@ fn menu_label(window: &HomeWindow, item: MenuItem, size: u32) -> SharedString {
     }
 }
 
+/// The app overlay's texts, in the current language (`Strings.overlay-text`).
+fn overlay_texts(window: &HomeWindow) -> crate::platform::OverlayTexts {
+    let strings = window.global::<Strings>();
+    let text = |item| strings.invoke_overlay_text(item).to_string();
+    crate::platform::OverlayTexts {
+        size: text(0),
+        volume: text(1),
+        muted: text(2),
+        close: text(3),
+        restarts: text(4),
+    }
+}
+
 /// The About page's update line for a status, in the current language
 /// (`Strings.update-line` in home.slint); says what OK does when it isn't a
 /// plain check.
@@ -2738,6 +2842,14 @@ mod tests {
 
         fn last_app(&self) -> Option<String> {
             self.platform.borrow().last_app()
+        }
+
+        fn open_overlay(&mut self, overlay: crate::platform::AppOverlay) -> bool {
+            self.platform.borrow_mut().open_overlay(overlay)
+        }
+
+        fn close_overlay(&mut self, to_home: bool) {
+            self.platform.borrow_mut().close_overlay(to_home);
         }
     }
 
@@ -4022,40 +4134,86 @@ mod tests {
     }
 
     #[test]
-    fn holding_home_opens_the_apps_menu_and_a_new_size_restarts_it() {
+    fn holding_home_over_an_app_opens_its_overlay_and_a_new_size_restarts_it() {
         let screen = screen_with(abc().with_app_sizes(), None);
         screen.tap(RIGHT);
         screen.launch_and_leave();
         screen.lifecycle.app_menu();
         screen.wait(1);
-        assert_eq!(screen.window.get_mode(), mode_value(State::Menu));
-        assert_eq!(
-            menu_texts(&screen),
-            ["Move", "Hide from Home", "Size: 100 %"]
-        );
-        assert_eq!(screen.window.get_menu_selected(), 2, "Size is selected");
-        screen.tap(RIGHT);
-        assert_eq!(menu_texts(&screen)[2], "Size: 110 %");
-        // Back: B closes, and opens again at its new size once it ended.
-        screen.tap(BACK);
+        let opened = screen.shared.platform.borrow().overlays().to_vec();
+        assert_eq!(opened.len(), 1);
+        assert_eq!(opened[0].app, "b/.Main");
+        assert_eq!(opened[0].title, "B");
+        assert_eq!(opened[0].size, Some(100));
+        assert_eq!(opened[0].texts.close, "Close app");
+        // Holding Home again closes it.
+        screen.lifecycle.app_menu();
+        screen.wait(1);
+        assert!(!screen.shared.platform.borrow().overlay_open());
+        // Closed at 125 %: the app closes, and opens again once it ended.
+        screen
+            ._controller
+            .borrow_mut()
+            .overlay_closed(crate::platform::OverlayClosed {
+                app: "b/.Main".into(),
+                size: Some(125),
+                close_app: false,
+                to_home: false,
+            });
         assert_eq!(screen.shared.platform.borrow().closed(), ["b/.Main"]);
-        assert_eq!(screen.window.get_mode(), mode_value(State::Launching));
-        assert_eq!(screen.launched(), ["b/.Main"]);
+        assert_eq!(screen.shared.platform.borrow().app_scale("b/.Main"), 125);
         screen.lifecycle.app_ended("b/.Main".into());
         screen.wait(1);
         assert_eq!(screen.launched(), ["b/.Main", "b/.Main"]);
-        assert_eq!(screen.shared.platform.borrow().app_scale("b/.Main"), 110);
     }
 
     #[test]
-    fn back_from_the_apps_menu_without_a_change_goes_back_to_the_app() {
+    fn the_overlay_closes_the_app_and_home_keeps_a_resized_app_closed() {
         let screen = screen_with(abc().with_app_sizes(), None);
         screen.launch_and_leave();
         screen.lifecycle.app_menu();
         screen.wait(1);
-        screen.tap(BACK);
+        let closed = |size, close_app, to_home| crate::platform::OverlayClosed {
+            app: "a/.Main".into(),
+            size,
+            close_app,
+            to_home,
+        };
+        // Nothing changed: the app stays.
+        screen
+            ._controller
+            .borrow_mut()
+            .overlay_closed(closed(Some(100), false, false));
         assert!(screen.shared.platform.borrow().closed().is_empty());
-        assert_eq!(screen.launched(), ["a/.Main", "a/.Main"]);
+        // Home after a new size: closed, not started again.
+        screen
+            ._controller
+            .borrow_mut()
+            .overlay_closed(closed(Some(90), false, true));
+        screen.lifecycle.app_ended("a/.Main".into());
+        screen.wait(1);
+        assert_eq!(screen.launched(), ["a/.Main"]);
+        assert_eq!(screen.shared.platform.borrow().closed(), ["a/.Main"]);
+        // Close app.
+        screen.launch_and_leave();
+        screen
+            ._controller
+            .borrow_mut()
+            .overlay_closed(closed(Some(90), true, false));
+        assert_eq!(
+            screen.shared.platform.borrow().closed(),
+            ["a/.Main", "a/.Main"]
+        );
+    }
+
+    #[test]
+    fn holding_home_over_the_home_screen_is_home() {
+        let screen = screen_with(abc().with_app_sizes(), None);
+        screen.tap(RIGHT);
+        screen.lifecycle.app_menu();
+        screen.wait(1);
+        assert!(screen.shared.platform.borrow().overlays().is_empty());
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
     }
 
     #[test]

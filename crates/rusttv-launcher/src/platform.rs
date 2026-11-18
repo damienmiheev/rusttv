@@ -214,11 +214,63 @@ pub trait Platform {
     /// as for any app ([`crate::Lifecycle::app_ended`]).
     fn close_app(&mut self, _id: &str) {}
 
-    /// The app that was last in front of the launcher, for the app menu
-    /// that holding Home opens; `None` if none runs.
+    /// The app that was last in front of the launcher, for the app
+    /// overlay that holding Home opens; `None` if none runs.
     fn last_app(&self) -> Option<String> {
         None
     }
+
+    /// Shows the app overlay over the app in front (holding Home): its
+    /// size, the volume, closing it. `false` where the platform has none;
+    /// holding Home is then just Home. When it closes, the platform calls
+    /// [`crate::ui::overlay_closed`].
+    fn open_overlay(&mut self, _overlay: AppOverlay) -> bool {
+        false
+    }
+
+    /// Closes the app overlay, if it is open; `to_home`: Home was pressed.
+    fn close_overlay(&mut self, _to_home: bool) {}
+
+    /// The volume changed (a volume key) while an app is in front: the app
+    /// overlay shows it if it is open, else a volume bar over the app.
+    fn overlay_volume(&mut self, _volume: crate::device::Volume) {}
+}
+
+/// What the app overlay shows (see [`Platform::open_overlay`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppOverlay {
+    /// The app's ID.
+    pub app: String,
+    /// Its name, the overlay's title.
+    pub title: String,
+    /// Its size in percent, where apps can be resized.
+    pub size: Option<u32>,
+    /// The overlay's texts, in the launcher's language.
+    pub texts: OverlayTexts,
+}
+
+/// The app overlay's texts.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OverlayTexts {
+    pub size: String,
+    pub volume: String,
+    pub muted: String,
+    pub close: String,
+    /// Shown once the size changed: the app restarts for it.
+    pub restarts: String,
+}
+
+/// How the app overlay closed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OverlayClosed {
+    /// The app it was open over.
+    pub app: String,
+    /// The size it was left at, where apps can be resized.
+    pub size: Option<u32>,
+    /// Close the app was chosen.
+    pub close_app: bool,
+    /// Home closed it: the home screen comes next, not the app.
+    pub to_home: bool,
 }
 
 /// The pointer in other apps (REMOTE.md § 5).
@@ -691,6 +743,9 @@ pub struct FakePlatform {
     /// Launched and not closed.
     running: BTreeSet<String>,
     closed: Vec<String>,
+    /// App overlays opened, and whether one is open.
+    overlays: Vec<AppOverlay>,
+    overlay_open: bool,
 }
 
 #[cfg(any(test, feature = "test-util"))]
@@ -715,6 +770,16 @@ impl FakePlatform {
     /// The apps closed with [`Platform::close_app`], in order.
     pub fn closed(&self) -> &[String] {
         &self.closed
+    }
+
+    /// The app overlays opened, in order.
+    pub fn overlays(&self) -> &[AppOverlay] {
+        &self.overlays
+    }
+
+    /// Whether an app overlay is open.
+    pub fn overlay_open(&self) -> bool {
+        self.overlay_open
     }
 
     /// The made-up device, if [`FakePlatform::with_device`] added one.
@@ -1006,6 +1071,19 @@ impl Platform for FakePlatform {
     fn close_app(&mut self, id: &str) {
         self.running.remove(id);
         self.closed.push(id.to_owned());
+    }
+
+    fn open_overlay(&mut self, overlay: AppOverlay) -> bool {
+        if self.app_sizes.is_none() {
+            return false;
+        }
+        self.overlays.push(overlay);
+        self.overlay_open = true;
+        true
+    }
+
+    fn close_overlay(&mut self, _to_home: bool) {
+        self.overlay_open = false;
     }
 
     fn last_app(&self) -> Option<String> {

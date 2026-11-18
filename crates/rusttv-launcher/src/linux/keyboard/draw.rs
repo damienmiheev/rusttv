@@ -22,10 +22,10 @@ const FIELD_H: f32 = 80.0;
 const BOTTOM_X: [f32; BOTTOM_KEYS] = [0.0, 228.0, 712.0, 914.0];
 const BOTTOM_W: [f32; BOTTOM_KEYS] = [220.0, 476.0, 194.0, 194.0];
 
-const PANEL: [u8; 4] = [0x0E, 0x10, 0x14, 0xF0];
-const SURFACE: [u8; 4] = [0x1C, 0x1F, 0x26, 0xFF];
-const TEXT: [u8; 4] = [0xF2, 0xF3, 0xF5, 0xFF];
-const TEXT_DIM: [u8; 4] = [0xA4, 0xA9, 0xB4, 0xFF];
+pub(in crate::linux) const PANEL: [u8; 4] = [0x0E, 0x10, 0x14, 0xF0];
+pub(in crate::linux) const SURFACE: [u8; 4] = [0x1C, 0x1F, 0x26, 0xFF];
+pub(in crate::linux) const TEXT: [u8; 4] = [0xF2, 0xF3, 0xF5, 0xFF];
+pub(in crate::linux) const TEXT_DIM: [u8; 4] = [0xA4, 0xA9, 0xB4, 0xFF];
 const DONE: [u8; 4] = [0x5E, 0x45, 0x1D, 0xFF];
 
 /// Where fonts are looked for, first found wins.
@@ -230,20 +230,28 @@ pub fn draw(prompt: &TextPrompt, font: &FontVec, width: u32, height: u32) -> Opt
 }
 
 /// The dark ink on a focused (light) key.
-const PANEL_INK: [u8; 4] = [0x0E, 0x10, 0x14, 0xFF];
+pub(in crate::linux) const PANEL_INK: [u8; 4] = [0x0E, 0x10, 0x14, 0xFF];
 
-fn color([red, green, blue, alpha]: [u8; 4]) -> Color {
+pub(in crate::linux) fn color([red, green, blue, alpha]: [u8; 4]) -> Color {
     Color::from_rgba8(red, green, blue, alpha)
 }
 
-fn paint(rgba: [u8; 4]) -> Paint<'static> {
+pub(in crate::linux) fn paint(rgba: [u8; 4]) -> Paint<'static> {
     let mut paint = Paint::default();
     paint.set_color(color(rgba));
     paint.anti_alias = true;
     paint
 }
 
-fn rounded(pixmap: &mut Pixmap, x: f32, y: f32, w: f32, h: f32, r: f32, fill: [u8; 4]) {
+pub(in crate::linux) fn rounded(
+    pixmap: &mut Pixmap,
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    r: f32,
+    fill: [u8; 4],
+) {
     let mut path = PathBuilder::new();
     path.move_to(x + r, y);
     path.line_to(x + w - r, y);
@@ -295,7 +303,7 @@ fn icon(pixmap: &mut Pixmap, cx: f32, cy: f32, u: f32, ink: [u8; 4], lines: &[&[
     pixmap.stroke_path(&path, &paint(ink), &stroke, Transform::identity(), None);
 }
 
-fn width_of(font: &FontVec, text: &str, size: f32) -> f32 {
+pub(in crate::linux) fn width_of(font: &FontVec, text: &str, size: f32) -> f32 {
     let scaled = font.as_scaled(PxScale::from(size));
     text.chars()
         .map(|c| scaled.h_advance(font.glyph_id(c)))
@@ -316,7 +324,7 @@ fn fitting_tail<'a>(font: &FontVec, text: &'a str, size: f32, room: f32) -> &'a 
 /// Draws `text` with its left edge (or centre, if `centred`) at `x` and its
 /// middle at `mid`.
 #[allow(clippy::too_many_arguments)]
-fn text(
+pub(in crate::linux) fn text(
     pixmap: &mut Pixmap,
     font: &FontVec,
     text: &str,

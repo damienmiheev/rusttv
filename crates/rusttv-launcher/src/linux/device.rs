@@ -440,6 +440,15 @@ impl DeviceSettings for LinuxDevice {
             .and_then(|text| parse_volume(&text))
     }
 
+    fn volume_now(&self) -> Option<Volume> {
+        if !self.wpctl {
+            return None;
+        }
+        run("wpctl", &["get-volume", SINK])
+            .ok()
+            .and_then(|text| parse_volume(&text))
+    }
+
     /// NetworkManager's Wi-Fi and Ethernet interfaces; the signal from its
     /// last scan (no new scan).
     fn links(&self) -> Vec<Link> {

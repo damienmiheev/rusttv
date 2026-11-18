@@ -182,6 +182,11 @@ pub trait DeviceSettings: Send + Sync {
         None
     }
 
+    /// The volume now, without changing it; `None` without volume control.
+    fn volume_now(&self) -> Option<Volume> {
+        None
+    }
+
     /// The network interfaces and their state, Wi-Fi first; empty when
     /// the platform doesn't say.
     fn links(&self) -> Vec<Link> {

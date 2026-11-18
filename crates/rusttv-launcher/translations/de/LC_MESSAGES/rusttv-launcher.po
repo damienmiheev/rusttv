@@ -44,6 +44,21 @@ msgstr "Auf dem Startbildschirm ausblenden"
 msgid "Size: {} %"
 msgstr "Größe: {} %"
 
+msgid "Size"
+msgstr "Größe"
+
+msgid "Volume"
+msgstr "Lautstärke"
+
+msgid "Muted"
+msgstr "Stumm"
+
+msgid "Close app"
+msgstr "App schließen"
+
+msgid "The app restarts at the new size"
+msgstr "Die App startet in der neuen Größe neu"
+
 msgid "Move"
 msgstr "Verschieben"
 

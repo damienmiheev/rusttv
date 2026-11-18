@@ -10,7 +10,7 @@
 //! focus again. Typing on a real keyboard (or a phone's, through the
 //! remote desktop portal) closes it and passes the keys on to the app.
 
-mod draw;
+pub(super) mod draw;
 mod layout;
 
 use std::fs::File;

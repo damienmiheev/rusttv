@@ -77,6 +77,15 @@ export global Strings {
     public pure function menu-size(percent: string) -> string {
         return @tr("Size: {} %", percent);
     }
+    // The app overlay (holding Home over an app; ui.rs `overlay_texts`):
+    // 0 size, 1 volume, 2 muted, 3 close, 4 the restart hint.
+    public pure function overlay-text(item: int) -> string {
+        if item == 1 { return @tr("Volume"); }
+        if item == 2 { return @tr("Muted"); }
+        if item == 3 { return @tr("Close app"); }
+        if item == 4 { return @tr("The app restarts at the new size"); }
+        return @tr("Size");
+    }
     public pure function couldnt-open(app: string) -> string {
         return @tr("Couldn't open {}", app);
     }

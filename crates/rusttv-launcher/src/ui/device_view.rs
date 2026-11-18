@@ -287,6 +287,11 @@ impl Controller {
             |controller: &mut Controller, volume: Option<Volume>| {
                 if let Some(volume) = volume {
                     controller.show_volume(volume);
+                    // The launcher's bar is behind the app in front: the
+                    // platform shows it over the app.
+                    if controller.away {
+                        controller.platform.overlay_volume(volume);
+                    }
                     // The Audio panel and the Sound settings show the new
                     // level too.
                     controller.refresh_quick();

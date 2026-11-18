@@ -57,7 +57,7 @@ png = { workspace = true, optional = true }
 resvg = { version = "0.48.1", default-features = false, optional = true }
 # Linux app management (src/linux/): process groups, and the compositor's
 # window list. Already in the tree via winit's Wayland backend.
-rustix = { version = "1.1.6", features = ["fs", "process"], optional = true }
+rustix = { version = "1.1.6", features = ["event", "fs", "pipe", "process"], optional = true }
 wayland-client = { version = "0.31.15", optional = true }
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"], optional = true }
 # The on-screen keyboard over other apps (src/linux/keyboard.rs): the input
