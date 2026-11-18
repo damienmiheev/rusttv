@@ -42,6 +42,34 @@ const PAIR: &str = "pair:";
 /// How long a Bluetooth search runs, in seconds.
 const BT_SCAN_SECONDS: &str = "8";
 
+/// Where an image names another system on the same device that the Power
+/// panel restarts into (dual boot). Root-owned: it holds a command.
+const OTHER_OS: &str = "/etc/rusttv/other-os.toml";
+
+/// Another system to restart into, from [`OTHER_OS`]:
+///
+/// ```toml
+/// label = "Restart into Android"
+/// command = ["systemctl", "start", "--no-block", "switch-to-android.service"]
+/// ```
+///
+/// The command runs as the launcher's user, without a shell; it switches
+/// the boot target and restarts.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OtherOs {
+    label: String,
+    command: Vec<String>,
+}
+
+/// [`OtherOs`] from its file; `None` if it is unreadable or has no command.
+fn parse_other_os(text: &str) -> Option<OtherOs> {
+    toml::from_str::<OtherOs>(text)
+        .map_err(|error| log::warn!("{OTHER_OS}: {error}"))
+        .ok()
+        .filter(|other| !other.command.is_empty() && !other.label.is_empty())
+}
+
 /// [`DeviceSettings`] through the tools found in `PATH` at start.
 #[derive(Debug, Clone, Default)]
 pub struct LinuxDevice {
@@ -49,6 +77,8 @@ pub struct LinuxDevice {
     nmcli: bool,
     bluetoothctl: bool,
     systemctl: bool,
+    /// Another system to restart into (dual boot).
+    other_os: Option<OtherOs>,
     /// Whether a Bluetooth search ran: Devices then lists what it found.
     scanned: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
@@ -61,6 +91,9 @@ impl LinuxDevice {
             nmcli: program_exists("nmcli"),
             bluetoothctl: program_exists("bluetoothctl"),
             systemctl: program_exists("systemctl"),
+            other_os: std::fs::read_to_string(OTHER_OS)
+                .ok()
+                .and_then(|text| parse_other_os(&text)),
             scanned: std::sync::Arc::default(),
         }
     }
@@ -252,14 +285,12 @@ impl LinuxDevice {
 
     fn power(&self) -> Option<Tab> {
         self.systemctl.then(|| {
-            tab(
-                QuickPanel::Power,
-                "Power",
-                vec![
-                    control("reboot", "Restart", "", ControlKind::Action),
-                    control("poweroff", "Power off", "", ControlKind::Action),
-                ],
-            )
+            let mut controls = vec![control("reboot", "Restart", "", ControlKind::Action)];
+            if let Some(other) = &self.other_os {
+                controls.push(control("other-os", &other.label, "", ControlKind::Action));
+            }
+            controls.push(control("poweroff", "Power off", "", ControlKind::Action));
+            tab(QuickPanel::Power, "Power", controls)
         })
     }
 }
@@ -349,6 +380,12 @@ impl DeviceSettings for LinuxDevice {
             }
             ("reboot", Value::Action) => run("systemctl", &["reboot"]),
             ("poweroff", Value::Action) => run("systemctl", &["poweroff"]),
+            ("other-os", Value::Action) => {
+                let other = self.other_os.as_ref().ok_or("no other system")?;
+                let (program, args) = other.command.split_first().ok_or("no command")?;
+                let args: Vec<&str> = args.iter().map(String::as_str).collect();
+                run(program, &args)
+            }
             (control, value) => Err(format!("unknown setting {control} = {value:?}")),
         }
         .map(drop)
@@ -924,6 +961,30 @@ mod tests {
             memory_total("MemTotal:        2097152 kB\n"),
             Some("2.0 GB".into())
         );
+    }
+
+    #[test]
+    fn reads_another_system_to_restart_into() {
+        let other = parse_other_os(
+            "label = \"Restart into Android\"\ncommand = [\"systemctl\", \"start\", \"x.service\"]\n",
+        );
+        assert_eq!(
+            other,
+            Some(OtherOs {
+                label: "Restart into Android".into(),
+                command: vec!["systemctl".into(), "start".into(), "x.service".into()],
+            })
+        );
+        assert_eq!(parse_other_os("label = \"A\"\ncommand = []\n"), None);
+        assert_eq!(parse_other_os("label = \"A\"\nshell = \"rm\"\n"), None);
+        let device = LinuxDevice {
+            systemctl: true,
+            other_os: other,
+            ..LinuxDevice::default()
+        };
+        let power = device.panel(QuickPanel::Power).expect("a Power panel");
+        let ids: Vec<&str> = power.controls.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, ["reboot", "other-os", "poweroff"]);
     }
 
     #[test]
