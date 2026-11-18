@@ -431,3 +431,60 @@ msgstr "影と背景"
 
 msgid "No shadows or backdrop: smoother on a slow graphics chip"
 msgstr "影と背景なし: 遅いグラフィックチップでもなめらか"
+
+msgid "Audio"
+msgstr "オーディオ"
+
+msgid "Close app"
+msgstr "アプリを閉じる"
+
+msgid "KDE Connect"
+msgstr "KDE Connect"
+
+msgid "Licences and third-party notices"
+msgstr "ライセンスと第三者の表示"
+
+msgid "Loading…"
+msgstr "読み込み中…"
+
+msgid "MIT OR Apache-2.0 · licences and third-party notices"
+msgstr "MIT OR Apache-2.0 · ライセンスと第三者の表示"
+
+msgid "Modify"
+msgstr "編集"
+
+msgid "Muted"
+msgstr "ミュート"
+
+msgid "Network"
+msgstr "ネットワーク"
+
+msgid "Power"
+msgstr "電源"
+
+msgid "RustTV {}"
+msgstr "RustTV {}"
+
+msgid "Search"
+msgstr "検索"
+
+msgid "Size"
+msgstr "サイズ"
+
+msgid "Size: {} %"
+msgstr "サイズ：{} %"
+
+msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
+msgstr "Slint（Royalty-free License 2.0）、Skia、Rust ライブラリ"
+
+msgid "Source code"
+msgstr "ソースコード"
+
+msgid "The app restarts at the new size"
+msgstr "アプリは新しいサイズで再起動します"
+
+msgid "Volume"
+msgstr "音量"
+
+msgid "✓ on the keyboard confirms, Back cancels"
+msgstr "キーボードの ✓ で確定、戻るでキャンセル"

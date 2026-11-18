@@ -431,3 +431,60 @@ msgstr "Schaduwen en achtergrond"
 
 msgid "No shadows or backdrop: smoother on a slow graphics chip"
 msgstr "Geen schaduwen of achtergrond: vloeiender op een trage grafische chip"
+
+msgid "Audio"
+msgstr "Audio"
+
+msgid "Close app"
+msgstr "App sluiten"
+
+msgid "KDE Connect"
+msgstr "KDE Connect"
+
+msgid "Licences and third-party notices"
+msgstr "Licenties en vermeldingen van derden"
+
+msgid "Loading…"
+msgstr "Laden…"
+
+msgid "MIT OR Apache-2.0 · licences and third-party notices"
+msgstr "MIT OR Apache-2.0 · licenties en vermeldingen van derden"
+
+msgid "Modify"
+msgstr "Bewerken"
+
+msgid "Muted"
+msgstr "Gedempt"
+
+msgid "Network"
+msgstr "Netwerk"
+
+msgid "Power"
+msgstr "Aan/uit"
+
+msgid "RustTV {}"
+msgstr "RustTV {}"
+
+msgid "Search"
+msgstr "Zoeken"
+
+msgid "Size"
+msgstr "Grootte"
+
+msgid "Size: {} %"
+msgstr "Grootte: {} %"
+
+msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
+msgstr "Slint (Royalty-free License 2.0), Skia, Rust-bibliotheken"
+
+msgid "Source code"
+msgstr "Broncode"
+
+msgid "The app restarts at the new size"
+msgstr "De app start opnieuw op de nieuwe grootte"
+
+msgid "Volume"
+msgstr "Volume"
+
+msgid "✓ on the keyboard confirms, Back cancels"
+msgstr "✓ op het toetsenbord bevestigt, Terug annuleert"

@@ -431,3 +431,60 @@ msgstr "الظلال والخلفية"
 
 msgid "No shadows or backdrop: smoother on a slow graphics chip"
 msgstr "بلا ظلال أو خلفية: أكثر سلاسة مع شريحة رسوميات بطيئة"
+
+msgid "Audio"
+msgstr "الصوت"
+
+msgid "Close app"
+msgstr "إغلاق التطبيق"
+
+msgid "KDE Connect"
+msgstr "KDE Connect"
+
+msgid "Licences and third-party notices"
+msgstr "التراخيص وإشعارات الأطراف الثالثة"
+
+msgid "Loading…"
+msgstr "جارٍ التحميل…"
+
+msgid "MIT OR Apache-2.0 · licences and third-party notices"
+msgstr "MIT OR Apache-2.0 · التراخيص وإشعارات الأطراف الثالثة"
+
+msgid "Modify"
+msgstr "تعديل"
+
+msgid "Muted"
+msgstr "مكتوم"
+
+msgid "Network"
+msgstr "الشبكة"
+
+msgid "Power"
+msgstr "الطاقة"
+
+msgid "RustTV {}"
+msgstr "RustTV {}"
+
+msgid "Search"
+msgstr "بحث"
+
+msgid "Size"
+msgstr "الحجم"
+
+msgid "Size: {} %"
+msgstr "الحجم: {} %"
+
+msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
+msgstr "Slint (Royalty-free License 2.0)، وSkia، ومكتبات Rust"
+
+msgid "Source code"
+msgstr "الشيفرة المصدرية"
+
+msgid "The app restarts at the new size"
+msgstr "يُعاد تشغيل التطبيق بالحجم الجديد"
+
+msgid "Volume"
+msgstr "مستوى الصوت"
+
+msgid "✓ on the keyboard confirms, Back cancels"
+msgstr "✓ على لوحة المفاتيح للتأكيد، «رجوع» للإلغاء"

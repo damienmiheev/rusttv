@@ -431,3 +431,60 @@ msgstr "陰影和背景"
 
 msgid "No shadows or backdrop: smoother on a slow graphics chip"
 msgstr "無陰影和背景：在較慢的圖形晶片上更流暢"
+
+msgid "Audio"
+msgstr "音訊"
+
+msgid "Close app"
+msgstr "關閉應用程式"
+
+msgid "KDE Connect"
+msgstr "KDE Connect"
+
+msgid "Licences and third-party notices"
+msgstr "授權條款與第三方聲明"
+
+msgid "Loading…"
+msgstr "正在載入…"
+
+msgid "MIT OR Apache-2.0 · licences and third-party notices"
+msgstr "MIT OR Apache-2.0 · 授權條款與第三方聲明"
+
+msgid "Modify"
+msgstr "編輯"
+
+msgid "Muted"
+msgstr "已靜音"
+
+msgid "Network"
+msgstr "網路"
+
+msgid "Power"
+msgstr "電源"
+
+msgid "RustTV {}"
+msgstr "RustTV {}"
+
+msgid "Search"
+msgstr "搜尋"
+
+msgid "Size"
+msgstr "大小"
+
+msgid "Size: {} %"
+msgstr "大小：{} %"
+
+msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
+msgstr "Slint（Royalty-free License 2.0）、Skia、Rust 程式庫"
+
+msgid "Source code"
+msgstr "原始碼"
+
+msgid "The app restarts at the new size"
+msgstr "應用程式將以新大小重新啟動"
+
+msgid "Volume"
+msgstr "音量"
+
+msgid "✓ on the keyboard confirms, Back cancels"
+msgstr "按鍵盤上的 ✓ 確認，按返回取消"

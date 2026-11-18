@@ -431,3 +431,60 @@ msgstr "Bayangan dan latar"
 
 msgid "No shadows or backdrop: smoother on a slow graphics chip"
 msgstr "Tanpa bayangan atau latar: lebih mulus di chip grafis lambat"
+
+msgid "Audio"
+msgstr "Audio"
+
+msgid "Close app"
+msgstr "Tutup aplikasi"
+
+msgid "KDE Connect"
+msgstr "KDE Connect"
+
+msgid "Licences and third-party notices"
+msgstr "Lisensi dan pemberitahuan pihak ketiga"
+
+msgid "Loading…"
+msgstr "Memuat…"
+
+msgid "MIT OR Apache-2.0 · licences and third-party notices"
+msgstr "MIT OR Apache-2.0 · lisensi dan pemberitahuan pihak ketiga"
+
+msgid "Modify"
+msgstr "Ubah"
+
+msgid "Muted"
+msgstr "Senyap"
+
+msgid "Network"
+msgstr "Jaringan"
+
+msgid "Power"
+msgstr "Daya"
+
+msgid "RustTV {}"
+msgstr "RustTV {}"
+
+msgid "Search"
+msgstr "Cari"
+
+msgid "Size"
+msgstr "Ukuran"
+
+msgid "Size: {} %"
+msgstr "Ukuran: {} %"
+
+msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
+msgstr "Slint (Royalty-free License 2.0), Skia, pustaka Rust"
+
+msgid "Source code"
+msgstr "Kode sumber"
+
+msgid "The app restarts at the new size"
+msgstr "Aplikasi dimulai ulang dengan ukuran baru"
+
+msgid "Volume"
+msgstr "Volume"
+
+msgid "✓ on the keyboard confirms, Back cancels"
+msgstr "✓ di keyboard mengonfirmasi, Kembali membatalkan"

@@ -431,3 +431,60 @@ msgstr "그림자와 배경"
 
 msgid "No shadows or backdrop: smoother on a slow graphics chip"
 msgstr "그림자와 배경 없음: 느린 그래픽 칩에서 더 부드럽게"
+
+msgid "Audio"
+msgstr "오디오"
+
+msgid "Close app"
+msgstr "앱 닫기"
+
+msgid "KDE Connect"
+msgstr "KDE Connect"
+
+msgid "Licences and third-party notices"
+msgstr "라이선스 및 타사 고지"
+
+msgid "Loading…"
+msgstr "불러오는 중…"
+
+msgid "MIT OR Apache-2.0 · licences and third-party notices"
+msgstr "MIT OR Apache-2.0 · 라이선스 및 타사 고지"
+
+msgid "Modify"
+msgstr "편집"
+
+msgid "Muted"
+msgstr "음소거"
+
+msgid "Network"
+msgstr "네트워크"
+
+msgid "Power"
+msgstr "전원"
+
+msgid "RustTV {}"
+msgstr "RustTV {}"
+
+msgid "Search"
+msgstr "검색"
+
+msgid "Size"
+msgstr "크기"
+
+msgid "Size: {} %"
+msgstr "크기: {} %"
+
+msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
+msgstr "Slint(Royalty-free License 2.0), Skia, Rust 라이브러리"
+
+msgid "Source code"
+msgstr "소스 코드"
+
+msgid "The app restarts at the new size"
+msgstr "앱이 새 크기로 다시 시작됩니다"
+
+msgid "Volume"
+msgstr "볼륨"
+
+msgid "✓ on the keyboard confirms, Back cancels"
+msgstr "키보드의 ✓로 확인, 뒤로로 취소"

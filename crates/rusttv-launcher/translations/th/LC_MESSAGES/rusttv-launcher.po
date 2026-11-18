@@ -431,3 +431,60 @@ msgstr "เงาและพื้นหลัง"
 
 msgid "No shadows or backdrop: smoother on a slow graphics chip"
 msgstr "ไม่มีเงาหรือพื้นหลัง: ลื่นกว่าบนชิปกราฟิกที่ช้า"
+
+msgid "Audio"
+msgstr "เสียง"
+
+msgid "Close app"
+msgstr "ปิดแอป"
+
+msgid "KDE Connect"
+msgstr "KDE Connect"
+
+msgid "Licences and third-party notices"
+msgstr "สัญญาอนุญาตและประกาศของบุคคลที่สาม"
+
+msgid "Loading…"
+msgstr "กำลังโหลด…"
+
+msgid "MIT OR Apache-2.0 · licences and third-party notices"
+msgstr "MIT OR Apache-2.0 · สัญญาอนุญาตและประกาศของบุคคลที่สาม"
+
+msgid "Modify"
+msgstr "แก้ไข"
+
+msgid "Muted"
+msgstr "ปิดเสียง"
+
+msgid "Network"
+msgstr "เครือข่าย"
+
+msgid "Power"
+msgstr "พลังงาน"
+
+msgid "RustTV {}"
+msgstr "RustTV {}"
+
+msgid "Search"
+msgstr "ค้นหา"
+
+msgid "Size"
+msgstr "ขนาด"
+
+msgid "Size: {} %"
+msgstr "ขนาด: {} %"
+
+msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
+msgstr "Slint (Royalty-free License 2.0), Skia, ไลบรารี Rust"
+
+msgid "Source code"
+msgstr "ซอร์สโค้ด"
+
+msgid "The app restarts at the new size"
+msgstr "แอปจะเริ่มใหม่ด้วยขนาดใหม่"
+
+msgid "Volume"
+msgstr "ระดับเสียง"
+
+msgid "✓ on the keyboard confirms, Back cancels"
+msgstr "✓ บนแป้นพิมพ์เพื่อยืนยัน กลับเพื่อยกเลิก"
