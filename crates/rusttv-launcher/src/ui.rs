@@ -209,7 +209,7 @@ impl Lifecycle {
     /// platforms that start apps as their own processes (Linux); there the
     /// launcher resumes when it gets the keyboard focus back.
     #[cfg_attr(
-        not(feature = "linux"),
+        not(all(target_os = "linux", feature = "linux")),
         allow(dead_code, reason = "called by the Linux binary")
     )]
     pub fn app_ended(&self, id: String) {
@@ -238,7 +238,7 @@ impl Lifecycle {
     /// to the remote's keys in the compositor): changes the volume and
     /// shows the volume bar.
     #[cfg_attr(
-        not(feature = "linux"),
+        not(all(target_os = "linux", feature = "linux")),
         allow(dead_code, reason = "called by the Linux binary")
     )]
     pub fn volume(&self, change: crate::device::VolumeChange) {
@@ -249,7 +249,7 @@ impl Lifecycle {
     /// front (its size, the volume, closing it), or closes it when it is
     /// open. Over the home screen, or where there is no overlay, just Home.
     #[cfg_attr(
-        not(feature = "linux"),
+        not(all(target_os = "linux", feature = "linux")),
         allow(dead_code, reason = "called by the Linux binary")
     )]
     pub fn app_menu(&self) {
@@ -307,7 +307,7 @@ impl std::fmt::Debug for Lifecycle {
 
 /// The app overlay closed (see [`Platform::open_overlay`]); from any thread.
 #[cfg_attr(
-    not(feature = "linux"),
+    not(all(target_os = "linux", feature = "linux")),
     allow(dead_code, reason = "called by the Linux overlay")
 )]
 pub(crate) fn overlay_closed(closed: crate::platform::OverlayClosed) {

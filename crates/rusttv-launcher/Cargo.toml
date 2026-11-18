@@ -51,6 +51,14 @@ rusttv-history.workspace = true
 rusttv-remote.workspace = true
 getrandom.workspace = true
 qrcode.workspace = true
+
+# Desktop dev mode: window via winit, CPU rendering (no Skia download).
+[target.'cfg(not(target_os = "android"))'.dependencies]
+slint = { workspace = true, features = ["backend-winit", "renderer-software"] }
+
+# The Linux home screen (feature `linux`): Linux only, so that
+# `--all-features` still builds on macOS and Windows.
+[target.'cfg(target_os = "linux")'.dependencies]
 png = { workspace = true, optional = true }
 # SVG app icons (most KDE and GNOME apps ship only these). Already in the
 # tree via Slint; no text or raster images needed in icons.
@@ -74,10 +82,6 @@ calloop = { version = "0.14.5", optional = true }
 reis = { version = "0.7.1", features = ["calloop"], optional = true }
 enumflags2 = { version = "0.7.12", optional = true }
 evdev = { version = "0.13.2", default-features = false, optional = true }
-
-# Desktop dev mode: window via winit, CPU rendering (no Skia download).
-[target.'cfg(not(target_os = "android"))'.dependencies]
-slint = { workspace = true, features = ["backend-winit", "renderer-software"] }
 
 # On the TV: the Android backend (always renders with Skia) and the JNI bridge.
 [target.'cfg(target_os = "android")'.dependencies]
