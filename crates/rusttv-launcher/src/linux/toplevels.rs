@@ -222,6 +222,7 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for State {
                 }
                 if let Some(activated) = window.pending_activated.take() {
                     if activated && !window.activated {
+                        log::info!("window of {} activated", window.app_id);
                         activated_app = Some(window.app_id.clone());
                     }
                     window.activated = activated;
