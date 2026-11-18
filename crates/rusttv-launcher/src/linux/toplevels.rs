@@ -95,6 +95,16 @@ impl Toplevels {
         })
     }
 
+    /// The app ID of the window in front, if it is no window of the
+    /// launcher's (which has none).
+    pub fn front(&self) -> Option<String> {
+        lock(&self.shared)
+            .windows
+            .iter()
+            .find(|window| window.activated && !window.app_id.is_empty())
+            .map(|window| window.app_id.clone())
+    }
+
     /// Brings the first window whose app ID matches one of `keys`
     /// (lower case) to the front; whether there was one.
     pub fn activate(&self, keys: &[String]) -> bool {

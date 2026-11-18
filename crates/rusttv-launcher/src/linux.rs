@@ -198,6 +198,70 @@ impl LinuxPlatform {
         self
     }
 
+    /// Makes app `id`, running but not started by this launcher, one of its
+    /// apps: found by its program in its own process group (as the launcher
+    /// starts apps), and followed until it ends (a pidfd: it is no child
+    /// to wait for). Whether it was found.
+    fn adopt(&self, id: &str, entry: &DesktopEntry) -> bool {
+        let Some(tasks) = &self.tasks else {
+            return false;
+        };
+        let Some(program) = entry
+            .argv()
+            .first()
+            .and_then(|program| Path::new(program).file_name())
+            .map(|name| name.to_string_lossy().into_owned())
+        else {
+            return false;
+        };
+        let Some(group) = tasks::find_group(&program) else {
+            return false;
+        };
+        let Some(leader) = i32::try_from(group)
+            .ok()
+            .and_then(rustix::process::Pid::from_raw)
+        else {
+            return false;
+        };
+        let pidfd = match rustix::process::pidfd_open(leader, rustix::process::PidfdFlags::empty())
+        {
+            Ok(pidfd) => pidfd,
+            Err(error) => {
+                log::warn!("following {id} (pid {group}) failed: {error}");
+                return false;
+            }
+        };
+        log::info!("{id} was already running (pid {group}); taken over");
+        tasks.started(id, group, entry.window_keys(id), entry.reads_pads(id));
+        let events = self.events.clone();
+        let tasks = self.tasks.clone();
+        let name = id.to_owned();
+        let waiter = std::thread::Builder::new()
+            .name("rusttv-app-wait".into())
+            .spawn(move || {
+                use rustix::event::{PollFd, PollFlags, poll};
+                // Readable once the process has ended.
+                let mut fds = [PollFd::new(&pidfd, PollFlags::IN)];
+                while let Err(error) = poll(&mut fds, None) {
+                    if error != rustix::io::Errno::INTR {
+                        log::warn!("waiting for {name} failed: {error}");
+                        break;
+                    }
+                }
+                log::info!("{name} ended");
+                if let Some(tasks) = tasks {
+                    tasks.ended(group);
+                }
+                if let Some(events) = events {
+                    events(AppEvent::Exited(name));
+                }
+            });
+        if let Err(error) = waiter {
+            log::warn!("no thread to wait for {id}: {error}");
+        }
+        true
+    }
+
     fn application_dirs(&self) -> impl Iterator<Item = PathBuf> + '_ {
         self.data_dirs.iter().map(|dir| dir.join("applications"))
     }
@@ -293,12 +357,11 @@ impl Platform for LinuxPlatform {
         let entry = entries
             .get(id)
             .ok_or_else(|| PlatformError::not_launchable(id))?;
-        // Its window, if it runs but was not started by this launcher (e.g.
-        // before a restart of the launcher).
-        if self
-            .tasks
-            .as_ref()
-            .is_some_and(|tasks| !tasks.is_running(id))
+        // Running, but not started by this launcher (e.g. before a restart
+        // of the launcher): it becomes one of the launcher's apps, raised
+        // below. Without its process found, its window is still raised.
+        if !self.is_running(id)
+            && !self.adopt(id, entry)
             && self
                 .windows
                 .as_ref()
@@ -488,7 +551,22 @@ impl Platform for LinuxPlatform {
     }
 
     fn last_app(&self) -> Option<String> {
-        self.tasks.as_ref().and_then(|tasks| tasks.front())
+        if let Some(id) = self.tasks.as_ref().and_then(|tasks| tasks.front()) {
+            return Some(id);
+        }
+        // An app left running by an earlier launcher, in front.
+        let app_id = self.windows.as_ref()?.front()?.to_lowercase();
+        let entries = self.entries.borrow();
+        let (id, entry) = entries
+            .iter()
+            .find(|(id, entry)| entry.window_keys(id).contains(&app_id))?;
+        if !self.adopt(id, entry) {
+            return None;
+        }
+        if let Some(tasks) = &self.tasks {
+            tasks.activated(&app_id);
+        }
+        Some(id.clone())
     }
 
     fn open_overlay(&mut self, overlay: crate::platform::AppOverlay) -> bool {

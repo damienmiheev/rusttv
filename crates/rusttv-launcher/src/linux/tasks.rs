@@ -259,6 +259,53 @@ impl Tasks {
     }
 }
 
+/// The process group of a running `program` (a file name) of this user that
+/// leads a group of its own, as apps the launcher starts do: an app left
+/// running by an earlier launcher. The program is the first argument, or
+/// the second for an interpreter running a script.
+pub fn find_group(program: &str) -> Option<u32> {
+    use std::os::unix::fs::MetadataExt as _;
+    let uid = rustix::process::getuid().as_raw();
+    let me = std::process::id();
+    let mut found: Vec<u32> = fs::read_dir("/proc")
+        .ok()?
+        .flatten()
+        .filter_map(|entry| {
+            let pid: u32 = entry.file_name().to_str()?.parse().ok()?;
+            if pid == me || entry.metadata().ok()?.uid() != uid {
+                return None;
+            }
+            let dir = entry.path();
+            let stat = fs::read_to_string(dir.join("stat")).ok()?;
+            let cmdline = fs::read(dir.join("cmdline")).ok()?;
+            (leads_group(&stat, pid) && runs(&cmdline, program)).then_some(pid)
+        })
+        .collect();
+    // The oldest, should there be more.
+    found.sort_unstable();
+    found.first().copied()
+}
+
+/// Whether `/proc/<pid>/stat` says `pid` leads its process group.
+fn leads_group(stat: &str, pid: u32) -> bool {
+    // "pid (comm) state ppid pgrp …"; comm may hold spaces and parentheses.
+    stat.rsplit_once(')')
+        .and_then(|(_, rest)| rest.split_whitespace().nth(2))
+        .and_then(|group| group.parse::<u32>().ok())
+        == Some(pid)
+}
+
+/// Whether a `/proc/<pid>/cmdline` runs `program`.
+fn runs(cmdline: &[u8], program: &str) -> bool {
+    let name = |arg: &[u8]| {
+        std::path::Path::new(&*String::from_utf8_lossy(arg))
+            .file_name()
+            .is_some_and(|name| name == program)
+    };
+    let mut args = cmdline.split(|&byte| byte == 0);
+    args.next().is_some_and(name) || args.next().is_some_and(name)
+}
+
 /// Sends `sig` to process group `group`; logs a failure.
 fn signal(group: i32, sig: Signal) {
     let Some(pid) = Pid::from_raw(group) else {
@@ -282,6 +329,19 @@ fn available_mib() -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_apps_by_program_and_group() {
+        assert!(leads_group("23840 (dolphin) S 1 23840 23840 0", 23840));
+        assert!(leads_group("77 (odd ) name) S 1 77 77", 77));
+        assert!(!leads_group("23841 (dolphin) S 23840 23840 23840", 23841));
+        assert!(runs(b"dolphin\0", "dolphin"));
+        assert!(runs(b"/usr/bin/dolphin\0--new-window\0", "dolphin"));
+        // A wrapper script under its interpreter.
+        assert!(runs(b"/bin/sh\0/usr/bin/kodi\0", "kodi"));
+        assert!(!runs(b"/usr/bin/dolphin-helper\0", "dolphin"));
+        assert!(!runs(b"", "dolphin"));
+    }
 
     #[test]
     fn reuses_a_running_app_and_forgets_it_when_it_ends() {
