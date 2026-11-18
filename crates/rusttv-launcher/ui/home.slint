@@ -4,10 +4,14 @@
 // and forwards keys.
 
 import { AboutSlint } from "std-widgets.slint";
+import { SettingsRow, ControlRow, QuickBar, QuickPanel, PowerMenu, TextPromptView, VolumeOsd } from "quick.slint";
 
 // The hero backdrop: a dark base and a soft glow of the app's main colour
 // (platform.rs `Glow`); x and y place the glow, 0..1 of the screen.
 export struct Glow {
+    // The whole backdrop, baked small by ui.rs (`Glow::paint`); the other
+    // fields describe it.
+    backdrop: image,
     base: color,
     color: color,
     x: float,
@@ -26,16 +30,8 @@ export struct TileData {
     minis: [image],
 }
 
-// One row of a Settings panel (ui.rs `settings_rows`).
-export struct SettingsRow {
-    title: string,
-    // A second, dim line; empty for one-line rows.
-    detail: string,
-    // The current choice: an accent dot.
-    current: bool,
-    // Shown dim (e.g. animations without the grant).
-    dim: bool,
-}
+// One row of a Settings panel: `SettingsRow` in quick.slint.
+export { SettingsRow }
 
 // One line of the review screen; `header` lines name a group.
 export struct ReviewLine {
@@ -77,6 +73,19 @@ export global Strings {
         if item == 1 { return @tr("Hide from Home"); }
         return @tr("Move");
     }
+    // The app's size on screen (its UI scale), in percent.
+    public pure function menu-size(percent: string) -> string {
+        return @tr("Size: {} %", percent);
+    }
+    // The app overlay (holding Home over an app; ui.rs `overlay_texts`):
+    // 0 size, 1 volume, 2 muted, 3 close, 4 the restart hint.
+    public pure function overlay-text(item: int) -> string {
+        if item == 1 { return @tr("Volume"); }
+        if item == 2 { return @tr("Muted"); }
+        if item == 3 { return @tr("Close app"); }
+        if item == 4 { return @tr("The app restarts at the new size"); }
+        return @tr("Size");
+    }
     public pure function couldnt-open(app: string) -> string {
         return @tr("Couldn't open {}", app);
     }
@@ -92,7 +101,21 @@ export global Strings {
         if section == 2 { return @tr("History"); }
         if section == 3 { return @tr("Waiting for your computer"); }
         if section == 4 { return @tr("Effects"); }
+        if section == 5 { return @tr("About"); }
         return @tr("Animations");
+    }
+    // Settings' About tab (ui/settings_view.rs `AboutRow`): 0 RustTV and
+    // its version, 1 updates, 2 source code, 3 licence notices.
+    public pure function about-row(row: int, version: string) -> string {
+        if row == 0 { return @tr("RustTV {}", version); }
+        if row == 1 { return @tr("Updates"); }
+        if row == 2 { return @tr("Source code"); }
+        return @tr("Licences and third-party notices");
+    }
+    public pure function about-detail(row: int) -> string {
+        if row == 0 { return @tr("MIT OR Apache-2.0 · licences and third-party notices"); }
+        if row == 2 { return "github.com/damienmiheev/rusttv"; }
+        return @tr("Slint (Royalty-free License 2.0), Skia, Rust libraries");
     }
     // settings.rs ANIMATION_CHOICES: off to slowest.
     public pure function animation-choice(choice: int) -> string {
@@ -130,7 +153,7 @@ export global Strings {
     public pure function pairing-failure(kind: int) -> string {
         if kind == 1 { return @tr("RustTV Remote can't start: another app uses its network port (8484)."); }
         if kind == 2 { return @tr("This TV has no network address. Connect it to your network and try again."); }
-        if kind == 4 { return @tr("Pairing stopped after three wrong tries. Back returns; open Pair a phone again for a new code."); }
+        if kind == 4 { return @tr("Pairing stopped after three wrong tries. Open Pair a phone again for a new code."); }
         return @tr("Couldn't make the code.");
     }
     public pure function on-off(on: bool) -> string {
@@ -294,6 +317,9 @@ global Mode {
     out property <int> folder: 8;
     out property <int> pairing: 9;
     out property <int> remote: 10;
+    // Focus in the top-right menu; a quick panel open over Home.
+    out property <int> bar: 11;
+    out property <int> quick: 12;
 }
 
 // Picture or placeholder for one app, filling its parent.
@@ -405,9 +431,15 @@ component Tile inherits Rectangle {
     // Focus scale is done by resizing around the centre rather than with
     // transform-scale: Slint's software renderer (desktop dev mode) ignores
     // transforms. Rotation and shadows show only with Skia (the TV).
+    property <float> zoom: scale;
+    animate zoom {
+        duration: launching ? 500ms : focused ? 150ms : 250ms;
+        easing: launching ? cubic-bezier(0.25, 0.1, 0.25, 1) : focused ? ease-out : ease-in-out;
+    }
+
     card := Rectangle {
-        width: parent.width * scale;
-        height: parent.height * scale;
+        width: parent.width * zoom;
+        height: parent.height * zoom;
         x: (parent.width - self.width) / 2 + (jiggle ? 1 * u * sin(jiggle-turns * 360deg + 90deg)
             : sway-amount * 3 * u * sin(sway-turns * 360deg + 90deg));
         y: (parent.height - self.height) / 2 + (jiggle ? 1.5 * u * sin(jiggle-turns * 720deg)
@@ -421,10 +453,6 @@ component Tile inherits Rectangle {
         drop-shadow-blur: !Effects.shadows ? 0 : focused ? 40 * u : 8 * u;
         drop-shadow-offset-y: -sway-amount * 3 * u * sin(sway-turns * 360deg) + (focused ? 20 * u : 4 * u);
 
-        animate width, height {
-            duration: launching ? 500ms : focused ? 150ms : 250ms;
-            easing: launching ? cubic-bezier(0.25, 0.1, 0.25, 1) : focused ? ease-out : ease-in-out;
-        }
         animate opacity { duration: 500ms; easing: cubic-bezier(0.25, 0.1, 0.25, 1); }
         animate drop-shadow-blur, drop-shadow-color { duration: focused ? 150ms : 250ms; }
 
@@ -461,13 +489,14 @@ component Tile inherits Rectangle {
             background: Theme.accent;
         }
 
-        // Move mode: outline on the picked-up tile.
-        if jiggle && focused: Rectangle {
+        // The focused tile's ring (the accent while moving it), so focus
+        // shows at a glance, not only by the zoom.
+        if focused && !launching: Rectangle {
             width: parent.width;
             height: parent.height;
             border-radius: parent.border-radius;
-            border-width: 3 * u;
-            border-color: Theme.accent;
+            border-width: 4 * u;
+            border-color: jiggle ? Theme.accent : Theme.text;
         }
     }
 
@@ -505,7 +534,7 @@ component Tile inherits Rectangle {
         color: #00000066;
         horizontal-alignment: center;
         overflow: elide;
-        opacity: focused && !launching ? 1 : 0;
+        opacity: focused && !launching && data.kind != 1 && data.kind != 2 ? 1 : 0;
         animate opacity { duration: 150ms; }
     }
     Text {
@@ -527,43 +556,26 @@ component HeroLayer inherits Rectangle {
     in property <TileData> data;
     in property <Glow> glow;
     in property <length> u;
+    // How much it shows, 0..1. Set on each part rather than as the layer's
+    // opacity: that would render the whole screen into an extra layer on
+    // every frame of a cross-fade, more than a weak TV GPU manages at 60 fps.
+    in property <float> fade: 1;
+    // The backdrop's own fade (see the cross-fade in HomeWindow).
+    in property <float> backdrop-fade: 1;
 
-    // Drawn, not an image: a full-screen backdrop bitmap per app cost up to
-    // ~20 MB on a TV. The glow is a circle as wide as the screen, centred where
-    // the main colour sits in the app's banner.
-    Rectangle {
-        x: 0;
+    // The backdrop is one small baked picture, scaled up: the same look as
+    // drawing its gradients, at a fraction of the cost. Never a full-screen
+    // bitmap per app (up to ~20 MB each on a TV). It ends where it has faded
+    // into the page colour (`Glow::HEIGHT`, platform.rs): the page shows the rest.
+    Image {
         y: 0;
         width: parent.width;
-        height: parent.height;
-        background: glow.base;
-    }
-    Rectangle {
-        width: parent.width * 1.3;
-        height: self.width;
-        x: (Dir.rtl ? 1 - glow.x : glow.x) * parent.width - self.width / 2;
-        y: glow.y * parent.height - self.height / 2;
-        opacity: glow.strength;
-        visible: Effects.backdrop;
-        background: @radial-gradient(circle, glow.color 0%, glow.color.with-alpha(0.45) 30%, glow.color.with-alpha(0) 70%);
-    }
-    // Scrim on the text side, so the backdrop can keep its colour on the right.
-    Rectangle {
-        x: 0;
-        y: 0;
-        width: parent.width;
-        height: 780 * u;
-        background: @linear-gradient(Dir.rtl ? 270deg : 90deg, #0E1014D9 0%, #0E101466 40%, #0E101400 70%);
-    }
-    Rectangle {
-        y: 400 * u;
-        height: 380 * u;
-        background: @linear-gradient(180deg, #0E101400 0%, Theme.bg 100%);
-    }
-    Rectangle {
-        y: 780 * u;
-        height: parent.height - self.y;
-        background: Theme.bg;
+        height: 780 * root.u;
+        source: glow.backdrop;
+        image-fit: fill;
+        image-rendering: smooth;
+        opacity: root.backdrop-fade;
+        visible: Effects.backdrop && root.backdrop-fade > 0;
     }
     Rectangle {
         x: Dir.x(90 * u, self.width, parent.width);
@@ -572,6 +584,8 @@ component HeroLayer inherits Rectangle {
         height: 252 * u;
         border-radius: 16 * u;
         clip: true;
+        opacity: root.fade;
+        visible: root.fade > 0;
         Artwork {
             width: parent.width;
             height: parent.height;
@@ -589,6 +603,8 @@ component HeroLayer inherits Rectangle {
         font-weight: 500;
         color: Theme.text;
         overflow: elide;
+        opacity: root.fade;
+        visible: root.fade > 0;
     }
 }
 
@@ -689,6 +705,8 @@ export component HomeWindow inherits Window {
     in property <int> settings-section;
     in property <int> settings-row: -1;
     in property <string> settings-panel-title;
+    // The device's settings are being read (ui/settings_view.rs): a spinner.
+    in property <bool> settings-loading;
     in property <string> settings-note;
     in property <[SettingsRow]> settings-rows;
     // The first row shown (long lists scroll by rows).
@@ -736,9 +754,36 @@ export component HomeWindow inherits Window {
     in-out property <string> rename-text;
     callback rename-done(string);
     callback rename-cancelled();
+    // The top-right menu (ui/device_view.rs): its entries as `QuickBar`
+    // codes, the focused one (-1: focus is on the tiles).
+    in property <[int]> quick-actions;
+    in property <int> quick-selected: -1;
+    // The open quick panel (mode quick): its title, status line, rows, the
+    // focused row and the first row shown.
+    in property <string> quick-title;
+    in property <string> quick-status;
+    in property <[SettingsRow]> quick-rows;
+    in property <int> quick-row;
+    in property <int> quick-first-row;
+    // The open panel is Power: it shows full screen (quick.slint `PowerMenu`).
+    in property <bool> quick-power;
+    // A click on a row of the open quick panel, or beside the power menu.
+    callback quick-row-clicked(int);
+    callback quick-dismissed();
+    // The text prompt (quick.slint `TextPromptView`, ui/device_view.rs).
+    in property <bool> prompt-shown;
     // Frames drawn in the last second (`RUSTTV_FPS=1`, ui.rs `count_frames`);
     // empty hides it.
     in property <string> fps-text;
+    in property <string> prompt-title;
+    in property <bool> prompt-secret;
+    in-out property <string> prompt-text;
+    callback prompt-done(string);
+    callback prompt-cancelled();
+    // The volume bar (ui/device_view.rs `show_volume`).
+    in property <bool> volume-shown;
+    in property <float> volume-level;
+    in property <bool> volume-muted;
     // Key text, pressed (false = released), repeat. Returns whether it was used.
     callback key(string, bool, bool) -> bool;
     // Pointer input (mouse, air mouse): on tile `index` of Home (`folder`
@@ -749,13 +794,20 @@ export component HomeWindow inherits Window {
     // row `index` of its panel, `action` 0 hovered, 1 clicked.
     callback settings-pointer(/* panel */ bool, /* index */ int, /* action */ int);
     // Pointer input on a list (ui.rs `list_pointer`): item `index` of
-    // `list` (0 the tile menu, 1 Hidden apps, 2 RustTV Remote, 3 review),
-    // `action` 0 hovered, 1 clicked.
+    // `list` (0 the tile menu, 1 Hidden apps, 2 RustTV Remote, 3 the quick
+    // panel or power menu, 4 review), `action` 0 hovered, 1 clicked.
     callback list-pointer(/* list */ int, /* index */ int, /* action */ int);
+    // The pointer over entry `index` of the top-right menu.
+    callback quick-hovered(int);
+    // A click on entry `index` of the top-right menu.
+    callback quick-clicked(int);
     // The wheel: positive scrolls down.
     callback scrolled(length);
     // The pointer moved somewhere off the tiles.
     callback pointer-moved();
+    // The network interfaces on the top-right menu's Network entry
+    // (quick.slint `QuickBar.links`).
+    in property <[int]> network-icons;
 
     public function focus-rename() {
         rename-input.focus();
@@ -804,24 +856,34 @@ export component HomeWindow inherits Window {
         }
     }
 
-    Rectangle {
-        opacity: shelf ? 1 : 0;
-        animate opacity { duration: 250ms; }
+    // The hero cross-fade. Title and card cross-fade both ways. Of the two
+    // full-screen backdrops only B's ever fades, and always over an opaque A:
+    // B fades in over A, or A shows the new picture at once and B fades out
+    // over it. So a frame blends at most one full-screen picture, and the
+    // layers never change order (a `z` change redraws the whole screen).
+    // A is hidden while B covers it, so a still home draws one backdrop.
+    property <float> shelf-fade: shelf ? 1 : 0;
+    animate shelf-fade { duration: 250ms; }
+    property <float> hero-a-fade: hero-a-front ? 1 : 0;
+    animate hero-a-fade { duration: 250ms; }
+    property <float> hero-b-fade: hero-a-front ? 0 : 1;
+    animate hero-b-fade { duration: 250ms; }
+    property <float> hero-b-backdrop: hero-a-front ? 0 : 1;
+    animate hero-b-backdrop { duration: 250ms; }
 
-        HeroLayer {
-            data: hero-a;
-            glow: hero-a-glow;
-            u: root.u;
-            opacity: hero-a-front ? 1 : 0;
-            animate opacity { duration: 250ms; }
-        }
-        HeroLayer {
-            data: hero-b;
-            glow: hero-b-glow;
-            u: root.u;
-            opacity: hero-a-front ? 0 : 1;
-            animate opacity { duration: 250ms; }
-        }
+    HeroLayer {
+        data: hero-a;
+        glow: hero-a-glow;
+        u: root.u;
+        fade: root.hero-a-fade * root.shelf-fade;
+        backdrop-fade: root.hero-b-backdrop < 1 ? root.shelf-fade : 0;
+    }
+    HeroLayer {
+        data: hero-b;
+        glow: hero-b-glow;
+        u: root.u;
+        fade: root.hero-b-fade * root.shelf-fade;
+        backdrop-fade: root.hero-b-backdrop * root.shelf-fade;
     }
 
     // All rows; the whole grid moves to scroll (§3 "Two scroll states").
@@ -842,17 +904,61 @@ export component HomeWindow inherits Window {
             data: tile;
             u: root.u;
             index: i;
-            focused: i == focused-index;
+            // Focus is on the top-right menu or its panel instead.
+            focused: i == focused-index && root.mode != Mode.bar && root.mode != Mode.quick;
             mode: root.mode == Mode.folder ? Mode.browse : root.mode;
             pressed: root.pressed && !root.folder-open;
             idle-phase: root.folder-open ? 0 : root.idle-phase;
-            badge: tile.kind == 3 && root.update-available;
+            // About is a tab of Settings: its update dot is on Settings.
+            badge: tile.kind == 6 && root.update-available;
             // The open folder's own tile: the panel grew out of it.
             opacity: root.folder-open && i == focused-index ? 0 : 1;
             hovered => { root.tile-pointer(false, i, 0); }
             clicked(menu) => { root.tile-pointer(false, i, menu ? 2 : 1); }
             scrolled(delta) => { root.scrolled(delta); }
         }
+    }
+
+    // The top-right menu (quick.slint), shown with the hero; Up from the
+    // first row reaches it. Its quick panel opens below it.
+    QuickBar {
+        x: Dir.x(root.width - 90 * u - self.width, self.width, root.width);
+        y: 48 * u;
+        u: root.u;
+        rtl: Dir.rtl;
+        actions: quick-actions;
+        selected: quick-selected;
+        links: network-icons;
+        opacity: shelf ? 1 : 0;
+        visible: self.opacity > 0;
+        animate opacity { duration: 250ms; }
+        clicked(index) => { root.quick-clicked(index); }
+        hovered(index) => { root.quick-hovered(index); }
+    }
+    if mode == Mode.quick && !quick-power: QuickPanel {
+        x: Dir.x(root.width - 90 * u - self.width, self.width, root.width);
+        y: 190 * u;
+        u: root.u;
+        rtl: Dir.rtl;
+        title: quick-title;
+        status: quick-status;
+        rows: quick-rows;
+        focused-row: quick-row;
+        first-row: quick-first-row;
+        row-clicked(row) => { root.quick-row-clicked(row); }
+        row-hovered(row) => { root.list-pointer(3, row, 0); }
+    }
+    if mode == Mode.quick && quick-power: PowerMenu {
+        width: root.width;
+        height: root.height;
+        u: root.u;
+        title: quick-title;
+        status: quick-status;
+        rows: quick-rows;
+        focused-row: quick-row;
+        row-clicked(row) => { root.quick-row-clicked(row); }
+        row-hovered(row) => { root.list-pointer(3, row, 0); }
+        dismissed => { root.quick-dismissed(); }
     }
 
     // An open folder: Home dims, and the folder grows out of its tile into a
@@ -988,7 +1094,7 @@ export component HomeWindow inherits Window {
         horizontal-alignment: center;
         text: renaming ? @tr("Type a name, then press ✓. Back keeps the old one.")
             : mode == Mode.moving ? @tr("Move past the edge to take the app out. OK drops it.")
-            : @tr("Back closes the folder. Up reaches its name.");
+            : "";
         font-size: 25 * u;
         color: Theme.text-dim;
     }
@@ -1089,6 +1195,56 @@ export component HomeWindow inherits Window {
         }
     }
 
+    // Launch splash: covers Home while the app starts, until its window takes
+    // over (or the launch fails). It fades in a little late, so an app that
+    // opens at once shows only the tile's zoom. The dots animate only while
+    // it is shown, so it costs no frames otherwise.
+    splash := Rectangle {
+        property <bool> shown: mode == Mode.launching;
+        property <TileData> app: folder-open ? folder-tiles[folder-focus] : tiles[focused-index];
+        background: Theme.bg;
+        opacity: shown ? 1 : 0;
+        visible: self.opacity > 0;
+        animate opacity { duration: shown ? 250ms : 150ms; delay: shown ? 200ms : 0ms; easing: ease-out; }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: 300 * u;
+            width: 500 * u;
+            height: 282 * u;
+            border-radius: 20 * u;
+            clip: true;
+            Artwork {
+                width: parent.width;
+                height: parent.height;
+                data: splash.app;
+                u: root.u * 2;
+            }
+        }
+        // Icon cards (kinds 1, 2) already carry the name.
+        if splash.app.kind != 1 && splash.app.kind != 2: Text {
+            x: 0;
+            y: 630 * u;
+            width: parent.width;
+            text: splash.app.label;
+            font-size: 41 * u;
+            font-weight: 500;
+            color: Theme.text;
+            horizontal-alignment: center;
+            overflow: elide;
+        }
+        for k in 3: Rectangle {
+            property <float> phase: splash.visible ? mod(animation-tick() / 1200ms + k * 0.2, 1) : 0;
+            x: (parent.width - 3 * 18 * u - 2 * 22 * u) / 2 + k * 40 * u;
+            y: 740 * u;
+            width: 18 * u;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: Theme.accent;
+            opacity: 0.25 + 0.75 * max(0, sin(self.phase * 360deg));
+        }
+    }
+
     // Hidden apps: the same tiles on their own page; the grid scrolls by
     // whole rows to keep the focused row among the first three.
     if mode == Mode.hidden: Rectangle {
@@ -1109,7 +1265,7 @@ export component HomeWindow inherits Window {
             y: 176 * u;
             width: 1740 * u;
             horizontal-alignment: Dir.start;
-            text: @tr("OK puts the app back on Home. Back returns.");
+            text: @tr("OK puts the app back on Home.");
             font-size: 25 * u;
             color: Theme.text-dim;
         }
@@ -1212,7 +1368,7 @@ export component HomeWindow inherits Window {
             }
             Text {
                 horizontal-alignment: Dir.start;
-                text: @tr("Up and Down scroll the notices. Back returns.");
+                text: "";
                 font-size: 25 * u;
                 color: Theme.text-dim;
                 wrap: word-wrap;
@@ -1308,10 +1464,38 @@ export component HomeWindow inherits Window {
             y: 176 * u;
             width: 1740 * u;
             horizontal-alignment: Dir.start;
-            text: settings-status != "" ? settings-status : @tr("Up and Down choose, OK opens. Back returns.");
+            text: settings-status;
             font-size: 25 * u;
             color: settings-status != "" ? Theme.text : Theme.text-dim;
             overflow: elide;
+        }
+        if settings-loading: Rectangle {
+            x: (parent.width - 72 * u) / 2;
+            y: (parent.height - 72 * u) / 2;
+            width: 72 * u;
+            height: 72 * u;
+            // A ring with a gap, turning once a second.
+            Path {
+                width: parent.width;
+                height: parent.height;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: "M 12 2 A 10 10 0 1 1 2 12";
+                stroke: Theme.text;
+                stroke-width: 4 * u;
+                fill: transparent;
+                transform-origin: { x: self.width / 2, y: self.height / 2 };
+                transform-rotation: mod(animation-tick(), 1s) / 1s * 360deg;
+            }
+        }
+        if settings-loading: Text {
+            x: 0;
+            y: (parent.height + 72 * u) / 2 + 24 * u;
+            width: parent.width;
+            horizontal-alignment: center;
+            text: @tr("Loading…");
+            font-size: 28 * u;
+            color: Theme.text-dim;
         }
         for name[i] in settings-sections: MenuRow {
             x: Dir.x(90 * u, self.width, root.width);
@@ -1368,16 +1552,20 @@ export component HomeWindow inherits Window {
                 y: (settings-note == "" ? 96 : 120) * u + (settings-note == "" ? 0px : note.preferred-height);
                 height: parent.height - self.y - 24 * u;
                 clip: true;
-                property <length> pitch: (settings-rows.length > 0 && settings-rows[0].detail != "" ? 104 : 72) * u;
-                for row[i] in settings-rows: MenuRow {
+                property <length> pitch: (settings-rows.length > 0 && (settings-rows[0].detail != "" || settings-rows[0].slider) ? 104 : 72) * u;
+                // Rows of the platform's tabs can be sliders (quick.slint).
+                for row[i] in settings-rows: ControlRow {
                     x: 24 * u;
                     y: (i - settings-first-row) * parent.pitch;
                     width: parent.width - 48 * u;
                     u: root.u;
+                    rtl: Dir.rtl;
                     text: row.title;
                     detail: row.detail;
                     current: row.current;
                     dim: row.dim;
+                    slider: row.slider;
+                    level: row.level;
                     selected: i == settings-row;
                     visible: i >= settings-first-row;
                 }
@@ -1419,7 +1607,7 @@ export component HomeWindow inherits Window {
             y: 176 * u;
             width: 1740 * u;
             horizontal-alignment: Dir.start;
-            text: settings-status != "" ? settings-status : @tr("Up and Down choose, OK opens. Back returns.");
+            text: settings-status;
             font-size: 25 * u;
             color: settings-status != "" ? Theme.text : Theme.text-dim;
             overflow: elide;
@@ -1511,8 +1699,8 @@ export component HomeWindow inherits Window {
             width: 1740 * u;
             horizontal-alignment: Dir.start;
             text: settings-status != "" ? settings-status
-                : review-phase == 0 ? @tr("Up and Down read the changes. Choose Approve to go on. Back cancels.")
-                : @tr("Nothing changes until you hold OK. Back cancels.");
+                : review-phase == 0 ? @tr("Choose Approve to go on.")
+                : @tr("Nothing changes until you hold OK.");
             font-size: 25 * u;
             color: settings-status != "" ? Theme.text : Theme.text-dim;
             overflow: elide;
@@ -1548,10 +1736,10 @@ export component HomeWindow inherits Window {
                     enabled: review-phase == 0;
                     pointer-event(event) => {
                         if event.kind == PointerEventKind.move {
-                            root.list-pointer(3, i, 0);
+                            root.list-pointer(4, i, 0);
                         }
                     }
-                    clicked => { root.list-pointer(3, i, 1); }
+                    clicked => { root.list-pointer(4, i, 1); }
                 }
             }
             MenuRow {
@@ -1571,10 +1759,10 @@ export component HomeWindow inherits Window {
                 enabled: review-phase == 0;
                 pointer-event(event) => {
                     if event.kind == PointerEventKind.move {
-                        root.list-pointer(3, review-lines.length, 0);
+                        root.list-pointer(4, review-lines.length, 0);
                     }
                 }
-                clicked => { root.list-pointer(3, review-lines.length, 1); }
+                clicked => { root.list-pointer(4, review-lines.length, 1); }
             }
         }
         if review-phase >= 1: Text {
@@ -1648,7 +1836,7 @@ export component HomeWindow inherits Window {
             y: 176 * u;
             width: 1740 * u;
             horizontal-alignment: Dir.start;
-            text: pairing-phase == 1 ? @tr("OK allows this phone. Back refuses.") : @tr("Back returns.");
+            text: pairing-phase == 1 ? @tr("OK allows this phone.") : "";
             font-size: 25 * u;
             color: Theme.text-dim;
             overflow: elide;
@@ -1783,6 +1971,27 @@ export component HomeWindow inherits Window {
         }
     }
 
+    // The text prompt over Settings.
+    if prompt-shown: TextPromptView {
+        width: root.width;
+        height: root.height;
+        u: root.u;
+        title: prompt-title;
+        secret: prompt-secret;
+        text <=> root.prompt-text;
+        done(text) => { root.prompt-done(text); }
+        cancelled => { root.prompt-cancelled(); }
+    }
+
+    // The volume bar, over everything (ui/device_view.rs).
+    VolumeOsd {
+        x: (root.width - self.width) / 2;
+        y: 60 * u;
+        u: root.u;
+        shown: volume-shown;
+        level: volume-level;
+        muted: volume-muted;
+    }
     if fps-text != "": Rectangle {
         x: 16 * u;
         y: 16 * u;

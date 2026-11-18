@@ -359,10 +359,18 @@ pub fn is_phone_name(name: &str) -> bool {
 pub fn is_tile_name(name: &str) -> bool {
     match name.split_once('/') {
         None => {
-            matches!(name, "about" | "settings" | "hidden-apps")
+            matches!(name, "about" | "settings" | "hidden-apps" | "remote")
                 || name
                     .strip_prefix("folder:")
                     .is_some_and(|number| number.parse::<u32>().is_ok() && !number.starts_with('+'))
+                // A Linux desktop entry's id (`org.kde.dolphin.desktop`).
+                || name.strip_suffix(".desktop").is_some_and(|stem| {
+                    !stem.is_empty()
+                        && name.len() <= 255
+                        && stem
+                            .chars()
+                            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
+                })
         }
         Some((package, class)) => {
             !package.is_empty()
@@ -542,6 +550,12 @@ mod tests {
         assert!(is_tile_name("folder:12"));
         assert!(!is_tile_name("folder:+1"));
         assert!(!is_tile_name("folder:"));
+        assert!(is_tile_name("remote"));
+        assert!(is_tile_name("foot.desktop"));
+        assert!(is_tile_name("org.kde.dolphin.desktop"));
+        assert!(is_tile_name("vlc-player.desktop"));
+        assert!(!is_tile_name(".desktop"));
+        assert!(!is_tile_name("a b.desktop"));
     }
 
     #[test]

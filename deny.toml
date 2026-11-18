@@ -10,11 +10,15 @@ yanked = "deny"
 # Ignored only with a reason; recheck every entry on each Slint upgrade.
 ignore = [
     # Unmaintained, reached only through Slint's desktop backend (winit) on Linux: zbus
-    # (accessibility over D-Bus) and window decorations. Desktop dev mode only, not in the APK.
-    { id = "RUSTSEC-2026-0192", reason = "ttf-parser via winit's sctk-adwaita; Linux desktop dev mode only" },
-    { id = "RUSTSEC-2026-0370", reason = "zvariant via zbus in i-slint-backend-winit; Linux desktop dev mode only" },
-    { id = "RUSTSEC-2026-0371", reason = "zbus_names via zbus in i-slint-backend-winit; Linux desktop dev mode only" },
-    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive via zbus in i-slint-backend-winit; Linux desktop dev mode only" },
+    # (accessibility over D-Bus) and window decorations. Desktop dev mode and the `linux`
+    # feature (whose portal also uses zbus), not in the APK.
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser via winit's sctk-adwaita; Linux desktop dev mode and the `linux` feature" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant via zbus in i-slint-backend-winit; Linux desktop dev mode and the `linux` feature" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names via zbus in i-slint-backend-winit; Linux desktop dev mode and the `linux` feature" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive via zbus in i-slint-backend-winit; Linux desktop dev mode and the `linux` feature" },
+    # Unmaintained, no maintained release to move to; reached only through Slint, in the APK too.
+    { id = "RUSTSEC-2026-0543", reason = "chrono via i-slint-core; no safe upgrade, Slint must replace it" },
+    { id = "RUSTSEC-2026-0441", reason = "pin-utils via spin_on in i-slint-renderer-skia; no safe upgrade, Slint must replace it" },
 ]
 
 [licenses]

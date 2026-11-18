@@ -593,3 +593,21 @@ msgstr ""
 #: ui/home.slint:1635
 msgid "“{}” is paired."
 msgstr ""
+
+msgid "Size: {} %"
+msgstr ""
+
+msgid "Size"
+msgstr ""
+
+msgid "Volume"
+msgstr ""
+
+msgid "Muted"
+msgstr ""
+
+msgid "Close app"
+msgstr ""
+
+msgid "The app restarts at the new size"
+msgstr ""

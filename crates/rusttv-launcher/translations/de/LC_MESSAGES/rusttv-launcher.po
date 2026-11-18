@@ -41,6 +41,24 @@ msgstr "OK drücken, um nach Updates zu suchen"
 msgid "Hide from Home"
 msgstr "Auf dem Startbildschirm ausblenden"
 
+msgid "Size: {} %"
+msgstr "Größe: {} %"
+
+msgid "Size"
+msgstr "Größe"
+
+msgid "Volume"
+msgstr "Lautstärke"
+
+msgid "Muted"
+msgstr "Stumm"
+
+msgid "Close app"
+msgstr "App schließen"
+
+msgid "The app restarts at the new size"
+msgstr "Die App startet in der neuen Größe neu"
+
 msgid "Move"
 msgstr "Verschieben"
 
@@ -431,3 +449,9 @@ msgstr "Schatten und Hintergrund"
 
 msgid "No shadows or backdrop: smoother on a slow graphics chip"
 msgstr "Keine Schatten oder Hintergrund: flüssiger bei einem langsamen Grafikchip"
+
+msgid "Loading…"
+msgstr "Wird geladen…"
+
+msgid "✓ on the keyboard confirms, Back cancels"
+msgstr "✓ auf der Tastatur bestätigt, Zurück bricht ab"

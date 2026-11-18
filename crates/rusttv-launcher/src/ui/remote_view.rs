@@ -307,12 +307,14 @@ impl Controller {
                 detail: strings.invoke_pair_phone_detail(),
                 current: false,
                 dim: false,
+                ..SettingsRow::default()
             },
             SettingsRow {
                 title: strings.invoke_pointer_row(),
                 detail: strings.invoke_pointer_detail(pointer),
                 current: pointer == 2,
                 dim: pointer == 0,
+                ..SettingsRow::default()
             },
         ];
         rows.extend(
@@ -324,6 +326,7 @@ impl Controller {
                     detail: strings.invoke_phone_detail(page.removing() == Some(i + 2)),
                     current: false,
                     dim: false,
+                    ..SettingsRow::default()
                 }),
         );
         window.set_remote_banner(self.builtins.remote.image.clone());

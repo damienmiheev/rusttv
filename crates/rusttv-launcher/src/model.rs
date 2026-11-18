@@ -38,12 +38,12 @@ pub const LAUNCH_TIMEOUT: Duration = Duration::from_secs(3);
 /// The caller sends [`Input::Tick`] once this has passed after the last input.
 pub const MOVE_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// How long a moving app must stay on top of another app (or a folder)
-/// before they make a folder (or it goes in).
+/// How long an app dragged from the phone remote must rest on another app
+/// (or a folder) before they make a folder (or it goes in).
 ///
-/// An arrow pressed sooner passes over the tile; OK sooner drops the app in
-/// that place. The caller sends [`Input::Tick`] once this has passed after
-/// the move.
+/// Moving on, or OK sooner, drops nothing in. The caller sends
+/// [`Input::Tick`] once this has passed after the drag. Arrow keys only
+/// reorder ([`Home::handle`] in move mode).
 pub const FOLDER_HOVER: Duration = Duration::from_millis(600);
 
 /// Apps per row in an open folder.
@@ -71,9 +71,8 @@ pub(crate) const KEY_STEP: i64 = 1000;
 pub enum TileId {
     /// An installed app, identified by its component name (`package/activity`).
     App(String),
-    /// The built-in About tile.
-    About,
-    /// The built-in Settings tile (HISTORY.md § 8).
+    /// The built-in Settings tile (HISTORY.md § 8); About is one of its
+    /// tabs.
     Settings,
     /// The built-in RustTV Remote tile: pair a phone, the paired phones
     /// (REMOTE.md § 2).
@@ -224,6 +223,45 @@ pub enum Input {
     LaunchFailed,
 }
 
+/// An entry of the top-right menu over Home (like Plasma Bigscreen's), in
+/// the order shown. Modify and Settings are always there; the platform
+/// says which others it can do ([`crate::Platform::quick_actions`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum QuickAction {
+    /// Search.
+    Search,
+    /// Edit Home: the focused tile's menu (move, hide).
+    Modify,
+    /// The Audio quick panel.
+    Audio,
+    /// The Network quick panel.
+    Network,
+    /// Opens KDE Connect.
+    KdeConnect,
+    /// The Settings page.
+    Settings,
+    /// The Power quick panel (restart, power off).
+    Power,
+}
+
+impl QuickAction {
+    /// Every entry, in menu order.
+    pub const ALL: [Self; 7] = [
+        Self::Search,
+        Self::Modify,
+        Self::Audio,
+        Self::Network,
+        Self::KdeConnect,
+        Self::Settings,
+        Self::Power,
+    ];
+
+    /// Whether it opens a quick panel over Home.
+    pub fn opens_panel(self) -> bool {
+        matches!(self, Self::Audio | Self::Power)
+    }
+}
+
 /// An entry in the menu that a long press on a tile opens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuItem {
@@ -231,6 +269,42 @@ pub enum MenuItem {
     Move,
     /// Take the app off Home; it stays installed and is listed under Hidden apps.
     Hide,
+    /// The app's size on screen (its UI scale): OK steps through the sizes,
+    /// Left and Right make it smaller or bigger. Only where the platform can
+    /// scale apps ([`Home::set_app_sizes`]).
+    Size,
+}
+
+/// The sizes an app can have on screen, in percent.
+pub const APP_SIZES: [u32; 8] = [75, 90, 100, 110, 125, 150, 175, 200];
+
+impl SizeStep {
+    /// The size after `current` (in percent); a size between two steps
+    /// counts as the nearest step below it.
+    pub fn apply(self, current: u32) -> u32 {
+        let index = APP_SIZES
+            .iter()
+            .rposition(|size| *size <= current)
+            .unwrap_or(0);
+        let last = APP_SIZES.len() - 1;
+        let next = match self {
+            Self::Cycle if index == last => 0,
+            Self::Cycle | Self::Bigger => (index + 1).min(last),
+            Self::Smaller => index.saturating_sub(1),
+        };
+        APP_SIZES[next]
+    }
+}
+
+/// How [`Effect::ResizeApp`] changes an app's size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SizeStep {
+    /// The next size, from the biggest back to the smallest (OK).
+    Cycle,
+    /// One size bigger, if there is one (Right).
+    Bigger,
+    /// One size smaller, if there is one (Left).
+    Smaller,
 }
 
 /// Something the caller must do after [`Home::handle`].
@@ -238,7 +312,7 @@ pub enum MenuItem {
 pub enum Effect {
     /// Start this app (component name).
     Launch(String),
-    /// Show the About page.
+    /// Show the About page (licence notices), from Settings.
     OpenAbout,
     /// OK on the About page: install the available update, else check for one.
     Update,
@@ -246,12 +320,20 @@ pub enum Effect {
     OpenHidden,
     /// Show the Settings page.
     OpenSettings,
+    /// Show the Settings page on the platform's tab with this id.
+    OpenSettingsTab(&'static str),
     /// A key while Settings is open: the Settings page handles it.
     Settings(Input),
     /// Show the RustTV Remote page.
     OpenRemote,
     /// A key while the RustTV Remote page is open: that page handles it.
     Remote(Input),
+    /// Carry out an entry of the top-right menu that the platform does:
+    /// open its quick panel (Audio, Network, Power) or app (Search, KDE
+    /// Connect).
+    Quick(QuickAction),
+    /// A key while a quick panel is open: the panel handles it.
+    QuickInput(Input),
     /// Persist [`Home::order`], [`Home::hidden`] and [`Home::folders`].
     SaveOrder,
     /// OK on an open folder's name: let the person type a new one, then
@@ -259,6 +341,8 @@ pub enum Effect {
     RenameFolder(u32),
     /// Tell the user this app (component name) could not be opened.
     ShowLaunchError(String),
+    /// Change this app's size on screen; the menu stays open.
+    ResizeApp(String, SizeStep),
 }
 
 /// Vertical scroll state of the grid.
@@ -282,7 +366,7 @@ pub enum State {
     Moving,
     /// A launch is in flight; input is ignored.
     Launching,
-    /// The About page is open.
+    /// The About page is open (from Settings).
     About,
     /// The long-press menu of the focused tile is open.
     Menu,
@@ -294,6 +378,10 @@ pub enum State {
     Remote,
     /// A folder is open over Home ([`Home::open_folder`]).
     Folder,
+    /// Focus is in the top-right menu ([`Home::quick_selected`]).
+    Bar,
+    /// A quick panel is open over Home, from the top-right menu.
+    Quick,
 }
 
 /// User-defined tile order as sparse integer keys.
@@ -340,16 +428,17 @@ impl Order {
     ///
     /// `apps` are the apps shown outside folders, `folders` the folders on
     /// Home. New apps are appended sorted by label, then folders missing
-    /// from the order, before the built-in tiles (About, Settings, then
-    /// RustTV Remote) while those are at the end, so a first run gives an
-    /// alphabetical grid ending with them. A built-in tile the user moved
-    /// elsewhere stays where it is; a missing one is added to the end block.
+    /// from the order, before the built-in tile (RustTV Remote) while it is
+    /// at the end, so a first run gives an alphabetical grid ending with it.
+    /// A built-in tile the user moved elsewhere stays where it is; a missing
+    /// one is added to the end block. Settings is not a tile (it is in the
+    /// top-right menu): an older order's Settings tile is dropped.
     fn reconcile(&mut self, apps: &[App], folders: &BTreeSet<u32>) -> bool {
         let before = self.keys.clone();
         self.keys.retain(|(id, _)| match id {
             TileId::App(component) => apps.iter().any(|app| app.id == *component),
-            TileId::About | TileId::Settings | TileId::Remote => true,
-            TileId::Hidden => false,
+            TileId::Remote => true,
+            TileId::Settings | TileId::Hidden => false,
             TileId::Folder(folder) => folders.contains(folder),
         });
         // The built-in tiles at the end stay at the end, in their order.
@@ -357,7 +446,7 @@ impl Order {
             .keys
             .iter()
             .rev()
-            .take_while(|(id, _)| matches!(id, TileId::About | TileId::Settings | TileId::Remote))
+            .take_while(|(id, _)| matches!(id, TileId::Remote))
             .count();
         let tail: Vec<(TileId, i64)> = self.keys.split_off(self.keys.len() - tail);
 
@@ -387,10 +476,8 @@ impl Order {
             }
         }
         ids.extend(tail.iter().map(|(id, _)| id.clone()));
-        for builtin in [TileId::About, TileId::Settings, TileId::Remote] {
-            if !ids.contains(&builtin) {
-                ids.push(builtin);
-            }
+        if !ids.contains(&TileId::Remote) {
+            ids.push(TileId::Remote);
         }
         // Keep each tile's key while it still sorts; give later ones the next step.
         let old: Vec<(TileId, i64)> = self.keys.drain(..).chain(tail).collect();
@@ -499,9 +586,18 @@ enum Mode {
         since: Duration,
         folder: Option<OpenFolder>,
     },
+    /// The About page, over Settings: Back returns there.
     About,
     Settings,
     Remote,
+    /// `selected` indexes `Home::quick_actions`.
+    Bar {
+        selected: usize,
+    },
+    /// The quick panel of `Home::quick_actions[selected]` is open.
+    Quick {
+        selected: usize,
+    },
     /// `selected` indexes [`menu_items`] of the focused tile, or of the
     /// focused app in `folder`.
     Menu {
@@ -516,12 +612,12 @@ enum Mode {
 }
 
 /// What the long-press menu offers for a tile; empty means no menu.
-fn menu_items(tile: Option<&TileId>) -> &'static [MenuItem] {
+/// `sizes`: apps can be scaled ([`Home::set_app_sizes`]).
+fn menu_items(tile: Option<&TileId>, sizes: bool) -> &'static [MenuItem] {
     match tile {
+        Some(TileId::App(_)) if sizes => &[MenuItem::Move, MenuItem::Hide, MenuItem::Size],
         Some(TileId::App(_)) => &[MenuItem::Move, MenuItem::Hide],
-        Some(TileId::About | TileId::Settings | TileId::Remote | TileId::Folder(_)) => {
-            &[MenuItem::Move]
-        }
+        Some(TileId::Settings | TileId::Remote | TileId::Folder(_)) => &[MenuItem::Move],
         Some(TileId::Hidden) | None => &[],
     }
 }
@@ -551,6 +647,12 @@ pub struct Home {
     ok_since: Option<Duration>,
     right_to_left: bool,
     folder_names: FolderNames,
+    /// How long a launch may take before it counts as failed.
+    launch_timeout: Duration,
+    /// Whether app menus have a Size entry.
+    app_sizes: bool,
+    /// The top-right menu's entries; empty hides it.
+    quick_actions: Vec<QuickAction>,
 }
 
 impl Home {
@@ -576,7 +678,66 @@ impl Home {
             ok_since: None,
             right_to_left,
             folder_names: FolderNames::default(),
+            launch_timeout: LAUNCH_TIMEOUT,
+            app_sizes: false,
+            quick_actions: Vec::new(),
         }
+    }
+
+    /// Sets the top-right menu's entries, in [`QuickAction::ALL`] order; Up
+    /// from the first row reaches them. Empty (the default) leaves no menu.
+    pub fn set_quick_actions(&mut self, actions: Vec<QuickAction>) {
+        self.quick_actions = actions;
+        if let Mode::Bar { selected } | Mode::Quick { selected } = &mut self.mode {
+            if self.quick_actions.is_empty() {
+                self.mode = Mode::Browse;
+            } else {
+                *selected = (*selected).min(self.quick_actions.len() - 1);
+            }
+        }
+    }
+
+    /// The top-right menu's entries.
+    pub fn quick_actions(&self) -> &[QuickAction] {
+        &self.quick_actions
+    }
+
+    /// The focused entry of the top-right menu (also while its panel is
+    /// open), as an index of [`Home::quick_actions`].
+    pub fn quick_selected(&self) -> Option<usize> {
+        match self.mode {
+            Mode::Bar { selected } | Mode::Quick { selected } => Some(selected),
+            _ => None,
+        }
+    }
+
+    /// Sets how long a launch may take before it counts as failed
+    /// (default [`LAUNCH_TIMEOUT`]).
+    pub fn set_launch_timeout(&mut self, timeout: Duration) {
+        self.launch_timeout = timeout;
+    }
+
+    /// How long a launch may take before it counts as failed.
+    pub fn launch_timeout(&self) -> Duration {
+        self.launch_timeout
+    }
+
+    /// Gives app menus a Size entry ([`MenuItem::Size`]), for platforms
+    /// that can scale an app's UI.
+    pub fn set_app_sizes(&mut self, on: bool) {
+        self.app_sizes = on;
+    }
+
+    /// The tile the open menu is for.
+    pub fn menu_tile(&self) -> Option<TileId> {
+        matches!(self.mode, Mode::Menu { .. })
+            .then(|| self.current())
+            .flatten()
+    }
+
+    /// The menu entries of the tile OK acts on.
+    fn items(&self) -> &'static [MenuItem] {
+        menu_items(self.current().as_ref(), self.app_sizes)
     }
 
     /// Sets the first names of new folders (in the UI's language).
@@ -713,15 +874,16 @@ impl Home {
     }
 
     /// A pointer (mouse, air mouse) is over tile `id`: focus follows it, as
-    /// the arrows would move it, on Home and in an open folder. Returns
-    /// whether focus moved.
+    /// the arrows would move it, on Home (also from the top-right menu) and
+    /// in an open folder. Returns whether focus moved.
     pub fn hover(&mut self, id: &TileId) -> bool {
         match self.mode {
-            Mode::Browse => {
+            Mode::Browse | Mode::Bar { .. } => {
                 let Some(index) = self.tiles.iter().position(|tile| tile == id) else {
                     return false;
                 };
-                let moved = self.focus != index;
+                let moved = self.focus != index || !matches!(self.mode, Mode::Browse);
+                self.mode = Mode::Browse;
                 self.focus = index;
                 self.update_scroll();
                 self.ok_since = None;
@@ -748,10 +910,49 @@ impl Home {
         }
     }
 
+    /// A click on entry `index` of the top-right menu: as moving to it and
+    /// pressing OK. From Home, the menu or an open quick panel.
+    /// The pointer over entry `index` of the top-right menu: it gets the
+    /// focus, as the D-pad would give it. Returns whether anything changed.
+    pub fn hover_quick(&mut self, index: usize) -> bool {
+        if index >= self.quick_actions.len()
+            || !matches!(self.mode, Mode::Browse | Mode::Bar { .. })
+        {
+            return false;
+        }
+        let moved = self.mode != (Mode::Bar { selected: index });
+        self.mode = Mode::Bar { selected: index };
+        self.ok_since = None;
+        moved
+    }
+
+    pub fn point_quick(&mut self, index: usize) -> Option<Effect> {
+        if index >= self.quick_actions.len()
+            || !matches!(
+                self.mode,
+                Mode::Browse | Mode::Bar { .. } | Mode::Quick { .. }
+            )
+        {
+            return None;
+        }
+        self.mode = Mode::Bar { selected: index };
+        self.handle_bar(index, Input::OkReleased)
+    }
+
+    /// The power key: opens the power menu from Home, as its entry in the
+    /// top-right menu does. Nothing where the platform has none.
+    pub fn open_power(&mut self) -> Option<Effect> {
+        let index = self
+            .quick_actions
+            .iter()
+            .position(|action| *action == QuickAction::Power)?;
+        self.point_quick(index)
+    }
+
     /// The phone remote picked `item` in the open menu: as selecting it and
     /// pressing OK.
     pub fn menu_pick(&mut self, item: MenuItem, now: Duration) -> Option<Effect> {
-        let items = menu_items(self.current().as_ref());
+        let items = self.items();
         let index = items.iter().position(|entry| *entry == item)?;
         let Mode::Menu { selected, .. } = &mut self.mode else {
             return None;
@@ -998,7 +1199,7 @@ impl Home {
     /// The open long-press menu's items and the selected index.
     pub fn menu(&self) -> Option<(&'static [MenuItem], usize)> {
         match self.mode {
-            Mode::Menu { selected, .. } => Some((menu_items(self.current().as_ref()), selected)),
+            Mode::Menu { selected, .. } => Some((self.items(), selected)),
             _ => None,
         }
     }
@@ -1062,10 +1263,36 @@ impl Home {
         }
     }
 
+    /// Opens the About page from the Settings page (its About tab); Back
+    /// returns to Settings.
+    pub fn open_about(&mut self) -> Option<Effect> {
+        if !matches!(self.mode, Mode::Settings) {
+            return None;
+        }
+        self.mode = Mode::About;
+        Some(Effect::OpenAbout)
+    }
+
+    /// Closes the open quick panel (it decides when: Back); focus is back
+    /// on its entry in the top-right menu.
+    pub fn close_quick(&mut self) {
+        if let Mode::Quick { selected } = self.mode {
+            self.mode = Mode::Bar { selected };
+        }
+    }
+
     /// Leaves the RustTV Remote page (it decides when: Back).
     pub fn close_remote(&mut self) {
         if matches!(self.mode, Mode::Remote) {
             self.mode = Mode::Browse;
+        }
+    }
+
+    /// The app being launched (component name), if a launch is in flight.
+    pub fn launching(&self) -> Option<&str> {
+        match &self.mode {
+            Mode::Launching { app, .. } => Some(app),
+            _ => None,
         }
     }
 
@@ -1081,6 +1308,8 @@ impl Home {
             Mode::Menu { .. } => State::Menu,
             Mode::Hidden { .. } => State::Hidden,
             Mode::Folder(_) => State::Folder,
+            Mode::Bar { .. } => State::Bar,
+            Mode::Quick { .. } => State::Quick,
         }
     }
 
@@ -1110,7 +1339,9 @@ impl Home {
                 | Mode::Remote
                 | Mode::Menu { .. }
                 | Mode::Hidden { .. }
-                | Mode::Folder(_),
+                | Mode::Folder(_)
+                | Mode::Bar { .. }
+                | Mode::Quick { .. },
                 Input::Paused,
             ) => {
                 if matches!(self.mode, Mode::Moving { .. }) {
@@ -1125,7 +1356,7 @@ impl Home {
                 Some(effect)
             }
             (Mode::Launching { app, since, .. }, Input::Tick) => {
-                if now.saturating_sub(*since) < LAUNCH_TIMEOUT {
+                if now.saturating_sub(*since) < self.launch_timeout {
                     return None;
                 }
                 let effect = Effect::ShowLaunchError(app.clone());
@@ -1133,12 +1364,17 @@ impl Home {
                 Some(effect)
             }
             (Mode::About, Input::Back) => {
-                self.mode = Mode::Browse;
+                self.mode = Mode::Settings;
                 None
             }
             (Mode::About, Input::OkPressed) => Some(Effect::Update),
             (Mode::Settings, input) => Some(Effect::Settings(input)),
             (Mode::Remote, input) => Some(Effect::Remote(input)),
+            (Mode::Quick { .. }, input) => Some(Effect::QuickInput(input)),
+            (Mode::Bar { selected }, _) => {
+                let selected = *selected;
+                self.handle_bar(selected, input)
+            }
             (Mode::Moving { .. }, _) => self.handle_moving(input, now),
             (Mode::Menu { .. }, _) => self.handle_menu(input, now),
             (Mode::Hidden { .. }, _) => self.handle_hidden(input),
@@ -1163,6 +1399,12 @@ impl Home {
             if let Some(target) = neighbour(self.focus, self.tiles.len(), direction) {
                 self.focus = target;
                 self.update_scroll();
+            } else if matches!(direction, Direction::Up)
+                && self.focus < COLUMNS
+                && !self.quick_actions.is_empty()
+            {
+                // Up from the first row: into the top-right menu.
+                self.mode = Mode::Bar { selected: 0 };
             }
             return None;
         }
@@ -1174,6 +1416,50 @@ impl Home {
             }
             _ => self.handle_ok(input, now),
         }
+    }
+
+    /// Left and Right walk the top-right menu, OK opens the entry, Down and
+    /// Back return to the tiles.
+    fn handle_bar(&mut self, selected: usize, input: Input) -> Option<Effect> {
+        let last = self.quick_actions.len().saturating_sub(1);
+        match (input, self.direction(input)) {
+            (_, Some(Direction::Left)) => {
+                self.mode = Mode::Bar {
+                    selected: selected.saturating_sub(1),
+                };
+            }
+            (_, Some(Direction::Right)) => {
+                self.mode = Mode::Bar {
+                    selected: (selected + 1).min(last),
+                };
+            }
+            (Input::Back, _) | (_, Some(Direction::Down)) => self.mode = Mode::Browse,
+            (Input::OkReleased, _) => {
+                let action = *self.quick_actions.get(selected)?;
+                return match action {
+                    QuickAction::Modify => {
+                        self.mode = Mode::Browse;
+                        self.open_menu();
+                        None
+                    }
+                    QuickAction::Settings => {
+                        self.mode = Mode::Settings;
+                        Some(Effect::OpenSettings)
+                    }
+                    QuickAction::Network => {
+                        self.mode = Mode::Settings;
+                        Some(Effect::OpenSettingsTab("network"))
+                    }
+                    action if action.opens_panel() => {
+                        self.mode = Mode::Quick { selected };
+                        Some(Effect::Quick(action))
+                    }
+                    action => Some(Effect::Quick(action)),
+                };
+            }
+            _ => {}
+        }
+        None
     }
 
     /// OK on the focused tile (or the focused app in an open folder): a
@@ -1255,7 +1541,7 @@ impl Home {
         let place = *place;
         if let Some(direction) = self.direction(input) {
             match place {
-                Place::Home { .. } => self.move_on_home(direction, now),
+                Place::Home { .. } => self.move_on_home(direction),
                 Place::Folder { id, index } => self.move_in_folder(id, index, direction),
             }
             return None;
@@ -1270,23 +1556,19 @@ impl Home {
         }
     }
 
-    /// Moves the app on Home one tile in `direction`, onto that tile.
-    fn move_on_home(&mut self, direction: Direction, now: Duration) {
-        let over = neighbour(self.focus, self.movable(), direction).map(|target| {
+    /// Moves the app on Home one tile in `direction`: it takes that tile's
+    /// place and the tiles between shift into the gap at once. An arrow never
+    /// leaves it resting on a tile, so pausing between presses can't make a
+    /// folder (that is the phone remote's drag, [`Home::drag_over`]).
+    fn move_on_home(&mut self, direction: Direction) {
+        if let Some(target) = neighbour(self.focus, self.movable(), direction) {
             let tile = self.tiles.remove(self.focus);
             self.tiles.insert(target, tile);
-            // The tile that was there moved one step towards the gap.
-            let over = if self.focus < target {
-                target - 1
-            } else {
-                target + 1
-            };
             self.focus = target;
             self.update_scroll();
-            (over, now)
-        });
+        }
         if let Mode::Moving { place, .. } = &mut self.mode {
-            *place = Place::Home { over };
+            *place = Place::Home { over: None };
         }
     }
 
@@ -1433,23 +1715,44 @@ impl Home {
     /// Up and Down pick an item, OK runs it (the release of the long press
     /// that opened the menu is ignored), Back closes the menu.
     fn handle_menu(&mut self, input: Input, now: Duration) -> Option<Effect> {
-        let items = menu_items(self.current().as_ref());
-        let Mode::Menu { selected, folder } = &mut self.mode else {
+        let items = self.items();
+        let Mode::Menu { selected, folder } = self.mode else {
             return None;
         };
-        let folder = *folder;
+        let select = |this: &mut Self, index: usize| {
+            if let Mode::Menu { selected, .. } = &mut this.mode {
+                *selected = index;
+            }
+        };
+        let item = items.get(selected).copied();
         match input {
-            Input::Up => *selected = selected.saturating_sub(1),
-            Input::Down => *selected = (*selected + 1).min(items.len().saturating_sub(1)),
-            Input::OkPressed => match items.get(*selected) {
+            Input::Up => select(self, selected.saturating_sub(1)),
+            Input::Down => select(self, (selected + 1).min(items.len().saturating_sub(1))),
+            Input::OkPressed => match item {
                 Some(MenuItem::Move) => self.start_move(now),
                 Some(MenuItem::Hide) => return self.hide_current(),
+                Some(MenuItem::Size) => return self.resize_current(SizeStep::Cycle),
                 None => self.mode = folder.map_or(Mode::Browse, Mode::Folder),
             },
+            Input::Left | Input::Right if item == Some(MenuItem::Size) => {
+                let step = match self.direction(input) {
+                    Some(Direction::Right) => SizeStep::Bigger,
+                    _ => SizeStep::Smaller,
+                };
+                return self.resize_current(step);
+            }
             Input::Back => self.mode = folder.map_or(Mode::Browse, Mode::Folder),
             _ => {}
         }
         None
+    }
+
+    /// [`Effect::ResizeApp`] for the app the menu is open for.
+    fn resize_current(&self, step: SizeStep) -> Option<Effect> {
+        match self.current()? {
+            TileId::App(id) => Some(Effect::ResizeApp(id, step)),
+            _ => None,
+        }
     }
 
     /// The D-pad moves within the page, OK puts the focused app back on Home,
@@ -1567,10 +1870,6 @@ impl Home {
                 };
                 Some(Effect::Launch(component))
             }
-            TileId::About => {
-                self.mode = Mode::About;
-                Some(Effect::OpenAbout)
-            }
             TileId::Settings => {
                 self.mode = Mode::Settings;
                 Some(Effect::OpenSettings)
@@ -1591,7 +1890,7 @@ impl Home {
     }
 
     fn open_menu(&mut self) {
-        if !menu_items(self.current().as_ref()).is_empty() {
+        if !self.items().is_empty() {
             self.mode = Mode::Menu {
                 selected: 0,
                 folder: self.open_folder(),
@@ -1737,6 +2036,17 @@ mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
     use super::*;
+
+    #[test]
+    fn app_sizes_step_and_cycle() {
+        assert_eq!(SizeStep::Bigger.apply(100), 110);
+        assert_eq!(SizeStep::Smaller.apply(100), 90);
+        assert_eq!(SizeStep::Smaller.apply(75), 75);
+        assert_eq!(SizeStep::Bigger.apply(200), 200);
+        assert_eq!(SizeStep::Cycle.apply(200), 75);
+        // Between two steps: from the step below.
+        assert_eq!(SizeStep::Bigger.apply(130), 150);
+    }
 
     const ALL_DIRECTIONS: [Direction; 4] = [
         Direction::Up,
@@ -1973,14 +2283,14 @@ mod tests {
         assert_eq!(home.focus(), 8);
         home.set_apps(&apps(3));
         assert_eq!(home.focused(), Some(&TileId::Remote));
-        assert_eq!(home.focus(), 5);
+        assert_eq!(home.focus(), 3);
         assert_eq!(home.scroll(), Scroll::Shelf);
     }
 
     #[test]
     fn focus_can_be_restored_by_identity_before_and_after_the_app_list() {
         // Before the app list: the stored order already has the tile.
-        let order = Order::from_keys([(id("a"), 1000), (id("b"), 2000), (TileId::About, 3000)]);
+        let order = Order::from_keys([(id("a"), 1000), (id("b"), 2000), (TileId::Settings, 3000)]);
         let mut home = Home::new(order, BTreeMap::new(), BTreeSet::new(), false);
         assert!(home.focus_on(&id("b")));
         home.set_apps(&[app("a", "A"), app("b", "B")]);
@@ -2009,61 +2319,29 @@ mod tests {
             &[app("c", "cinema"), app("a", "Bravo"), app("b", "alpha")],
             &BTreeSet::new(),
         );
-        assert_eq!(
-            order.ids(),
-            [
-                id("b"),
-                id("a"),
-                id("c"),
-                TileId::About,
-                TileId::Settings,
-                TileId::Remote
-            ]
-        );
+        assert_eq!(order.ids(), [id("b"), id("a"), id("c"), TileId::Remote]);
         let keys: Vec<i64> = order.keys().iter().map(|&(_, key)| key).collect();
         assert!(keys.windows(2).all(|pair| pair[1] - pair[0] == KEY_STEP));
     }
 
     #[test]
     fn new_apps_go_after_the_last_tile_and_removed_apps_are_dropped() {
-        let mut order = Order::from_keys([(TileId::About, 500), (id("b"), 1000)]);
+        let mut order = Order::from_keys([(TileId::Settings, 500), (id("b"), 1000)]);
         assert!(order.reconcile(&[app("b", "B"), app("a", "A")], &BTreeSet::new()));
-        assert_eq!(
-            order.ids(),
-            [
-                TileId::About,
-                id("b"),
-                id("a"),
-                TileId::Settings,
-                TileId::Remote
-            ]
-        );
+        assert_eq!(order.ids(), [id("b"), id("a"), TileId::Remote]);
 
         assert!(order.reconcile(&[app("a", "A")], &BTreeSet::new()));
-        assert_eq!(
-            order.ids(),
-            [TileId::About, id("a"), TileId::Settings, TileId::Remote]
-        );
+        assert_eq!(order.ids(), [id("a"), TileId::Remote]);
     }
 
     #[test]
-    fn new_apps_go_before_about_when_it_is_last() {
-        let mut order = Order::from_keys([(id("a"), 1000), (TileId::About, 2000)]);
+    fn new_apps_go_last_and_a_settings_tile_from_an_older_version_goes() {
+        let mut order = Order::from_keys([(id("a"), 1000), (TileId::Settings, 2000)]);
         assert!(order.reconcile(
             &[app("a", "A"), app("c", "C"), app("b", "B")],
             &BTreeSet::new()
         ));
-        assert_eq!(
-            order.ids(),
-            [
-                id("a"),
-                id("b"),
-                id("c"),
-                TileId::About,
-                TileId::Settings,
-                TileId::Remote
-            ]
-        );
+        assert_eq!(order.ids(), [id("a"), id("b"), id("c"), TileId::Remote]);
         let keys: Vec<i64> = order.keys().iter().map(|&(_, key)| key).collect();
         assert!(keys.windows(2).all(|pair| pair[0] < pair[1]));
     }
@@ -2072,10 +2350,7 @@ mod tests {
     fn duplicate_apps_from_the_platform_appear_once() {
         let mut order = Order::default();
         order.reconcile(&[app("a", "A"), app("a", "A")], &BTreeSet::new());
-        assert_eq!(
-            order.ids(),
-            [id("a"), TileId::About, TileId::Settings, TileId::Remote]
-        );
+        assert_eq!(order.ids(), [id("a"), TileId::Remote]);
     }
 
     #[test]
@@ -2202,31 +2477,130 @@ mod tests {
     }
 
     #[test]
-    fn about_opens_and_closes_with_back() {
-        let mut home = home(2);
-        press(&mut home, &[Input::Right, Input::Right]);
-        assert_eq!(home.focused(), Some(&TileId::About));
-        assert_eq!(
-            press(&mut home, &[Input::OkPressed, Input::OkReleased]),
-            Some(Effect::OpenAbout)
-        );
+    fn about_opens_from_settings_and_back_returns_there() {
+        let mut home = home_with_bar(2);
+        assert_eq!(home.open_about(), None, "only from Settings");
+        assert_eq!(home.point_quick(2), Some(Effect::OpenSettings));
+        assert_eq!(home.open_about(), Some(Effect::OpenAbout));
         assert_eq!(home.state(), State::About);
         press(&mut home, &[Input::Right, Input::Back]);
-        assert_eq!(home.state(), State::Browse);
-        assert_eq!(home.focus(), 2);
+        assert_eq!(home.state(), State::Settings);
     }
 
     #[test]
     fn ok_on_about_asks_for_an_update_once_per_press() {
-        let mut home = home(2);
-        press(&mut home, &[Input::Right, Input::Right]);
-        press(&mut home, &[Input::OkPressed, Input::OkReleased]);
+        let mut home = home_with_bar(2);
+        home.point_quick(2);
+        home.open_about();
         assert_eq!(home.handle(Input::OkPressed, ms(0)), Some(Effect::Update));
         // A held OK's repeats are ignored; the release does nothing.
         assert_eq!(home.handle(Input::OkPressed, ms(50)), None);
         assert_eq!(home.handle(Input::OkReleased, ms(100)), None);
         assert_eq!(home.state(), State::About);
         assert_eq!(home.handle(Input::OkPressed, ms(200)), Some(Effect::Update));
+    }
+
+    // --- top-right menu ---------------------------------------------------
+
+    /// `home(count)` with Modify, Audio, Settings and Power in the menu.
+    fn home_with_bar(count: usize) -> Home {
+        let mut home = home(count);
+        home.set_quick_actions(vec![
+            QuickAction::Modify,
+            QuickAction::Audio,
+            QuickAction::Settings,
+            QuickAction::Power,
+        ]);
+        home
+    }
+
+    #[test]
+    fn up_from_the_first_row_reaches_the_menu_and_down_or_back_leave_it() {
+        let mut home = home(8);
+        press(&mut home, &[Input::Up]);
+        assert_eq!(home.state(), State::Browse, "no menu without entries");
+        let mut home = home_with_bar(8);
+        press(&mut home, &[Input::Down, Input::Up]);
+        assert_eq!(
+            home.state(),
+            State::Browse,
+            "from the second row Up only moves"
+        );
+        press(&mut home, &[Input::Right, Input::Up]);
+        assert_eq!(home.state(), State::Bar);
+        assert_eq!(home.quick_selected(), Some(0));
+        press(
+            &mut home,
+            &[Input::Right, Input::Right, Input::Right, Input::Right],
+        );
+        assert_eq!(home.quick_selected(), Some(3), "stops at the last entry");
+        press(&mut home, &[Input::Left]);
+        assert_eq!(home.quick_selected(), Some(2));
+        press(&mut home, &[Input::Down]);
+        assert_eq!(home.state(), State::Browse);
+        assert_eq!(home.focus(), 1, "focus is back on its tile");
+        press(&mut home, &[Input::Up, Input::Back]);
+        assert_eq!(home.state(), State::Browse);
+        assert_eq!(home.quick_selected(), None);
+    }
+
+    #[test]
+    fn right_to_left_mirrors_the_menu() {
+        let mut home = Home::new(Order::default(), BTreeMap::new(), BTreeSet::new(), true);
+        home.set_apps(&apps(3));
+        home.set_quick_actions(vec![QuickAction::Modify, QuickAction::Settings]);
+        press(&mut home, &[Input::Up, Input::Left]);
+        assert_eq!(home.quick_selected(), Some(1));
+    }
+
+    #[test]
+    fn menu_entries_open_settings_the_tile_menu_and_quick_panels() {
+        let mut home = home_with_bar(3);
+        press(&mut home, &[Input::Up]);
+        // Modify: the focused tile's menu, as a long press.
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed, Input::OkReleased]),
+            None
+        );
+        assert_eq!(home.state(), State::Menu);
+        press(&mut home, &[Input::Back, Input::Up, Input::Right]);
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed, Input::OkReleased]),
+            Some(Effect::Quick(QuickAction::Audio))
+        );
+        assert_eq!(home.state(), State::Quick);
+        assert_eq!(
+            home.handle(Input::Down, Duration::ZERO),
+            Some(Effect::QuickInput(Input::Down)),
+            "the panel takes the keys"
+        );
+        home.close_quick();
+        assert_eq!(home.state(), State::Bar);
+        assert_eq!(home.quick_selected(), Some(1));
+        press(&mut home, &[Input::Right]);
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed, Input::OkReleased]),
+            Some(Effect::OpenSettings)
+        );
+        assert_eq!(home.state(), State::Settings);
+    }
+
+    #[test]
+    fn home_closes_the_menu_and_its_panel() {
+        let mut home = home_with_bar(3);
+        press(
+            &mut home,
+            &[Input::Up, Input::Right, Input::OkPressed, Input::OkReleased],
+        );
+        assert_eq!(home.state(), State::Quick);
+        press(&mut home, &[Input::Paused]);
+        assert_eq!(home.state(), State::Browse);
+        press(&mut home, &[Input::Up, Input::Paused]);
+        assert_eq!(home.state(), State::Browse);
+        // Entries can go while it is open.
+        press(&mut home, &[Input::Up]);
+        home.set_quick_actions(Vec::new());
+        assert_eq!(home.state(), State::Browse);
     }
 
     // --- move mode --------------------------------------------------------
@@ -2317,7 +2691,7 @@ mod tests {
 
     #[test]
     fn an_unattended_move_drops_and_saves_after_the_idle_timeout() {
-        // a00, About, Settings: on top of About, no folder forms.
+        // a00, Remote: on top of Remote, no folder forms.
         let mut home = home(1);
         pick_up(&mut home);
         let last_key = ms(1000);
@@ -2353,8 +2727,8 @@ mod tests {
         press(&mut home, &[Input::Left, Input::Up, Input::Down]);
         assert_eq!(home.focus(), 0);
         press(&mut home, &[Input::Right; 10]);
-        assert_eq!(home.focus(), 5);
-        assert_eq!(home.tiles().len(), 6);
+        assert_eq!(home.focus(), 3);
+        assert_eq!(home.tiles().len(), 4);
     }
 
     // --- menu and hidden apps ---------------------------------------------
@@ -2397,7 +2771,7 @@ mod tests {
         assert_eq!(home.focus(), 0);
 
         press(&mut home, &[Input::Right, Input::Right]);
-        assert_eq!(home.focused(), Some(&TileId::About));
+        assert_eq!(home.focused(), Some(&TileId::Remote));
         open_menu(&mut home);
         assert_eq!(home.menu(), Some((&[MenuItem::Move][..], 0)));
         press(&mut home, &[Input::Down, Input::OkPressed]);
@@ -2412,14 +2786,7 @@ mod tests {
         assert_eq!(home.state(), State::Browse);
         assert_eq!(
             home.tiles(),
-            [
-                id("a00"),
-                id("a02"),
-                TileId::About,
-                TileId::Settings,
-                TileId::Remote,
-                TileId::Hidden
-            ]
+            [id("a00"), id("a02"), TileId::Remote, TileId::Hidden]
         );
         assert_eq!(component(&home), "a02");
         assert!(home.hidden().contains("a01"));
@@ -2453,21 +2820,11 @@ mod tests {
         assert!(home.set_apps(&apps(3)));
         assert_eq!(
             home.tiles(),
-            [
-                id("a00"),
-                id("a02"),
-                TileId::About,
-                TileId::Settings,
-                TileId::Remote,
-                TileId::Hidden
-            ]
+            [id("a00"), id("a02"), TileId::Remote, TileId::Hidden]
         );
         // An uninstalled hidden app is not listed, and the tile goes with the last one.
         home.set_apps(&[app("a00", "App 00")]);
-        assert_eq!(
-            home.tiles(),
-            [id("a00"), TileId::About, TileId::Settings, TileId::Remote]
-        );
+        assert_eq!(home.tiles(), [id("a00"), TileId::Remote]);
         assert!(home.hidden().contains("a01"));
     }
 
@@ -2475,8 +2832,8 @@ mod tests {
     fn the_hidden_apps_tile_cannot_be_moved_or_passed_by_a_moving_tile() {
         let mut home = home(3);
         hide(&mut home);
-        // a01, a02, About, Settings, RustTV Remote, Hidden apps.
-        press(&mut home, &[Input::Right; 5]);
+        // a01, a02, RustTV Remote, Hidden apps.
+        press(&mut home, &[Input::Right; 4]);
         assert_eq!(home.focused(), Some(&TileId::Hidden));
         home.handle(Input::OkPressed, ms(0));
         home.handle(Input::Tick, LONG_PRESS);
@@ -2486,32 +2843,16 @@ mod tests {
         press(&mut home, &[Input::Left; 5]);
         pick_up(&mut home);
         press(&mut home, &[Input::Right; 6]);
-        assert_eq!(home.focus(), 4);
+        assert_eq!(home.focus(), 2);
         assert_eq!(
             press(&mut home, &[Input::OkPressed]),
             Some(Effect::SaveOrder)
         );
         assert_eq!(
             home.tiles(),
-            [
-                id("a02"),
-                TileId::About,
-                TileId::Settings,
-                TileId::Remote,
-                id("a01"),
-                TileId::Hidden
-            ]
+            [id("a02"), TileId::Remote, id("a01"), TileId::Hidden]
         );
-        assert_eq!(
-            home.order().ids(),
-            [
-                id("a02"),
-                TileId::About,
-                TileId::Settings,
-                TileId::Remote,
-                id("a01")
-            ]
-        );
+        assert_eq!(home.order().ids(), [id("a02"), TileId::Remote, id("a01")]);
     }
 
     #[test]
@@ -2547,8 +2888,6 @@ mod tests {
                 id("a01"),
                 id("a03"),
                 id("a02"),
-                TileId::About,
-                TileId::Settings,
                 TileId::Remote,
                 TileId::Hidden
             ]
@@ -2564,15 +2903,7 @@ mod tests {
         assert!(home.hidden().is_empty());
         assert_eq!(
             home.tiles(),
-            [
-                id("a01"),
-                id("a03"),
-                id("a02"),
-                id("a00"),
-                TileId::About,
-                TileId::Settings,
-                TileId::Remote
-            ]
+            [id("a01"), id("a03"), id("a02"), id("a00"), TileId::Remote]
         );
         assert_eq!(component(&home), "a00");
     }
@@ -2607,11 +2938,18 @@ mod tests {
         }
     }
 
-    /// Picks up the focused app and leaves it on the tile in `direction`
-    /// until the folder forms; returns the time after.
+    /// Picks up the focused app and rests it on the tile in `direction`
+    /// (dragged from the phone) until the folder forms; returns the time after.
     fn make_folder(home: &mut Home, direction: Input) -> Duration {
-        pick_up(home);
-        home.handle(direction, ms(1000));
+        let target = match direction {
+            Input::Right => home.focus() + 1,
+            Input::Left => home.focus() - 1,
+            _ => unreachable!("only sideways"),
+        };
+        let target = home.tiles()[target].clone();
+        let picked = home.focused().cloned().expect("a tile");
+        assert!(home.pick_up(&picked, ms(0)));
+        home.drag_over(&target, true, ms(1000));
         assert!(home.moving_over().is_some());
         assert_eq!(home.folder_due(), Some(ms(1000) + FOLDER_HOVER));
         assert_eq!(
@@ -2625,7 +2963,7 @@ mod tests {
 
     #[test]
     fn pointing_at_a_tile_opens_it_or_its_menu() {
-        let mut home = home(4); // a00 a01 a02 a03 About Settings Remote
+        let mut home = home(4); // a00 a01 a02 a03 Remote
         assert_eq!(
             home.point(&id("a02"), false, ms(5)),
             Some(Effect::Launch("a02".into()))
@@ -2642,8 +2980,8 @@ mod tests {
         press(&mut home, &[Input::Back]);
         assert_eq!(home.point(&id("zz"), false, ms(40)), None);
         assert_eq!(
-            home.point(&TileId::Settings, false, ms(50)),
-            Some(Effect::OpenSettings)
+            home.point(&TileId::Remote, false, ms(50)),
+            Some(Effect::OpenRemote)
         );
         assert_eq!(home.point(&id("a00"), false, ms(60)), None);
     }
@@ -2685,7 +3023,7 @@ mod tests {
 
     #[test]
     fn a_phone_drag_moves_a_tile_and_resting_makes_a_folder() {
-        let mut home = home(4); // a00 a01 a02 a03 About Settings Remote
+        let mut home = home(4); // a00 a01 a02 a03 Remote
         assert!(home.pick_up(&id("a00"), ms(0)));
         assert_eq!(home.state(), State::Moving);
         // Near a02's edge: a00 takes its place, no folder coming.
@@ -2755,7 +3093,9 @@ mod tests {
         assert_eq!(home.state(), State::Folder);
         // Not in Settings.
         home.handle(Input::Back, now);
-        home.point(&TileId::Settings, false, now);
+        home.set_quick_actions(vec![QuickAction::Settings]);
+        home.point_quick(0);
+        assert_eq!(home.state(), State::Settings);
         assert!(!home.pick_up(&id("a03"), now));
     }
 
@@ -2769,20 +3109,13 @@ mod tests {
 
     #[test]
     fn staying_on_an_app_makes_a_folder_that_opens_with_the_app_still_moving() {
-        let mut home = home(4); // a00 a01 a02 a03 About Settings Remote
+        let mut home = home(4); // a00 a01 a02 a03 Remote
         let now = make_folder(&mut home, Input::Right);
         // The folder took a01's place; the app is at its end, still moving.
         assert_eq!(home.state(), State::Moving);
         assert_eq!(
             home.tiles(),
-            [
-                TileId::Folder(1),
-                id("a02"),
-                id("a03"),
-                TileId::About,
-                TileId::Settings,
-                TileId::Remote
-            ]
+            [TileId::Folder(1), id("a02"), id("a03"), TileId::Remote]
         );
         assert_eq!(home.focus(), 0);
         assert_eq!(folder_apps(&home, 1), ["a01", "a00"]);
@@ -2807,14 +3140,18 @@ mod tests {
     }
 
     #[test]
-    fn an_arrow_before_the_hover_time_passes_over_and_ok_drops_in_place() {
+    fn arrows_only_reorder_however_long_the_app_stays() {
         let mut home = home(4);
         pick_up(&mut home);
         home.handle(Input::Right, ms(1000));
-        home.handle(Input::Tick, ms(1000) + FOLDER_HOVER - ms(1));
-        home.handle(Input::Right, ms(1000) + FOLDER_HOVER - ms(1));
-        // Now on top of a02; a01 went back into the gap.
-        assert_eq!(home.moving_over(), Some(1));
+        // a01 moved into the gap at once; waiting makes no folder.
+        assert_eq!(home.tiles()[..2], [id("a01"), id("a00")]);
+        assert_eq!(home.moving_over(), None);
+        assert_eq!(home.folder_due(), None);
+        home.handle(Input::Tick, ms(1000) + FOLDER_HOVER * 3);
+        assert!(home.folders().is_empty());
+        home.handle(Input::Right, ms(5000));
+        assert_eq!(home.moving_over(), None);
         assert_eq!(
             press(&mut home, &[Input::OkPressed]),
             Some(Effect::SaveOrder)
@@ -2825,7 +3162,7 @@ mod tests {
 
     #[test]
     fn about_settings_and_folders_never_go_into_a_folder() {
-        // a00 About Settings: About is not an app.
+        // a00 Remote: Remote is not an app.
         let mut home = home(1);
         pick_up(&mut home);
         home.handle(Input::Right, ms(1000));
@@ -2878,7 +3215,7 @@ mod tests {
         );
         assert!(!home.hidden().contains("a01"));
         // A choice the menu doesn't offer does nothing.
-        home.point(&TileId::About, true, Duration::ZERO);
+        home.point(&TileId::Remote, true, Duration::ZERO);
         assert_eq!(home.menu_pick(MenuItem::Hide, Duration::ZERO), None);
         assert_eq!(home.state(), State::Menu);
     }
@@ -2896,9 +3233,9 @@ mod tests {
     fn an_app_left_on_a_folder_goes_in_at_its_end() {
         let mut home = home_with_folder();
         press(&mut home, &[Input::Back]);
-        press(&mut home, &[Input::Right]); // a02
-        pick_up(&mut home);
-        home.handle(Input::Left, ms(1000));
+        // a02, dragged from the phone onto the folder and left there.
+        assert!(home.pick_up(&id("a02"), ms(0)));
+        home.drag_over(&TileId::Folder(1), true, ms(1000));
         home.handle(Input::Tick, ms(1000) + FOLDER_HOVER);
         assert_eq!(folder_apps(&home, 1), ["a01", "a00", "a02"]);
         assert_eq!(home.folders().len(), 1);
@@ -2908,13 +3245,7 @@ mod tests {
         );
         assert_eq!(
             home.order().ids(),
-            [
-                TileId::Folder(1),
-                id("a03"),
-                TileId::About,
-                TileId::Settings,
-                TileId::Remote
-            ]
+            [TileId::Folder(1), id("a03"), TileId::Remote]
         );
     }
 
@@ -3049,13 +3380,10 @@ mod tests {
         assert_eq!(home.folders()[&7].apps, ["a00"]);
         assert_eq!(home.tiles()[..2], [TileId::Folder(7), id("a01")]);
         // a00 is not also on Home outside its folder.
-        assert_eq!(home.tiles().len(), 5);
+        assert_eq!(home.tiles().len(), 3);
         home.set_apps(&apps(2)[1..]);
         assert!(home.folders().is_empty());
-        assert_eq!(
-            home.tiles(),
-            [id("a01"), TileId::About, TileId::Settings, TileId::Remote]
-        );
+        assert_eq!(home.tiles(), [id("a01"), TileId::Remote]);
     }
 
     #[test]
@@ -3070,16 +3398,7 @@ mod tests {
         let order = Order::from_keys([(TileId::Folder(9), 500), (id("a00"), 1000)]);
         let mut home = Home::new(order, folders, BTreeSet::new(), false);
         home.set_apps(&apps(2));
-        assert_eq!(
-            home.tiles(),
-            [
-                id("a00"),
-                TileId::Folder(2),
-                TileId::About,
-                TileId::Settings,
-                TileId::Remote
-            ]
-        );
+        assert_eq!(home.tiles(), [id("a00"), TileId::Folder(2), TileId::Remote]);
     }
 
     #[test]
@@ -3094,9 +3413,7 @@ mod tests {
             let mut home = Home::new(Order::default(), BTreeMap::new(), BTreeSet::new(), false);
             home.set_folder_names(names.clone());
             home.set_apps(&[app_in("a", moved), app_in("b", target)]);
-            pick_up(&mut home);
-            home.handle(Input::Right, ms(1000));
-            home.handle(Input::Tick, ms(1000) + FOLDER_HOVER);
+            make_folder(&mut home, Input::Right);
             let folder = home.folders().values().next().expect("a folder");
             assert_eq!(folder.name, expected, "{target:?} + {moved:?}");
         }
