@@ -5,11 +5,15 @@
 
 import { AboutSlint } from "std-widgets.slint";
 import { Dir, Hints, Theme } from "theme.slint";
+import { SettingsRow } from "quick.slint";
+
+// A `rows` block's rows: Settings' row data.
+export { SettingsRow }
 
 export enum TitleSize {
     // A page of its own (About).
     large,
-    // A list page (Settings, RustTV Remote).
+    // A list page's title (`PageHeader`), or a heading on a page of its own.
     medium,
     // A heading inside the surface panel.
     small,
@@ -28,31 +32,40 @@ export enum Tone {
 }
 
 // The page's start column: 560 u beside the surface panel (two columns), or
-// the whole width (one column). Fills the page; mirrored in right-to-left.
+// the whole width (one column). Under a header (a list page: Settings,
+// RustTV Remote) it starts at 260 u, beside the panel it is 480 u wide, and
+// its blocks are 36 u apart. Fills the page; mirrored in right-to-left.
 export component PageColumn inherits Rectangle {
     in property <length> u;
     in property <bool> wide;
+    in property <bool> header;
+    // A block (rows) fills the column's height left under the others.
+    in property <bool> fills;
     VerticalLayout {
         x: Dir.x(90 * u, self.width, root.width);
-        width: (wide ? 1740 : 560) * u;
-        padding-top: 120 * u;
+        width: (wide ? 1740 : header ? 480 : 560) * u;
+        padding-top: (header ? 260 : 120) * u;
         padding-bottom: 90 * u;
-        spacing: 24 * u;
-        alignment: start;
+        spacing: (header ? 36 : 24) * u;
+        // Blocks keep their own height at the top; with rows, the rows
+        // (the one block that stretches) take the rest.
+        alignment: fills ? LayoutAlignment.stretch : LayoutAlignment.start;
         @children
     }
 }
 
-// The surface panel at the end side of a two-column page. Fills the page.
+// The surface panel at the end side of a two-column page, from 90 u to
+// 990 u, or from 260 u to 1020 u under a header. Fills the page.
 export component PageSurface inherits Rectangle {
     in property <length> u;
-    // A block (a scroll box) fills the panel's height.
+    in property <bool> header;
+    // A block (a scroll box, rows) fills the panel's height.
     in property <bool> fills;
     Rectangle {
         x: Dir.x(720 * u, self.width, root.width);
-        y: 90 * u;
+        y: (header ? 260 : 90) * u;
         width: 1110 * u;
-        height: 900 * u;
+        height: (header ? 760 : 900) * u;
         border-radius: 16 * u;
         background: Theme.surface;
         clip: true;
@@ -88,6 +101,35 @@ export component PageTitle inherits Text {
     vertical-stretch: 0;
 }
 
+// A list page's header, above both columns: its title (a medium
+// `PageTitle`), and under it Home's status line (`status`: what just
+// happened, e.g. a phone removed) or, without one, the dim key hint (empty
+// without key hints). One line, elided.
+export component PageHeader inherits Rectangle {
+    in property <length> u;
+    in property <string> title;
+    in property <string> hint;
+    in property <string> status;
+    PageTitle {
+        x: Dir.x(90 * u, self.width, parent.width);
+        y: 90 * u;
+        width: 1740 * u;
+        u: root.u;
+        size: TitleSize.medium;
+        text: root.title;
+    }
+    Text {
+        x: Dir.x(90 * u, self.width, parent.width);
+        y: 176 * u;
+        width: 1740 * u;
+        horizontal-alignment: Dir.start;
+        text: root.status != "" ? root.status : Hints.keys ? root.hint : "";
+        font-size: 25 * u;
+        color: root.status != "" ? Theme.text : Theme.text-dim;
+        overflow: elide;
+    }
+}
+
 // One paragraph; wraps. A state line (the updater's) is a normal-size text
 // whose tone turns to the accent when it asks for attention.
 export component PageText inherits Text {
@@ -119,6 +161,23 @@ export component PageSlintBadge inherits Rectangle {
     AboutSlint {
         width: parent.width;
         height: parent.height;
+    }
+}
+
+// A picture Home provides (the `Pictures` global, e.g. RustTV Remote's
+// banner): the column's width, 270 u tall (16:9 in a list page's 480 u
+// column), rounded, cropped to fill.
+export component PagePicture inherits Rectangle {
+    in property <length> u;
+    in property <image> source;
+    height: 270 * u;
+    border-radius: 16 * u;
+    clip: true;
+    Image {
+        width: parent.width;
+        height: parent.height;
+        source: root.source;
+        image-fit: cover;
     }
 }
 
@@ -179,6 +238,112 @@ export component PageScrollBox inherits Rectangle {
             border-radius: parent.border-radius;
             background: #FFFFFF66;
             animate y { duration: 120ms; easing: ease-out; }
+        }
+    }
+}
+
+// A row in the long-press menu's style: a light pill with dark text when
+// selected, the update dot's accent dot for the current choice.
+export component MenuRow inherits Rectangle {
+    in property <length> u;
+    in property <string> text;
+    in property <string> detail;
+    in property <bool> selected;
+    // Selected while focus is elsewhere (the section whose panel is open).
+    in property <bool> marked;
+    in property <bool> current;
+    in property <bool> dim;
+    height: (detail == "" ? 64 : 96) * u;
+    border-radius: 10 * u;
+    background: selected ? Theme.text : marked ? Theme.surface : Theme.text.with-alpha(0);
+    animate background { duration: 120ms; }
+    if current: Rectangle {
+        x: Dir.x(18 * u, self.width, parent.width);
+        y: (detail == "" ? (parent.height - self.height) / 2 : 28 * u);
+        width: 10 * u;
+        height: 10 * u;
+        border-radius: self.width / 2;
+        background: Theme.accent;
+    }
+    Text {
+        x: Dir.x(44 * u, self.width, parent.width);
+        y: detail == "" ? 0 : 12 * u;
+        width: parent.width - 68 * u;
+        height: detail == "" ? parent.height : 34 * u;
+        text: root.text;
+        font-size: 27 * u;
+        font-weight: 500;
+        color: selected ? Theme.bg : dim ? Theme.text-dim : Theme.text;
+        horizontal-alignment: Dir.start;
+        vertical-alignment: center;
+        overflow: elide;
+        animate color { duration: 120ms; }
+    }
+    if detail != "": Text {
+        x: Dir.x(44 * u, self.width, parent.width);
+        y: 50 * u;
+        width: parent.width - 68 * u;
+        height: 32 * u;
+        text: root.detail;
+        font-size: 25 * u;
+        color: selected ? Theme.bg.with-alpha(0.7) : Theme.text-dim;
+        horizontal-alignment: Dir.start;
+        vertical-alignment: center;
+        overflow: elide;
+        animate color { duration: 120ms; }
+    }
+}
+
+// A focusable list Home fills (`model`, Settings' row data): `focused` is the
+// focused row and `first` the first one shown, as Home scrolls by rows. Up
+// and Down are Home's; the pointer reports a row it moves over (0) or
+// clicks (1), and Home walks the focus there behind its `pointer_reaches`
+// guard (ui.rs). Fills the height the column or panel leaves it (`fills`).
+// Rows are 104 u apart, room for a detail line. In the surface panel
+// (`outset`) the rows reach into the panel's padding, 24 u from its edges,
+// as Settings' rows do, so a focused row's pill frames the panel's text;
+// the outset is the same on both sides, so it needs no `Dir`.
+export component PageRows inherits Rectangle {
+    in property <length> u;
+    in property <[SettingsRow]> model;
+    in property <int> focused;
+    in property <int> first;
+    in property <bool> outset;
+    callback pointer(/* index */ int, /* action */ int);
+    vertical-stretch: 1;
+
+    Rectangle {
+        x: (root.outset ? -48 : 0) * u;
+        y: (root.outset ? -12 : 0) * u;
+        width: parent.width + (root.outset ? 96 : 0) * u;
+        height: parent.height + (root.outset ? 24 : 0) * u;
+        clip: true;
+        for row[i] in root.model: MenuRow {
+            x: (root.outset ? 24 : 0) * u;
+            y: (i - root.first) * 104 * u;
+            width: parent.width - (root.outset ? 48 : 0) * u;
+            u: root.u;
+            text: row.title;
+            detail: row.detail;
+            current: row.current;
+            dim: row.dim;
+            selected: i == root.focused;
+            visible: i >= root.first;
+        }
+        for row[i] in root.model: TouchArea {
+            x: (root.outset ? 24 : 0) * u;
+            y: (i - root.first) * 104 * u;
+            width: parent.width - (root.outset ? 48 : 0) * u;
+            height: 96 * u;
+            visible: i >= root.first;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.move {
+                    root.pointer(i, 0);
+                }
+            }
+            clicked => {
+                root.pointer(i, 1);
+            }
         }
     }
 }

@@ -497,3 +497,15 @@ msgstr "Wird installiert"
 #: templates/about_tile.json
 msgid "Update available"
 msgstr "Update verfügbar"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "Keine Handys"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "Handys: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "Kopplung läuft"

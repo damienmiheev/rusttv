@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "component": "RemoteTile",
+  "face": "tile",
+  "props": ["phones", "status"],
+  "root": { "column": {
+    "width": 250, "height": 141, "radius": 12, "background": "surface",
+    "padding": 16, "gap": 4, "align": "end",
+    "children": [
+      { "image": { "badge": "rusttv-remote", "height": 44 } },
+      { "text": { "value": { "select": "phones", "cases": {
+                    "0": { "tr": "No phones" } },
+                    "else": { "tr": "Phones: {}", "args": ["phones"] } },
+                  "size": 27, "weight": 500, "color": "text" } },
+      { "text": { "show": "status",
+                  "value": { "select": "status", "cases": {
+                    "pairing": { "tr": "Pairing" } } },
+                  "size": 23, "color": "accent" } }
+    ] } }
+}

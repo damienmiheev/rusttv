@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "component": "GeneralPage",
+  "face": "page",
+  "props": ["name", "state", "version"],
+  "root": { "page": {
+    "layout": "one-column",
+    "header": { "title": { "tr": "Test {}", "args": ["name"] } },
+    "start": [
+      { "title": { "value": { "tr": "Large" }, "size": "large" } },
+      { "title": { "value": { "tr": "Medium" }, "show": "name" } },
+      { "title": { "value": { "tr": "Small" }, "size": "small" } },
+      { "paragraph": { "value": { "tr": "Hello {}", "args": ["name"] }, "size": "small",
+                       "tone": "dim", "show": { "select": "state", "cases": { "on": true } } } },
+      { "paragraph": { "value": { "tr": "State" } } },
+      { "paragraph": { "value": { "tr": "Look" }, "tone": "accent" } },
+      { "paragraph": { "value": { "tr": "Version {}", "args": [{ "ltr": "version" }] },
+                       "show": "version" } },
+      { "picture": { "name": "remote-banner", "show": "name" } },
+      { "mark": { "name": "slint" } },
+      { "hint": { "value": { "tr": "Back returns." }, "show": "state" } },
+      { "rows": { "source": "remote" } }
+    ] } }
+}

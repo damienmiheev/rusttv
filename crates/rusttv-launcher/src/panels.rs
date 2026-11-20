@@ -5,7 +5,8 @@
 //! (`templates/*.json` `props`); RustTV's generated templates draw them,
 //! and a page's layout and blocks live in its template, not here.
 //! Views carry kinds and values, never translated words: the template
-//! translates (`@tr`). No trait until a second panel exists (PANELS.md § 3).
+//! translates (`@tr`). No trait: About's and Remote's views take different
+//! data and share only [`PanelView`] (PANELS.md § 3).
 
 use crate::platform::UpdateStatus;
 
@@ -44,7 +45,8 @@ pub(crate) struct PanelPage {
 
 /// Which faces a panel has: `None` for a face the panel doesn't have. About
 /// has all three, and Home relies on it (tests check it): the About page and
-/// Settings' RustTV row are always there.
+/// Settings' RustTV row are always there. RustTV Remote has a tile and a
+/// page.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PanelView {
     pub tile: Option<PanelTile>,
@@ -95,6 +97,25 @@ pub(crate) fn about_view(version: &str, status: &UpdateStatus) -> PanelView {
                 ("update", update.to_owned()),
                 ("update-detail", detail),
             ]),
+        }),
+    }
+}
+
+/// RustTV Remote (templates/remote_*.json). The tile shows how many phones
+/// are paired, or "Pairing" (in the accent) while pairing is open. The page
+/// has no values of its own: its rows are Home's (ui.rs), as is its status
+/// line. It has no row: Remote isn't in Settings' list.
+pub(crate) fn remote_view(phones: usize, pairing: bool) -> PanelView {
+    PanelView {
+        tile: Some(PanelTile {
+            props: Props(vec![
+                ("phones", phones.to_string()),
+                ("status", if pairing { "pairing" } else { "" }.to_owned()),
+            ]),
+        }),
+        row: None,
+        page: Some(PanelPage {
+            props: Props(Vec::new()),
         }),
     }
 }
@@ -285,6 +306,74 @@ mod tests {
                 assert_eq!(names(&props), *declared, "{status:?}");
             }
         }
+    }
+
+    #[test]
+    fn remote_tile_shows_the_phones_or_pairing() {
+        for (phones, pairing, count, status) in [
+            (0, false, "0", ""),
+            (1, false, "1", ""),
+            (12, false, "12", ""),
+            (2, true, "2", "pairing"),
+        ] {
+            let tile = remote_view(phones, pairing)
+                .tile
+                .expect("Remote has a tile");
+            assert_eq!(tile.props.get("phones"), count);
+            assert_eq!(tile.props.get("status"), status);
+        }
+    }
+
+    /// Remote's view sets exactly the properties its templates declare, it
+    /// has no row, and its tile has words for every status the view names
+    /// ("" shows no caption) and for no phones, and no others.
+    #[test]
+    fn remote_view_matches_its_templates() {
+        let declared = |name: &str| -> Vec<String> {
+            template(name)["props"]
+                .as_array()
+                .expect("props")
+                .iter()
+                .map(|prop| prop.as_str().expect("string").to_owned())
+                .collect()
+        };
+        for pairing in [false, true] {
+            let view = remote_view(3, pairing);
+            assert!(view.row.is_none());
+            let tile = view.tile.expect("tile").props;
+            assert_eq!(names(&tile), declared("remote_tile"));
+            assert_eq!(
+                names(&view.page.expect("page").props),
+                declared("remote_page")
+            );
+        }
+        let tile = template("remote_tile");
+        let texts: Vec<&serde_json::Value> = tile["root"]["column"]["children"]
+            .as_array()
+            .expect("children")
+            .iter()
+            .filter_map(|child| child.get("text"))
+            .collect();
+        // No phones has its own words; any other count is the "Phones" line.
+        let value = &texts
+            .iter()
+            .find(|text| text["value"]["select"] == "phones")
+            .expect("the phones line")["value"];
+        let counts: Vec<&String> = value["cases"].as_object().expect("cases").keys().collect();
+        assert_eq!(counts, ["0"]);
+        assert_eq!(value["else"]["tr"], "Phones: {}");
+        assert_eq!(value["else"]["args"], serde_json::json!(["phones"]));
+        let caption = texts
+            .iter()
+            .find(|text| text["show"] == "status")
+            .expect("the caption");
+        assert_eq!(caption["value"]["select"], "status");
+        let cases: Vec<&String> = caption["value"]["cases"]
+            .as_object()
+            .expect("cases")
+            .keys()
+            .collect();
+        assert_eq!(cases, ["pairing"]);
     }
 
     /// [`UPDATE_STATUSES`] holds each variant once: a new variant fails to

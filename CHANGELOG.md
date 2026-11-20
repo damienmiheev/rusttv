@@ -23,8 +23,26 @@ field in `--json` output says which contract you get, CLI.md).
   made of page blocks (title, paragraph, mark, scroll box, hint;
   `ui/blocks.slint`). They work as before (OK installs or checks for an
   update, Up and Down scroll the notices, Slint's attribution stays) and
-  look the same; compared pixel by pixel, the lines under the licence
-  text sit 2 px lower at 2560 × 1440.
+  look the same, pixel for pixel.
+- The RustTV Remote tile is a panel too (`templates/remote_tile.json`):
+  the Remote badge, how many phones are paired ("No phones",
+  "Phones: 2"), and "Pairing" in the accent while pairing is open. It
+  changes only when pairing opens or closes or a phone is paired or
+  removed; Home's tile list isn't redrawn. Three new texts in all 20
+  translations, measured to fit the tile.
+- The RustTV Remote page is drawn from a template
+  (`templates/remote_page.json`) with new general blocks: a list page's
+  header (title and status line), a picture and a focusable list of rows
+  with pointer hover and click. It looks and works as before, except that
+  "Pointer in other apps" is now dim where there is no pointer service,
+  and shows the accent dot while it is on.
+- A version inside right-to-left text (Arabic, Hebrew) is an isolated
+  left-to-right run: on the About tile and page, and Settings' RustTV and
+  Updates rows (templates: `{"ltr": prop}`).
+- History records where the RustTV Remote tile is, so undo brings it back
+  (HISTORY.md § 1). New snapshots are therefore state format 5 on Android
+  too, which released builds (0.3.2 and older) can't read. Older
+  snapshots still restore, with the tile at the end.
 - Settings → Effects: Reduced turns the tile shadows and the backdrop glow
   off, for a weak GPU. The choice is in the TV's history and kept as the
   `effects-reduced` flag file next to `order.toml`, so an image can preset

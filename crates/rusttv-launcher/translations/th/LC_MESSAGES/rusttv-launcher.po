@@ -497,3 +497,15 @@ msgstr "กำลังติดตั้ง"
 #: templates/about_tile.json
 msgid "Update available"
 msgstr "มีอัปเดต"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "ไม่มีโทรศัพท์"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "โทรศัพท์: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "กำลังจับคู่"

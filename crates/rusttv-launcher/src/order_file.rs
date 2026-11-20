@@ -237,14 +237,13 @@ pub(crate) const REDUCED_EFFECTS: &str = "effects-reduced";
 pub(crate) fn launcher_state(dir: &Path) -> rusttv_history::Launcher {
     let loaded = load(&dir.join("order.toml"));
     rusttv_history::Launcher {
-        // Not the RustTV Remote tile: every Home has it, and older RustTV
-        // builds don't know its name, so a history with it would be one
-        // they can't read. Written back, the order gets it at its end.
+        // The RustTV Remote tile too (`remote`, PANELS.md § 9 Q9), so its
+        // place comes back on undo; such a snapshot needs format 5. An older
+        // snapshot without it, written back, gets it at the order's end.
         order: loaded
             .order
             .keys()
             .iter()
-            .filter(|(id, _)| *id != TileId::Remote)
             .map(|(id, _)| name_of(id))
             .collect(),
         folders: loaded
@@ -347,8 +346,10 @@ mod tests {
         ])
     }
 
+    /// History records the RustTV Remote tile's place (PANELS.md § 9 Q9):
+    /// a snapshot then needs format 5, and the place comes back on undo.
     #[test]
-    fn history_never_sees_the_rusttv_remote_tile() {
+    fn history_records_the_rusttv_remote_tile() {
         let dir = TempDir::new("remote-tile");
         let order = Order::from_keys([
             (TileId::App("com.example.b/.Main".to_owned()), 1000),
@@ -364,14 +365,52 @@ mod tests {
         )
         .unwrap();
         let state = launcher_state(&dir.0);
-        assert_eq!(state.order, ["com.example.b/.Main", "settings"]);
-        // Older RustTV builds still read it.
+        assert_eq!(state.order, ["com.example.b/.Main", "remote", "settings"]);
         assert!(
             state
                 .order
                 .iter()
                 .all(|name| rusttv_history::is_tile_name(name))
         );
+        let snapshot = rusttv_history::State {
+            launcher: state.clone(),
+            ..rusttv_history::State::new()
+        };
+        assert_eq!(snapshot.needed_format(), 5);
+
+        // Written back (undo), the Remote tile is where it was.
+        let back = TempDir::new("remote-tile-back");
+        write_launcher_state(&back.0, &state).unwrap();
+        let ids = |order: &Order| -> Vec<TileId> {
+            order.keys().iter().map(|(id, _)| id.clone()).collect()
+        };
+        assert_eq!(ids(&load(&back.file()).order), ids(&order));
+    }
+
+    /// A snapshot from before Remote's place was recorded (format 4, no
+    /// `remote`) still loads and writes back; Home then adds the Remote tile
+    /// at the end (`reconcile`).
+    #[test]
+    fn an_older_snapshot_without_the_remote_tile_still_restores() {
+        let text = "format = 4\n\n[launcher]\norder = [\"com.example.b/.Main\", \"settings\"]\nhidden = []\nupdate_check = true\nreduced_effects = true\n";
+        let old = rusttv_history::State::parse(text).unwrap();
+        let dir = TempDir::new("remote-tile-old");
+        write_launcher_state(&dir.0, &old.launcher).unwrap();
+        let loaded = load(&dir.file());
+        assert_eq!(
+            loaded.order,
+            Order::from_keys([
+                (TileId::App("com.example.b/.Main".to_owned()), KEY_STEP),
+                (TileId::Settings, 2 * KEY_STEP),
+            ])
+        );
+        let mut home = crate::model::Home::new(loaded.order, loaded.folders, loaded.hidden, false);
+        home.set_apps(&[crate::model::App {
+            id: "com.example.b/.Main".to_owned(),
+            label: "B".to_owned(),
+            category: crate::model::Category::Other,
+        }]);
+        assert_eq!(home.tiles().last(), Some(&TileId::Remote));
     }
 
     #[test]

@@ -8,7 +8,7 @@
     "padding": 16, "gap": 4, "align": "end",
     "children": [
       { "image": { "badge": "rusttv-logo", "height": 44 } },
-      { "text": { "value": { "tr": "RustTV {}", "args": ["version"] },
+      { "text": { "value": { "tr": "RustTV {}", "args": [{ "ltr": "version" }] },
                   "size": 27, "weight": 500, "color": "text" } },
       { "text": { "show": "status",
                   "value": { "select": "status", "cases": {
