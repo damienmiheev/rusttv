@@ -413,3 +413,21 @@ msgstr "จับคู่โทรศัพท์ {} แล้ว"
 
 msgid "Removed the phone {}"
 msgstr "นำโทรศัพท์ {} ออกแล้ว"
+
+msgid "Effects"
+msgstr "เอฟเฟกต์"
+
+msgid "Effects: {}"
+msgstr "เอฟเฟกต์: {}"
+
+msgid "Full"
+msgstr "เต็ม"
+
+msgid "Reduced"
+msgstr "ลดลง"
+
+msgid "Shadows and backdrop"
+msgstr "เงาและพื้นหลัง"
+
+msgid "No shadows or backdrop: smoother on a slow graphics chip"
+msgstr "ไม่มีเงาหรือพื้นหลัง: ลื่นกว่าบนชิปกราฟิกที่ช้า"

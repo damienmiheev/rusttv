@@ -86,6 +86,11 @@ pub enum Change {
         /// Its new value.
         on: bool,
     },
+    /// The effects switch changed.
+    Effects {
+        /// Its new value: fewer effects.
+        reduced: bool,
+    },
     /// A global setting changed; `None` = unset.
     Setting {
         /// The key.
@@ -239,6 +244,11 @@ pub fn diff(old: &State, new: &State) -> Vec<Change> {
             on: new.launcher.update_check,
         });
     }
+    if old.launcher.reduced_effects != new.launcher.reduced_effects {
+        changes.push(Change::Effects {
+            reduced: new.launcher.reduced_effects,
+        });
+    }
 
     for key in SETTING_KEYS {
         if old.setting(key) != new.setting(key) {
@@ -320,6 +330,9 @@ pub(crate) fn summary(changes: &[Change]) -> String {
         Change::UpdateCheck { on } => {
             format!("Update check {}", if *on { "on" } else { "off" })
         }
+        Change::Effects { reduced } => {
+            format!("Effects {}", if *reduced { "reduced" } else { "full" })
+        }
         Change::Setting { key, new, .. } => {
             format!("{key} = {}", new.as_deref().unwrap_or("unset"))
         }
@@ -353,6 +366,7 @@ mod tests {
         let mut new = State::new();
         new.launcher.hidden.insert("com.example.a/.Main".into());
         new.launcher.update_check = false;
+        new.launcher.reduced_effects = true;
         new.settings
             .global
             .insert("animator_duration_scale".into(), "0.5".into());
@@ -360,8 +374,8 @@ mod tests {
             .insert("com.example.t".into(), PackageState::Disabled);
         new.device.takeover = Some(true);
         let changes = diff(&old, &new);
-        assert_eq!(changes.len(), 5, "{changes:?}");
-        assert_eq!(summary(&changes), "Hid com.example.a and 4 more");
+        assert_eq!(changes.len(), 6, "{changes:?}");
+        assert_eq!(summary(&changes), "Hid com.example.a and 5 more");
     }
 
     #[test]

@@ -413,3 +413,21 @@ msgstr "휴대전화 {} 페어링됨"
 
 msgid "Removed the phone {}"
 msgstr "휴대전화 {} 삭제됨"
+
+msgid "Effects"
+msgstr "효과"
+
+msgid "Effects: {}"
+msgstr "효과: {}"
+
+msgid "Full"
+msgstr "전체"
+
+msgid "Reduced"
+msgstr "줄임"
+
+msgid "Shadows and backdrop"
+msgstr "그림자와 배경"
+
+msgid "No shadows or backdrop: smoother on a slow graphics chip"
+msgstr "그림자와 배경 없음: 느린 그래픽 칩에서 더 부드럽게"

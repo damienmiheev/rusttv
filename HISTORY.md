@@ -46,6 +46,7 @@ format = 1
 order = ["com.netflix.ninja/.MainActivity", "folder:1", "about", "settings"]
 hidden = ["com.example/.Main"]
 update_check = true
+reduced_effects = true         # format 4; only when effects are reduced
 
 [launcher.folders."folder:1"]  # format 2; only when a folder exists
 name = "Video"

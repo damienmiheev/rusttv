@@ -413,3 +413,21 @@ msgstr "已配对手机 {}"
 
 msgid "Removed the phone {}"
 msgstr "已移除手机 {}"
+
+msgid "Effects"
+msgstr "效果"
+
+msgid "Effects: {}"
+msgstr "效果：{}"
+
+msgid "Full"
+msgstr "完整"
+
+msgid "Reduced"
+msgstr "精简"
+
+msgid "Shadows and backdrop"
+msgstr "阴影和背景"
+
+msgid "No shadows or backdrop: smoother on a slow graphics chip"
+msgstr "无阴影和背景：在较慢的图形芯片上更流畅"
