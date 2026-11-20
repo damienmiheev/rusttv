@@ -194,8 +194,8 @@ colours come from `Theme`. The JSON key and fields are in § 4.1.
 | Block | Draws | Focus |
 |---|---|---|
 | `Title` | a title: `large` 76u (a page of its own, About), `medium` 57u (list pages), `small` 29u (a heading in the surface panel) | no |
-| `Text` | one paragraph; normal (29u) or small (25u); tone normal, dim or accent (the plan's `Status`: the updater's line turns to the accent for `Attention`); wraps | no |
-| `Badge` | a built-in mark from a fixed list (`slint`: Slint's `AboutSlint`, at a fixed 240u and never conditional, so the attribution can't be shrunk or hidden) | no |
+| `Paragraph` (the plan's `Text` and `Status`) | one paragraph; normal (29u) or small (25u); tone normal, dim or accent (the updater's line turns to the accent for `Attention`); wraps | no |
+| `Mark` (the plan's `Badge`) | a built-in mark from a fixed list (`slint`: Slint's `AboutSlint`, at a fixed 240u and never conditional, so the attribution can't be shrunk or hidden) | no |
 | `ScrollBox` | long text Home loads (a fixed list: `notices`) filling the surface panel's height; Up/Down scroll; at most one per page | yes |
 | `Hint` | the dim key hint ("Up and Down scroll the notices. Back returns."); empty when `Hints.keys` is off | no |
 
@@ -209,8 +209,10 @@ chevron rows. Step 3 (the Remote page) also needs a header above both
 columns (a 57u title and a line under it, the surface panel then at 260u),
 a status line that replaces the key hint and shows without key hints, a
 picture Home provides from a fixed list (the Remote banner, the pairing
-QR code) and an elided one-line text. Badges stay a fixed list: nothing
-decodes an image from a panel.
+QR code) and an elided one-line text. History needs plural forms
+("2 h ago": `@tr` with a count), and later an editor may want stable
+block ids and accessible labels. Badges and marks stay fixed lists:
+nothing decodes an image from a panel.
 
 Focus and keys on a page are Home's, not the panel's: Up/Down move between
 focusable blocks or scroll a `ScrollBox`; Back leaves; OK runs the page's
@@ -276,17 +278,21 @@ Rules the schema enforces (unknown fields are errors):
     optional `attention` (a condition: the accent dot). Settings draws
     every row of its list with one component (`ControlRow`), so a row
     becomes a Slint global of pure functions (`title`, `detail`,
-    `attention`, each taking the `props` in order) that Rust calls to fill
-    the list.
+    `attention`) that Rust calls to fill the list. Each function takes the
+    `props` as parameters in their order, so reordering `props` changes
+    the call (the view's order is tested against the template's); `title`,
+    `detail` and `attention` can't be a row's prop names.
   - `page`: a `page` with `layout` (`one-column` or `two-columns`),
     `start` and, for two columns, `end`: arrays of the § 4 blocks. Keys:
     `title` (`value`, `size`: `large`/`medium`/`small`, default `medium`),
-    `text` (`value`, `size`: `normal`/`small`, default `normal`, `tone`:
-    `normal`/`dim`/`accent` or a `select` of them, default `normal`),
-    `hint` (`value`), `badge` (`name`), `scroll-box` (`source`). `title`,
-    `text` and `hint` take an optional `show`; a badge and a scroll box
-    don't (an attribution is never hidden, and Home's focus can rely on
-    the scroll box). A `scroll-box` goes in `end` only, once; its page
+    `paragraph` (`value`, `size`: `normal`/`small`, default `normal`,
+    `tone`: `normal`/`dim`/`accent` or a `select` of them, default
+    `normal`), `hint` (`value`), `mark` (`name`), `scroll-box` (`source`).
+    `title`, `paragraph` and `hint` take an optional `show`; a mark and a
+    scroll box don't (an attribution is never hidden, and Home's focus can
+    rely on the scroll box). Page blocks have their own names, so no key
+    means one thing in a tile and another on a page (a tile's `text`
+    takes sizes in `u`, its `image` a picture `badge`). A `scroll-box` goes in `end` only, once; its page
     gets `scroll-text`, `scroll-position` and `scroll-fraction` properties
     that Home fills (it owns the scrolling), so those names are reserved.
     `source` names that text from a fixed list Home knows (`notices`);
@@ -294,13 +300,12 @@ Rules the schema enforces (unknown fields are errors):
     notices), and a loader reads it to know what to fetch. The box's
     scroll bar sits in the surface panel's end padding, which is one more
     reason it lives only there.
-- **Conditions** (`show`, a row's `attention`): a property's name (true when not
-  empty) or a `select` of `true`/`false` (else `false`).
+- **Conditions** (`show`, a row's `attention`): a property's name (true
+  when not empty) or a `select` of `true`/`false` (else `false`). A
+  `select`'s case values have the props' shape (lowercase words or
+  numbers joined by `-`).
 - **Nodes:** `column` (later a horizontal one), `text`, `image` in a
-  tile. Only the root sets size, radius and background. A node's fields
-  depend on the face: a tile's `text` takes sizes in `u` and colour
-  tokens, a page's `text` takes the block's variants. A loader reads
-  `face` first.
+  tile. Only the root sets size, radius and background.
 - **No untranslated literals:** every text is `@tr`, brand names too
   ("RustTV" is a message translated as itself), so the "every text is
   translatable" rule has no exception to check.
@@ -635,8 +640,10 @@ face is #40's `AboutRow` in Settings, fed from the same view.
   `ui/theme.slint` so generated pages can read it.
 - **The updater's line is words in the template**: the view names the
   state (`update`: `idle`, `checking`, …, `failed`) and its detail, and a
-  page `text` selects the words and an accent `tone`. The plan's `Status`
-  block is that text, so the schema has one block less. Settings' Updates
+  `paragraph` selects the words and an accent `tone`. The plan's `Status`
+  block is that paragraph, so the schema has one block less; its `Text`
+  and `Badge` are `paragraph` and `mark` in JSON, so no key means one
+  thing in a tile and another on a page. Settings' Updates
   row still uses `Strings.update-line`; a test (`ui.rs`) checks both
   say the same for every status.
 - **Templates carry `"schema": 1`**, for the later runtime loader and

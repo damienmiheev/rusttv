@@ -17,10 +17,10 @@ const ONE_COLUMN: &str = r#"{
     { "title": { "value": { "tr": "Large" }, "size": "large" } },
     { "title": { "value": { "tr": "Medium" }, "show": "name" } },
     { "title": { "value": { "tr": "Small" }, "size": "small" } },
-    { "text": { "value": { "tr": "Hello {}", "args": ["name"] }, "size": "small",
+    { "paragraph": { "value": { "tr": "Hello {}", "args": ["name"] }, "size": "small",
                 "tone": "dim", "show": { "select": "state", "cases": { "on": true } } } },
-    { "text": { "value": { "tr": "State" } } },
-    { "badge": { "name": "slint" } },
+    { "paragraph": { "value": { "tr": "State" } } },
+    { "mark": { "name": "slint" } },
     { "hint": { "value": { "tr": "Back returns." }, "show": "state" } }
   ] } }
 }"#;
@@ -162,6 +162,18 @@ fn rejects_what_the_schema_does_not_hold() {
             OK.replace("\"gap\": 4", "\"gap\": 4, \"gap\": 9"),
             "duplicate key \"gap\"",
         ),
+        (
+            PAGE.replace("\"checking\":", "\"Checking\":"),
+            "must be lowercase words or numbers",
+        ),
+        (
+            OK.replace("\"text\": { \"show\"", "\"paragraph\": { \"show\""),
+            "unknown node \"paragraph\"",
+        ),
+        (
+            PAGE.replace("{ \"mark\":", "{ \"text\":"),
+            "unknown block \"text\"",
+        ),
         // Faces and their roots.
         (OK.replace("\"face\": \"tile\",", ""), "missing \"face\""),
         (OK.replace("\"schema\": 1,", ""), "missing \"schema\""),
@@ -265,7 +277,7 @@ fn rejects_what_the_schema_does_not_hold() {
         ),
         (
             PAGE.replace(
-                "{ \"badge\": { \"name\": \"slint\" } },",
+                "{ \"mark\": { \"name\": \"slint\" } },",
                 "{ \"scroll-box\": { \"source\": \"notices\" } },",
             ),
             "goes in a two-column page's end",
@@ -286,7 +298,7 @@ fn rejects_what_the_schema_does_not_hold() {
             "missing \"value\"",
         ),
         (
-            PAGE.replace("\"end\": [", "\"end\": [ { \"text\": {}, \"hint\": {} },"),
+            PAGE.replace("\"end\": [", "\"end\": [ { \"paragraph\": {}, \"hint\": {} },"),
             "a node has exactly one key",
         ),
     ];

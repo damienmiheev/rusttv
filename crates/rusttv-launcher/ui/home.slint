@@ -721,10 +721,7 @@ export component HomeWindow inherits Window {
     in property <Glow> hero-b-glow;
     in property <bool> hero-a-front: true;
     in property <string> toast;
-    // The updater's line for Settings' Updates row (ui.rs `update_line`; Rust
-    // keeps it here and reads it back), and whether an update waits to be
-    // installed (a dot on the Settings tile).
-    in property <string> update-status;
+    // Whether an update waits to be installed (a dot on the Settings tile).
     in property <bool> update-available;
     // A slice of the licence notices from the line at the top of the panel
     // (ui.rs `Notices`), how far they are scrolled (0..1) and the share shown.

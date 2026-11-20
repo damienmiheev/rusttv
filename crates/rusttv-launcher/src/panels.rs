@@ -119,7 +119,7 @@ pub(crate) fn updater_line(page: &serde_json::Value) -> &serde_json::Value {
     ["start", "end"]
         .iter()
         .flat_map(|side| page["root"]["page"][side].as_array().expect("blocks"))
-        .filter_map(|block| block.get("text"))
+        .filter_map(|block| block.get("paragraph"))
         .find(|text| text["value"]["select"] == "update")
         .expect("the updater's line")
 }
@@ -236,23 +236,29 @@ mod tests {
         cases.sort_unstable();
         assert_eq!(cases, named);
 
+        let declared = |name: &str| -> Vec<String> {
+            template(name)["props"]
+                .as_array()
+                .expect("props")
+                .iter()
+                .map(|prop| prop.as_str().expect("string").to_owned())
+                .collect()
+        };
+        let (tile, row, page) = (
+            declared("about_tile"),
+            declared("about_row"),
+            declared("about_page"),
+        );
         for status in &STATUSES {
             let view = about_view("1.2.3", status);
             let faces = [
-                ("about_tile", view.tile.map(|tile| tile.props)),
-                ("about_row", view.row.map(|row| row.props)),
-                ("about_page", view.page.map(|page| page.props)),
+                (&tile, view.tile.map(|tile| tile.props)),
+                (&row, view.row.map(|row| row.props)),
+                (&page, view.page.map(|page| page.props)),
             ];
-            for (name, props) in faces {
-                let template = template(name);
-                let declared: Vec<&str> = template["props"]
-                    .as_array()
-                    .expect("props")
-                    .iter()
-                    .map(|prop| prop.as_str().expect("string"))
-                    .collect();
+            for (declared, props) in faces {
                 let props = props.expect("About has every face");
-                assert_eq!(names(&props), declared, "{name}");
+                assert_eq!(names(&props), *declared, "{status:?}");
             }
         }
     }
@@ -285,7 +291,7 @@ mod tests {
             .iter()
             .flat_map(|side| page["root"]["page"][side].as_array().expect("blocks"))
             .collect();
-        assert!(blocks.iter().any(|block| block["badge"]["name"] == "slint"));
+        assert!(blocks.iter().any(|block| block["mark"]["name"] == "slint"));
         assert!(
             blocks
                 .iter()

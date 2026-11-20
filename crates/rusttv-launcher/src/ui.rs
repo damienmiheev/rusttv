@@ -950,7 +950,6 @@ impl Controller {
         window.set_quick_actions(ModelRc::from(quick_codes.clone()));
         let link_codes = Rc::new(VecModel::default());
         window.set_network_icons(ModelRc::from(link_codes.clone()));
-        window.set_update_status(update_line(window, &UpdateStatus::Idle));
         show_about_panel(window, &UpdateStatus::Idle);
 
         let (order, folders, hidden, saved_focus) =
@@ -1651,7 +1650,6 @@ impl Controller {
             return;
         }
         if let Some(window) = self.window.upgrade() {
-            window.set_update_status(update_line(&window, &status));
             window.set_update_available(status.is_available());
             show_about_panel(&window, &status);
         }
@@ -2801,7 +2799,8 @@ fn overlay_texts(window: &HomeWindow) -> crate::platform::OverlayTexts {
 
 /// The updater's line for a status in Settings' Updates row, in the current
 /// language (`Strings.update-line` in home.slint; the About page says the
-/// same from its template); says what OK does when it isn't a plain check.
+/// same from its template, a test checks); says what OK does when it isn't
+/// a plain check.
 fn update_line(window: &HomeWindow, status: &UpdateStatus) -> SharedString {
     let (kind, detail) = match status {
         UpdateStatus::Idle => (0, String::new()),
@@ -3591,6 +3590,24 @@ mod tests {
         assert_eq!(about.get_update_detail(), "");
     }
 
+    /// home.slint gives the About page every property its template declares,
+    /// from `AboutPanel` (the tests above see `AboutPanel`, not the page).
+    #[test]
+    fn home_binds_every_about_page_property() {
+        let page: serde_json::Value =
+            serde_json::from_str(include_str!("../templates/about_page.json")).expect("JSON");
+        let home = include_str!("../ui/home.slint");
+        let start = home.find("AboutPage {").expect("the About page");
+        let block = &home[start..start + home[start..].find('}').expect("its end")];
+        for prop in page["props"].as_array().expect("props") {
+            let prop = prop.as_str().expect("a name");
+            assert!(
+                block.contains(&format!("{prop}: AboutPanel.{prop};")),
+                "{prop} isn't bound"
+            );
+        }
+    }
+
     #[test]
     fn about_reads_the_notices_only_when_it_opens() {
         let screen = screen(None);
@@ -3948,7 +3965,7 @@ mod tests {
     fn a_device_language_with_a_translation_shows_it() {
         let screen = screen_in(abc(), None, Some("uk-UA"));
         open_about(&screen);
-        let line = screen.window.get_update_status();
+        let line = update_line(&screen.window, &UpdateStatus::Idle);
         assert!(!line.is_empty());
         assert_ne!(line, "Press OK to check for updates");
         assert!(!screen.window.global::<Dir>().get_rtl());
@@ -3959,7 +3976,7 @@ mod tests {
         let screen = screen_in(abc(), None, Some("sv-SE"));
         open_about(&screen);
         assert_eq!(
-            screen.window.get_update_status(),
+            update_line(&screen.window, &UpdateStatus::Idle),
             "Press OK to check for updates"
         );
     }

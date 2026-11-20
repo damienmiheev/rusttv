@@ -12,15 +12,12 @@ const TOKENS: [&str; 5] = ["bg", "surface", "text", "text-dim", "accent"];
 
 /// Names the generated component's own properties already use; a page's
 /// scroll box is fed through the `scroll-*` ones (Home owns the scrolling).
-const RESERVED_PROPS: [&str; 30] = [
+const RESERVED_PROPS: [&str; 27] = [
     "u",
-    // Slint words, and a row's function names (its props are parameters).
+    // Slint words (a row's props are function parameters).
     "if",
     "for",
     "return",
-    "title",
-    "detail",
-    "attention",
     "root",
     "self",
     "parent",
@@ -76,11 +73,14 @@ pub const BLOCKS_SLINT: [&str; 10] = [
     "Tone",
 ];
 
+/// A row's function names, which its props (the parameters) can't take.
+const ROW_FUNCTIONS: [&str; 3] = ["title", "detail", "attention"];
+
 /// The template format's version: a runtime loader or an editor refuses a
 /// file it doesn't know.
 const SCHEMA: u64 = 1;
 
-/// Built-in marks a page's `badge` block may show (blocks.slint).
+/// Built-in marks a page's `mark` block may show (blocks.slint).
 const MARKS: [(&str, &str); 1] = [("slint", "PageSlintBadge")];
 
 /// Long texts Home loads for a page's `scroll-box` (ui.rs).
@@ -129,9 +129,12 @@ pub fn convert(json: &str, badges: &[&str]) -> Result<String, String> {
                 "props[{i}]: {prop:?} must be lowercase words joined by '-'"
             ));
         }
-        if RESERVED_PROPS.contains(&prop) || props.contains(&prop) {
+        if RESERVED_PROPS.contains(&prop)
+            || (face == "row" && ROW_FUNCTIONS.contains(&prop))
+            || props.contains(&prop)
+        {
             return Err(format!(
-                "props[{i}]: {prop:?} is taken (a Slint word, a Rectangle property, `u`, `scroll-*`, or a duplicate)"
+                "props[{i}]: {prop:?} is taken (a Slint word, a Rectangle property, `u`, `scroll-*`, a row's function, or a duplicate)"
             ));
         }
         props.push(prop);
@@ -344,14 +347,14 @@ impl Cx<'_> {
             let at = format!("{at}.{kind}");
             let allowed: &[&str] = match kind {
                 "title" => &["value", "size", "show"],
-                "text" => &["value", "size", "tone", "show"],
+                "paragraph" => &["value", "size", "tone", "show"],
                 "hint" => &["value", "show"],
                 // Slint's attribution is never conditional.
-                "badge" => &["name"],
+                "mark" => &["name"],
                 "scroll-box" => &["source"],
                 other => {
                     return Err(format!(
-                        "{at}: unknown block {other:?} (title, text, hint, badge, scroll-box)"
+                        "{at}: unknown block {other:?} (title, paragraph, hint, mark, scroll-box)"
                     ));
                 }
             };
@@ -363,18 +366,12 @@ impl Cx<'_> {
             let mut fields = Vec::new();
             let component = match kind {
                 "title" => {
-                    let size = choice(
-                        block,
-                        &at,
-                        "size",
-                        &["large", "medium", "small"],
-                        Some("medium"),
-                    )?;
+                    let size = choice(block, &at, "size", &["large", "medium", "small"], "medium")?;
                     fields.push(format!("size: TitleSize.{size}"));
                     "PageTitle"
                 }
-                "text" => {
-                    let size = choice(block, &at, "size", &["normal", "small"], Some("normal"))?;
+                "paragraph" => {
+                    let size = choice(block, &at, "size", &["normal", "small"], "normal")?;
                     fields.push(format!("size: TextSize.{size}"));
                     if let Some(tone) = block.get("tone") {
                         fields.push(format!("tone: {}", self.tone(tone, &format!("{at}.tone"))?));
@@ -382,7 +379,7 @@ impl Cx<'_> {
                     "PageText"
                 }
                 "hint" => "PageHint",
-                "badge" => {
+                "mark" => {
                     let mark = string(field(block, &at, "name")?, &format!("{at}.name"))?;
                     MARKS
                         .iter()
@@ -417,7 +414,7 @@ impl Cx<'_> {
                     "PageScrollBox"
                 }
             };
-            if matches!(kind, "title" | "text" | "hint") {
+            if matches!(kind, "title" | "paragraph" | "hint") {
                 let value = self.words(field(block, &at, "value")?, &format!("{at}.value"))?;
                 let text = if kind == "hint" { "value" } else { "text" };
                 fields.push(format!("{text}: {value}"));
@@ -667,6 +664,11 @@ impl Cx<'_> {
         let cases = object(field(body, at, "cases")?, &format!("{at}.cases"))?;
         let mut out = String::new();
         for (case, value) in cases {
+            if !is_name(case) {
+                return Err(format!(
+                    "{at}.cases: {case:?} must be lowercase words or numbers joined by '-'"
+                ));
+            }
             let _ = write!(
                 out,
                 "{}{prop} == {} ? {} : ",
@@ -692,18 +694,17 @@ impl Cx<'_> {
     }
 }
 
-/// The optional `key` of `map`: one of `options`, else `default`.
+/// The optional `key` of `map`: one of `options`, `default` when absent.
 fn choice<'v>(
     map: &'v Map<String, Value>,
     at: &str,
     key: &str,
     options: &[&str],
-    default: Option<&'v str>,
+    default: &'v str,
 ) -> Result<&'v str, String> {
-    let value = match (map.get(key), default) {
-        (Some(value), _) => string(value, &format!("{at}.{key}"))?,
-        (None, Some(default)) => default,
-        (None, None) => return Err(format!("{at}: missing {key:?}")),
+    let value = match map.get(key) {
+        Some(value) => string(value, &format!("{at}.{key}"))?,
+        None => default,
     };
     if options.contains(&value) {
         Ok(value)
@@ -713,6 +714,16 @@ fn choice<'v>(
             options.join(", ")
         ))
     }
+}
+
+/// Lowercase words or numbers joined by single '-': props' and cases' shape.
+fn is_name(name: &str) -> bool {
+    name.starts_with(|c: char| c.is_ascii_alphanumeric())
+        && name.ends_with(|c: char| c.is_ascii_alphanumeric())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && !name.contains("--")
 }
 
 /// A node is an object with exactly one key, its kind.

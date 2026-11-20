@@ -732,7 +732,7 @@ impl Controller {
             }
             AboutRow::Update => SettingsRow {
                 title: strings.invoke_section_name(section_value(Section::Updates)),
-                detail: window.get_update_status(),
+                detail: super::update_line(window, &self.update),
                 current: self.update.is_available(),
                 ..SettingsRow::default()
             },

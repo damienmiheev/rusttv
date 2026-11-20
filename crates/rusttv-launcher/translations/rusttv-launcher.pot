@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
-"POT-Creation-Date: 2026-11-20 19:33+0000\n"
+"POT-Creation-Date: 2026-11-20 19:43+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -194,7 +194,7 @@ msgid ""
 "but never change settings or approve anything."
 msgstr ""
 
-#: ui/home.slint:148 ui/home.slint:1762
+#: ui/home.slint:148 ui/home.slint:1759
 msgid "Pair a phone"
 msgstr ""
 
@@ -492,115 +492,115 @@ msgstr ""
 msgid "Removed {}. It can't control this TV any more."
 msgstr ""
 
-#: ui/home.slint:536 ui/home.slint:648 ui/home.slint:1306
+#: ui/home.slint:536 ui/home.slint:648 ui/home.slint:1303
 msgid "Hidden apps"
 msgstr ""
 
-#: ui/home.slint:536 ui/home.slint:648 ui/home.slint:1390 ui/quick.slint:149
+#: ui/home.slint:536 ui/home.slint:648 ui/home.slint:1387 ui/quick.slint:149
 msgid "Settings"
 msgstr ""
 
-#: ui/home.slint:536 ui/home.slint:648 ui/home.slint:1533
+#: ui/home.slint:536 ui/home.slint:648 ui/home.slint:1530
 msgid "RustTV Remote"
 msgstr ""
 
-#: ui/home.slint:1143
+#: ui/home.slint:1140
 msgid "Type a name, then press ✓. Back keeps the old one."
 msgstr ""
 
-#: ui/home.slint:1144
+#: ui/home.slint:1141
 msgid "Move past the edge to take the app out. OK drops it."
 msgstr ""
 
-#: ui/home.slint:1145
+#: ui/home.slint:1142
 msgid "Back closes the folder. Up reaches its name."
 msgstr ""
 
-#: ui/home.slint:1316
+#: ui/home.slint:1313
 msgid "OK puts the app back on Home. Back returns."
 msgstr ""
 
-#: ui/home.slint:1400 ui/home.slint:1543
+#: ui/home.slint:1397 ui/home.slint:1540
 msgid "Up and Down choose, OK opens. Back returns."
 msgstr ""
 
-#: ui/home.slint:1429
+#: ui/home.slint:1426
 msgid "Loading…"
 msgstr ""
 
-#: ui/home.slint:1624
+#: ui/home.slint:1621
 msgid "Review changes"
 msgstr ""
 
-#: ui/home.slint:1635
+#: ui/home.slint:1632
 msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
 msgstr ""
 
-#: ui/home.slint:1636
+#: ui/home.slint:1633
 msgid "Nothing changes until you hold OK. Back cancels."
 msgstr ""
 
-#: ui/home.slint:1683
+#: ui/home.slint:1680
 msgid "Approve"
 msgstr ""
 
-#: ui/home.slint:1706
+#: ui/home.slint:1703
 msgid "Press these arrows on the remote:"
 msgstr ""
 
-#: ui/home.slint:1706
+#: ui/home.slint:1703
 msgid "Now hold OK to apply."
 msgstr ""
 
-#: ui/home.slint:1762
+#: ui/home.slint:1759
 msgid "Trust this TV"
 msgstr ""
 
-#: ui/home.slint:1772
+#: ui/home.slint:1769
 msgid "OK allows this phone. Back refuses."
 msgstr ""
 
-#: ui/home.slint:1772
+#: ui/home.slint:1769
 msgid "Back returns."
 msgstr ""
 
-#: ui/home.slint:1800
+#: ui/home.slint:1797
 msgid ""
 "Scan this code with your phone's camera and open the link.\n\nThe phone must "
 "be on the same network as this TV. The code works once, for two minutes."
 msgstr ""
 
-#: ui/home.slint:1819
+#: ui/home.slint:1816
 msgid "Allow “{}”?"
 msgstr ""
 
-#: ui/home.slint:1830
+#: ui/home.slint:1827
 msgid "Check that the phone shows the same code:"
 msgstr ""
 
-#: ui/home.slint:1849
+#: ui/home.slint:1846
 msgid ""
 "It will be able to press keys and type on this TV. It can never change "
 "settings or approve anything."
 msgstr ""
 
-#: ui/home.slint:1859
+#: ui/home.slint:1856
 msgid "“{}” is installing this TV's certificate, “{}”."
 msgstr ""
 
-#: ui/home.slint:1869
+#: ui/home.slint:1866
 msgid ""
 "Before installing, check on the phone that its SHA-256 fingerprint starts "
 "with:"
 msgstr ""
 
-#: ui/home.slint:1890
+#: ui/home.slint:1887
 msgid ""
 "If it doesn't match, don't install it: someone on your network may be "
 "interfering."
 msgstr ""
 
-#: ui/home.slint:1900
+#: ui/home.slint:1897
 msgid "“{}” is paired."
 msgstr ""
 
