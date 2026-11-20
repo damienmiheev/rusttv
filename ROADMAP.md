@@ -329,7 +329,9 @@ Decided "not for now"; raise again when the core launcher is done.
     the owner's approval, judged by eye.
 
 - **Panels: add-ons with several faces, and a theme builder** — parked
-  2026-10-24. Owner's idea: features such as History/Settings become add-ons
+  2026-10-24. **Panels are now designed and planned in
+  [PANELS.md](PANELS.md) (2026-11-20); the notes below are the original
+  discussion, and the theme builder stays parked.** Owner's idea: features such as History/Settings become add-ons
   ("panels" for people, "add-ons" in code; "widgets" clashes with Android's
   App Widgets; "cards" and "modules" also considered) kept in the RustTV
   folder on the launcher, each implementing one contract with several views,
