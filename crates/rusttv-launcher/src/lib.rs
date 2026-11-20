@@ -15,11 +15,18 @@ mod i18n;
 mod linux;
 mod model;
 mod order_file;
+mod panels;
 mod platform;
 mod remote;
 mod remote_page;
 mod review;
 mod settings;
+/// The panel template converter build.rs runs, compiled here for its tests.
+#[cfg(test)]
+#[path = "../codegen/convert.rs"]
+mod template_convert;
+#[cfg(test)]
+mod template_convert_tests;
 mod ui;
 
 #[cfg(any(test, feature = "test-util"))]

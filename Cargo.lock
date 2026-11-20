@@ -5175,6 +5175,7 @@ dependencies = [
  "rusttv-history",
  "rusttv-remote",
  "serde",
+ "serde_json",
  "slint",
  "slint-build",
  "thiserror 2.0.21",

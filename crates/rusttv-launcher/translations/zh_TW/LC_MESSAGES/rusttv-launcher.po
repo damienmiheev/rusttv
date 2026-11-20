@@ -488,3 +488,15 @@ msgstr "音量"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "按鍵盤上的 ✓ 確認，按返回取消"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "正在下載"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "正在安裝"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "有可用更新"

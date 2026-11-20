@@ -1,0 +1,26 @@
+// The launcher's colours and reading direction, shared by home.slint,
+// quick.slint and the files generated from panel templates (build.rs,
+// PANELS.md § 4.1; the templates' pictures are in the generated
+// badges.slint). One file, imported everywhere, so there is one
+// `Dir.rtl` and one copy of each colour.
+
+// Layout direction (set from ui.rs). For Arabic and Hebrew the layout is
+// mirrored: tiles run from the right, text aligns right. Pictures and the
+// (English) licence notices are not mirrored.
+export global Dir {
+    in property <bool> rtl;
+    // `x` of a box `width` wide inside a parent `parent` wide, mirrored when rtl.
+    public pure function x(x: length, width: length, parent: length) -> length {
+        return rtl ? parent - x - width : x;
+    }
+    out property <TextHorizontalAlignment> start: rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+    out property <ImageHorizontalAlignment> image-start: rtl ? ImageHorizontalAlignment.right : ImageHorizontalAlignment.left;
+}
+
+export global Theme {
+    out property <color> bg: #0E1014;
+    out property <color> surface: #1C1F26;
+    out property <color> text: #F2F3F5;
+    out property <color> text-dim: #A4A9B4;
+    out property <color> accent: #F5A524;
+}

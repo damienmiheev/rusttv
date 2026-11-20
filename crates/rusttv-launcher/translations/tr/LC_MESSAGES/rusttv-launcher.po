@@ -488,3 +488,15 @@ msgstr "Ses düzeyi"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "Klavyede ✓ onaylar, Geri iptal eder"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "İndiriliyor"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "Yükleniyor"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "Güncelleme var"

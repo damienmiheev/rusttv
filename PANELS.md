@@ -530,6 +530,35 @@ fixed `Theme` colour. Docs in the same PR: REMOTE.md § 4 (`caption`),
 ROADMAP.md (the parked "Panels" idea points here), ARCHITECTURE.md
 decision log, CHANGELOG.
 
+*Built 2026-11-20, with these differences from the plan above:*
+- **Only the tile face exists.** `PanelView` has only `tile`;
+  `PanelRow`, `PanelPage` and the page blocks come with step 2, which uses
+  them, so no dead code lands now.
+- **One shared source for the tile and the hero:** the tile reads the
+  `AboutPanel` global, so a status change sets two properties and never the
+  tile list.
+- **The hero glow still comes from About's banner** (`assets/tiles/about.png`
+  stays for the glow and the phone's picture). No visible glow change.
+- **The phone mirror's `caption` is a follow-up PR (step 1b).** It needs a
+  protocol field and texts in all 21 phone languages.
+- **Badges are images set from Rust** (`Badges` global in `ui/theme.slint`),
+  like the tiles' banners. The launcher loads no `@image-url`.
+- **The converter lives in `codegen/convert.rs`** (`build/` is git-ignored).
+  Its tests run with the launcher's (`src/template_convert_tests.rs`), and
+  a test checks every template text is in the `.pot` and translated
+  everywhere (`scripts/launcher-pot.sh` extracts them).
+- **Done from the spike's list:** duplicate JSON keys are refused, and
+  `Theme`/`Dir` are imported by name through an include path (one file, one
+  `Dir.rtl`; checked in Arabic). `build.rs` generates `Badges`
+  (`badges.slint`) and its Rust setter from its one `BADGES` list.
+- **Fit:** every caption was measured at the tile's size (23u in a 218u
+  line, Inter), and ten long wordings were shortened (e.g. es "Nueva
+  versión", de "Wird geladen"), so none is cut.
+- **Sway cost:** the template's root has `cache-rendering-hint`, so a
+  swaying About tile moves a cached layer instead of laying out text every
+  frame. Measured with § 8 in the final pass on the TV (owner: all on-TV
+  tests at the very end).
+
 **Step 2 — About's page and row from blocks.** The page looks the same as
 today (compared by eye against a screenshot of the desktop build); OK still
 runs Update RustTV; pointer and reduced effects behave as today. The row

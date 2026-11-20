@@ -8,6 +8,16 @@ field in `--json` output says which contract you get, CLI.md).
 
 ### Launcher
 
+- The About tile is the first panel (PANELS.md): the RustTV logo and
+  version, and "Update available", "Downloading" or "Installing" in place
+  of the update dot, drawn from a JSON template (`templates/about_tile.json`)
+  that the build turns into Slint. On Android, Settings keeps its dot (with
+  a top-right menu, as on Linux, neither tile is shown). The colours and
+  reading direction moved to `ui/theme.slint`, shared by every screen and
+  template. `scripts/launcher-pot.sh` extracts template texts for
+  translators. The desktop build takes `RUSTTV_UPDATE=available` and
+  `RUSTTV_NO_DEVICE=1` (the Android layout). Captions are short enough to
+  fit the tile in every language.
 - Settings → Effects: Reduced turns the tile shadows and the backdrop glow
   off, for a weak GPU. The choice is in the TV's history and kept as the
   `effects-reduced` flag file next to `order.toml`, so an image can preset

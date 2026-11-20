@@ -488,3 +488,15 @@ msgstr "Âm lượng"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "✓ trên bàn phím để xác nhận, Quay lại để hủy"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "Đang tải xuống"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "Đang cài đặt"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "Có bản cập nhật"

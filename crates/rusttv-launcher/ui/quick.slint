@@ -3,14 +3,7 @@
 // Rust owns all state (src/ui/device_view.rs); this file only draws it.
 // Sizes are reference pixels on a 1920×1080 canvas, multiplied by `u`.
 
-// The colours of `Theme` in home.slint (kept in step by hand).
-global Colours {
-    out property <color> bg: #0E1014;
-    out property <color> surface: #1C1F26;
-    out property <color> text: #F2F3F5;
-    out property <color> text-dim: #A4A9B4;
-    out property <color> accent: #F5A524;
-}
+import { Theme } from "theme.slint";
 
 // One row of a Settings panel or quick panel (ui.rs `settings_rows`,
 // ui/device_view.rs).
@@ -41,7 +34,7 @@ export component ControlRow inherits Rectangle {
     in property <float> level;
     height: (detail == "" && !slider ? 64 : 96) * u;
     border-radius: 10 * u;
-    background: selected ? Colours.text : Colours.text.with-alpha(0);
+    background: selected ? Theme.text : Theme.text.with-alpha(0);
     animate background { duration: 120ms; }
 
     pure function place-x(x: length, width: length) -> length {
@@ -55,7 +48,7 @@ export component ControlRow inherits Rectangle {
         width: 10 * u;
         height: 10 * u;
         border-radius: self.width / 2;
-        background: Colours.accent;
+        background: Theme.accent;
     }
     Text {
         x: root.place-x(44 * u, self.width);
@@ -65,7 +58,7 @@ export component ControlRow inherits Rectangle {
         text: root.text;
         font-size: 27 * u;
         font-weight: 500;
-        color: selected ? Colours.bg : dim ? Colours.text-dim : Colours.text;
+        color: selected ? Theme.bg : dim ? Theme.text-dim : Theme.text;
         horizontal-alignment: root.start;
         vertical-alignment: center;
         overflow: elide;
@@ -78,7 +71,7 @@ export component ControlRow inherits Rectangle {
         height: 32 * u;
         text: root.detail;
         font-size: 25 * u;
-        color: selected ? Colours.bg.with-alpha(0.7) : Colours.text-dim;
+        color: selected ? Theme.bg.with-alpha(0.7) : Theme.text-dim;
         horizontal-alignment: root.start;
         vertical-alignment: center;
         overflow: elide;
@@ -90,13 +83,13 @@ export component ControlRow inherits Rectangle {
         width: parent.width - 214 * u;
         height: 8 * u;
         border-radius: self.height / 2;
-        background: selected ? Colours.bg.with-alpha(0.2) : #FFFFFF26;
+        background: selected ? Theme.bg.with-alpha(0.2) : #FFFFFF26;
         Rectangle {
             x: rtl ? parent.width - self.width : 0;
             width: parent.width * clamp(level, 0, 1);
             height: parent.height;
             border-radius: parent.border-radius;
-            background: selected ? Colours.bg : Colours.accent;
+            background: selected ? Theme.bg : Theme.accent;
         }
     }
 }
@@ -172,12 +165,12 @@ export component QuickBar inherits Rectangle {
 
     for code[i] in actions: button := Rectangle {
         property <bool> focused: i == selected;
-        property <color> ink: focused ? Colours.bg : Colours.text;
+        property <color> ink: focused ? Theme.bg : Theme.text;
         width: root.span(code);
         x: rtl ? root.width - root.start(i, code) - self.width : root.start(i, code);
         height: size;
         border-radius: self.height / 2;
-        background: focused ? Colours.text : #0000005C;
+        background: focused ? Theme.text : #0000005C;
         animate background { duration: 120ms; }
         if code != 3 || links.length == 0: Path {
             x: (parent.width - parent.height * 0.5) / 2;
@@ -247,7 +240,7 @@ export component QuickBar inherits Rectangle {
         text: root.name(actions[selected]);
         font-size: 25 * u;
         font-weight: 500;
-        color: Colours.text;
+        color: Theme.text;
         overflow: elide;
     }
 }
@@ -274,7 +267,7 @@ export component QuickPanel inherits Rectangle {
     width: 720 * u;
     height: self.list-y + self.shown * self.pitch + 16 * u;
     border-radius: 16 * u;
-    background: Colours.surface;
+    background: Theme.surface;
     drop-shadow-color: #00000080;
     drop-shadow-blur: 40 * u;
     drop-shadow-offset-y: 16 * u;
@@ -288,7 +281,7 @@ export component QuickPanel inherits Rectangle {
         text: title;
         font-size: 33 * u;
         font-weight: 500;
-        color: Colours.text;
+        color: Theme.text;
         overflow: elide;
     }
     if status != "": Text {
@@ -298,7 +291,7 @@ export component QuickPanel inherits Rectangle {
         horizontal-alignment: rtl ? right : left;
         text: status;
         font-size: 25 * u;
-        color: Colours.text-dim;
+        color: Theme.text-dim;
         overflow: elide;
     }
     Rectangle {
@@ -369,7 +362,7 @@ export component PowerMenu inherits Rectangle {
         viewbox-width: 24;
         viewbox-height: 24;
         commands: "M 12 3 L 12 11 M 7.05 6.05 A 7 7 0 1 0 16.95 6.05";
-        stroke: Colours.text;
+        stroke: Theme.text;
         stroke-width: 2 * u;
         fill: transparent;
     }
@@ -379,7 +372,7 @@ export component PowerMenu inherits Rectangle {
         horizontal-alignment: center;
         text: status != "" ? status : title;
         font-size: 36 * u;
-        color: status != "" ? Colours.text-dim : Colours.text;
+        color: status != "" ? Theme.text-dim : Theme.text;
     }
     for data[i] in rows: Rectangle {
         property <bool> focused: i == focused-row;
@@ -388,13 +381,13 @@ export component PowerMenu inherits Rectangle {
         width: button-width;
         height: pitch - 28 * u;
         border-radius: self.height / 2;
-        background: focused ? Colours.text : Colours.surface;
+        background: focused ? Theme.text : Theme.surface;
         animate background { duration: 120ms; }
         Text {
             text: data.title;
             font-size: 38 * u;
             font-weight: 500;
-            color: parent.focused ? Colours.bg : Colours.text;
+            color: parent.focused ? Theme.bg : Theme.text;
         }
         TouchArea {
             mouse-cursor: pointer;
@@ -420,7 +413,7 @@ export component VolumeOsd inherits Rectangle {
     width: 520 * u;
     height: 88 * u;
     border-radius: self.height / 2;
-    background: Colours.surface.with-alpha(0.95);
+    background: Theme.surface.with-alpha(0.95);
     drop-shadow-color: #00000080;
     drop-shadow-blur: 32 * u;
     opacity: shown ? 1 : 0;
@@ -437,7 +430,7 @@ export component VolumeOsd inherits Rectangle {
         commands: muted
             ? "M 3 9 L 7 9 L 12 5 L 12 19 L 7 15 L 3 15 Z M 16 9 L 22 15 M 22 9 L 16 15"
             : "M 3 9 L 7 9 L 12 5 L 12 19 L 7 15 L 3 15 Z M 15.5 9 A 4 4 0 0 1 15.5 15 M 18 6 A 8 8 0 0 1 18 18";
-        stroke: Colours.text;
+        stroke: Theme.text;
         stroke-width: 2.6 * u;
         fill: transparent;
     }
@@ -453,7 +446,7 @@ export component VolumeOsd inherits Rectangle {
             width: parent.width * clamp(level, 0, 1);
             height: parent.height;
             border-radius: parent.border-radius;
-            background: muted ? Colours.text-dim : Colours.accent;
+            background: muted ? Theme.text-dim : Theme.accent;
         }
     }
     Text {
@@ -465,7 +458,7 @@ export component VolumeOsd inherits Rectangle {
         text: muted ? @tr("Muted") : round(level * 100) + "%";
         font-size: 27 * u;
         font-weight: 500;
-        color: Colours.text;
+        color: Theme.text;
     }
 }
 
@@ -493,7 +486,7 @@ export component TextPromptView inherits Rectangle {
         width: field-w;
         text: title;
         font-size: 36 * u;
-        color: Colours.text;
+        color: Theme.text;
         overflow: elide;
     }
     Rectangle {
@@ -502,9 +495,9 @@ export component TextPromptView inherits Rectangle {
         width: field-w;
         height: 92 * u;
         border-radius: 12 * u;
-        background: Colours.surface;
+        background: Theme.surface;
         border-width: 2 * u;
-        border-color: Colours.accent;
+        border-color: Theme.accent;
         FocusScope {
             key-pressed(event) => {
                 if event.text == Key.Escape || event.text == "\u{F748}" {
@@ -521,7 +514,7 @@ export component TextPromptView inherits Rectangle {
                 input-type: root.secret ? InputType.password : InputType.text;
                 single-line: true;
                 font-size: 40 * u;
-                color: Colours.text;
+                color: Theme.text;
                 vertical-alignment: center;
                 accepted => {
                     root.done(self.text);
@@ -541,7 +534,7 @@ export component TextPromptView inherits Rectangle {
         width: field-w;
         text: @tr("✓ on the keyboard confirms, Back cancels");
         font-size: 28 * u;
-        color: Colours.text-dim;
+        color: Theme.text-dim;
         overflow: elide;
     }
 }

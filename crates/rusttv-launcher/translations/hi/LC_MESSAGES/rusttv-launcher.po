@@ -488,3 +488,15 @@ msgstr "वॉल्यूम"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "कीबोर्ड पर ✓ पुष्टि करता है, वापस रद्द करता है"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "डाउनलोड जारी"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "इंस्टॉल जारी"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "अपडेट उपलब्ध"

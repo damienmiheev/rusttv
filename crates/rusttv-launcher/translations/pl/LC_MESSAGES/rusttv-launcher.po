@@ -488,3 +488,15 @@ msgstr "Głośność"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "✓ na klawiaturze potwierdza, Wstecz anuluje"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "Pobieranie"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "Instalowanie"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "Nowa wersja"
