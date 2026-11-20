@@ -105,10 +105,11 @@ Added 2026-11-20:
 - **No extra work:** a data change touches one model row or one property;
   nothing polls for a tile.
 
-Not in v1: status corner, quick panel, banner, ambient, hide and folders
-for panel tiles, toggles and change requests, data-only panels, the theme
-builder, Settings as a panel (History became one in step 4, § 10). Never: two instances of one panel, panels
-running other people's code before level 3 is approved.
+Not in v1: status corner, quick panel, banner, ambient, hide and folders for
+panel tiles, toggles and change requests, data-only panels, the theme
+builder, Settings as a panel (History became one in step 4, § 10). Never:
+two instances of one panel, panels running other people's code before level
+3 is approved.
 
 ## 2. Faces
 
@@ -503,11 +504,11 @@ its own.
   `AboutRow`). So About's tile face exists only where those tiles do
   (Android), and About's **row** face is that `AboutRow` section.
 - **Hide and folders for panel tiles come later, with the next format**
-  (decision 5; format 7 since step 4). Today an app's menu is Move + Hide, folders are made by holding a
-  moving tile over another, and a built-in tile can do neither. Making it
-  possible means:
-  - `needed_format` returns the next format when a built-in or panel tile is in `hidden`
-    or in a folder. The id is already valid there (`is_tile_name`), so an
+  (decision 5; format 7 since step 4). Today an app's menu is Move + Hide,
+  folders are made by holding a moving tile over another, and a built-in
+  tile can do neither. Making it possible means:
+  - `needed_format` returns the next format when a built-in or panel tile
+    is in `hidden` or in a folder. The id is already valid there (`is_tile_name`), so an
     older build would read such a snapshot without refusing it and get it
     wrong;
   - the Hidden apps page lists hidden panels (today it lists installed apps
@@ -518,14 +519,14 @@ its own.
     hidden (e.g. from its Settings row). Check the Slint licence's
     attribution clause first.
 - **A new panel tile** (History, step 4) is `TileId::Panel(PanelId)`,
-  written `panel:<id>` in the order file and in `state.toml` (`panel:history`).
-  Ids are 1–40 lowercase letters, digits and single `-`, starting with a letter and not ending with `-`, so never a `/`: they can't clash with apps. It ships with format 6 (`is_panel_name`,
-  `state.rs`): every new snapshot with a launcher order holds
-  `panel:history`, so builds that
-  read up to format 5 refuse it (`HISTORY_FORMAT_NEWER`) instead of
-  reading the name as an app. Today's built-in names (`about`,
-  `settings`, `remote`) stay as they are; only new panels use
-  `panel:<id>`.
+  written `panel:<id>` in the order file and in `state.toml`
+  (`panel:history`). Ids are 1–40 lowercase letters, digits and single `-`,
+  starting with a letter and not ending with `-`, so never a `/`: they can't
+  clash with apps. It ships with format 6 (`is_panel_name`, `state.rs`):
+  every new snapshot with a launcher order holds `panel:history`, so builds
+  that read up to format 5 refuse it (`HISTORY_FORMAT_NEWER`) instead of
+  reading the name as an app. Today's built-in names (`about`, `settings`,
+  `remote`) stay as they are; only new panels use `panel:<id>`.
   - An older launcher reads an unknown name as an app and drops it as not
     installed, so it forgets the panel's place; after an upgrade the tile
     comes back at its first-run spot. This build does the same with a
@@ -611,9 +612,9 @@ Recommendation first in each.
 8. **Crate layout:** modules in the launcher until a panel needs its own
    dependencies / `rusttv-<name>` crates from the start.
 9. **Remote's place in History** (§ 6): *decided 2026-11-20:* record it.
-   Every new snapshot then needs format 5 (6 since step 4), so released builds (0.3.2 and
-   older) and builds before #40 can't read new history; updates only go
-   forward, so that is accepted. Built in step 3.
+   Every new snapshot then needs format 5 (6 since step 4), so released
+   builds (0.3.2 and older) and builds before #40 can't read new history;
+   updates only go forward, so that is accepted. Built in step 3.
 10. **Name clash with #40's quick panel:** *decided 2026-11-20:* fold this
     doc's quick-panel face into #40's top-right menu (`Mode::Quick`,
     `quick.slint`). Panels add rows to it later (About, Remote, Updates);
@@ -832,14 +833,14 @@ cheap "last entry + pending count" message exists.
   Linux it is a tile too, like Remote (Settings is in the top-right menu
   there).
 - **Data, no history I/O on Home's paths:** the history thread keeps a
-  `Summary` (newest entry's time, approvals waiting for the computer)
-  that it reads after the work that changes it (a launcher edit, an
-  approval, a door commit or `pending` read, the Settings page's data,
-  and packing while the launcher is away) and before it answers; Home copies it under a lock on resume, on focus
-  changes and when the Settings page's data or an approval's answer
-  arrives, and formats the age with the clock then (never a timer).
-  Until the thread has read the history (the first Settings open or
-  change after start) the tile shows its plain state: the badge and
+  `Summary` (newest entry's time, approvals waiting for the computer) that
+  it reads after the work that changes it (a launcher edit, an approval, a
+  door commit or `pending` read, the Settings page's data, and packing while
+  the launcher is away) and before it answers; Home copies it under a lock
+  on resume, on focus changes and when the Settings page's data or an
+  approval's answer arrives, and formats the age with the clock then (never
+  a timer). Until the thread has read the history (the first Settings open
+  or change after start) the tile shows its plain state: the badge and
   "History". The history isn't opened for the tile.
 - **Faces:** `history_view(summary, now)` gives the tile and the row the
   same two values: `status` (`waiting`, else the age's unit `now`,

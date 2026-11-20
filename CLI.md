@@ -244,16 +244,18 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
   added, never renamed, removed or changed in meaning; anything else bumps it.
   - `rusttv.v11`: [HistoryChange](#historychange) has a new kind for the
     launcher's Effects setting (`effects`, with `reduced`), and `history
-    show`'s `state` may hold `launcher.reduced_effects` (TV history snapshots
-    in format 4, written only while effects are reduced). TV history
-    snapshots in format 5 may hold Linux desktop entries' names and the
-    RustTV Remote tile, `remote`, in `launcher.order` (every Android
+    show`'s `state` may hold `launcher.reduced_effects` (TV history
+    snapshots in format 4, written only while effects are reduced). TV
+    history snapshots in format 5 may hold Linux desktop entries' names and
+    the RustTV Remote tile, `remote`, in `launcher.order` (every Android
     snapshot since it is recorded); [HistoryChange](#historychange)'s
     `moved` may name `remote`, never `added` or `removed`. Snapshots in
     format 6 also hold History's panel tile, `panel:history`, in
     `launcher.order` (every snapshot with a launcher order since it is
-    recorded; panel tiles are `panel:<id>`, an id of 1–40 lowercase letters, digits and single `-`, starting with a letter and not ending with `-`); `moved` may
-    name it, never `added` or `removed`. Everything else is unchanged.
+    recorded; panel tiles are `panel:<id>`, an id of 1–40 lowercase letters,
+    digits and single `-`, starting with a letter and not ending with `-`);
+    `moved` may name it, never `added` or `removed`. Everything else is
+    unchanged.
   - `rusttv.v10`: [HistoryChange](#historychange) has new kinds for phones
     paired with RustTV Remote (`phone_paired`, `phone_removed`, each with
     `phone`, the phone's id, and `name`), and `history show`'s `state` may

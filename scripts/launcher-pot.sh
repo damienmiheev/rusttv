@@ -62,6 +62,8 @@ def references(block):
     refs = [f"{name}:{number}" for name, lines in ui
             for number, line in enumerate(lines, 1) if f'@tr("{escaped}"' in line]
     refs += [template for template, found in templates if unescape(escaped) in found]
+    if not refs:
+        print(f"launcher-pot.sh: no file shows {escaped!r}", file=sys.stderr)
     return refs
 blocks = text.split("\n\n")
 for index, block in enumerate(blocks):

@@ -47,15 +47,15 @@ field in `--json` output says which contract you get, CLI.md).
 - History has its own tile, a panel (`templates/history_tile.json`, the
   first `panel:<id>` tile, `panel:history`): the History badge, "Last
   change" and its age ("Just now", "2 hours ago"), or "Waiting" in the
-  accent while an approval waits for the computer. OK opens Settings on
-  its History section, whose entry in the section list now shows the same
-  age, or "Waiting" and the accent dot. The age comes from a summary the history thread
-  keeps after its own work and is formatted on resume and focus changes,
-  never by a timer; until the history has been read once since start the
-  tile shows just "History". A first run puts it last, after RustTV
-  Remote; it moves like the other built-in tiles. Its place is in the
-  history, so new snapshots with a launcher order are state format 6; older snapshots still
-  restore, with the tile at the end.
+  accent while an approval waits for the computer. OK opens Settings on its
+  History section, whose entry in the section list now shows the same age,
+  or "Waiting" and the accent dot. The age comes from a summary the history
+  thread keeps after its own work and is formatted on resume and focus
+  changes, never by a timer; until the history has been read once since
+  start the tile shows just "History". A first run puts it last, after
+  RustTV Remote; it moves like the other built-in tiles. Its place is in the
+  history, so new snapshots with a launcher order are state format 6; older
+  snapshots still restore, with the tile at the end.
 - Panel templates take plural forms for any text with a number
   (`"plural"` and `"count"`), so each language has its own forms ("1
   hour", "2 hours", Ukrainian's three, Arabic's six). New texts in all 20

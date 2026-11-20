@@ -4913,8 +4913,11 @@ mod tests {
             screen._controller.borrow().home.focused().cloned(),
             Some(TileId::Panel(PanelId::History))
         );
-        let now = i64::try_from(crate::remote::now()).unwrap();
-        let view = panels::history_view(summary.as_ref(), now)
+        // Compared with the copy Home drew from: another test's history
+        // work may change the thread's summary meanwhile.
+        let (shown, now) = screen._controller.borrow().history;
+        assert!(shown.is_some_and(|summary| summary.last_unix.is_some()));
+        let view = panels::history_view(shown.as_ref(), now)
             .tile
             .unwrap()
             .props;
@@ -4962,8 +4965,9 @@ mod tests {
         let row = section(3);
         assert_eq!((row.detail.as_str(), row.current), ("Waiting", true));
 
-        // The pointer: History's row is 96 u tall, the others 64 u, 8 u
-        // apart from 260 u; the list starts 90 u in. The window is 1920 u
+        // The pointer, mirroring home.slint's section list: History's row
+        // is 96 u tall, the others 64 u, 8 u apart from 260 u; the list
+        // starts 90 u in. The window is 1920 u
         // wide.
         let u = screen.window.window().size().width as f32
             / screen.window.window().scale_factor()

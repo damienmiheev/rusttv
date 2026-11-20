@@ -525,6 +525,8 @@ mod tests {
                 .tiles()
                 .contains(&TileId::App("panel:clock".to_owned()))
         );
+        // B, RustTV Remote and History (without Settings tiles, About and
+        // Settings aren't on Home).
         assert_eq!(home.tiles().len(), 3);
         assert_eq!(name_of(&TileId::Panel(PanelId::History)), "panel:history");
     }
