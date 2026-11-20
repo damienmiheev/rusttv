@@ -514,15 +514,15 @@ msgstr "جارٍ الإقران"
 msgid "Last change"
 msgstr "آخر تغيير"
 
-#: templates/history_tile.json
+#: templates/history_row.json templates/history_tile.json
 msgid "Waiting"
 msgstr "قيد الانتظار"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "Just now"
 msgstr "الآن"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} minute ago"
 msgid_plural "{n} minutes ago"
 msgstr[0] "قبل {n} دقيقة"
@@ -532,7 +532,7 @@ msgstr[3] "قبل {n} دقائق"
 msgstr[4] "قبل {n} دقيقة"
 msgstr[5] "قبل {n} دقيقة"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} hour ago"
 msgid_plural "{n} hours ago"
 msgstr[0] "قبل {n} ساعة"
@@ -542,7 +542,7 @@ msgstr[3] "قبل {n} ساعات"
 msgstr[4] "قبل {n} ساعة"
 msgstr[5] "قبل {n} ساعة"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} day ago"
 msgid_plural "{n} days ago"
 msgstr[0] "قبل {n} يوم"

@@ -468,15 +468,6 @@ fn show_about_panel(window: &HomeWindow, status: &UpdateStatus) {
     }
 }
 
-/// The TV's clock, Unix seconds (0 if it is before 1970).
-fn now_unix() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| {
-            i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
-        })
-}
-
 include!(concat!(env!("OUT_DIR"), "/badges.rs"));
 include!(concat!(env!("OUT_DIR"), "/pictures.rs"));
 
@@ -4257,12 +4248,13 @@ mod tests {
 
     /// History's ages take each language's plural forms (gettext's, through
     /// the templates' `plural`), here through its row face's functions:
-    /// English's two, Ukrainian's three, Arabic's six.
+    /// English's two, Ukrainian's and Polish's three, French's (0 and 1
+    /// singular), Arabic's six.
     #[test]
     fn history_ages_take_each_languages_plural_forms() {
         /// A language and its (status, count, words) cases.
         type Ages<'a> = (Option<&'a str>, &'a [(&'a str, &'a str, &'a str)]);
-        let cases: [Ages<'_>; 3] = [
+        let cases: [Ages<'_>; 5] = [
             (
                 None,
                 &[
@@ -4282,6 +4274,25 @@ mod tests {
                     ("hours", "11", "11 годин тому"),
                     ("hours", "21", "21 годину тому"),
                     ("days", "22", "22 дні тому"),
+                    ("minutes", "2", "2 хвилини тому"),
+                    ("minutes", "12", "12 хвилин тому"),
+                ],
+            ),
+            (
+                Some("pl-PL"),
+                &[
+                    ("minutes", "1", "1 minutę temu"),
+                    ("minutes", "4", "4 minuty temu"),
+                    ("minutes", "5", "5 minut temu"),
+                    ("minutes", "22", "22 minuty temu"),
+                    ("hours", "12", "12 godzin temu"),
+                ],
+            ),
+            (
+                Some("fr-FR"),
+                &[
+                    ("days", "1", "il y a 1 jour"),
+                    ("days", "2", "il y a 2 jours"),
                 ],
             ),
             (
@@ -4292,6 +4303,8 @@ mod tests {
                     ("hours", "3", "قبل 3 ساعات"),
                     ("hours", "11", "قبل 11 ساعة"),
                     ("days", "100", "قبل 100 يوم"),
+                    ("minutes", "2", "قبل دقيقتين"),
+                    ("minutes", "15", "قبل 15 دقيقة"),
                 ],
             ),
         ];
@@ -4874,15 +4887,21 @@ mod tests {
     /// History's tile: once the history thread has read the history, a
     /// focus change formats its age (two globals, never the tile list);
     /// OK on it opens Settings on its History section, whose row shows the
-    /// same age.
+    /// same words (two lines tall from the start), and the accent dot and
+    /// "Waiting" while an approval waits. The pointer finds the rows under
+    /// the taller one.
     #[test]
     fn the_history_tile_shows_the_age_and_opens_settings_on_history() {
         let (dir, _history) = history_dir();
         let screen = screen(Some(dir.join("order.toml")));
         let history = crate::history::History::get().unwrap();
         history.launcher_edited();
-        // Answered after the edit: the summary is there by then.
+        // Answered after the edit: the summary is there by then. (The
+        // thread is the process's: its newest entry may be another
+        // test's, so the age is compared with the view's, not a constant.)
         let _ = history.overview();
+        let summary = history.summary();
+        assert!(summary.is_some_and(|summary| summary.last_unix.is_some()));
         let tiles: Vec<TileData> = screen.window.get_tiles().iter().collect();
         let artwork = screen.artwork_calls();
         let panel = screen.window.global::<HistoryPanel>();
@@ -4894,9 +4913,15 @@ mod tests {
             screen._controller.borrow().home.focused().cloned(),
             Some(TileId::Panel(PanelId::History))
         );
+        let now = i64::try_from(crate::remote::now()).unwrap();
+        let view = panels::history_view(summary.as_ref(), now)
+            .tile
+            .unwrap()
+            .props;
+        assert!(!view.get("status").is_empty());
         assert_eq!(
             (panel.get_status().as_str(), panel.get_count().as_str()),
-            ("now", "0")
+            (view.get("status"), view.get("count"))
         );
         let after: Vec<TileData> = screen.window.get_tiles().iter().collect();
         assert_eq!(tiles, after, "only the globals changed");
@@ -4908,17 +4933,89 @@ mod tests {
         // Animations, Effects, Updates, History, About: on History.
         assert_eq!(screen.window.get_settings_section(), 3);
         assert_eq!(screen.window.get_settings_row(), -1);
-        let row = screen.window.get_settings_sections().row_data(3).unwrap();
+        let face = screen.window.global::<HistoryListRow>();
+        let section = |index: usize| {
+            screen
+                .window
+                .get_settings_sections()
+                .row_data(index)
+                .unwrap()
+        };
+        let row = section(3);
         assert_eq!(
-            (row.title.as_str(), row.detail.as_str(), row.current),
-            ("History", "Just now", false)
+            (row.title.as_str(), row.current, row.tall),
+            ("History", false, true)
         );
+        assert_eq!(
+            row.detail,
+            face.invoke_detail(panel.get_status(), panel.get_count())
+        );
+        assert!(!row.detail.is_empty());
+        assert!(!section(4).tall, "only History's row keeps a second line");
+
+        // While an approval waits: the dot and "Waiting".
+        screen._controller.borrow_mut().history.0 = Some(crate::history::Summary {
+            last_unix: None,
+            pending: 1,
+        });
+        screen._controller.borrow_mut().render();
+        let row = section(3);
+        assert_eq!((row.detail.as_str(), row.current), ("Waiting", true));
+
+        // The pointer: History's row is 96 u tall, the others 64 u, 8 u
+        // apart from 260 u; the list starts 90 u in. The window is 1920 u
+        // wide.
+        let u = screen.window.window().size().width as f32
+            / screen.window.window().scale_factor()
+            / 1920.0;
+        let hover = |y: f32| {
+            screen
+                .window
+                .window()
+                .dispatch_event(WindowEvent::PointerMoved {
+                    position: slint::LogicalPosition::new(200.0 * u, y * u),
+                });
+        };
+        // About's middle: under three short rows and History's.
+        hover(260.0 + 3.0 * 72.0 + 104.0 + 32.0);
+        assert_eq!(screen.window.get_settings_section(), 4);
+        // History's second line.
+        hover(260.0 + 3.0 * 72.0 + 80.0);
+        assert_eq!(screen.window.get_settings_section(), 3);
+
         screen.tap(BACK);
         assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
         assert_eq!(
             screen._controller.borrow().home.focused().cloned(),
             Some(TileId::Panel(PanelId::History))
         );
+    }
+
+    /// The phone moves History's tile like any built-in tile (`panel:history`).
+    #[test]
+    fn a_phone_drag_moves_the_history_tile() {
+        let screen = screen(None);
+        let drag = |over: Option<&str>, phase| {
+            screen
+                ._controller
+                .borrow_mut()
+                .remote_event(RemoteEvent::Input {
+                    phone: rusttv_remote::PhoneId([1; 16]),
+                    message: PhoneMessage::Drag {
+                        id: "panel:history".into(),
+                        over: over.map(Into::into),
+                        phase,
+                        on: false,
+                    },
+                });
+        };
+        drag(None, DragPhase::Start);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Moving));
+        drag(Some("a/.Main"), DragPhase::Move);
+        drag(Some("a/.Main"), DragPhase::End);
+        let controller = screen._controller.borrow();
+        assert_eq!(controller.home.tiles()[0], TileId::Panel(PanelId::History));
+        assert_eq!(controller.home.state(), State::Browse);
     }
 
     #[test]

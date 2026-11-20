@@ -20,7 +20,7 @@ use super::{
 use crate::history::History;
 use crate::model::Input;
 use crate::order_file;
-use crate::panels;
+use crate::panels::{self, CLOCK_SET_AFTER};
 use crate::review::{Arrow, Outcome, Phase, Review};
 use crate::settings::{AboutRow, Action, Draft, EntryView, Overview, Section, SettingsPage};
 
@@ -37,8 +37,6 @@ const REVIEW_ROWS: usize = 8;
 /// Where RustTV's source code is (the About tab's Source row; the About
 /// page says it in its template's "Source: …" text).
 const SOURCE: &str = "github.com/damienmiheev/rusttv";
-
-use crate::panels::CLOCK_SET_AFTER;
 
 thread_local! {
     /// The controller, for results that arrive from other threads.
@@ -188,7 +186,9 @@ impl Controller {
     /// never the tile list; until the thread has read the history (the
     /// first Settings page or change), the tile shows its plain state.
     pub(super) fn show_history_panel(&mut self) {
-        self.history = (History::get().and_then(History::summary), super::now_unix());
+        // The TV's clock (Unix seconds), as RustTV Remote reads it.
+        let now = i64::try_from(crate::remote::now()).unwrap_or(i64::MAX);
+        self.history = (History::get().and_then(History::summary), now);
         let Some(window) = self.window.upgrade() else {
             return;
         };
@@ -206,7 +206,8 @@ impl Controller {
             return;
         }
         self.pointer_moved();
-        if self.review.is_some() || self.pairing.is_some() || self.prompt.is_some() {
+        // Nothing behind the review screen, pairing or a prompt.
+        if !self.pointer_reaches(false) || self.prompt.is_some() {
             return;
         }
         let (Some(page), Ok(index)) = (&mut self.settings, usize::try_from(index)) else {
@@ -786,6 +787,9 @@ impl Controller {
             title: face.invoke_title(status.clone(), count.clone()),
             detail: face.invoke_detail(status.clone(), count.clone()),
             current: face.invoke_attention(status, count),
+            // The age arrives with the history's first answer: room for
+            // it from the start, so the sections under it stay put.
+            tall: true,
             ..SettingsRow::default()
         }
     }

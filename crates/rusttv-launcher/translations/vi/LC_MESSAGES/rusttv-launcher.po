@@ -512,27 +512,27 @@ msgstr "Đang ghép nối"
 
 #: templates/history_tile.json
 msgid "Last change"
-msgstr "Đã đổi"
+msgstr "Đã thay đổi"
 
-#: templates/history_tile.json
+#: templates/history_row.json templates/history_tile.json
 msgid "Waiting"
 msgstr "Đang chờ"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "Just now"
 msgstr "Vừa xong"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} minute ago"
 msgid_plural "{n} minutes ago"
 msgstr[0] "{n} phút trước"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} hour ago"
 msgid_plural "{n} hours ago"
 msgstr[0] "{n} giờ trước"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} day ago"
 msgid_plural "{n} days ago"
 msgstr[0] "{n} ngày trước"

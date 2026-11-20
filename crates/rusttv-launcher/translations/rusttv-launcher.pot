@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
-"POT-Creation-Date: 2026-11-20 22:01+0000\n"
+"POT-Creation-Date: 2026-11-20 22:32+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -12,39 +12,39 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: ui/home.slint:93
+#: ui/home.slint:93 templates/about_page.json
 msgid "Checking for updates…"
 msgstr ""
 
-#: ui/home.slint:94
+#: ui/home.slint:94 templates/about_page.json
 msgid "Up to date"
 msgstr ""
 
-#: ui/home.slint:97
+#: ui/home.slint:97 templates/about_page.json
 msgid "Version {} available — press OK to install"
 msgstr ""
 
-#: ui/home.slint:98
+#: ui/home.slint:98 templates/about_page.json
 msgid "Allow RustTV to install apps, then press OK to install {}"
 msgstr ""
 
-#: ui/home.slint:99
+#: ui/home.slint:99 templates/about_page.json
 msgid "Downloading {}%"
 msgstr ""
 
-#: ui/home.slint:100
+#: ui/home.slint:100 templates/about_page.json
 msgid "Installing…"
 msgstr ""
 
-#: ui/home.slint:101
+#: ui/home.slint:101 templates/about_page.json
 msgid "Update installed"
 msgstr ""
 
-#: ui/home.slint:102
+#: ui/home.slint:102 templates/about_page.json
 msgid "Update failed: {}"
 msgstr ""
 
-#: ui/home.slint:103
+#: ui/home.slint:103 templates/about_page.json
 msgid "Press OK to check for updates"
 msgstr ""
 
@@ -104,7 +104,7 @@ msgstr ""
 msgid "Volume"
 msgstr ""
 
-#: ui/home.slint:131 ui/quick.slint:458
+#: ui/home.slint:131 ui/quick.slint:462
 msgid "Muted"
 msgstr ""
 
@@ -136,7 +136,7 @@ msgstr ""
 msgid "Updates"
 msgstr ""
 
-#: ui/home.slint:148 ui/home.slint:576 ui/home.slint:688
+#: ui/home.slint:148 ui/home.slint:576 ui/home.slint:688 templates/history_row.json templates/history_tile.json
 msgid "History"
 msgstr ""
 
@@ -188,7 +188,7 @@ msgstr ""
 msgid "Normal"
 msgstr ""
 
-#: ui/home.slint:173 ui/home.slint:1684
+#: ui/home.slint:173 ui/home.slint:1685
 msgid "Pair a phone"
 msgstr ""
 
@@ -490,11 +490,11 @@ msgstr ""
 msgid "Hidden apps"
 msgstr ""
 
-#: ui/home.slint:576 ui/home.slint:688 ui/home.slint:1377 ui/quick.slint:149
+#: ui/home.slint:576 ui/home.slint:688 ui/home.slint:1377 ui/quick.slint:153
 msgid "Settings"
 msgstr ""
 
-#: ui/home.slint:576 ui/home.slint:688
+#: ui/home.slint:576 ui/home.slint:688 templates/remote_page.json
 msgid "RustTV Remote"
 msgstr ""
 
@@ -514,7 +514,7 @@ msgstr ""
 msgid "OK puts the app back on Home. Back returns."
 msgstr ""
 
-#: ui/home.slint:1387
+#: ui/home.slint:1387 templates/remote_page.json
 msgid "Up and Down choose, OK opens. Back returns."
 msgstr ""
 
@@ -522,107 +522,107 @@ msgstr ""
 msgid "Loading…"
 msgstr ""
 
-#: ui/home.slint:1546
+#: ui/home.slint:1547
 msgid "Review changes"
 msgstr ""
 
-#: ui/home.slint:1557
+#: ui/home.slint:1558
 msgid "Up and Down read the changes. Choose Approve to go on. Back cancels."
 msgstr ""
 
-#: ui/home.slint:1558
+#: ui/home.slint:1559
 msgid "Nothing changes until you hold OK. Back cancels."
 msgstr ""
 
-#: ui/home.slint:1605
+#: ui/home.slint:1606
 msgid "Approve"
 msgstr ""
 
-#: ui/home.slint:1628
+#: ui/home.slint:1629
 msgid "Press these arrows on the remote:"
 msgstr ""
 
-#: ui/home.slint:1628
+#: ui/home.slint:1629
 msgid "Now hold OK to apply."
 msgstr ""
 
-#: ui/home.slint:1684
+#: ui/home.slint:1685
 msgid "Trust this TV"
 msgstr ""
 
-#: ui/home.slint:1694
+#: ui/home.slint:1695
 msgid "OK allows this phone. Back refuses."
 msgstr ""
 
-#: ui/home.slint:1694
+#: ui/home.slint:1695
 msgid "Back returns."
 msgstr ""
 
-#: ui/home.slint:1722
+#: ui/home.slint:1723
 msgid ""
 "Scan this code with your phone's camera and open the link.\n\nThe phone must "
 "be on the same network as this TV. The code works once, for two minutes."
 msgstr ""
 
-#: ui/home.slint:1741
+#: ui/home.slint:1742
 msgid "Allow “{}”?"
 msgstr ""
 
-#: ui/home.slint:1752
+#: ui/home.slint:1753
 msgid "Check that the phone shows the same code:"
 msgstr ""
 
-#: ui/home.slint:1771
+#: ui/home.slint:1772
 msgid ""
 "It will be able to press keys and type on this TV. It can never change "
 "settings or approve anything."
 msgstr ""
 
-#: ui/home.slint:1781
+#: ui/home.slint:1782
 msgid "“{}” is installing this TV's certificate, “{}”."
 msgstr ""
 
-#: ui/home.slint:1791
+#: ui/home.slint:1792
 msgid ""
 "Before installing, check on the phone that its SHA-256 fingerprint starts "
 "with:"
 msgstr ""
 
-#: ui/home.slint:1812
+#: ui/home.slint:1813
 msgid ""
 "If it doesn't match, don't install it: someone on your network may be "
 "interfering."
 msgstr ""
 
-#: ui/home.slint:1822
+#: ui/home.slint:1823
 msgid "“{}” is paired."
 msgstr ""
 
-#: ui/quick.slint:144
+#: ui/quick.slint:148
 msgid "Search"
 msgstr ""
 
-#: ui/quick.slint:145
+#: ui/quick.slint:149
 msgid "Modify"
 msgstr ""
 
-#: ui/quick.slint:146
+#: ui/quick.slint:150
 msgid "Audio"
 msgstr ""
 
-#: ui/quick.slint:147
+#: ui/quick.slint:151
 msgid "Network"
 msgstr ""
 
-#: ui/quick.slint:148
+#: ui/quick.slint:152
 msgid "KDE Connect"
 msgstr ""
 
-#: ui/quick.slint:150
+#: ui/quick.slint:154
 msgid "Power"
 msgstr ""
 
-#: ui/quick.slint:535
+#: ui/quick.slint:539
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr ""
 
@@ -652,7 +652,7 @@ msgstr ""
 msgid "Third-party notices"
 msgstr ""
 
-#: templates/about_row.json
+#: templates/about_row.json templates/about_tile.json
 msgid "RustTV {}"
 msgstr ""
 
@@ -672,34 +672,34 @@ msgstr ""
 msgid "Update available"
 msgstr ""
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} day ago"
 msgid_plural "{n} days ago"
 msgstr[0] ""
 msgstr[1] ""
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} hour ago"
 msgid_plural "{n} hours ago"
 msgstr[0] ""
 msgstr[1] ""
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} minute ago"
 msgid_plural "{n} minutes ago"
 msgstr[0] ""
 msgstr[1] ""
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "Just now"
+msgstr ""
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Waiting"
 msgstr ""
 
 #: templates/history_tile.json
 msgid "Last change"
-msgstr ""
-
-#: templates/history_tile.json
-msgid "Waiting"
 msgstr ""
 
 #: templates/remote_page.json

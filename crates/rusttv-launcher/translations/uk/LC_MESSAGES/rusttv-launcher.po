@@ -514,29 +514,29 @@ msgstr "Під'єднання"
 msgid "Last change"
 msgstr "Змінено"
 
-#: templates/history_tile.json
+#: templates/history_row.json templates/history_tile.json
 msgid "Waiting"
 msgstr "Очікує"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "Just now"
 msgstr "Щойно"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} minute ago"
 msgid_plural "{n} minutes ago"
 msgstr[0] "{n} хвилину тому"
 msgstr[1] "{n} хвилини тому"
 msgstr[2] "{n} хвилин тому"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} hour ago"
 msgid_plural "{n} hours ago"
 msgstr[0] "{n} годину тому"
 msgstr[1] "{n} години тому"
 msgstr[2] "{n} годин тому"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} day ago"
 msgid_plural "{n} days ago"
 msgstr[0] "{n} день тому"

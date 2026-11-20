@@ -300,6 +300,10 @@ fn run(history: &mut TvHistory, job: Job, platform: &mut dyn HistoryPlatform, sh
             if let Err(error) = history.pack(&shared.interrupt) {
                 log::info!("history: packing stopped: {error}");
             }
+            // While the launcher is away: History's tile then has its data
+            // on the next resume, approvals left from before a restart
+            // included, with no history I/O on Home's paths.
+            refresh_summary(history, clock, shared);
         }
         Job::Overview(reply) => {
             let overview = overview(history, device, clock, test_build);
@@ -672,6 +676,29 @@ mod tests {
                 pending: 1
             })
         );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// A thread that panicked holding the summary's lock doesn't take it
+    /// away: Home still reads and the thread still writes it.
+    #[test]
+    fn a_poisoned_summary_still_reads_and_writes() {
+        let (history, root) = start(false);
+        let summary = Summary {
+            last_unix: Some(1),
+            pending: 2,
+        };
+        history.set_summary(summary);
+        let shared = history.clone();
+        let _ = std::thread::spawn(move || {
+            let _guard = shared.summary.lock();
+            panic!("poisons the lock");
+        })
+        .join();
+        assert!(history.summary.is_poisoned());
+        assert_eq!(history.summary(), Some(summary));
+        history.set_summary(Summary::default());
+        assert_eq!(history.summary(), Some(Summary::default()));
         let _ = std::fs::remove_dir_all(root);
     }
 

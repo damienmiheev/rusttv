@@ -80,8 +80,8 @@ takeover = "active"
   only as moved.
 - **Panel tiles** (format 6, *since 2026-11-20*, PANELS.md § 6): a
   panel's own tile is `panel:<id>` (History's: `panel:history`), recorded
-  like `remote`. Every Home has History's tile, so every new snapshot is
-  format 6, which builds before it refuse (an older build would read the
+  like `remote`. Every Home has History's tile, so every new snapshot with
+  a launcher order is format 6, which builds before it refuse (an older build would read the
   name as an app and drop it). Older snapshots don't have it: they still
   restore, and Home puts the tile at the end. A change list never names
   it added or removed, only moved.
@@ -451,14 +451,15 @@ About; the two stay together at the end, and new apps go before them.
 the last change's age, or "Waiting" in the accent while an approval waits
 for the computer; OK opens Settings on its History section. Its data is a
 summary the history thread keeps after its own work (newest entry's time,
-approvals waiting); Home only copies it (§ 9), so the tile shows its plain
-state until the history has been read once since start.
+approvals waiting; also read while packing, when the launcher is away);
+Home only copies it (§ 9), so the tile shows its plain state until the
+history has been read once since start.
 
 ### 8.2 Page
 Hidden-apps header: "Settings" (57u) at 90u/90u, one dim hint line. Below,
 two columns: left, the sections as menu rows (*since 2026-11-20*,
-History's with the last change's age under it, or the accent dot while an
-approval waits) — **Animations, Updates,
+History's with the last change's age under it, or "Waiting" and the
+accent dot while an approval waits) — **Animations, Updates,
 History, Waiting for your computer** (only when something waits); right, the
 surface panel showing the selected section. Up/Down move; Right or OK enter
 the panel; Left or Back return; Back on the list leaves Settings.

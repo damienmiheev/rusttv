@@ -35,7 +35,8 @@ the phone. "Panels" is the word for people; "add-ons" is the word in code.
 8. **Refresh:** no panel-owned timers or threads and no per-frame work
    (*after review*, replacing "push on change only"). Panels update from
    events Home already has; Home re-formats relative times ("2 h ago") on
-   resume, focus change and the clock's one tick a minute.
+   resume, focus change and the clock's one tick a minute. (*As built*,
+   step 4: on resume and focus changes only; there is no clock yet.)
 9. **One instance, many faces.** A panel can show as a tile, a row and a
    corner glyph at once, all from one data source. **Never** two copies of
    one panel (no "Weather for Kyiv and for Lviv").
@@ -86,7 +87,7 @@ Added 2026-11-20:
     open), so it tests the contract on a second real panel before History's
     no-I/O-at-start rule. History comes third.
 24. **Remote's place is recorded in History**, accepting format 5 for
-    every new snapshot (§ 9 Q9).
+    every new snapshot (§ 9 Q9; 6 since step 4, History's tile).
 25. **One quick panel:** #40's top-right menu. Panels add rows to it;
     decision 14's long-press key is dropped (§ 9 Q10).
 
@@ -360,7 +361,8 @@ Rules the schema enforces (unknown fields are errors):
   generated files, and the phone page's i18n uses the same message ids.
 - **Plural forms** (step 4): a text with a number in it adds `"plural"`
   (the English plural) and `"count"` (the property holding the number,
-  a whole number as text; empty or not a number counts as 0):
+  a non-negative whole number as text; empty or not a number counts as
+  0):
   `{"tr": "{n} hour ago", "plural": "{n} hours ago", "count": "count"}`.
   `{n}` shows the number in either form; other arguments follow as
   usual, with the same `{}` in both forms. It becomes Slint's
@@ -368,7 +370,9 @@ Rules the schema enforces (unknown fields are errors):
   (`msgstr[0]`…, as many as its `Plural-Forms` header names; Arabic six,
   Ukrainian three). Both or neither of `plural` and `count`; `{n}` only
   with them. Any text may take them: a tile's, a row's or a page block's,
-  inside a `select` too.
+  inside a `select` too. The phone doesn't draw templates yet (History's
+  caption there is a fixed kind, § 6); a phone renderer will need each
+  language's forms too (`Intl.PluralRules`).
 - **Direction:** text aligns to `Dir.start`, images to the start side;
   mirrored in RTL on both surfaces. No `left`/`right` in templates.
 - **Properties** are strings declared in `props`; values come from the
@@ -440,11 +444,11 @@ What step 1 must add because of it:
   today's page in the desktop build.
 
 **History's faces** (as built: § 10 step 4's notes):
-- **Tile:** the History icon, "Last change", and "2 h ago" as the caption.
-  The caption uses the accent when something waits for approval. Exact
-  wording is open.
-- **Row:** "History", with the last change's age as its value. It opens the
-  page.
+- **Tile:** the History icon, "Last change" and the age as the caption
+  ("2 hours ago"); while an approval waits for the computer, "History"
+  and "Waiting" in the accent (§ 9 Q7).
+- **Row:** "History", with the last change's age as its value ("Waiting"
+  and the accent dot while an approval waits). It opens the page.
 - **Page:** the Settings page opened on its History section (History is a
   Settings section, not a page of its own).
 - **Data:** HISTORY.md § 9 forbids history I/O at start and resume, so the
@@ -515,9 +519,9 @@ its own.
     attribution clause first.
 - **A new panel tile** (History, step 4) is `TileId::Panel(PanelId)`,
   written `panel:<id>` in the order file and in `state.toml` (`panel:history`).
-  Ids are 1–40 lowercase letters, digits and single `-`, with no `/`, so
-  they can't clash with apps. It ships with format 6 (`is_panel_name`,
-  `state.rs`): every new snapshot holds `panel:history`, so builds that
+  Ids are 1–40 lowercase letters, digits and single `-`, starting with a letter and not ending with `-`, so never a `/`: they can't clash with apps. It ships with format 6 (`is_panel_name`,
+  `state.rs`): every new snapshot with a launcher order holds
+  `panel:history`, so builds that
   read up to format 5 refuse it (`HISTORY_FORMAT_NEWER`) instead of
   reading the name as an app. Today's built-in names (`about`,
   `settings`, `remote`) stay as they are; only new panels use
@@ -530,9 +534,10 @@ its own.
     Settings, Remote, then History (§ 9 Q7). Like `remote`, a change list
     never names `panel:history` added or removed, only moved (an older
     snapshot only lacks it).
-  - CLI JSON stays `rusttv.v11`: `panel:history` is a new value in
-    `launcher.order` and `moved`, documented in CLI.md under its string
-    rules; no field or change kind changed.
+  - CLI JSON stays `rusttv.v11` (unreleased; 0.3.2 has v10):
+    `panel:history` is a new value in `launcher.order` and `moved`,
+    documented in CLI.md's `rusttv.v11` note and HistoryChange; no field
+    or change kind changed.
 - **Phone mirror:** the Apps mirror already sends every tile
   (`TileView {id, label, banner, folder}`, `protocol.rs`). It gains an
   optional `caption` so the phone shows "Update available" too (additive;
@@ -606,7 +611,7 @@ Recommendation first in each.
 8. **Crate layout:** modules in the launcher until a panel needs its own
    dependencies / `rusttv-<name>` crates from the start.
 9. **Remote's place in History** (§ 6): *decided 2026-11-20:* record it.
-   Every new snapshot then needs format 5, so released builds (0.3.2 and
+   Every new snapshot then needs format 5 (6 since step 4), so released builds (0.3.2 and
    older) and builds before #40 can't read new history; updates only go
    forward, so that is accepted. Built in step 3.
 10. **Name clash with #40's quick panel:** *decided 2026-11-20:* fold this
@@ -829,8 +834,8 @@ cheap "last entry + pending count" message exists.
 - **Data, no history I/O on Home's paths:** the history thread keeps a
   `Summary` (newest entry's time, approvals waiting for the computer)
   that it reads after the work that changes it (a launcher edit, an
-  approval, a door commit or `pending` read, the Settings page's data)
-  and before it answers; Home copies it under a lock on resume, on focus
+  approval, a door commit or `pending` read, the Settings page's data,
+  and packing while the launcher is away) and before it answers; Home copies it under a lock on resume, on focus
   changes and when the Settings page's data or an approval's answer
   arrives, and formats the age with the clock then (never a timer).
   Until the thread has read the history (the first Settings open or
@@ -847,19 +852,24 @@ cheap "last entry + pending count" message exists.
   from the new `assets/tiles/history.png` banner, like Remote's.
 - **Row:** History's entry in Settings' section list
   (`templates/history_row.json`, the `HistoryListRow` global): "History"
-  with the age as its dim second line, or "Waiting for your computer"
-  and the accent dot while an approval waits. The section list became
-  Settings' row look (`SettingsRow`: title, detail, dot) in a column, so
-  a row with a detail is taller. OK on the tile opens Settings on the
-  History section (list focus; its entries arrive from the thread).
-- **Plural forms** in the schema (§ 4.1): general, for any text; four new
-  plural texts, gettext forms in all 20 languages (checked against each
-  `Plural-Forms` header by `template_texts_are_translated_everywhere`),
+  with the age as its dim second line, or "Waiting" and the accent dot
+  while an approval waits (the Waiting section under it says for what).
+  The section list became Settings' row look (`SettingsRow`: title,
+  detail, dot) in a column; History's row keeps two lines from the start
+  (`SettingsRow.tall`), so the sections under it don't move when its age
+  arrives. OK on the tile opens Settings on the History section (list
+  focus; its entries arrive from the thread).
+- **Plural forms** in the schema (§ 4.1): general, for any text; three new
+  plural texts, gettext forms in all 20 languages (each `Plural-Forms`
+  header and every form checked by `template_texts_are_translated_everywhere`),
   and a test-only template (`general_plural.json`) drawn by the tests.
+  `scripts/launcher-pot.sh` now names every file that shows a text (the
+  extractor named only the first).
 - **Phone:** History's tile shows its caption on the phone: `waiting`
   (accent) and `just_now` in the phone's words (`page/i18n.js`), and
   `minutes`/`hours`/`days` with `count` through the browser's
-  `Intl.RelativeTimeFormat`, so the phone's own plural forms apply.
+  `Intl.RelativeTimeFormat` (Western digits, as on the TV), so the
+  phone's own plural forms apply.
 - **Texts and fit:** "Last change", "Waiting", "Just now" and the three
   plural ages in all 20 translations; each measured at the tile's sizes
   (27u and 23u in a 218u line; Inter, or the script's system font) with
@@ -872,14 +882,19 @@ cheap "last entry + pending count" message exists.
   tile shows "Waiting"). Tests: the summary from the thread, every age
   boundary and the waiting state, the view against its templates, the
   tile's globals on a focus change without a tile-list change, OK opening
-  Settings on History with its row, plural forms in English, Ukrainian
-  and Arabic, the phone's captions, format 6 and older snapshots
+  Settings on History with its row, plural forms in English, Ukrainian,
+  Polish, French and Arabic, the phone's captions, format 6 and older snapshots
   restoring with History at the end.
+- **Fresh-eyes review** (four reviewers): fixed a brace check that let
+  `{{}n}` through, the row's height jump, the row's repeated "Waiting for
+  your computer", ordering-dependent tests, stale docs; added tests for
+  the clock-not-set ages, plural forms per language, the pointer over the
+  taller row, the phone's drag of `panel:history`.
 - **Measured on the TV at the end**, with the rest (§ 8).
 
 **Later, each after a Claude design canvas** (owner's rule for visuals):
 the faces left open in § 9 — status corner, panel rows in #40's quick panel (§ 9 Q10),
-banner, ambient — and hide and folders for panel tiles (format 6).
+banner, ambient — and hide and folders for panel tiles (format 7).
 
 **Review 2026-11-20 (fresh-eyes subagent, against main 1333a5a and #40's
 head):** fixed here: format numbers after #40, About's tile and row after

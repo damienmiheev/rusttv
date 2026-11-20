@@ -40,20 +40,21 @@ field in `--json` output says which contract you get, CLI.md).
   left-to-right run: on the About tile and page, and Settings' RustTV and
   Updates rows (templates: `{"ltr": prop}`).
 - History records where the RustTV Remote tile is, so undo brings it back
-  (HISTORY.md § 1). New snapshots are therefore state format 5 on Android
-  too, which released builds (0.3.2 and older) can't read. Older
+  (HISTORY.md § 1). New snapshots are therefore at least state format 5
+  on Android too (6 with History's tile, below), which released builds
+  (0.3.2 and older) can't read. Older
   snapshots still restore, with the tile at the end.
 - History has its own tile, a panel (`templates/history_tile.json`, the
   first `panel:<id>` tile, `panel:history`): the History badge, "Last
   change" and its age ("Just now", "2 hours ago"), or "Waiting" in the
   accent while an approval waits for the computer. OK opens Settings on
   its History section, whose entry in the section list now shows the same
-  age, or the accent dot. The age comes from a summary the history thread
+  age, or "Waiting" and the accent dot. The age comes from a summary the history thread
   keeps after its own work and is formatted on resume and focus changes,
   never by a timer; until the history has been read once since start the
   tile shows just "History". A first run puts it last, after RustTV
   Remote; it moves like the other built-in tiles. Its place is in the
-  history, so new snapshots are state format 6; older snapshots still
+  history, so new snapshots with a launcher order are state format 6; older snapshots still
   restore, with the tile at the end.
 - Panel templates take plural forms for any text with a number
   (`"plural"` and `"count"`), so each language has its own forms ("1

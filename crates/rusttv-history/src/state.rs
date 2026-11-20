@@ -581,6 +581,19 @@ mod tests {
             State::parse(&downgraded),
             Err(HistoryError::Invalid(_))
         ));
+        // Wherever a tile name is: hidden, or in a folder.
+        let mut hidden = sample();
+        hidden.launcher.hidden.insert("panel:history".into());
+        assert_eq!(hidden.needed_format(), 6);
+        let mut in_folder = sample();
+        in_folder.launcher.folders.insert(
+            "folder:1".into(),
+            Folder {
+                name: "A".into(),
+                apps: vec!["panel:history".into()],
+            },
+        );
+        assert_eq!(in_folder.needed_format(), 6);
         // Also with every older format's contents.
         let mut all = history.clone();
         all.launcher.order.push("remote".into());

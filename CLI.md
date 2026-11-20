@@ -251,8 +251,8 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
     snapshot since it is recorded); [HistoryChange](#historychange)'s
     `moved` may name `remote`, never `added` or `removed`. Snapshots in
     format 6 also hold History's panel tile, `panel:history`, in
-    `launcher.order` (every snapshot since it is recorded; panel tiles are
-    `panel:<id>`, an id of lowercase letters, digits and `-`); `moved` may
+    `launcher.order` (every snapshot with a launcher order since it is
+    recorded; panel tiles are `panel:<id>`, an id of 1–40 lowercase letters, digits and single `-`, starting with a letter and not ending with `-`); `moved` may
     name it, never `added` or `removed`. Everything else is unchanged.
   - `rusttv.v10`: [HistoryChange](#historychange) has new kinds for phones
     paired with RustTV Remote (`phone_paired`, `phone_removed`, each with
@@ -568,7 +568,8 @@ device's clock, or null before 2024), `author` (`tv` \| `mac` \| `drift`
 
 `kind` and its fields: `reordered` (`moved`: tiles, on Home or in a
 folder), `added` / `removed` (`tile`; never `remote`, the RustTV Remote
-tile, or `panel:history`, History's tile, which older snapshots leave out), `folder_added` / `folder_removed`
+tile, or `panel:history`, History's tile, which older snapshots leave
+out), `folder_added` / `folder_removed`
 (`folder`: `folder:<number>`, `name`), `folder_renamed` (`folder`, `old`,
 `new`), `in_folder` (`tile`, `folder`, `name`, `inside`: the app went into
 the folder, or out of it), `phone_paired` / `phone_removed` (`phone`: the

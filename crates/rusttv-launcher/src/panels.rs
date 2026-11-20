@@ -432,8 +432,13 @@ mod tests {
     }
 
     fn last(seconds_ago: i64) -> Option<Summary> {
+        at(NOW - seconds_ago)
+    }
+
+    /// A summary whose newest entry was made at `unix`.
+    fn at(unix: i64) -> Option<Summary> {
         Some(Summary {
-            last_unix: Some(NOW - seconds_ago),
+            last_unix: Some(unix),
             pending: 0,
         })
     }
@@ -455,9 +460,13 @@ mod tests {
             (last(86_399), NOW, "hours", "23"),
             (last(86_400), NOW, "days", "1"),
             (last(40 * 86_400), NOW, "days", "40"),
-            // The TV's clock behind the entry, or not set at all.
+            // The TV's clock behind the entry; an entry made while the
+            // clock wasn't set (before CLOCK_SET_AFTER), whatever it says
+            // now; one made right at it counts.
             (last(-5), NOW, "", "0"),
-            (last(10), CLOCK_SET_AFTER - 1 + 10, "", "0"),
+            (at(100), NOW, "", "0"),
+            (at(CLOCK_SET_AFTER - 1), NOW, "", "0"),
+            (at(CLOCK_SET_AFTER), CLOCK_SET_AFTER + 30, "now", "0"),
             (
                 Some(Summary {
                     last_unix: Some(NOW - 7_300),
@@ -486,9 +495,10 @@ mod tests {
         }
     }
 
-    /// History's view sets exactly the properties its templates declare,
-    /// and its tile, row and the phone (remote.rs) have words for every
-    /// status the view names and no others.
+    /// History's view sets exactly the properties its templates declare;
+    /// its tile's caption and its row's detail have words for every status
+    /// the view names and no others, and the tile says "Last change" for
+    /// every age. (The phone's words: remote.rs `history_caption`.)
     #[test]
     fn history_view_matches_its_templates() {
         let declared = |name: &str| -> Vec<String> {
@@ -508,8 +518,18 @@ mod tests {
             names(&view.row.expect("row").props),
             declared("history_row")
         );
-        let mut named = vec!["days", "hours", "minutes", "now", "waiting"];
+        // Every status the view names, from the view itself.
+        let waiting = Some(Summary {
+            last_unix: None,
+            pending: 1,
+        });
+        let mut named: Vec<String> = [last(0), last(120), last(7_200), last(172_800), waiting]
+            .iter()
+            .map(|summary| history(*summary, NOW).0)
+            .collect();
         named.sort_unstable();
+        assert_eq!(named, ["days", "hours", "minutes", "now", "waiting"]);
+        let ages: Vec<&String> = named.iter().filter(|status| *status != "waiting").collect();
         let cases = |value: &serde_json::Value| -> Vec<String> {
             let mut cases: Vec<String> = value["cases"]
                 .as_object()
@@ -529,6 +549,18 @@ mod tests {
             .find(|text| text["show"] == "status")
             .expect("the caption");
         assert_eq!(cases(&caption["value"]), named);
+        let value = tile["root"]["column"]["children"]
+            .as_array()
+            .expect("children")
+            .iter()
+            .filter_map(|child| child.get("text"))
+            .find(|text| text.get("show").is_none())
+            .expect("the value line");
+        assert_eq!(cases(&value["value"]).iter().collect::<Vec<_>>(), ages);
+        for age in &ages {
+            assert_eq!(value["value"]["cases"][age.as_str()]["tr"], "Last change");
+        }
+        assert_eq!(value["value"]["else"]["tr"], "History");
         let row = template("history_row");
         assert_eq!(cases(&row["root"]["list-row"]["detail"]), named);
     }
@@ -652,6 +684,33 @@ mod tests {
         out
     }
 
+    /// How many plural forms each language has (gettext's, as its header
+    /// must say): Arabic six; Polish, Russian and Ukrainian three; French
+    /// and Brazilian Portuguese two (0 and 1 are singular); one where a
+    /// number doesn't change the noun.
+    const PLURAL_FORMS: [(&str, usize); 20] = [
+        ("ar", 6),
+        ("de", 2),
+        ("es", 2),
+        ("fr", 2),
+        ("he", 2),
+        ("hi", 2),
+        ("id", 1),
+        ("it", 2),
+        ("ja", 1),
+        ("ko", 1),
+        ("nl", 2),
+        ("pl", 3),
+        ("pt_BR", 2),
+        ("ru", 3),
+        ("th", 1),
+        ("tr", 2),
+        ("uk", 3),
+        ("vi", 1),
+        ("zh_CN", 1),
+        ("zh_TW", 1),
+    ];
+
     /// The number of plural forms a `.po` file's header names.
     fn plural_forms(entries: &[Entry]) -> usize {
         let header = &entries.first().expect("a header").strs[0];
@@ -714,8 +773,16 @@ mod tests {
             let po = dir.join(format!(
                 "translations/{language}/LC_MESSAGES/rusttv-launcher.po"
             ));
-            let po = entries(&std::fs::read_to_string(po).expect("po"));
+            let po = std::fs::read_to_string(po).expect("po");
+            // A fuzzy entry isn't used: it must not stand in for one.
+            assert!(!po.contains("#, fuzzy"), "{language}: a fuzzy entry");
+            let po = entries(&po);
             let forms = plural_forms(&po);
+            let want_forms = PLURAL_FORMS
+                .iter()
+                .find(|(code, _)| code == language)
+                .map(|(_, forms)| *forms);
+            assert_eq!(Some(forms), want_forms, "{language}: Plural-Forms");
             for (id, plural) in &ids {
                 let entry = po
                     .iter()
@@ -728,6 +795,14 @@ mod tests {
                     entry.strs.iter().all(|text| !text.is_empty()),
                     "{language}: {id:?} is not translated"
                 );
+                // Some forms may say the number in words ("an hour"), but
+                // the number shows in one at least.
+                if plural.is_some() {
+                    assert!(
+                        entry.strs.iter().any(|text| text.contains("{n}")),
+                        "{language}: {id:?} never shows {{n}}"
+                    );
+                }
             }
         }
     }

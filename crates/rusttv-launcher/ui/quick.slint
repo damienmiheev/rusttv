@@ -18,6 +18,10 @@ export struct SettingsRow {
     // A slider: a level bar after the detail, filled to `level` (0..1).
     slider: bool,
     level: float,
+    // Two lines tall even while `detail` is empty, so a detail that comes
+    // later (History's age) doesn't move the rows under it (a list's
+    // `MenuRow`).
+    tall: bool,
 }
 
 // A row in the long-press menu's style (home.slint `MenuRow`), with a level

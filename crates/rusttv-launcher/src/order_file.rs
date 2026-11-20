@@ -453,6 +453,11 @@ mod tests {
         .unwrap();
         let loaded = load(&dir.file());
         assert_eq!(loaded.order, order);
+        assert_eq!(
+            loaded.order.keys()[0],
+            (TileId::Panel(PanelId::History), 500),
+            "its key is kept"
+        );
         assert_eq!(loaded.focus, Some(TileId::Panel(PanelId::History)));
         let state = launcher_state(&dir.0);
         assert_eq!(
@@ -500,6 +505,27 @@ mod tests {
             tile_for_name("panel:clock".to_owned()),
             TileId::App("panel:clock".to_owned())
         );
+        // A newer build's panel in the order file: Home drops it like an
+        // app that isn't installed.
+        std::fs::write(
+            dir.file(),
+            "keys = { \"panel:clock\" = 500, \"com.example.b/.Main\" = 1000 }\n",
+        )
+        .unwrap();
+        let loaded = load(&dir.file());
+        assert!(loaded.warning.is_none());
+        let mut home = crate::model::Home::new(loaded.order, loaded.folders, loaded.hidden, false);
+        home.set_apps(&[crate::model::App {
+            id: "com.example.b/.Main".to_owned(),
+            label: "B".to_owned(),
+            category: crate::model::Category::Other,
+        }]);
+        assert!(
+            !home
+                .tiles()
+                .contains(&TileId::App("panel:clock".to_owned()))
+        );
+        assert_eq!(home.tiles().len(), 3);
         assert_eq!(name_of(&TileId::Panel(PanelId::History)), "panel:history");
     }
 

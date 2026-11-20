@@ -741,4 +741,24 @@ mod tests {
         assert_eq!(page.panel_row(), Some(0));
         assert!(!page.show_tab("display"));
     }
+
+    /// History's tile opens Settings on the History section with the
+    /// section list focused, wherever focus was, and it stays there when
+    /// the platform's tabs or the history's data arrive.
+    #[test]
+    fn show_history_selects_history_with_the_list_focused() {
+        let mut page = page();
+        page.handle(Input::Right);
+        assert!(page.panel_row().is_some(), "focus in Animations' rows");
+        page.show_history();
+        assert_eq!(page.section(), Section::History);
+        assert_eq!(page.panel_row(), None);
+        page.set_device(Vec::new(), Vec::new());
+        page.refresh(page.overview().clone());
+        assert_eq!(page.section(), Section::History);
+        assert_eq!(page.panel_row(), None);
+        // OK then enters its entries.
+        page.handle(Input::OkReleased);
+        assert_eq!(page.panel_row(), Some(0));
+    }
 }

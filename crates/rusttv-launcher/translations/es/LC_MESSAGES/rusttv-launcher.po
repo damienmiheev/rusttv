@@ -514,27 +514,27 @@ msgstr "Vinculando"
 msgid "Last change"
 msgstr "Último cambio"
 
-#: templates/history_tile.json
+#: templates/history_row.json templates/history_tile.json
 msgid "Waiting"
 msgstr "En espera"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "Just now"
 msgstr "Ahora mismo"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} minute ago"
 msgid_plural "{n} minutes ago"
 msgstr[0] "hace {n} minuto"
 msgstr[1] "hace {n} minutos"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} hour ago"
 msgid_plural "{n} hours ago"
 msgstr[0] "hace {n} hora"
 msgstr[1] "hace {n} horas"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} day ago"
 msgid_plural "{n} days ago"
 msgstr[0] "hace {n} día"

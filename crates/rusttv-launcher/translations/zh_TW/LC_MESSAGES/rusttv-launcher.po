@@ -514,25 +514,25 @@ msgstr "正在配對"
 msgid "Last change"
 msgstr "上次變更"
 
-#: templates/history_tile.json
+#: templates/history_row.json templates/history_tile.json
 msgid "Waiting"
 msgstr "等待電腦"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "Just now"
 msgstr "剛剛"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} minute ago"
 msgid_plural "{n} minutes ago"
 msgstr[0] "{n} 分鐘前"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} hour ago"
 msgid_plural "{n} hours ago"
 msgstr[0] "{n} 小時前"
 
-#: templates/history_row.json
+#: templates/history_row.json templates/history_tile.json
 msgid "{n} day ago"
 msgid_plural "{n} days ago"
 msgstr[0] "{n} 天前"

@@ -16,9 +16,9 @@
 //! `RUSTTV_REMOTE_PAIR=1` starts RustTV Remote with pairing open and prints
 //! the pairing link; every phone that asks is allowed (REMOTE.md).
 //!
-//! `RUSTTV_HISTORY_PENDING=1` runs as a TV without the settings grant: an
-//! approved Animations change then waits for the computer, so History's
-//! tile shows its waiting approval (HISTORY.md § 6.3).
+//! `RUSTTV_HISTORY_PENDING=1` runs as a TV without the settings grant, in
+//! any mode: an approved Animations change then waits for the computer, so
+//! History's tile shows its waiting approval (HISTORY.md § 6.3).
 //!
 //! `--demo-remote <dir>` does the same for RustTV Remote's tile, page and
 //! pairing screen.
@@ -337,10 +337,10 @@ fn history_script(right_to_left: bool) -> Vec<DemoStep> {
     steps
 }
 
-/// Whether the made-up TV may write settings itself (see
-/// `RUSTTV_HISTORY_PENDING`).
+/// Whether the made-up TV may write settings itself: not with
+/// `RUSTTV_HISTORY_PENDING=1`.
 fn grant() -> bool {
-    std::env::var_os("RUSTTV_HISTORY_PENDING").is_none()
+    std::env::var("RUSTTV_HISTORY_PENDING").as_deref() != Ok("1")
 }
 
 fn main() -> Result<(), Box<dyn Error>> {

@@ -745,6 +745,15 @@ mod tests {
         assert!(ok(
             r#"{"type":"drag","id":"panel:history","over":"remote","phase":"move","on":false}"#
         ));
+        assert!(ok(
+            r#"{"type":"drag","id":"remote","over":"panel:history","phase":"move","on":false}"#
+        ));
+        assert!(ok(
+            r#"{"type":"tile","id":"panel:history","gesture":"long_press"}"#
+        ));
+        assert!(!ok(
+            r#"{"type":"drag","id":"remote","over":"panel:clock","phase":"move","on":false}"#
+        ));
         assert!(!ok(r#"{"type":"tile","id":"panel:clock","gesture":"tap"}"#));
         assert!(!ok(r#"{"type":"banner","id":"panel:clock"}"#));
     }

@@ -63,7 +63,7 @@ fn random(bytes: &mut [u8]) {
     getrandom::fill(bytes).expect("the OS has a secure random source");
 }
 
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| since.as_secs())
@@ -715,6 +715,26 @@ mod tests {
                 }
             }
             assert!(found, "{view:?}");
+        }
+    }
+
+    /// Every panel tile's name (`panel:<id>`) is one the phone may tap,
+    /// drag and ask the picture of, and one a history snapshot holds.
+    #[test]
+    fn every_panel_tile_is_a_phone_tile_and_a_history_name() {
+        for panel in PanelId::ALL {
+            let name = name_of(&TileId::Panel(panel));
+            for message in [
+                format!(r#"{{"type":"tile","id":"{name}","gesture":"tap"}}"#),
+                format!(r#"{{"type":"banner","id":"{name}"}}"#),
+            ] {
+                assert!(
+                    rusttv_remote::protocol::parse_phone(message.as_bytes()).is_ok(),
+                    "{message}"
+                );
+            }
+            assert!(rusttv_history::is_tile_name(&name), "{name}");
+            assert!(crate::ui::builtin_banner(&name).is_some(), "{name}");
         }
     }
 

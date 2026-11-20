@@ -6,7 +6,7 @@
   "root": { "list-row": {
     "title": { "tr": "History" },
     "detail": { "select": "status", "cases": {
-      "waiting": { "tr": "Waiting for your computer" },
+      "waiting": { "tr": "Waiting" },
       "now": { "tr": "Just now" },
       "minutes": { "tr": "{n} minute ago", "plural": "{n} minutes ago", "count": "count" },
       "hours": { "tr": "{n} hour ago", "plural": "{n} hours ago", "count": "count" },

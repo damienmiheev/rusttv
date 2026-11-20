@@ -94,8 +94,8 @@ to its home screen.
   first of `navigator.languages` among the launcher's 20, else English;
   right to left for Arabic and Hebrew), from `page/i18n.js`, checked by
   `page/i18n.test.mjs` in CI. Tiles show the apps' own banners (or icons),
-  see Storage; the built-in tiles (About, Settings, RustTV Remote, Hidden
-  apps) show their banners too. Not yet: renaming a folder from the phone
+  see Storage; the built-in tiles (About, Settings, RustTV Remote, History,
+  Hidden apps) show their banners too. Not yet: renaming a folder from the phone
   (typing works).
 - **Look:** the launcher's colours, Inter, the RustTV icon and the built-in
   tile images.

@@ -222,7 +222,7 @@
       "Basculer entre pointeur et flèches",
       "Rechercher dans {}",
       "Nouvelle version", "Téléchargement", "Installation",
-      "Historique", "En attente", "À l’instant",
+      "Historique", "En attente", "À l'instant",
     ],
     it: [
       "Sulla TV apri il riquadro RustTV Remote nella Home, scegli Associa un telefono e inquadra il codice con la fotocamera di questo telefono.",
@@ -596,7 +596,7 @@
       "포인터와 화살표 전환",
       "{}에서 검색",
       "업데이트 있음", "다운로드 중", "설치 중",
-      "기록", "컴퓨터 대기", "방금",
+      "기록", "컴퓨터 대기 중", "방금",
     ],
     th: [
       "บนทีวี เปิดไทล์ RustTV Remote ในหน้าหลัก เลือก จับคู่โทรศัพท์ แล้วสแกนโค้ดด้วยกล้องของโทรศัพท์เครื่องนี้",

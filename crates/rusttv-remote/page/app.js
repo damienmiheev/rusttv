@@ -632,7 +632,8 @@
     if (key) return t(key);
     const unit = AGES.get(tile.caption);
     if (!unit || !Number.isInteger(tile.count) || tile.count < 0 || !window.Intl?.RelativeTimeFormat) return "";
-    ages ??= new Intl.RelativeTimeFormat(window.RustTVText.lang.replace("_", "-"), { numeric: "always" });
+    // Western digits, as the TV shows them.
+    ages ??= new Intl.RelativeTimeFormat(window.RustTVText.lang.replace("_", "-"), { numeric: "always", numberingSystem: "latn" });
     return ages.format(-tile.count, unit);
   }
 

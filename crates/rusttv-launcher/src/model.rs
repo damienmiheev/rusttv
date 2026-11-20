@@ -2499,12 +2499,18 @@ mod tests {
         let mut home = home(2);
         assert!(home.focus_on(&HISTORY));
         pick_up(&mut home);
-        press(&mut home, &[Input::Left; 4]);
+        // a00, a01, RustTV Remote, History: three to the start.
+        press(&mut home, &[Input::Left; 3]);
+        assert_eq!(home.focus(), 0);
         assert_eq!(
             press(&mut home, &[Input::OkPressed]),
             Some(Effect::SaveOrder)
         );
         assert_eq!(home.order().ids()[0], HISTORY);
+        // Every panel with a tile is a built-in tile.
+        for panel in PanelId::ALL {
+            assert!(BUILTINS.contains(&TileId::Panel(panel)), "{panel:?}");
+        }
     }
 
     #[test]

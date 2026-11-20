@@ -745,16 +745,12 @@ impl Cx<'_> {
         let allowed = if plural.is_some() { "{} and {n}" } else { "{}" };
         let forms = std::iter::once(("tr", text)).chain(plural.map(|(form, _)| ("plural", form)));
         for (key, form) in forms {
-            let mut rest = form.replace("{}", "");
-            if plural.is_some() {
-                rest = rest.replace("{n}", "");
-            }
-            if rest.contains(['{', '}']) {
+            let Some(holes) = placeholders(form, plural.is_some()) else {
                 return Err(format!(
                     "{at}.{key}: {form:?} may hold braces only as {allowed}"
                 ));
-            }
-            if form.matches("{}").count() != args.len() {
+            };
+            if holes != args.len() {
                 return Err(format!("{at}.{key}: {form:?} needs one arg per {{}}"));
             }
         }
@@ -884,6 +880,24 @@ impl Cx<'_> {
             Err(format!("{at}: {prop:?} is not in props"))
         }
     }
+}
+
+/// How many `{}` a text holds, read left to right: its only braces are
+/// `{}` and, in a plural text, `{n}`; `None` for any other brace (`@tr`
+/// would read it as another placeholder or an escape).
+fn placeholders(text: &str, plural: bool) -> Option<usize> {
+    let mut holes = 0;
+    let mut rest = text;
+    while let Some(at) = rest.find(['{', '}']) {
+        rest = &rest[at..];
+        if let Some(after) = rest.strip_prefix("{}") {
+            holes += 1;
+            rest = after;
+        } else {
+            rest = rest.strip_prefix("{n}").filter(|_| plural)?;
+        }
+    }
+    Some(holes)
 }
 
 /// A text's literal: a string without control or bidi characters, so a text

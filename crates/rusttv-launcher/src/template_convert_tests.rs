@@ -207,6 +207,35 @@ fn plural_texts_convert_with_their_count() {
     ))
     .expect("converts");
     assert!(page.contains("@tr(\"{n} notice\" | \"{n} notices\" % root.version.to-float())"));
+    // A list page's header title and hint, a title, a paragraph and a hint.
+    let page = run(&ONE_COLUMN
+        .replace(
+            "\"header\": { \"title\": { \"tr\": \"Test {}\", \"args\": [\"name\"] } }",
+            "\"header\": { \"title\": { \"tr\": \"{n} test {}\", \"plural\": \"{n} tests {}\", \"count\": \"state\", \"args\": [\"name\"] }, \
+             \"hint\": { \"tr\": \"{n} hint\", \"plural\": \"{n} hints\", \"count\": \"state\" } }",
+        )
+        .replace(
+            "{ \"tr\": \"Large\" }",
+            "{ \"tr\": \"{n} large\", \"plural\": \"{n} larges\", \"count\": \"name\" }",
+        )
+        .replace(
+            "{ \"tr\": \"State\" }",
+            "{ \"tr\": \"{n} state\", \"plural\": \"{n} states\", \"count\": \"state\" }",
+        )
+        .replace(
+            "{ \"tr\": \"Back returns.\" }",
+            "{ \"tr\": \"{n} back\", \"plural\": \"{n} backs\", \"count\": \"version\" }",
+        ))
+    .expect("converts");
+    for out in [
+        "@tr(\"{n} test {}\" | \"{n} tests {}\" % root.state.to-float(), root.name)",
+        "@tr(\"{n} hint\" | \"{n} hints\" % root.state.to-float())",
+        "@tr(\"{n} large\" | \"{n} larges\" % root.name.to-float())",
+        "@tr(\"{n} state\" | \"{n} states\" % root.state.to-float())",
+        "@tr(\"{n} back\" | \"{n} backs\" % root.version.to-float())",
+    ] {
+        assert!(page.contains(out), "{out}: {page}");
+    }
 }
 
 /// What a plural text can't hold: one of `plural` and `count` without the
@@ -252,6 +281,30 @@ fn rejects_plural_texts_outside_the_schema() {
         (
             HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour ago\", \"plural\": 2, \"count\": \"count\" }"),
             "plural: expected a string",
+        ),
+        // A bad singular next to a good plural.
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{0} hour ago\", \"plural\": \"{n} hours ago\", \"count\": \"count\" }"),
+            "tr: \"{0} hour ago\" may hold braces only as {} and {n}",
+        ),
+        // Braces that collapse into `{n}` once `{}` is taken out: Slint
+        // would read `{{` as an escape.
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{{}n} hour ago\", \"plural\": \"{n} hours ago\", \"count\": \"count\" }"),
+            "may hold braces only as {} and {n}",
+        ),
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour ago\", \"plural\": \"{n{}} hours ago\", \"count\": \"count\" }"),
+            "may hold braces only as {} and {n}",
+        ),
+        // The count is a prop's name, never a number or an isolate.
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour ago\", \"plural\": \"{n} hours ago\", \"count\": 3 }"),
+            "count: expected a string",
+        ),
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour ago\", \"plural\": \"{n} hours ago\", \"count\": { \"ltr\": \"count\" } }"),
+            "count: expected a string",
         ),
         (
             HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour ago\", \"plural\": \"{n} hours ago\", \"count\": \"count\", \"many\": \"x\" }"),
@@ -796,6 +849,7 @@ fn the_test_templates_compile_and_draw() {
         ("1", "1 file in \u{2066}1\u{2069}", "One day"),
         ("2", "2 files in \u{2066}2\u{2069}", "2 days"),
         ("", "0 files in \u{2066}\u{2069}", "0 days"),
+        ("abc", "0 files in \u{2066}abc\u{2069}", "0 days"),
         ("0", "0 files in \u{2066}0\u{2069}", "None"),
     ] {
         pages.set_value(value.into());
