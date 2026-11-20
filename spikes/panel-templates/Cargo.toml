@@ -1,0 +1,25 @@
+[package]
+name = "panel-templates-spike"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Throwaway Panels step 0 spike (PANELS.md § 4.1, § 10): JSON templates to Slint. Not product code."
+
+# Not part of the main workspace: a throwaway, nothing here ships.
+[workspace]
+
+[dependencies]
+slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "renderer-software", "software-renderer-systemfonts", "image-default-formats"] }
+# Spike only: PNG decoding for @image-url without a windowing backend (the
+# launcher gets it through its backends). Real system fonts, too, so text is
+# drawn at its real size (embedded glyphs come in fixed sizes only).
+i-slint-core = { version = "=1.18.1", features = ["image-decoders"] }
+
+[build-dependencies]
+slint-build = "=1.18.1"
+serde_json = "1.0.154"
+
+[dev-dependencies]
+serde_json = "1.0.154"
+png = "0.18"

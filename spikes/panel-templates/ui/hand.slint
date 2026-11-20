@@ -1,0 +1,47 @@
+// The reference: About's tile written by hand in Slint, as PANELS.md § 4.1
+// describes it. The generated tile must match it pixel for pixel.
+import { Theme, Dir } from "theme.slint";
+
+export component HandAboutTile inherits Rectangle {
+    in property <length> u;
+    in property <string> version;
+    // "", "update", "downloading" or "installing".
+    in property <string> status;
+
+    width: 250 * u;
+    height: 141 * u;
+    border-radius: 12 * u;
+    background: Theme.surface;
+    clip: true;
+
+    VerticalLayout {
+        padding: 16 * u;
+        spacing: 4 * u;
+        alignment: end;
+
+        Image {
+            source: @image-url("../assets/rusttv-logo.png");
+            height: 44 * u;
+            image-fit: contain;
+            horizontal-alignment: Dir.image-start;
+        }
+        Text {
+            text: @tr("RustTV {}", root.version);
+            font-size: 27 * u;
+            font-weight: 500;
+            color: Theme.text;
+            horizontal-alignment: Dir.start;
+            overflow: elide;
+        }
+        if root.status != "": Text {
+            text: root.status == "update" ? @tr("Update available")
+                : root.status == "downloading" ? @tr("Downloading")
+                : root.status == "installing" ? @tr("Installing")
+                : "";
+            font-size: 23 * u;
+            color: root.status == "update" ? Theme.accent : Theme.text-dim;
+            horizontal-alignment: Dir.start;
+            overflow: elide;
+        }
+    }
+}
