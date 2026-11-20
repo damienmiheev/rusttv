@@ -14,7 +14,7 @@ const TOKENS: [&str; 5] = ["bg", "surface", "text", "text-dim", "accent"];
 /// `Rectangle`'s and every element's), and Slint words (a row's props are
 /// function parameters). A page's scroll box is fed through `scroll-*`
 /// (Home owns the scrolling).
-const RESERVED_PROPS: [&str; 26] = [
+const RESERVED_PROPS: [&str; 27] = [
     "u",
     "if",
     "for",
@@ -34,6 +34,8 @@ const RESERVED_PROPS: [&str; 26] = [
     "y",
     "z",
     "background",
+    // Rectangle's old name for `background`.
+    "color",
     "clip",
     "visible",
     "opacity",

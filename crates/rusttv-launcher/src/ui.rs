@@ -3746,18 +3746,12 @@ mod tests {
 
     /// What the open About page draws as its updater line (the paragraph of
     /// templates/about_page.json that selects on `update`), read through
-    /// Slint's test search. Only debug builds carry the element names it
-    /// needs (build.rs), so these tests run in the debug profile.
+    /// Slint's test search. Only builds with debug assertions carry the
+    /// element names it needs (build.rs); its tests are ignored elsewhere.
     fn page_line(window: &HomeWindow) -> String {
         let page: serde_json::Value =
             serde_json::from_str(include_str!("../templates/about_page.json")).expect("JSON");
-        let index = page["root"]["page"]["start"]
-            .as_array()
-            .expect("blocks")
-            .iter()
-            .filter_map(|block| block.get("paragraph"))
-            .position(|paragraph| paragraph["value"]["select"] == "update")
-            .expect("the updater's line");
+        let index = panels::updater_line_index(&page);
         i_slint_backend_testing::ElementHandle::find_by_element_type_name(window, "PageText")
             .nth(index)
             .and_then(|line| line.accessible_label())
@@ -3768,6 +3762,10 @@ mod tests {
     /// The About page and Settings' Updates row say the same for every
     /// status, each from its own words.
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn the_about_page_and_settings_word_every_status_alike() {
         let screen = screen(None);
         open_about(&screen);
@@ -3788,6 +3786,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn ok_on_about_checks_for_updates_when_none_is_known() {
         let screen = screen(None);
         open_about(&screen);
@@ -3801,6 +3803,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn an_available_update_shows_a_dot_and_ok_on_about_installs_it() {
         let mut platform = abc();
         platform.set_update_status(UpdateStatus::Available("0.2.0".into()));
@@ -3831,6 +3837,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn without_install_permission_ok_asks_again_after_it_is_granted() {
         let mut platform = abc();
         platform.set_update_status(UpdateStatus::NeedsPermission("0.2.0".into()));
@@ -3953,6 +3963,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn about_shows_download_progress_as_it_comes() {
         let screen = screen(None);
         open_about(&screen);
@@ -3970,6 +3984,10 @@ mod tests {
     // --- languages ---
 
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn a_device_language_with_a_translation_shows_it() {
         let screen = screen_in(abc(), None, Some("uk-UA"));
         open_about(&screen);
@@ -3980,6 +3998,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn a_language_without_a_translation_falls_back_to_english() {
         let screen = screen_in(abc(), None, Some("sv-SE"));
         open_about(&screen);

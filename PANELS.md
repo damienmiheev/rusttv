@@ -153,7 +153,8 @@ pub(crate) enum PanelAction { OpenPage, UpdateLauncher }
 
 /// About in v1, tested without Slint.
 pub(crate) fn about_view(version: &str, status: &UpdateStatus) -> PanelView;
-/// Built once when the page opens, not on every update poll.
+/// (As built: the page's values are set with the tile's on every status
+/// change; only an open page reads them.)
 ```
 
 - **No timers or threads of its own.** A panel updates from events Home

@@ -113,15 +113,39 @@ pub(crate) const UPDATE_STATUSES: [UpdateStatus; 9] = [
     UpdateStatus::Failed(String::new()),
 ];
 
-/// About's page template's updater line: the text that selects on `update`.
+/// About's page template's paragraphs, in drawing order (start, then end).
+#[cfg(test)]
+fn paragraphs(page: &serde_json::Value) -> impl Iterator<Item = &serde_json::Value> {
+    ["start", "end"]
+        .into_iter()
+        .filter_map(|side| page["root"]["page"][side].as_array())
+        .flatten()
+        .filter_map(|block| block.get("paragraph"))
+}
+
+/// About's page template's updater line: the paragraph that selects on
+/// `update`.
 #[cfg(test)]
 pub(crate) fn updater_line(page: &serde_json::Value) -> &serde_json::Value {
-    ["start", "end"]
-        .iter()
-        .flat_map(|side| page["root"]["page"][side].as_array().expect("blocks"))
-        .filter_map(|block| block.get("paragraph"))
-        .find(|text| text["value"]["select"] == "update")
+    paragraphs(page)
+        .find(|paragraph| paragraph["value"]["select"] == "update")
         .expect("the updater's line")
+}
+
+/// Which drawn paragraph (`PageText`) is the updater line. Counts every
+/// paragraph before it, so none of them may have a `show` (checked).
+#[cfg(test)]
+pub(crate) fn updater_line_index(page: &serde_json::Value) -> usize {
+    let before: Vec<&serde_json::Value> = paragraphs(page)
+        .take_while(|paragraph| paragraph["value"]["select"] != "update")
+        .collect();
+    assert!(
+        before
+            .iter()
+            .all(|paragraph| paragraph.get("show").is_none()),
+        "a conditional paragraph before the updater line moves it"
+    );
+    before.len()
 }
 
 #[cfg(test)]
