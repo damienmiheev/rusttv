@@ -1354,6 +1354,9 @@ impl Controller {
         else {
             return;
         };
+        if !self.pointer_reaches(false) {
+            return;
+        }
         let effect = match action {
             0 => {
                 if self.hover_settling() {
@@ -1409,6 +1412,9 @@ impl Controller {
             self.parked = false;
         }
         self.pointer_moved();
+        if !self.pointer_reaches(list == 4) {
+            return;
+        }
         let Ok(target) = usize::try_from(index) else {
             return;
         };
@@ -1481,6 +1487,10 @@ impl Controller {
     /// The scroll wheel: one row per notch (a notch is about 120 px; a
     /// touchpad's small steps add up).
     fn scrolled(&mut self, delta: f32) {
+        // On the review screen the wheel reads its list, nothing more.
+        if !self.pointer_reaches(self.review.is_some()) {
+            return;
+        }
         self.scroll_rest += delta;
         while self.scroll_rest.abs() >= SCROLL_STEP {
             let down = self.scroll_rest > 0.0;
@@ -1523,6 +1533,27 @@ impl Controller {
                     self.parked = false;
                 }
             }
+        }
+    }
+
+    /// Whether pointer input may act now. The pairing and trust screens take
+    /// only the remote's keys, like the phone's (trust can open over Home,
+    /// whose tiles still lie under it). The review screen takes the pointer
+    /// on its own list (`review_list`) until Approve; the code and holding
+    /// OK stay on the remote.
+    fn pointer_reaches(&self, review_list: bool) -> bool {
+        if self.pairing.is_some() {
+            return false;
+        }
+        match self.review {
+            Some(_) => {
+                review_list
+                    && self
+                        .window
+                        .upgrade()
+                        .is_some_and(|window| window.get_review_phase() == 0)
+            }
+            None => !review_list,
         }
     }
 
@@ -4089,6 +4120,76 @@ mod tests {
         let effects = screen.window.global::<Effects>();
         assert!(!effects.get_shadows());
         assert!(!effects.get_backdrop());
+    }
+
+    #[test]
+    fn the_pointer_and_the_wheel_stay_off_the_tiles_under_the_trust_screen() {
+        let dir =
+            std::env::temp_dir().join(format!("rusttv-ui-trust-pointer-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let screen = screen_with_remote(dir.join("order.toml"));
+        screen._controller.borrow_mut().start_remote_now(true);
+        screen
+            ._controller
+            .borrow_mut()
+            .remote_event(RemoteEvent::Input {
+                phone: rusttv_remote::PhoneId([1; 16]),
+                message: PhoneMessage::Trust,
+            });
+        assert_eq!(screen.window.get_mode(), 9, "the trust screen opens");
+        let focus = screen.window.get_focused_index();
+        screen.window.invoke_tile_pointer(false, 1, 0);
+        screen.window.invoke_tile_pointer(false, 0, 1);
+        screen.window.invoke_tile_pointer(false, 0, 2);
+        screen.window.invoke_scrolled(SCROLL_STEP * 3.0);
+        assert!(screen.launched().is_empty(), "no app opens behind it");
+        assert_eq!(screen.window.get_focused_index(), focus);
+        assert_eq!(
+            (screen.window.get_mode(), screen.window.get_pairing_phase()),
+            (9, 4)
+        );
+        screen.tap(BACK);
+        assert_ne!(screen.window.get_mode(), 9);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn past_approve_the_pointer_and_the_wheel_leave_the_code_to_the_remote() {
+        let (dir, _history) = history_dir();
+        let screen = screen(Some(dir.join("order.toml")));
+        crate::history::History::get().unwrap().launcher_edited();
+        click_settings(&screen.window);
+        settle(&screen);
+        screen.tap(RIGHT); // focus on Normal, the current choice
+        screen.tap(UP);
+        screen.tap(UP);
+        screen.tap(OK); // Faster
+        assert_eq!(screen.window.get_mode(), 7, "the review screen opens");
+        // The wheel reads the list; a click on Approve asks for the code.
+        let row = screen.window.get_review_row();
+        screen.window.invoke_scrolled(SCROLL_STEP);
+        assert_eq!(screen.window.get_review_row(), row + 1);
+        screen.window.invoke_list_pointer(4, 4, 1);
+        assert_eq!(screen.window.get_review_phase(), 1);
+        // Now neither the wheel (Down, a wrong first arrow), a click nor a
+        // tile under the screen counts.
+        screen.window.invoke_scrolled(SCROLL_STEP);
+        screen.window.invoke_list_pointer(4, 4, 1);
+        screen.window.invoke_tile_pointer(false, 0, 1);
+        assert_eq!(screen.window.get_review_phase(), 1);
+        // FakePlatform's code: left, up, right, down.
+        for key in [LEFT, UP, RIGHT, DOWN] {
+            screen.tap(key);
+        }
+        assert_eq!(
+            (screen.window.get_review_phase(), screen.window.get_mode()),
+            (2, 7),
+            "the code counts from its first arrow: {}",
+            screen.window.get_settings_status()
+        );
+        assert!(screen.launched().is_empty());
+        screen.tap(BACK);
     }
 
     #[test]

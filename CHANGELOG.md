@@ -8,17 +8,16 @@ field in `--json` output says which contract you get, CLI.md).
 
 ### Launcher
 
+- Settings → Effects: Reduced turns the tile shadows and the backdrop glow
+  off, for a weak GPU. The choice is in the TV's history and kept as the
+  `effects-reduced` flag file next to `order.toml`, so an image can preset
+  it. `RUSTTV_FPS=1` shows the frame rate in a corner.
 - A mouse or air mouse works on every screen: hovering focuses (tiles, the
   open folder, the tile menu, Hidden apps, Settings, RustTV Remote, the
   review screen), a click is OK, the secondary button opens a tile's menu,
   and the wheel moves a row per notch. The pointer hides after 4 s at rest
   and as soon as a key is pressed. Moving apps and making folders stay on
   the arrow keys as before.
-
-- Settings → Effects: Reduced turns the tile shadows and the backdrop glow
-  off, for a weak GPU. The choice is in the TV's history and kept as the
-  `effects-reduced` flag file next to `order.toml`, so an image can preset
-  it. `RUSTTV_FPS=1` shows the frame rate in a corner.
 
 - A Linux home screen (feature `linux`, binary `rusttv-launcher-linux`):
   the apps of the machine's desktop entries in a Wayland compositor such as
