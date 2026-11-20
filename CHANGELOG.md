@@ -21,9 +21,10 @@ field in `--json` output says which contract you get, CLI.md).
 - The About page and Settings' RustTV row are About's page and row faces,
   drawn from templates (`templates/about_page.json`, `about_row.json`)
   made of page blocks (title, paragraph, mark, scroll box, hint;
-  `ui/blocks.slint`). They look (by eye) and work as before: OK installs
-  or checks for an update, Up and Down scroll the notices, Slint's
-  attribution stays.
+  `ui/blocks.slint`). They work as before (OK installs or checks for an
+  update, Up and Down scroll the notices, Slint's attribution stays) and
+  look the same; compared pixel by pixel, the lines under the licence
+  text sit 2 px lower at 2560 × 1440.
 - Settings → Effects: Reduced turns the tile shadows and the backdrop glow
   off, for a weak GPU. The choice is in the TV's history and kept as the
   `effects-reduced` flag file next to `order.toml`, so an image can preset

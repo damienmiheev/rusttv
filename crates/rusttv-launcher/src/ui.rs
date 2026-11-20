@@ -451,8 +451,8 @@ impl Demo {
 /// Sets the About panel's tile and page values (src/panels.rs): window-global
 /// properties, so a status change redraws the tile without touching the
 /// tile list; the page reads them only while it is open. (Its row is read
-/// when Settings draws its list.) A name means one value on every face, so
-/// `version` is set once.
+/// when Settings draws its list.) A name means one value on every face
+/// (panels.rs tests), so `version` is set once.
 fn show_about_panel(window: &HomeWindow, status: &UpdateStatus) {
     let view = panels::about_view(env!("CARGO_PKG_VERSION"), status);
     let about = window.global::<AboutPanel>();
@@ -3591,7 +3591,7 @@ mod tests {
     }
 
     /// home.slint gives the About page every property its template declares,
-    /// from `AboutPanel` (the tests above see `AboutPanel`, not the page).
+    /// from `AboutPanel`, and its scroll box's.
     #[test]
     fn home_binds_every_about_page_property() {
         let page: serde_json::Value =
@@ -3605,6 +3605,9 @@ mod tests {
                 block.contains(&format!("{prop}: AboutPanel.{prop};")),
                 "{prop} isn't bound"
             );
+        }
+        for prop in ["scroll-text", "scroll-position", "scroll-fraction"] {
+            assert!(block.contains(&format!("{prop}: ")), "{prop} isn't bound");
         }
     }
 
@@ -3743,19 +3746,15 @@ mod tests {
 
     const POLL: u64 = UPDATE_POLL.as_millis() as u64;
 
-    /// What the About page's updater line says (English), worded by its
-    /// template (templates/about_page.json) from the values Home gave it.
+    /// What the open About page draws as its updater line: the second
+    /// paragraph of templates/about_page.json, read through Slint's test
+    /// search (debug builds carry element names, build.rs).
     fn page_line(window: &HomeWindow) -> String {
-        let about = window.global::<AboutPanel>();
-        let page: serde_json::Value =
-            serde_json::from_str(include_str!("../templates/about_page.json")).expect("JSON");
-        let line = &panels::updater_line(&page)["value"];
-        let case = &line["cases"][about.get_update().as_str()];
-        let text = if case.is_null() { &line["else"] } else { case };
-        text["tr"]
-            .as_str()
-            .expect("a text")
-            .replace("{}", about.get_update_detail().as_str())
+        i_slint_backend_testing::ElementHandle::find_by_element_type_name(window, "PageText")
+            .nth(1)
+            .and_then(|line| line.accessible_label())
+            .expect("the About page's updater line")
+            .into()
     }
 
     /// The About page and Settings' Updates row say the same for every
@@ -3763,6 +3762,7 @@ mod tests {
     #[test]
     fn the_about_page_and_settings_word_every_status_alike() {
         let screen = screen(None);
+        open_about(&screen);
         for status in &panels::UPDATE_STATUSES {
             let status = match status {
                 UpdateStatus::Available(_) => UpdateStatus::Available("0.2.0".into()),
@@ -3965,7 +3965,7 @@ mod tests {
     fn a_device_language_with_a_translation_shows_it() {
         let screen = screen_in(abc(), None, Some("uk-UA"));
         open_about(&screen);
-        let line = update_line(&screen.window, &UpdateStatus::Idle);
+        let line = page_line(&screen.window);
         assert!(!line.is_empty());
         assert_ne!(line, "Press OK to check for updates");
         assert!(!screen.window.global::<Dir>().get_rtl());
@@ -3975,10 +3975,7 @@ mod tests {
     fn a_language_without_a_translation_falls_back_to_english() {
         let screen = screen_in(abc(), None, Some("sv-SE"));
         open_about(&screen);
-        assert_eq!(
-            update_line(&screen.window, &UpdateStatus::Idle),
-            "Press OK to check for updates"
-        );
+        assert_eq!(page_line(&screen.window), "Press OK to check for updates");
     }
 
     #[test]

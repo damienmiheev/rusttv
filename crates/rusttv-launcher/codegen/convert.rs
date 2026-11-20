@@ -10,11 +10,12 @@ use std::fmt::Write as _;
 /// Colour tokens: `Theme.<token>` in Slint, a CSS variable on the phone.
 const TOKENS: [&str; 5] = ["bg", "surface", "text", "text-dim", "accent"];
 
-/// Names the generated component's own properties already use; a page's
-/// scroll box is fed through the `scroll-*` ones (Home owns the scrolling).
-const RESERVED_PROPS: [&str; 27] = [
+/// Names a generated component's own properties already use (a
+/// `Rectangle`'s and every element's), and Slint words (a row's props are
+/// function parameters). A page's scroll box is fed through `scroll-*`
+/// (Home owns the scrolling).
+const RESERVED_PROPS: [&str; 26] = [
     "u",
-    // Slint words (a row's props are function parameters).
     "if",
     "for",
     "return",
@@ -23,28 +24,46 @@ const RESERVED_PROPS: [&str; 27] = [
     "parent",
     "true",
     "false",
+    "init",
+    "animate",
+    "states",
+    "transitions",
     "width",
     "height",
     "x",
     "y",
     "z",
     "background",
-    "border-radius",
-    "border-width",
-    "border-color",
     "clip",
     "visible",
     "opacity",
-    "cache-rendering-hint",
-    "absolute-position",
-    "accessible-role",
-    "scroll-text",
-    "scroll-position",
-    "scroll-fraction",
+    "col",
+    "row",
+    "colspan",
+    "rowspan",
+];
+
+/// Families of element properties (`min-width`, `drop-shadow-blur`, …),
+/// refused by prefix so a new one in Slint is covered too.
+const RESERVED_PREFIXES: [&str; 13] = [
+    "min-",
+    "max-",
+    "preferred-",
+    "horizontal-",
+    "vertical-",
+    "border-",
+    "drop-shadow-",
+    "accessible-",
+    "rotation-",
+    "transform-",
+    "cache-",
+    "absolute-",
+    "scroll-",
 ];
 
 /// Names a component must not shadow: Slint's own, theme.slint's,
 /// badges.slint's and std-widgets' (blocks.slint's are [`BLOCKS_SLINT`]).
+/// A clash with a name of home.slint's own fails the Slint build instead.
 const RESERVED_COMPONENTS: [&str; 11] = [
     "Theme",
     "Dir",
@@ -130,11 +149,14 @@ pub fn convert(json: &str, badges: &[&str]) -> Result<String, String> {
             ));
         }
         if RESERVED_PROPS.contains(&prop)
+            || RESERVED_PREFIXES
+                .iter()
+                .any(|prefix| prop.starts_with(prefix))
             || (face == "row" && ROW_FUNCTIONS.contains(&prop))
             || props.contains(&prop)
         {
             return Err(format!(
-                "props[{i}]: {prop:?} is taken (a Slint word, a Rectangle property, `u`, `scroll-*`, a row's function, or a duplicate)"
+                "props[{i}]: {prop:?} is taken (a Slint word, an element property, `u`, `scroll-*`, a row's function, or a duplicate)"
             ));
         }
         props.push(prop);

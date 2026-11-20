@@ -151,6 +151,14 @@ fn rejects_what_the_schema_does_not_hold() {
             "is taken",
         ),
         (
+            OK.replace("[\"version\", \"status\"]", "[\"version\", \"min-width\"]"),
+            "is taken",
+        ),
+        (
+            OK.replace("[\"version\", \"status\"]", "[\"version\", \"drop-shadow-blur\"]"),
+            "is taken",
+        ),
+        (
             OK.replace("[\"version\", \"status\"]", "[\"version\", \"version\"]"),
             "is taken",
         ),

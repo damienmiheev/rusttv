@@ -57,7 +57,10 @@ fn main() {
     let config = CompilerConfiguration::new()
         .with_include_paths(vec![out.clone(), manifest.join("ui")])
         .with_bundled_translations("translations")
-        .with_default_translation_context(DefaultTranslationContext::None);
+        .with_default_translation_context(DefaultTranslationContext::None)
+        // Element names for the tests' search (i-slint-backend-testing), so
+        // they read what a page draws; never in a release build.
+        .with_debug_info(std::env::var("PROFILE").is_ok_and(|profile| profile == "debug"));
     slint_build::compile_with_config("ui/home.slint", config)
         .expect("ui/home.slint should compile");
 

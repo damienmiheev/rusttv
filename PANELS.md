@@ -3,8 +3,9 @@
 Status (2026-11-20): **being built** on the `panels` branch: steps 1
 and 1b (About's tile, its phone caption) and 2 (About's page and row) are
 done (§ 10). Written from the owner's answers on 2026-10-25 (§ Owner
-decisions), checked against the code by an independent review (§ Review log), and re-checked against main on 2026-11-20
-(§ 10 has the build plan). Replaces ROADMAP.md § Parked
+decisions), checked against the code by an independent review (§ Review
+log), and re-checked against main on 2026-11-20 (§ 10 has the build
+plan). Replaces ROADMAP.md § Parked
 ideas → "Panels: add-ons with several faces". The theme builder gets its own
 design later; this doc only says how panels sit in a theme.
 
@@ -302,8 +303,13 @@ Rules the schema enforces (unknown fields are errors):
     reason it lives only there.
 - **Conditions** (`show`, a row's `attention`): a property's name (true
   when not empty) or a `select` of `true`/`false` (else `false`). A
-  `select`'s case values have the props' shape (lowercase words or
-  numbers joined by `-`).
+  `select`'s case values are lowercase words or numbers joined by `-`
+  (props: words only).
+- **Tile and page speak differently on purpose:** a tile's `text` takes a
+  size in `u` and a colour token (`text-dim`, `accent`); a page block takes
+  named variants and a `tone` (`dim`, `accent`). Tiles came first and are
+  pixel-checked at a fixed size; a page reflows. If a theme needs tiles on
+  variants too, the tile's `text` moves to them under a new `schema`.
 - **Nodes:** `column` (later a horizontal one), `text`, `image` in a
   tile. Only the root sets size, radius and background.
 - **No untranslated literals:** every text is `@tr`, brand names too
@@ -604,7 +610,8 @@ decision log, CHANGELOG.
   languages (`page/i18n.js`, keys `caption_*`). The phone doesn't run the
   JSON template yet; that waits for a panel whose phone face needs more
   than a caption.
-- **Badges are images set from Rust** (`Badges` global in `ui/theme.slint`),
+- **Badges are images set from Rust** (the `Badges` global, which build.rs
+  generates as `badges.slint`),
   like the tiles' banners. The launcher loads no `@image-url`.
 - **The converter lives in `codegen/convert.rs`** (`build/` is git-ignored).
   Its tests run with the launcher's (`src/template_convert_tests.rs`), and
@@ -648,6 +655,10 @@ face is #40's `AboutRow` in Settings, fed from the same view.
   say the same for every status.
 - **Templates carry `"schema": 1`**, for the later runtime loader and
   editor.
+- **Tests read the drawn page:** debug builds compile Slint with element
+  names (`with_debug_info`, build.rs; never a release build), so tests
+  read the About page's lines through Slint's test search, in English
+  and Ukrainian.
 - **The row face is Settings' RustTV row** (`AboutRow::RustTv`, OK opens
   the page), drawn as today: "RustTV <version>" and the licence line. The
   plan's "Update available" stays on the Updates row right under it, so it
