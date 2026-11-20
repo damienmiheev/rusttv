@@ -26,44 +26,98 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # Decides whether a pull request changes only documentation. If it does, the
+  # required jobs below still run and report under their usual names, but skip
+  # their steps, so a docs change doesn't wait for the full build. Pushes to
+  # main and the weekly run always do everything (Tag release needs a full
+  # result on main's head).
+  #
+  # Docs only = every changed file is Markdown, except CLI.md (a test checks
+  # its error code table) and Markdown under crates/, android/, licenses/
+  # (packed into the licence notices), benchmarks/, compat/ and .github/.
+  changes:
+    name: Docs-only check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      # A pull request's merge commit: parent 1 is the base, so its diff is
+      # exactly the pull request's change.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+      - id: diff
+        name: List the changed files
+        run: |
+          code=true
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            files=$(git diff --name-only --no-renames HEAD^1 HEAD)
+            printf '%s\n' "$files"
+            not_docs=$(printf '%s\n' "$files" | grep -vE '\.md$' || true)
+            kept=$(printf '%s\n' "$files" | grep -E '^(CLI\.md$|(crates|android|licenses|benchmarks|compat|\.github)/)' || true)
+            if [ -n "$files" ] && [ -z "$not_docs" ] && [ -z "$kept" ]; then
+              code=false
+              echo "Docs only: the build, tests and cargo deny are skipped." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
   check:
     name: fmt, clippy, test (${{ matrix.os }})
     if: github.event_name != 'schedule'
+    needs: changes
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    env:
+      CODE: ${{ needs.changes.outputs.code }}
     steps:
       # Third-party actions are pinned to commit SHAs (SECURITY.md § Supply chain).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.CODE == 'true'
       - name: Install toolchain from rust-toolchain.toml
+        if: env.CODE == 'true'
         run: rustup toolchain install
       # Only main writes caches; pull requests and tags restore from them.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: env.CODE == 'true'
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # The launcher's desktop dev mode builds Slint's winit backend.
       - name: Install Slint desktop dependencies
-        if: runner.os == 'Linux'
+        if: env.CODE == 'true' && runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libfontconfig-dev libxkbcommon-dev
-      - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-      - run: cargo test --workspace --locked
+      - if: env.CODE == 'true'
+        run: cargo fmt --all --check
+      - if: env.CODE == 'true'
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - if: env.CODE == 'true'
+        run: cargo test --workspace --locked
       # The phone page's JavaScript crypto must give the Rust side's bytes.
       - name: Phone page crypto matches the Rust test vectors
+        if: env.CODE == 'true'
         run: node crates/rusttv-remote/page/crypto.test.mjs
       - name: Phone page texts exist in every language
+        if: env.CODE == 'true'
         run: node crates/rusttv-remote/page/i18n.test.mjs
 
   deny:
     name: cargo deny
+    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      CODE: ${{ needs.changes.outputs.code }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: env.CODE == 'true'
       - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        if: env.CODE == 'true'
         with:
           command: check
 
@@ -71,4 +125,7 @@ jobs:
   # which fails when a shipped crate has a licence not accepted in about.toml.
   android:
     if: github.event_name != 'schedule'
+    needs: changes
     uses: ./.github/workflows/android-apk.yml
+    with:
+      skip: ${{ needs.changes.outputs.code != 'true' }}

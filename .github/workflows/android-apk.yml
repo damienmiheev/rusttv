@@ -15,6 +15,10 @@ on:
         description: Leave the APKs unsigned (for a release)
         type: boolean
         default: false
+      skip:
+        description: Skip every step, so the job only reports (ci.yml, docs-only pull requests)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -33,23 +37,29 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ !inputs.skip }}
       # The wrapper jar runs as Gradle's bootstrap; a pull request could swap the
       # binary unnoticed. This is the official Gradle 7.5 wrapper jar
       # (services.gradle.org/distributions/gradle-7.5-wrapper.jar.sha256); the
       # distribution it fetches is pinned in gradle-wrapper.properties.
       - name: Check the Gradle wrapper jar
+        if: ${{ !inputs.skip }}
         run: echo "91a239400bb638f36a1795d8fdf7939d532cdc7d794d1119b7261aac158b1e60  android/gradle/wrapper/gradle-wrapper.jar" | sha256sum --check --strict
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        if: ${{ !inputs.skip }}
         with:
           distribution: temurin
           java-version: "17"
       - name: Install toolchain from rust-toolchain.toml and the Android targets
+        if: ${{ !inputs.skip }}
         run: rustup toolchain install && rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: ${{ !inputs.skip }}
         with:
           key: android
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install NDK 30 and SDK platform 34
+        if: ${{ !inputs.skip }}
         # `|| true`: yes dies of SIGPIPE when sdkmanager exits, which pipefail would report.
         # ANDROID_NDK_HOME: the runner image exports one for its own, older,
         # preinstalled NDK, which android/build.sh would have taken over the NDK
@@ -60,17 +70,20 @@ jobs:
           (yes || true) | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$ndk" "platforms;android-34" > /dev/null
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ndk" >> "$GITHUB_ENV"
       - name: Install cargo-ndk
+        if: ${{ !inputs.skip }}
         run: cargo install cargo-ndk --version 4.1.2 --locked
       # build.sh writes the third-party notices that go into the APK.
       - name: Install cargo-about
+        if: ${{ !inputs.skip }}
         run: cargo install cargo-about --version 0.9.2 --locked --features cli
       # build.sh checks each ABI's Skia binary against its pinned SHA-256 before using it.
       - name: Build the launcher APK
+        if: ${{ !inputs.skip }}
         run: android/build.sh
         env:
           RUSTTV_UNSIGNED: ${{ inputs.unsigned && '1' || '' }}
       - name: Name the APKs after the version
-        if: inputs.upload
+        if: inputs.upload && !inputs.skip
         run: |
           version=$(scripts/release-info.sh version)
           suffix=${{ inputs.unsigned && 'release-unsigned' || 'release' }}
@@ -80,7 +93,7 @@ jobs:
             cp "android/app/build/outputs/apk/release/app-$abi-$suffix.apk" "dist/rusttv-launcher-$version-$abi$name.apk"
           done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: inputs.upload
+        if: inputs.upload && !inputs.skip
         with:
           name: rusttv-launcher-apk
           path: dist/
