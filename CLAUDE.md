@@ -20,10 +20,6 @@ These rules apply to every change in this repo. Details live in the linked docs;
 
 (Rules 1–4 summarize the `karpathy-guidelines` project skill in `.claude/skills/`; use it when writing, reviewing, or refactoring code.)
 
-## UI input
-
-Every screen, menu, overlay and keyboard, existing or new, must work fully and predictably with each input device: TV remote (D-pad, OK, Back, Home; IR and air-mouse remotes), mouse with wheel, trackpad with gestures, game controller, and keyboard. For pointers: hovering moves the focus to the item, a left click acts as OK on it, the wheel or a two-finger scroll moves lists. Wire every input kind in the same change that adds or changes a UI part, and test it (`ui.rs` tests drive keys and invoke the pointer callbacks).
-
 ## Rust standards
 
 Use the `rust-guidelines` project skill (Microsoft's Pragmatic Rust Guidelines) when writing or reviewing Rust. The rules below take precedence over it.

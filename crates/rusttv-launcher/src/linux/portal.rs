@@ -488,7 +488,23 @@ struct Session {
 
 #[zbus::interface(name = "org.freedesktop.impl.portal.Session")]
 impl Session {
-    async fn close(&self, #[zbus(object_server)] server: &ObjectServer) {
+    async fn close(
+        &self,
+        #[zbus(object_server)] server: &ObjectServer,
+        #[zbus(header)] header: zbus::message::Header<'_>,
+        #[zbus(connection)] connection: &zbus::Connection,
+    ) -> zbus::fdo::Result<()> {
+        // Only the frontend closes a session: an app could otherwise end
+        // another app's (its object path is no secret).
+        if !from_frontend(&header, connection).await {
+            log::warn!(
+                "closing {} refused: not from the portal frontend",
+                self.path
+            );
+            return Err(zbus::fdo::Error::AccessDenied(
+                "only the portal frontend closes sessions".to_owned(),
+            ));
+        }
         if let Ok(commands) = self.commands.lock()
             && let Some(commands) = commands.as_ref()
         {
@@ -499,6 +515,7 @@ impl Session {
         if let Err(error) = server.remove::<Self, _>(self.path.as_str()).await {
             log::warn!("closing {}: {error}", self.path);
         }
+        Ok(())
     }
 
     #[zbus(property, name = "version")]

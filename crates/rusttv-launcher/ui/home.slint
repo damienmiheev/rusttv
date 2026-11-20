@@ -309,6 +309,9 @@ export global Hints {
 export global Effects {
     in property <bool> shadows: true;
     in property <bool> backdrop: true;
+    // The hero backdrop as one baked picture (`Glow.backdrop`) instead of
+    // drawn gradients: set where there is a top-right menu (Linux).
+    in property <bool> baked-backdrop: false;
 }
 
 global Mode {
@@ -569,10 +572,11 @@ component HeroLayer inherits Rectangle {
     // The backdrop's own fade (see the cross-fade in HomeWindow).
     in property <float> backdrop-fade: 1;
 
-    // The backdrop is one small baked picture, scaled up: the same look as
-    // drawing its gradients, at a fraction of the cost. Never a full-screen
-    // bitmap per app (up to ~20 MB each on a TV). It ends where it has faded
-    // into the page colour (`Glow::HEIGHT`, platform.rs): the page shows the rest.
+    // With `Effects.baked-backdrop` (Linux) the backdrop is one small baked
+    // picture, scaled up: the same look as drawing its gradients, at a
+    // fraction of the cost on a weak GPU. Never a full-screen bitmap per app
+    // (up to ~20 MB each on a TV). It ends where it has faded into the page
+    // colour (`Glow::HEIGHT`, platform.rs): the page shows the rest.
     Image {
         y: 0;
         width: parent.width;
@@ -581,7 +585,48 @@ component HeroLayer inherits Rectangle {
         image-fit: fill;
         image-rendering: smooth;
         opacity: root.backdrop-fade;
-        visible: Effects.backdrop && root.backdrop-fade > 0;
+        visible: Effects.baked-backdrop && Effects.backdrop && root.backdrop-fade > 0;
+    }
+    // Otherwise drawn, not an image: a full-screen backdrop bitmap per app
+    // cost up to ~20 MB on a TV. The glow is a circle as wide as the screen,
+    // centred where the main colour sits in the app's banner.
+    Rectangle {
+        opacity: root.backdrop-fade;
+        visible: !Effects.baked-backdrop && root.backdrop-fade > 0;
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            background: glow.base;
+        }
+        Rectangle {
+            width: parent.width * 1.3;
+            height: self.width;
+            x: (Dir.rtl ? 1 - glow.x : glow.x) * parent.width - self.width / 2;
+            y: glow.y * parent.height - self.height / 2;
+            opacity: glow.strength;
+            visible: Effects.backdrop;
+            background: @radial-gradient(circle, glow.color 0%, glow.color.with-alpha(0.45) 30%, glow.color.with-alpha(0) 70%);
+        }
+        // Scrim on the text side, so the backdrop can keep its colour on the right.
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: 780 * root.u;
+            background: @linear-gradient(Dir.rtl ? 270deg : 90deg, #0E1014D9 0%, #0E101466 40%, #0E101400 70%);
+        }
+        Rectangle {
+            y: 400 * root.u;
+            height: 380 * root.u;
+            background: @linear-gradient(180deg, #0E101400 0%, Theme.bg 100%);
+        }
+        Rectangle {
+            y: 780 * root.u;
+            height: parent.height - self.y;
+            background: Theme.bg;
+        }
     }
     Rectangle {
         x: Dir.x(90 * u, self.width, parent.width);

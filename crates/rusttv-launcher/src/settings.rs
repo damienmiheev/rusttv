@@ -158,6 +158,8 @@ pub(crate) struct SettingsPage {
     /// Whether the platform's tabs have been read (or there are none), so
     /// the section list is complete and won't grow while it is shown.
     loaded: bool,
+    /// Whether the About tab is there ([`SettingsPage::with_about`]).
+    about: bool,
 }
 
 impl SettingsPage {
@@ -172,6 +174,7 @@ impl SettingsPage {
             focus: Focus::List,
             right_to_left,
             loaded: false,
+            about: true,
         }
     }
 
@@ -180,23 +183,26 @@ impl SettingsPage {
         self.loaded
     }
 
+    /// Whether Settings has its About tab: only where a top-right menu
+    /// replaces the About tile (Linux). Without one, the About tile opens
+    /// the About page and Settings stays as it was.
+    pub fn with_about(mut self, about: bool) -> Self {
+        self.about = about;
+        self
+    }
+
     /// The platform has no tabs to read: the list is complete as it is.
     pub fn mark_loaded(&mut self) {
         self.loaded = true;
     }
 
-    /// Selects the platform tab `id` (or the About tab, for
-    /// [`crate::model::ABOUT_TAB`]) with focus on its first row; returns
+    /// Selects the platform tab `id` with focus on its first row; returns
     /// whether there is one.
     pub fn show_tab(&mut self, id: &str) -> bool {
-        let wanted = if id == crate::model::ABOUT_TAB {
-            Section::About
-        } else {
-            let Some(index) = self.tabs.iter().position(|tab| tab.id == id) else {
-                return false;
-            };
-            Section::Tab(index)
+        let Some(index) = self.tabs.iter().position(|tab| tab.id == id) else {
+            return false;
         };
+        let wanted = Section::Tab(index);
         let Some(section) = self
             .sections()
             .iter()
@@ -275,7 +281,9 @@ impl SettingsPage {
             sections.push(Section::Waiting);
         }
         sections.extend((0..self.tabs.len()).map(Section::Tab));
-        sections.push(Section::About);
+        if self.about {
+            sections.push(Section::About);
+        }
         sections
     }
 

@@ -35,10 +35,6 @@ linux = [
     "slint/backend-winit-wayland",
     "slint/unstable-winit-030",
 ]
-# Draw with OpenGL ES (FemtoVG) instead of the CPU, for slow CPUs with a GPU.
-gpu = ["slint/renderer-femtovg"]
-# Draw with Skia on OpenGL ES; redraws only what changed (EGL buffer age).
-gpu-skia = ["slint/renderer-skia-opengl"]
 
 [dependencies]
 slint.workspace = true

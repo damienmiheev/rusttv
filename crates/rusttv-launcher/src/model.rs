@@ -38,12 +38,12 @@ pub const LAUNCH_TIMEOUT: Duration = Duration::from_secs(3);
 /// The caller sends [`Input::Tick`] once this has passed after the last input.
 pub const MOVE_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// How long an app dragged from the phone remote must rest on another app
-/// (or a folder) before they make a folder (or it goes in).
+/// How long a moving app must stay on top of another app (or a folder)
+/// before they make a folder (or it goes in).
 ///
-/// Moving on, or OK sooner, drops nothing in. The caller sends
-/// [`Input::Tick`] once this has passed after the drag. Arrow keys only
-/// reorder ([`Home::handle`] in move mode).
+/// An arrow pressed sooner passes over the tile; OK sooner drops the app in
+/// that place. The caller sends [`Input::Tick`] once this has passed after
+/// the move. A pointer or phone drag ([`Home::drag_over`]) needs no rest.
 pub const FOLDER_HOVER: Duration = Duration::from_millis(600);
 
 /// Apps per row in an open folder.
@@ -60,9 +60,6 @@ pub(crate) const FOLDER_PAGE_SIZE: usize = FOLDER_PAGE;
 /// The longest folder name, in characters.
 pub const FOLDER_NAME_MAX: usize = 40;
 
-/// The id [`Effect::OpenSettingsTab`] gives Settings' own About tab.
-pub const ABOUT_TAB: &str = "about";
-
 /// Gap between order keys when keys are assigned or renumbered.
 ///
 /// Sparse keys let a moved tile take a key between its neighbours without
@@ -75,7 +72,7 @@ pub enum TileId {
     /// An installed app, identified by its component name (`package/activity`).
     App(String),
     /// The built-in About tile, where there is no top-right menu (Android);
-    /// it opens Settings at its About tab.
+    /// it opens the About page (licence notices).
     About,
     /// The built-in Settings tile (HISTORY.md § 8), where there is no
     /// top-right menu (Android); elsewhere Settings is in that menu.
@@ -326,8 +323,7 @@ pub enum Effect {
     OpenHidden,
     /// Show the Settings page.
     OpenSettings,
-    /// Show the Settings page on the platform's tab with this id, or on its
-    /// About tab for [`ABOUT_TAB`].
+    /// Show the Settings page on the platform's tab with this id.
     OpenSettingsTab(&'static str),
     /// A key while Settings is open: the Settings page handles it.
     Settings(Input),
@@ -602,8 +598,11 @@ enum Mode {
         since: Duration,
         folder: Option<OpenFolder>,
     },
-    /// The About page, over Settings: Back returns there.
-    About,
+    /// The About page (licence notices): from the About tile, Back returns
+    /// Home; from Settings' About tab (`from_settings`), Back returns there.
+    About {
+        from_settings: bool,
+    },
     Settings,
     Remote,
     /// `selected` indexes `Home::quick_actions`.
@@ -1303,7 +1302,9 @@ impl Home {
         if !matches!(self.mode, Mode::Settings) {
             return None;
         }
-        self.mode = Mode::About;
+        self.mode = Mode::About {
+            from_settings: true,
+        };
         Some(Effect::OpenAbout)
     }
 
@@ -1336,7 +1337,7 @@ impl Home {
             Mode::Browse => State::Browse,
             Mode::Moving { .. } => State::Moving,
             Mode::Launching { .. } => State::Launching,
-            Mode::About => State::About,
+            Mode::About { .. } => State::About,
             Mode::Settings => State::Settings,
             Mode::Remote => State::Remote,
             Mode::Menu { .. } => State::Menu,
@@ -1368,7 +1369,7 @@ impl Home {
             }
             (
                 Mode::Moving { .. }
-                | Mode::About
+                | Mode::About { .. }
                 | Mode::Settings
                 | Mode::Remote
                 | Mode::Menu { .. }
@@ -1397,11 +1398,15 @@ impl Home {
                 self.end_launch();
                 Some(effect)
             }
-            (Mode::About, Input::Back) => {
-                self.mode = Mode::Settings;
+            (Mode::About { from_settings }, Input::Back) => {
+                self.mode = if *from_settings {
+                    Mode::Settings
+                } else {
+                    Mode::Browse
+                };
                 None
             }
-            (Mode::About, Input::OkPressed) => Some(Effect::Update),
+            (Mode::About { .. }, Input::OkPressed) => Some(Effect::Update),
             (Mode::Settings, input) => Some(Effect::Settings(input)),
             (Mode::Remote, input) => Some(Effect::Remote(input)),
             (Mode::Quick { .. }, input) => Some(Effect::QuickInput(input)),
@@ -1575,7 +1580,7 @@ impl Home {
         let place = *place;
         if let Some(direction) = self.direction(input) {
             match place {
-                Place::Home { .. } => self.move_on_home(direction),
+                Place::Home { .. } => self.move_on_home(direction, now),
                 Place::Folder { id, index } => self.move_in_folder(id, index, direction),
             }
             return None;
@@ -1590,19 +1595,23 @@ impl Home {
         }
     }
 
-    /// Moves the app on Home one tile in `direction`: it takes that tile's
-    /// place and the tiles between shift into the gap at once. An arrow never
-    /// leaves it resting on a tile, so pausing between presses can't make a
-    /// folder (that is the phone remote's drag, [`Home::drag_over`]).
-    fn move_on_home(&mut self, direction: Direction) {
-        if let Some(target) = neighbour(self.focus, self.movable(), direction) {
+    /// Moves the app on Home one tile in `direction`, onto that tile.
+    fn move_on_home(&mut self, direction: Direction, now: Duration) {
+        let over = neighbour(self.focus, self.movable(), direction).map(|target| {
             let tile = self.tiles.remove(self.focus);
             self.tiles.insert(target, tile);
+            // The tile that was there moved one step towards the gap.
+            let over = if self.focus < target {
+                target - 1
+            } else {
+                target + 1
+            };
             self.focus = target;
             self.update_scroll();
-        }
+            (over, now)
+        });
         if let Mode::Moving { place, .. } = &mut self.mode {
-            *place = Place::Home { over: None };
+            *place = Place::Home { over };
         }
     }
 
@@ -1905,8 +1914,10 @@ impl Home {
                 Some(Effect::Launch(component))
             }
             TileId::About => {
-                self.mode = Mode::Settings;
-                Some(Effect::OpenSettingsTab(ABOUT_TAB))
+                self.mode = Mode::About {
+                    from_settings: false,
+                };
+                Some(Effect::OpenAbout)
             }
             TileId::Settings => {
                 self.mode = Mode::Settings;
@@ -2383,7 +2394,7 @@ mod tests {
     }
 
     #[test]
-    fn the_about_tile_opens_settings_at_its_about_tab() {
+    fn the_about_tile_opens_the_about_page_and_back_returns_home() {
         let mut home = Home::new(Order::default(), BTreeMap::new(), BTreeSet::new(), false);
         home.set_settings_tiles(true);
         home.set_apps(&[app("a", "A")]);
@@ -2391,9 +2402,12 @@ mod tests {
         assert_eq!(home.handle(Input::OkPressed, ms(0)), None);
         assert_eq!(
             home.handle(Input::OkReleased, ms(100)),
-            Some(Effect::OpenSettingsTab(ABOUT_TAB))
+            Some(Effect::OpenAbout)
         );
-        assert_eq!(home.state(), State::Settings);
+        assert_eq!(home.state(), State::About);
+        assert_eq!(home.handle(Input::Back, ms(200)), None);
+        assert_eq!(home.state(), State::Browse);
+        assert_eq!(home.focused(), Some(&TileId::About));
         // Turned off once the apps are known: the tiles go at once.
         let mut home = Home::new(Order::default(), BTreeMap::new(), BTreeSet::new(), false);
         home.set_settings_tiles(true);
@@ -3020,15 +3034,8 @@ mod tests {
     /// Picks up the focused app and rests it on the tile in `direction`
     /// (dragged from the phone) until the folder forms; returns the time after.
     fn make_folder(home: &mut Home, direction: Input) -> Duration {
-        let target = match direction {
-            Input::Right => home.focus() + 1,
-            Input::Left => home.focus() - 1,
-            _ => unreachable!("only sideways"),
-        };
-        let target = home.tiles()[target].clone();
-        let picked = home.focused().cloned().expect("a tile");
-        assert!(home.pick_up(&picked, ms(0)));
-        home.drag_over(&target, true, ms(1000));
+        pick_up(home);
+        home.handle(direction, ms(1000));
         assert!(home.moving_over().is_some());
         assert_eq!(home.folder_due(), Some(ms(1000) + FOLDER_HOVER));
         assert_eq!(
@@ -3219,18 +3226,14 @@ mod tests {
     }
 
     #[test]
-    fn arrows_only_reorder_however_long_the_app_stays() {
+    fn an_arrow_before_the_hover_time_passes_over_and_ok_drops_in_place() {
         let mut home = home(4);
         pick_up(&mut home);
         home.handle(Input::Right, ms(1000));
-        // a01 moved into the gap at once; waiting makes no folder.
-        assert_eq!(home.tiles()[..2], [id("a01"), id("a00")]);
-        assert_eq!(home.moving_over(), None);
-        assert_eq!(home.folder_due(), None);
-        home.handle(Input::Tick, ms(1000) + FOLDER_HOVER * 3);
-        assert!(home.folders().is_empty());
-        home.handle(Input::Right, ms(5000));
-        assert_eq!(home.moving_over(), None);
+        home.handle(Input::Tick, ms(1000) + FOLDER_HOVER - ms(1));
+        home.handle(Input::Right, ms(1000) + FOLDER_HOVER - ms(1));
+        // Now on top of a02; a01 went back into the gap.
+        assert_eq!(home.moving_over(), Some(1));
         assert_eq!(
             press(&mut home, &[Input::OkPressed]),
             Some(Effect::SaveOrder)

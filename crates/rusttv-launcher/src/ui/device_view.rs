@@ -178,6 +178,9 @@ impl Controller {
 
     /// A mouse click on a row of the open quick panel.
     pub(super) fn quick_row_clicked(&mut self, row: i32) {
+        if !self.pointer_reaches(false) {
+            return;
+        }
         let (Some(page), Ok(row)) = (&mut self.quick, usize::try_from(row)) else {
             return;
         };
@@ -189,7 +192,7 @@ impl Controller {
 
     /// The scrim around the open quick panel was clicked: it closes.
     pub(super) fn quick_dismissed(&mut self) {
-        if self.quick.is_some() {
+        if self.quick.is_some() && self.pointer_reaches(false) {
             self.panel_action(Some(PanelAction::Close));
             self.render();
         }

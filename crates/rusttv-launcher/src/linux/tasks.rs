@@ -5,6 +5,7 @@
 //! they keep their memory but take no CPU or GPU time from the app in front.
 
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -134,6 +135,14 @@ impl Tasks {
         Some(task.keys.clone())
     }
 
+    /// The process groups of the apps it follows.
+    pub fn groups(&self) -> Vec<u32> {
+        self.lock()
+            .iter()
+            .filter_map(|task| u32::try_from(task.group).ok())
+            .collect()
+    }
+
     /// Records a started app, then closes the least recently used others
     /// beyond [`Limits::max_apps`].
     pub fn started(&self, id: &str, group: u32, keys: Vec<String>, reads_pads: bool) {
@@ -260,10 +269,9 @@ impl Tasks {
 }
 
 /// The process group of a running `program` (a file name) of this user that
-/// leads a group of its own, as apps the launcher starts do: an app left
-/// running by an earlier launcher. The program is the first argument, or
-/// the second for an interpreter running a script.
-pub fn find_group(program: &str) -> Option<u32> {
+/// leads a group of its own, as apps the launcher starts do, and isn't one
+/// of the `tracked` groups: an app left running by an earlier launcher.
+pub fn find_group(program: &str, tracked: &[u32]) -> Option<u32> {
     use std::os::unix::fs::MetadataExt as _;
     let uid = rustix::process::getuid().as_raw();
     let me = std::process::id();
@@ -272,13 +280,14 @@ pub fn find_group(program: &str) -> Option<u32> {
         .flatten()
         .filter_map(|entry| {
             let pid: u32 = entry.file_name().to_str()?.parse().ok()?;
-            if pid == me || entry.metadata().ok()?.uid() != uid {
+            if pid == me || tracked.contains(&pid) || entry.metadata().ok()?.uid() != uid {
                 return None;
             }
             let dir = entry.path();
             let stat = fs::read_to_string(dir.join("stat")).ok()?;
             let cmdline = fs::read(dir.join("cmdline")).ok()?;
-            (leads_group(&stat, pid) && runs(&cmdline, program)).then_some(pid)
+            let exe = fs::read_link(dir.join("exe")).ok();
+            (leads_group(&stat, pid) && runs(exe.as_deref(), &cmdline, program)).then_some(pid)
         })
         .collect();
     // The oldest, should there be more.
@@ -295,15 +304,39 @@ fn leads_group(stat: &str, pid: u32) -> bool {
         == Some(pid)
 }
 
-/// Whether a `/proc/<pid>/cmdline` runs `program`.
-fn runs(cmdline: &[u8], program: &str) -> bool {
-    let name = |arg: &[u8]| {
-        std::path::Path::new(&*String::from_utf8_lossy(arg))
-            .file_name()
-            .is_some_and(|name| name == program)
+/// Whether a process with this executable (`/proc/<pid>/exe`) and
+/// `/proc/<pid>/cmdline` runs `program`: the executable or the first
+/// argument is it. A script counts under the interpreter its `#!` line
+/// names, as the kernel starts it (`/bin/sh /usr/bin/kodi`): only then is
+/// the second argument looked at, so `vim kodi` is not Kodi.
+fn runs(exe: Option<&Path>, cmdline: &[u8], program: &str) -> bool {
+    let named = |path: &Path| path.file_name().is_some_and(|name| name == program);
+    if exe.is_some_and(named) {
+        return true;
+    }
+    let mut args = cmdline
+        .split(|&byte| byte == 0)
+        .map(|arg| PathBuf::from(&*String::from_utf8_lossy(arg)));
+    let Some(first) = args.next() else {
+        return false;
     };
-    let mut args = cmdline.split(|&byte| byte == 0);
-    args.next().is_some_and(name) || args.next().is_some_and(name)
+    if named(&first) {
+        return true;
+    }
+    args.next().is_some_and(|script| {
+        script.is_absolute() && named(&script) && interpreter(&script).is_some_and(|it| it == first)
+    })
+}
+
+/// The interpreter a script's `#!` line names, if it has one.
+fn interpreter(script: &Path) -> Option<PathBuf> {
+    use std::io::Read as _;
+    let mut head = [0_u8; 256];
+    let read = fs::File::open(script).ok()?.read(&mut head).ok()?;
+    let line = head.get(..read)?.strip_prefix(b"#!")?;
+    let line = line.split(|&byte| byte == b'\n').next()?;
+    let path = String::from_utf8_lossy(line);
+    path.split_whitespace().next().map(PathBuf::from)
 }
 
 /// Sends `sig` to process group `group`; logs a failure.
@@ -335,12 +368,37 @@ mod tests {
         assert!(leads_group("23840 (dolphin) S 1 23840 23840 0", 23840));
         assert!(leads_group("77 (odd ) name) S 1 77 77", 77));
         assert!(!leads_group("23841 (dolphin) S 23840 23840 23840", 23841));
-        assert!(runs(b"dolphin\0", "dolphin"));
-        assert!(runs(b"/usr/bin/dolphin\0--new-window\0", "dolphin"));
-        // A wrapper script under its interpreter.
-        assert!(runs(b"/bin/sh\0/usr/bin/kodi\0", "kodi"));
-        assert!(!runs(b"/usr/bin/dolphin-helper\0", "dolphin"));
-        assert!(!runs(b"", "dolphin"));
+        assert!(runs(None, b"dolphin\0", "dolphin"));
+        assert!(runs(None, b"/usr/bin/dolphin\0--new-window\0", "dolphin"));
+        // The executable counts whatever the first argument says.
+        assert!(runs(Some(Path::new("/usr/bin/dolphin")), b"x\0", "dolphin"));
+        assert!(!runs(None, b"/usr/bin/dolphin-helper\0", "dolphin"));
+        assert!(!runs(None, b"", "dolphin"));
+        // Another program merely given the name is not it.
+        assert!(!runs(
+            Some(Path::new("/usr/bin/vim")),
+            b"vim\0kodi\0",
+            "kodi"
+        ));
+        // A wrapper script, under the interpreter its #! line names.
+        let dir = std::env::temp_dir().join(format!("rusttv-runs-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("kodi");
+        fs::write(&script, "#!/bin/sh\nexec kodi.bin\n").unwrap();
+        let cmdline = |first: &str| format!("{first}\0{}\0", script.display()).into_bytes();
+        assert!(runs(
+            Some(Path::new("/usr/bin/dash")),
+            &cmdline("/bin/sh"),
+            "kodi"
+        ));
+        assert!(!runs(
+            Some(Path::new("/usr/bin/vim")),
+            &cmdline("vim"),
+            "kodi"
+        ));
+        // Relative: not how the kernel starts a script.
+        assert!(!runs(None, b"/bin/sh\0kodi\0", "kodi"));
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

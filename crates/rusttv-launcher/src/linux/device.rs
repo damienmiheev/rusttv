@@ -45,23 +45,49 @@ const PAIR: &str = "pair:";
 const BT_SCAN_SECONDS: &str = "8";
 
 /// Where an image names another system on the same device that the Power
-/// panel restarts into (dual boot). Root-owned: it holds a command.
+/// panel restarts into (dual boot). It holds a command, so it is used only
+/// while root owns it and no one else may write it ([`read_root_only`]).
 const OTHER_OS: &str = "/etc/rusttv/other-os.toml";
 
 /// Another system to restart into, from [`OTHER_OS`]:
 ///
 /// ```toml
 /// label = "Restart into Android"
-/// command = ["systemctl", "start", "--no-block", "switch-to-android.service"]
+/// command = ["systemctl", "start", "--no-block", "hy320f-to-android.service"]
 /// ```
 ///
 /// The command runs as the launcher's user, without a shell; it switches
-/// the boot target and restarts.
+/// the boot target and restarts. How is the image's business: on the
+/// HY320F a root service changes the A/B slot priorities, as Android's own
+/// boot HAL does, and Android switches back the same way.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct OtherOs {
     label: String,
     command: Vec<String>,
+}
+
+/// The text of a file that holds a command, only if root owns it and
+/// neither its group nor others may write it: whoever could change it could
+/// make the launcher run their command. Checked on the opened file, so it
+/// can't be swapped between the check and the read.
+fn read_root_only(path: &str) -> Option<String> {
+    use std::io::Read as _;
+    use std::os::unix::fs::MetadataExt as _;
+    let mut file = std::fs::File::open(path).ok()?;
+    let meta = file.metadata().ok()?;
+    if !meta.is_file() || !root_only(meta.uid(), meta.mode()) {
+        log::warn!("{path}: ignored, it must be root's and writable only by root");
+        return None;
+    }
+    let mut text = String::new();
+    file.read_to_string(&mut text).ok()?;
+    Some(text)
+}
+
+/// Whether a file with this owner and mode can be changed only by root.
+fn root_only(uid: u32, mode: u32) -> bool {
+    uid == 0 && mode & 0o022 == 0
 }
 
 /// [`OtherOs`] from its file; `None` if it is unreadable or has no command.
@@ -93,9 +119,7 @@ impl LinuxDevice {
             nmcli: program_exists("nmcli"),
             bluetoothctl: program_exists("bluetoothctl"),
             systemctl: program_exists("systemctl"),
-            other_os: std::fs::read_to_string(OTHER_OS)
-                .ok()
-                .and_then(|text| parse_other_os(&text)),
+            other_os: read_root_only(OTHER_OS).and_then(|text| parse_other_os(&text)),
             scanned: std::sync::Arc::default(),
         }
     }
@@ -376,7 +400,7 @@ impl DeviceSettings for LinuxDevice {
                 scanned
             }
             (control, Value::Action) if control.starts_with(BT) => {
-                let address = &control[BT.len()..];
+                let address = bt_address(&control[BT.len()..]).ok_or("not a Bluetooth address")?;
                 let connected = run("bluetoothctl", &["info", address])
                     .is_ok_and(|text| text.contains("Connected: yes"));
                 run(
@@ -385,7 +409,8 @@ impl DeviceSettings for LinuxDevice {
                 )
             }
             (control, Value::Action) if control.starts_with(PAIR) => {
-                let address = &control[PAIR.len()..];
+                let address =
+                    bt_address(&control[PAIR.len()..]).ok_or("not a Bluetooth address")?;
                 run("bluetoothctl", &["pair", address])
                     .and_then(|_| run("bluetoothctl", &["trust", address]))
                     .and_then(|_| run("bluetoothctl", &["connect", address]))
@@ -769,9 +794,20 @@ fn parse_bt_devices(text: &str) -> Vec<(String, String)> {
         .filter_map(|line| {
             let rest = line.trim().strip_prefix("Device ")?;
             let (address, name) = rest.split_once(' ').unwrap_or((rest, rest));
-            Some((address.to_owned(), name.trim().to_owned()))
+            Some((bt_address(address)?.to_owned(), name.trim().to_owned()))
         })
         .collect()
+}
+
+/// `text` if it is a Bluetooth address, `AA:BB:CC:DD:EE:FF` (six pairs of
+/// hex digits): only such a word goes to `bluetoothctl`.
+fn bt_address(text: &str) -> Option<&str> {
+    let pairs: Vec<&str> = text.split(':').collect();
+    (pairs.len() == 6
+        && pairs
+            .iter()
+            .all(|pair| pair.len() == 2 && pair.bytes().all(|b| b.is_ascii_hexdigit())))
+    .then_some(text)
 }
 
 /// `bluetoothctl show`: "Powered: yes"; `None` without a controller.
@@ -937,6 +973,29 @@ mod tests {
                 ),
             ]
         );
+        // Only addresses: nothing else ever reaches bluetoothctl.
+        assert!(parse_bt_devices("Device --help x\nDevice AA:BB:CC:DD:EE x\n").is_empty());
+        assert_eq!(bt_address("aa:bb:cc:dd:ee:ff"), Some("aa:bb:cc:dd:ee:ff"));
+        for bad in [
+            "",
+            "AA:BB:CC:DD:EE",
+            "AA:BB:CC:DD:EE:FF:00",
+            "AA:BB:CC:DD:EE:FG",
+            "AAA:B:CC:DD:EE:FF",
+            "AA:BB:CC:DD:EE:FF;",
+        ] {
+            assert_eq!(bt_address(bad), None, "{bad}");
+        }
+        let device = LinuxDevice {
+            bluetoothctl: true,
+            ..LinuxDevice::default()
+        };
+        assert!(
+            device
+                .set("bluetooth", "pair:--help", Value::Action)
+                .is_err()
+        );
+        assert!(device.set("bluetooth", "bt:AA:BB", Value::Action).is_err());
     }
 
     #[test]
@@ -998,6 +1057,18 @@ mod tests {
         );
         assert_eq!(parse_other_os("label = \"A\"\ncommand = []\n"), None);
         assert_eq!(parse_other_os("label = \"A\"\nshell = \"rm\"\n"), None);
+        // Only a file no one but root can change.
+        assert!(root_only(0, 0o100_644));
+        assert!(root_only(0, 0o100_600));
+        assert!(!root_only(1000, 0o100_644), "not root's");
+        assert!(!root_only(0, 0o100_664), "group-writable");
+        assert!(!root_only(0, 0o100_646), "world-writable");
+        // A file of the test's own user is refused unless that user is root.
+        let mine = std::env::temp_dir().join(format!("rusttv-other-os-{}", std::process::id()));
+        std::fs::write(&mine, "label = \"A\"\ncommand = [\"true\"]\n").unwrap();
+        let read = read_root_only(mine.to_str().unwrap());
+        assert_eq!(read.is_some(), rustix::process::geteuid().is_root());
+        std::fs::remove_file(&mine).unwrap();
         let device = LinuxDevice {
             systemctl: true,
             other_os: other,

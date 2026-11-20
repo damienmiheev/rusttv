@@ -10,10 +10,12 @@ use crate::HistoryError;
 /// Version of the snapshot format. Bump on any incompatible change.
 ///
 /// 2 added `[launcher.folders]`, 3 `[launcher.phones]`, 4
-/// `reduced_effects`. A snapshot is written in the oldest format that holds
-/// it (no folders, no phones, full effects: format 1), so older readers keep
-/// reading it until it needs more.
-pub const STATE_FORMAT: u32 = 4;
+/// `reduced_effects`, 5 tile names of Linux desktop entries
+/// (`org.kde.dolphin.desktop`) and `remote`. A snapshot is written in the
+/// oldest format that holds it (no folders, no phones, full effects, only
+/// Android names: format 1), so older readers keep reading it until it
+/// needs more.
+pub const STATE_FORMAT: u32 = 5;
 
 /// The longest folder name, in characters (the launcher's limit).
 const FOLDER_NAME_MAX: usize = 40;
@@ -77,6 +79,18 @@ pub struct Launcher {
     /// for a weak GPU.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub reduced_effects: bool,
+}
+
+impl Launcher {
+    /// Every tile name it holds: the order, hidden apps, folders and their
+    /// apps.
+    fn tile_names(&self) -> impl Iterator<Item = &String> {
+        self.order
+            .iter()
+            .chain(&self.hidden)
+            .chain(self.folders.keys())
+            .chain(self.folders.values().flat_map(|folder| &folder.apps))
+    }
 }
 
 impl Default for Launcher {
@@ -197,7 +211,9 @@ impl State {
 
     /// The oldest format that can hold this snapshot.
     pub fn needed_format(&self) -> u32 {
-        if self.launcher.reduced_effects {
+        if self.launcher.tile_names().any(needs_format_five) {
+            5
+        } else if self.launcher.reduced_effects {
             4
         } else if !self.launcher.phones.is_empty() {
             3
@@ -236,19 +252,7 @@ impl State {
                 )));
             }
         }
-        let folder_apps = self
-            .launcher
-            .folders
-            .values()
-            .flat_map(|folder| &folder.apps);
-        for name in self
-            .launcher
-            .order
-            .iter()
-            .chain(&self.launcher.hidden)
-            .chain(self.launcher.folders.keys())
-            .chain(folder_apps)
-        {
+        for name in self.launcher.tile_names() {
             if !is_tile_name(name) {
                 return Err(HistoryError::invalid(format!(
                     "{name:?} is not a tile name"
@@ -351,8 +355,15 @@ pub fn is_phone_name(name: &str) -> bool {
         && !name.chars().any(char::is_control)
 }
 
-/// A tile name: `about`, `settings`, `hidden-apps`, `folder:<number>`, or a
-/// component `<package>/<class>`. Tile names are only shown, never run, so
+/// Whether a tile name is one builds before format 5 refuse: a Linux
+/// desktop entry's id or `remote` (see [`is_tile_name`]).
+fn needs_format_five(name: &String) -> bool {
+    !name.contains('/') && (name == "remote" || name.ends_with(".desktop"))
+}
+
+/// A tile name: `about`, `settings`, `hidden-apps`, `remote`,
+/// `folder:<number>`, a Linux desktop entry's id (`<id>.desktop`, format 5)
+/// or a component `<package>/<class>`. Tile names are only shown, never run, so
 /// the package part is checked by its characters (not
 /// [`is_package_name`]'s stricter shape): one bad name must not stop the
 /// whole history.
@@ -449,8 +460,8 @@ mod tests {
     #[test]
     fn a_newer_format_says_so() {
         assert!(matches!(
-            State::parse("format = 5\nsomething_new = true\n"),
-            Err(HistoryError::FormatNewer(5))
+            State::parse("format = 6\nsomething_new = true\n"),
+            Err(HistoryError::FormatNewer(6))
         ));
     }
 
@@ -501,6 +512,26 @@ mod tests {
         ));
         let full = sample().to_toml().unwrap();
         assert!(!full.contains("reduced_effects"), "{full}");
+    }
+
+    #[test]
+    fn desktop_entries_need_format_five() {
+        let mut linux = sample();
+        linux.launcher.order.push("org.kde.dolphin.desktop".into());
+        let text = linux.to_toml().unwrap();
+        assert!(text.starts_with("format = 5\n"), "{text}");
+        assert_eq!(State::parse(&text).unwrap().launcher, linux.launcher);
+        let downgraded = text.replacen("format = 5", "format = 4", 1);
+        assert!(matches!(
+            State::parse(&downgraded),
+            Err(HistoryError::Invalid(_))
+        ));
+        // Also in a folder or hidden; Android names stay at format 1.
+        let mut hidden = sample();
+        hidden.launcher.hidden.insert("foot.desktop".into());
+        assert_eq!(hidden.needed_format(), 5);
+        assert_eq!(sample().needed_format(), 1);
+        assert!(sample().to_toml().unwrap().starts_with("format = 1\n"));
     }
 
     #[test]

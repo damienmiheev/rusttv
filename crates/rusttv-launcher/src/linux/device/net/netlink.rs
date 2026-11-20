@@ -210,13 +210,15 @@ fn messages(data: &[u8]) -> Option<Vec<(u16, u32, &[u8])>> {
     let mut messages = Vec::new();
     let mut at = 0;
     while at < data.len() {
-        let length = ne_u32(data, at)? as usize;
+        let length = usize::try_from(ne_u32(data, at)?).ok()?;
         if length < 16 {
             return None;
         }
-        let message = data.get(at..at + length)?;
+        // Checked throughout: a length near the type's limit must not wrap
+        // (usize is 32 bits on some TVs).
+        let message = data.get(at..at.checked_add(length)?)?;
         messages.push((ne_u16(message, 4)?, ne_u32(message, 8)?, &message[16..]));
-        at += length.next_multiple_of(4);
+        at = at.checked_add(length.checked_next_multiple_of(4)?)?;
     }
     Some(messages)
 }
@@ -225,10 +227,10 @@ fn messages(data: &[u8]) -> Option<Vec<(u16, u32, &[u8])>> {
 fn attributes(data: &[u8]) -> impl Iterator<Item = (u16, &[u8])> {
     let mut at = 0;
     std::iter::from_fn(move || {
-        let length = usize::from(ne_u16(data, at)?);
-        let kind = ne_u16(data, at + 2)? & NLA_TYPE_MASK;
-        let value = data.get(at + 4..at + length.max(4))?;
-        at += length.max(4).next_multiple_of(4);
+        let length = usize::from(ne_u16(data, at)?).max(4);
+        let kind = ne_u16(data, at.checked_add(2)?)? & NLA_TYPE_MASK;
+        let value = data.get(at.checked_add(4)?..at.checked_add(length)?)?;
+        at = at.checked_add(length.checked_next_multiple_of(4)?)?;
         Some((kind, value))
     })
 }
@@ -246,11 +248,15 @@ fn push_attribute(data: &mut Vec<u8>, kind: u16, value: &[u8]) {
 }
 
 fn ne_u16(data: &[u8], at: usize) -> Option<u16> {
-    Some(u16::from_ne_bytes(data.get(at..at + 2)?.try_into().ok()?))
+    Some(u16::from_ne_bytes(
+        data.get(at..at.checked_add(2)?)?.try_into().ok()?,
+    ))
 }
 
 fn ne_u32(data: &[u8], at: usize) -> Option<u32> {
-    Some(u32::from_ne_bytes(data.get(at..at + 4)?.try_into().ok()?))
+    Some(u32::from_ne_bytes(
+        data.get(at..at.checked_add(4)?)?.try_into().ok()?,
+    ))
 }
 
 /// One `RTM_NEWADDR` payload: `ifaddrmsg` and its attributes.
@@ -331,7 +337,8 @@ fn bitrate(rate_info: &[u8]) -> Option<u32> {
             _ => {}
         }
     }
-    rate.filter(|&rate| rate > 0).map(|rate| rate * 100)
+    rate.filter(|&rate| rate > 0)
+        .map(|rate| rate.saturating_mul(100))
 }
 
 #[cfg(test)]
@@ -395,6 +402,20 @@ mod tests {
         );
         assert_eq!(messages(&[40, 0, 0, 0]), None, "cut off");
         assert_eq!(messages(&data[..20]), None, "cut off");
+        // A length at the limit neither wraps nor panics.
+        assert_eq!(messages(&u32::MAX.to_ne_bytes()), None);
+        assert_eq!(attributes(&[0xff, 0xff, 1, 0]).count(), 0);
+    }
+
+    #[test]
+    fn a_huge_bitrate_saturates() {
+        let mut rate = Vec::new();
+        push_attribute(
+            &mut rate,
+            NL80211_RATE_INFO_BITRATE32,
+            &u32::MAX.to_ne_bytes(),
+        );
+        assert_eq!(bitrate(&rate), Some(u32::MAX));
     }
 
     #[test]

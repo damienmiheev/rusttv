@@ -214,7 +214,8 @@ impl LinuxPlatform {
         else {
             return false;
         };
-        let Some(group) = tasks::find_group(&program) else {
+        // Never a group it already follows (two entries of one program).
+        let Some(group) = tasks::find_group(&program, &tasks.groups()) else {
             return false;
         };
         let Some(leader) = i32::try_from(group)

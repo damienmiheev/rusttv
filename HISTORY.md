@@ -73,6 +73,10 @@ takeover = "active"
   RustTV Remote tile (`remote`) is left out: every Home has it, and builds
   that don't know the name must keep reading the history; a restored order
   gets it back at its end.
+- **Linux tile names** (format 5): on Linux, apps are desktop entries, named
+  by their id (`org.kde.dolphin.desktop`). A snapshot holding one, in the
+  order, hidden or in a folder, is written as format 5, which older builds
+  refuse; Android snapshots stay in the oldest format that holds them.
 - **Folders** (*added 2026-10-25*): a folder is the tile `folder:<number>`
   in `order`, and `[launcher.folders."folder:<number>"]` holds its name (1–40
   characters, no control characters; shown only, never run) and its apps in

@@ -25,7 +25,9 @@ field in `--json` output says which contract you get, CLI.md).
   device has: Audio, Network, KDE Connect, Power), device settings,
   an on-screen keyboard for other apps and game controllers over USB or
   Bluetooth. Settings has an About tab there. Android keeps its About and
-  Settings tiles and has no top-right menu (`Platform::top_right_menu`).
+  Settings tiles and has no top-right menu (`Platform::top_right_menu`). A
+  history snapshot with Linux tile names (`*.desktop`) is written as
+  format 5.
 
 - `rusttv-portal`, a remote desktop portal backend for compositors without
   one: it serves only `xdg-desktop-portal` and gives remote input only to

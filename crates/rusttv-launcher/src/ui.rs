@@ -447,7 +447,7 @@ impl Demo {
 }
 
 /// Sets the effects: `reduced` (Settings → Effects) turns shadows and the
-/// backdrop off, for a weak GPU.
+/// backdrop glow off, for a weak GPU.
 fn apply_effects(window: &HomeWindow, reduced: bool) {
     let effects = window.global::<Effects>();
     effects.set_shadows(!reduced);
@@ -551,6 +551,9 @@ fn start(
         .and_then(std::path::Path::parent)
         .is_some_and(|dir| dir.join(order_file::REDUCED_EFFECTS).exists());
     apply_effects(&window, reduced);
+    window
+        .global::<Effects>()
+        .set_baked_backdrop(platform.top_right_menu());
     window.global::<Hints>().set_keys(!options.no_key_hints);
     if std::env::var_os("RUSTTV_FPS").is_some_and(|value| value != "0") {
         count_frames(&window);
@@ -957,6 +960,7 @@ impl Controller {
             home.focus_on(id);
         }
         let right_to_left = options.right_to_left;
+        let baked = platform.top_right_menu();
         let controller = Rc::new_cyclic(|me| {
             RefCell::new(Self {
                 home,
@@ -964,7 +968,7 @@ impl Controller {
                 options,
                 apps: HashMap::new(),
                 glows: HashMap::new(),
-                builtins: Builtins::new(right_to_left),
+                builtins: Builtins::new(baked, right_to_left),
                 shown: Vec::new(),
                 tiles,
                 hidden_shown: Vec::new(),
@@ -1212,9 +1216,10 @@ impl Controller {
             return false;
         }
         // The Menu key (keyboards; a controller's top button): the focused
-        // tile's menu, as a long OK.
+        // tile's menu, as a long OK. Not while the pairing, trust or review
+        // screen is open: those take only their own keys.
         if text == "\u{F735}" {
-            if pressed && !repeat {
+            if pressed && !repeat && self.pairing.is_none() && self.review.is_none() {
                 self.hide_pointer();
                 self.home.long_press();
                 self.after_pointer(None);
@@ -1381,6 +1386,9 @@ impl Controller {
     /// A click on entry `index` of the top-right menu.
     fn quick_clicked(&mut self, index: i32) {
         self.parked = false;
+        if !self.pointer_reaches(false) {
+            return;
+        }
         let Ok(index) = usize::try_from(index) else {
             return;
         };
@@ -1394,6 +1402,9 @@ impl Controller {
             return;
         }
         self.pointer_moved();
+        if !self.pointer_reaches(false) {
+            return;
+        }
         if let Ok(index) = usize::try_from(index)
             && self.home.hover_quick(index)
         {
@@ -2379,7 +2390,11 @@ impl Controller {
             return Some(cached.clone());
         }
         let source = self.apps.get(component)?.glow_source.as_ref()?;
-        let glow = hero_glow(source, self.options.right_to_left);
+        let glow = hero_glow(
+            source,
+            self.platform.top_right_menu(),
+            self.options.right_to_left,
+        );
         self.glows.insert(component.to_owned(), glow.clone());
         Some(glow)
     }
@@ -2600,7 +2615,7 @@ struct BuiltinView {
 
 impl BuiltinView {
     /// Wraps a banner's RGBA bytes ([`BUILTIN_BANNER_SIZE`]).
-    fn new(rgba: &[u8], right_to_left: bool) -> Self {
+    fn new(rgba: &[u8], baked: bool, right_to_left: bool) -> Self {
         let (width, height) = BUILTIN_BANNER_SIZE;
         // build.rs checks the size, so this is always `Some`.
         let Some(bitmap) = Bitmap::new(width, height, rgba.to_vec()) else {
@@ -2611,6 +2626,7 @@ impl BuiltinView {
             image: image(&bitmap),
             glow: hero_glow(
                 &bitmap.shrink(GLOW_SOURCE_SIZE.0, GLOW_SOURCE_SIZE.1),
+                baked,
                 right_to_left,
             ),
         }
@@ -2627,12 +2643,12 @@ struct Builtins {
 }
 
 impl Builtins {
-    fn new(right_to_left: bool) -> Self {
+    fn new(baked: bool, right_to_left: bool) -> Self {
         Self {
-            about: BuiltinView::new(ABOUT_BANNER, right_to_left),
-            settings: BuiltinView::new(SETTINGS_BANNER, right_to_left),
-            remote: BuiltinView::new(REMOTE_BANNER, right_to_left),
-            hidden: BuiltinView::new(HIDDEN_BANNER, right_to_left),
+            about: BuiltinView::new(ABOUT_BANNER, baked, right_to_left),
+            settings: BuiltinView::new(SETTINGS_BANNER, baked, right_to_left),
+            remote: BuiltinView::new(REMOTE_BANNER, baked, right_to_left),
+            hidden: BuiltinView::new(HIDDEN_BANNER, baked, right_to_left),
         }
     }
 
@@ -2788,15 +2804,22 @@ fn input_for_key(text: &str, pressed: bool) -> Option<Input> {
 }
 
 /// The hero glow for artwork, from its small copy (see [`GLOW_SOURCE_SIZE`]).
-fn hero_glow(source: &Bitmap, right_to_left: bool) -> generated::Glow {
+/// With `baked` (`Effects.baked-backdrop`, where there is a top-right menu)
+/// the backdrop is painted once into a small picture; otherwise home.slint
+/// draws it from the other fields.
+fn hero_glow(source: &Bitmap, baked: bool, right_to_left: bool) -> generated::Glow {
     let glow = source.glow(BACKDROP_BASE_TONE, BACKDROP_GLOW_TONE);
     let colour = |[red, green, blue]: [u8; 3]| slint::Color::from_rgb_u8(red, green, blue);
-    let (width, height) = BACKDROP_SIZE;
-    let backdrop = slint::Image::from_rgb8(SharedPixelBuffer::clone_from_slice(
-        &glow.paint(width, height, PAGE_COLOUR, right_to_left),
-        width,
-        height,
-    ));
+    let backdrop = if baked {
+        let (width, height) = BACKDROP_SIZE;
+        slint::Image::from_rgb8(SharedPixelBuffer::clone_from_slice(
+            &glow.paint(width, height, PAGE_COLOUR, right_to_left),
+            width,
+            height,
+        ))
+    } else {
+        slint::Image::default()
+    };
     generated::Glow {
         backdrop,
         base: colour(glow.base),
@@ -3201,15 +3224,35 @@ mod tests {
             assert_eq!((size.width, size.height), (320, 180));
         }
         assert_eq!(screen.window.get_quick_actions().row_count(), 0);
+        // The backdrop is drawn as before, not baked into a picture.
+        assert!(!screen.window.global::<Effects>().get_baked_backdrop());
         // Up from the first row reaches no menu.
         screen.tap(UP);
         assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
-        // About opens Settings at its About tab.
+        // About opens the notices, as before the menu; one Back is Home.
         for _ in 0..3 {
             screen.tap(RIGHT);
         }
         screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::About));
+        assert!(!screen.window.get_notices().is_empty());
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        // Settings keeps its sections: no About tab.
+        screen.tap(RIGHT);
+        screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        settle(&screen);
+        let sections: Vec<String> = screen
+            .window
+            .get_settings_sections()
+            .iter()
+            .map(|section| section.to_string())
+            .collect();
+        assert!(
+            !sections.iter().any(|section| section == "About"),
+            "{sections:?}"
+        );
     }
 
     #[test]
@@ -3573,8 +3616,7 @@ mod tests {
         BACKEND.with(|_| {});
         let (window, _controller) = start(Broken, RunOptions::default(), real_clock()).unwrap();
         // No top-right menu (like Android): the About tile, focused first on
-        // an empty Home, opens Settings at its About tab; OK on its first
-        // row (RustTV) opens the notices.
+        // an empty Home, opens the notices.
         let tap = |text: &str| {
             window
                 .window()
@@ -3583,8 +3625,6 @@ mod tests {
                 .window()
                 .dispatch_event(WindowEvent::KeyReleased { text: text.into() });
         };
-        tap(OK);
-        assert_eq!(window.get_mode(), mode_value(State::Settings));
         assert_eq!(window.get_quick_actions().row_count(), 0, "no menu");
         tap(OK);
         assert_eq!(window.get_mode(), mode_value(State::About));
@@ -4113,6 +4153,30 @@ mod tests {
     }
 
     #[test]
+    fn only_with_a_top_right_menu_the_backdrop_is_baked() {
+        // The third tile after A, B, C is built in: its glow is there at once.
+        let front_glow = |screen: &Screen| {
+            for _ in 0..3 {
+                screen.tap(RIGHT);
+            }
+            screen.wait(HERO_DELAY.as_millis() as u64 + 50);
+            let glow = if screen.window.get_hero_a_front() {
+                screen.window.get_hero_a_glow()
+            } else {
+                screen.window.get_hero_b_glow()
+            };
+            let size = glow.backdrop.size();
+            (size.width, size.height)
+        };
+        let screen = screen(None);
+        assert!(screen.window.global::<Effects>().get_baked_backdrop());
+        assert_eq!(front_glow(&screen), BACKDROP_SIZE);
+        let screen = screen_with(abc().without_menu(), None);
+        assert!(!screen.window.global::<Effects>().get_baked_backdrop());
+        assert_eq!(front_glow(&screen), (0, 0), "drawn, as before");
+    }
+
+    #[test]
     fn a_reduced_effects_flag_turns_shadows_and_the_backdrop_off() {
         let (dir, _history) = history_dir();
         std::fs::write(dir.join(order_file::REDUCED_EFFECTS), b"").unwrap();
@@ -4143,6 +4207,11 @@ mod tests {
         screen.window.invoke_tile_pointer(false, 0, 1);
         screen.window.invoke_tile_pointer(false, 0, 2);
         screen.window.invoke_scrolled(SCROLL_STEP * 3.0);
+        // Neither the Menu key nor the top-right menu reaches behind it.
+        screen.tap("\u{F735}");
+        screen.window.invoke_quick_hovered(0);
+        screen.window.invoke_quick_clicked(0);
+        screen.window.invoke_quick_dismissed();
         assert!(screen.launched().is_empty(), "no app opens behind it");
         assert_eq!(screen.window.get_focused_index(), focus);
         assert_eq!(

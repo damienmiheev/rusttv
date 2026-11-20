@@ -115,10 +115,10 @@ pub(super) const NO_STATUS: i32 = status::NONE;
 impl Controller {
     /// OK on the Settings entry of the top-right menu.
     pub(super) fn open_settings(&mut self) {
-        self.settings = Some(SettingsPage::new(
-            Overview::default(),
-            self.options.right_to_left,
-        ));
+        self.settings = Some(
+            SettingsPage::new(Overview::default(), self.options.right_to_left)
+                .with_about(self.platform.top_right_menu()),
+        );
         self.settings_status = (status::READING, String::new());
         self.refresh_settings_data();
         if self.device.is_some() {
