@@ -413,3 +413,21 @@ msgstr "Telefono {} abbinato"
 
 msgid "Removed the phone {}"
 msgstr "Telefono {} rimosso"
+
+msgid "Effects"
+msgstr "Effetti"
+
+msgid "Effects: {}"
+msgstr "Effetti: {}"
+
+msgid "Full"
+msgstr "Completi"
+
+msgid "Reduced"
+msgstr "Ridotti"
+
+msgid "Shadows and backdrop"
+msgstr "Ombre e sfondo"
+
+msgid "No shadows or backdrop: smoother on a slow graphics chip"
+msgstr "Niente ombre né sfondo: più fluido con un chip grafico lento"

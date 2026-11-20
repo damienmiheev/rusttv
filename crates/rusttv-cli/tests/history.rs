@@ -166,7 +166,7 @@ impl Drop for Setup {
 
 fn json(output: &Output) -> Value {
     let value: Value = serde_json::from_slice(&output.stdout).unwrap();
-    assert_eq!(value["schema"], "rusttv.v10");
+    assert_eq!(value["schema"], "rusttv.v11");
     value
 }
 

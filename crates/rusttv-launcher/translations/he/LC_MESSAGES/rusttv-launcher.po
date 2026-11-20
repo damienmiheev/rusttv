@@ -413,3 +413,21 @@ msgstr "הטלפון {} הותאם"
 
 msgid "Removed the phone {}"
 msgstr "הטלפון {} הוסר"
+
+msgid "Effects"
+msgstr "אפקטים"
+
+msgid "Effects: {}"
+msgstr "אפקטים: {}"
+
+msgid "Full"
+msgstr "מלאים"
+
+msgid "Reduced"
+msgstr "מופחתים"
+
+msgid "Shadows and backdrop"
+msgstr "צללים ורקע"
+
+msgid "No shadows or backdrop: smoother on a slow graphics chip"
+msgstr "ללא צללים ורקע: חלק יותר עם שבב גרפי איטי"

@@ -51,6 +51,8 @@ pub(crate) struct EntryView {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Section {
     Animations,
+    /// Full or reduced effects (shadows, backdrop) for a weak GPU.
+    Effects,
     Updates,
     History,
     Waiting,
@@ -142,7 +144,12 @@ impl SettingsPage {
 
     /// The sections, in order; "Waiting" only when something waits.
     pub fn sections(&self) -> Vec<Section> {
-        let mut sections = vec![Section::Animations, Section::Updates, Section::History];
+        let mut sections = vec![
+            Section::Animations,
+            Section::Effects,
+            Section::Updates,
+            Section::History,
+        ];
         if !self.overview.pending.is_empty() {
             sections.push(Section::Waiting);
         }
@@ -203,6 +210,7 @@ impl SettingsPage {
     fn entry_row(&self) -> usize {
         match self.section() {
             Section::Animations => self.animation_choice().unwrap_or(NORMAL_ANIMATIONS),
+            Section::Effects => usize::from(self.overview.launcher.reduced_effects),
             Section::Updates => usize::from(!self.overview.launcher.update_check),
             Section::History | Section::Waiting => 0,
         }
@@ -211,7 +219,7 @@ impl SettingsPage {
     fn rows(&self) -> usize {
         match self.section() {
             Section::Animations => ANIMATION_CHOICES.len(),
-            Section::Updates => 2,
+            Section::Effects | Section::Updates => 2,
             Section::History => self.overview.entries.len(),
             Section::Waiting => self.overview.pending.len(),
         }
@@ -274,6 +282,18 @@ impl SettingsPage {
                 Some(Action::Review(Draft {
                     changes,
                     launcher: None,
+                }))
+            }
+            Section::Effects => {
+                let reduced = row == 1;
+                if self.overview.launcher.reduced_effects == reduced {
+                    return None;
+                }
+                let mut launcher = self.overview.launcher.clone();
+                launcher.reduced_effects = reduced;
+                Some(Action::Review(Draft {
+                    changes: Vec::new(),
+                    launcher: Some(launcher),
                 }))
             }
             Section::Updates => {
@@ -347,8 +367,21 @@ mod tests {
     }
 
     #[test]
+    fn reducing_effects_reviews_the_launcher_state() {
+        let mut page = page();
+        page.handle(Input::Down);
+        page.handle(Input::Right);
+        page.handle(Input::Down);
+        let Some(Action::Review(draft)) = page.handle(Input::OkReleased) else {
+            panic!("expected a review");
+        };
+        assert_eq!(draft.launcher.map(|l| l.reduced_effects), Some(true));
+    }
+
+    #[test]
     fn turning_updates_off_reviews_the_launcher_state() {
         let mut page = page();
+        page.handle(Input::Down);
         page.handle(Input::Down);
         page.handle(Input::Right);
         page.handle(Input::Down);
@@ -361,8 +394,9 @@ mod tests {
     #[test]
     fn an_older_entry_can_be_restored_but_not_the_newest() {
         let mut page = page();
-        page.handle(Input::Down);
-        page.handle(Input::Down);
+        for _ in 0..3 {
+            page.handle(Input::Down);
+        }
         assert_eq!(page.section(), Section::History);
         page.handle(Input::Right);
         page.handle(Input::OkReleased);
@@ -393,7 +427,7 @@ mod tests {
     #[test]
     fn waiting_shows_only_with_pending_approvals() {
         let mut page = page();
-        assert_eq!(page.sections().len(), 3);
+        assert_eq!(page.sections().len(), 4);
         let mut overview = page.overview().clone();
         overview.pending.push(PendingApproval {
             hash: "a".repeat(64),
