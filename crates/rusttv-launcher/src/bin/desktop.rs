@@ -16,8 +16,8 @@
 //! `RUSTTV_REMOTE_PAIR=1` starts RustTV Remote with pairing open and prints
 //! the pairing link; every phone that asks is allowed (REMOTE.md).
 //!
-//! `--demo-remote <dir>` does the same for RustTV Remote's Settings section
-//! and pairing screen.
+//! `--demo-remote <dir>` does the same for RustTV Remote's tile, page and
+//! pairing screen.
 //!
 //! `--demo <dir>` instead plays a fixed key script and writes a BMP snapshot
 //! after each step into `<dir>`, then quits. Needs no screen-capture permission.
@@ -235,17 +235,18 @@ fn demo_script() -> Vec<DemoStep> {
     ]
 }
 
-/// The RustTV Remote page (REMOTE.md § 2), then the pairing code. Its tile
-/// is the last: Sports, Weather, Settings, RustTV Remote.
+/// RustTV Remote's tile, its page (REMOTE.md § 2), then the pairing code.
+/// Its tile is the last (Sports, Weather, Settings, RustTV Remote; with
+/// `RUSTTV_NO_DEVICE=1` after About and Settings): Down to the last row,
+/// then Right to its end.
 fn remote_script() -> Vec<DemoStep> {
     use DemoStep::{Snapshot, Tap};
-    vec![
-        ms(800),
-        Tap(DOWN),
-        Tap(DOWN),
-        Tap(RIGHT),
-        Tap(RIGHT),
-        Tap(RIGHT),
+    let mut steps = vec![ms(800)];
+    steps.extend([DOWN; 4].map(Tap));
+    steps.extend([RIGHT; 6].map(Tap));
+    steps.extend([
+        ms(600),
+        Snapshot("remote-0-tile"),
         Tap(OK),
         ms(600),
         Snapshot("remote-1-settings"),
@@ -253,7 +254,8 @@ fn remote_script() -> Vec<DemoStep> {
         ms(300),
         Snapshot("remote-2-pairing-code"),
         Tap(BACK),
-    ]
+    ]);
+    steps
 }
 
 fn main() -> Result<(), Box<dyn Error>> {

@@ -497,3 +497,15 @@ msgstr "Menginstal"
 #: templates/about_tile.json
 msgid "Update available"
 msgstr "Ada pembaruan"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "Tanpa ponsel"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "Ponsel: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "Memasangkan"

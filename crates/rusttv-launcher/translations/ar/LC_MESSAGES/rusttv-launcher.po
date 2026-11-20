@@ -497,3 +497,15 @@ msgstr "جارٍ التثبيت"
 #: templates/about_tile.json
 msgid "Update available"
 msgstr "تحديث متاح"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "لا هواتف"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "الهواتف: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "جارٍ الإقران"

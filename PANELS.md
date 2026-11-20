@@ -169,8 +169,9 @@ pub(crate) fn about_view(version: &str, status: &UpdateStatus) -> PanelView;
   would kill Home). If data is missing, the tile shows the panel's name and
   icon only; any reason appears on its page.
 - **Text:** views carry kinds and values, never translated strings. A
-  version inside RTL text is an isolated LTR run. Tile text is checked
-  elided in all 21 languages and in RTL.
+  version inside RTL text is an isolated LTR run (a text's `{"ltr": prop}`
+  argument, § 4.1). Tile text is checked elided in all 21 languages and in
+  RTL.
 - **Pointer:** mouse and air-mouse input (since #39) reach a panel's faces
   only through the shared UI's `pointer_reaches` guard (`ui.rs`), like every
   other tile and page: no pointer input behind pairing, trust or review.
@@ -200,18 +201,21 @@ colours come from `Theme`. The JSON key and fields are in § 4.1.
 | `Mark` (the plan's `Badge`) | a built-in mark from a fixed list (`slint`: Slint's `AboutSlint`, at a fixed 240u and never conditional, so the attribution can't be shrunk or hidden) | no |
 | `ScrollBox` | long text Home loads (a fixed list: `notices`) filling the surface panel's height; Up/Down scroll; at most one per page | yes |
 | `Hint` | the dim key hint ("Up and Down scroll the notices. Back returns."); empty when `Hints.keys` is off | no |
+| `Picture` (step 3) | a picture Home provides from a fixed list (`remote-banner`, the `Pictures` global), the column's width and 270u tall, rounded | no |
+| `Rows` (step 3) | a focusable list Home fills from a fixed list (`remote`), Settings' row look (title, dim detail, accent dot, dim rows); pointer hover and click through `pointer_reaches`; fills the height it is given; at most one focus block (`ScrollBox` or `Rows`) per page | yes |
 
 Layouts: `one-column` (blocks in one 1740u column) or `two-columns` (a
 560u start column and the 1110u surface panel at the end side, as About is
-today); both mirrored in RTL.
+today); both mirrored in RTL. A page may have a **header** (step 3, a list
+page as Settings and Remote are): a 57u title above both columns and an
+elided line under it, Home's status line (what just happened) or, without
+one, the dim key hint (empty without key hints). Under a header the start
+column is 480u wide and starts at 260u with its blocks 36u apart, and the
+surface panel runs from 260u to 1020u.
 
-Later blocks, when a panel needs them: `Rows` (a focusable list with
-pointer hover and click, for Remote, Settings and History), toggle and
-chevron rows. Step 3 (the Remote page) also needs a header above both
-columns (a 57u title and a line under it, the surface panel then at 260u),
-a status line that replaces the key hint and shows without key hints, a
-picture Home provides from a fixed list (the Remote banner, the pairing
-QR code) and an elided one-line text. History needs plural forms
+Later blocks, when a panel needs them: toggle and chevron rows, and the
+pairing QR code as a picture (the pairing screen stays hand-written; it
+is not a panel face). History needs plural forms
 ("2 h ago": `@tr` with a count), and later an editor may want stable
 block ids, accessible labels, typed props (numbers formatted per
 language, numeric conditions; today every prop is a string) and a JSON
@@ -294,10 +298,20 @@ Rules the schema enforces (unknown fields are errors):
     `title` (`value`, `size`: `large`/`medium`/`small`, default `medium`),
     `paragraph` (`value`, `size`: `normal`/`small`, default `normal`,
     `tone`: `normal`/`dim`/`accent` or a `select` of them, default
-    `normal`), `hint` (`value`), `mark` (`name`), `scroll-box` (`source`).
-    `title`, `paragraph` and `hint` take an optional `show`; a mark and a
-    scroll box don't (an attribution is never hidden, and Home's focus can
-    rely on the scroll box). Page blocks have their own names, so no key
+    `normal`), `hint` (`value`), `picture` (`name`, from a fixed list
+    Home provides: `remote-banner`), `mark` (`name`), `scroll-box`
+    (`source`), `rows` (`source`, from a fixed list Home fills:
+    `remote`). `title`, `paragraph`, `hint` and `picture` take an optional
+    `show`; a mark, a scroll box and rows don't (an attribution is never
+    hidden, and Home's focus can rely on its focus block). An optional
+    `header` (`title`, optional `hint`) draws the list-page header; its
+    page gets a `header-status` property Home fills with its status line.
+    A page has at most one focus block (`scroll-box` or `rows`). `rows`
+    go in either column; in the surface panel they reach 24u into its
+    padding, as Settings' rows do. Their page gets `rows-model`
+    (Settings' row data), `rows-focus`, `rows-first` (Home scrolls by
+    rows) and the callback `rows-pointer(index, action)` (0 moved over, 1
+    clicked), so `rows-*` and `header-*` are reserved names too. Page blocks have their own names, so no key
     means one thing in a tile and another on a page (a tile's `text`
     takes sizes in `u`, its `image` a picture `badge`). A `scroll-box` goes in `end` only, once; its page
     gets `scroll-text`, `scroll-position` and `scroll-fraction` properties
@@ -328,7 +342,10 @@ Rules the schema enforces (unknown fields are errors):
   the phone. A later theme changes both.
 - **Images** are built-in badge names only; nothing decodes a panel's image.
 - **Text** is `@tr` with a literal string and property arguments, or a
-  choice between such strings by a property's value. So every string stays
+  choice between such strings by a property's value. An argument is a
+  property's name, or `{"ltr": name}`: that value as a left-to-right
+  isolate (U+2066 … U+2069), so a version inside Arabic or Hebrew text
+  keeps its order. The literal itself never holds bidi characters. So every string stays
   translatable: `slint-tr-extractor` runs on the generated files, and the
   phone page's i18n uses the same message ids.
 - **Direction:** text aligns to `Dir.start`, images to the start side;
@@ -445,11 +462,12 @@ its own.
   (`remote` and `.desktop` tile names, `needs_format_five`) and makes
   `remote` a valid tile name. Since #40 merges first (decision 21), "the
   next format" below means 6.
-- **The Remote tile is not in History.** `launcher_state` (`order_file.rs`)
-  leaves it out of the snapshot, on main and in #40, so a moved Remote tile
-  goes back to the end on undo or "copy my setup". Recording it means every
-  snapshot needs format 5 (every Home has a Remote tile), so builds older
-  than #40 could no longer read any new history. Open: § 9 Q9.
+- **The Remote tile is in History** (since step 3, § 9 Q9):
+  `launcher_state` (`order_file.rs`) records `remote` like any tile, so
+  every new snapshot is format 5 and builds older than #40 can't read new
+  history. A snapshot from before (no `remote`) still restores; Home then
+  puts the tile at the end. History's changes never call `remote` added or
+  removed (an older snapshot only lacks it), only moved.
 - **About and Settings tiles after #40:** where a top-right menu has
   Settings (Linux), `reconcile` drops the About and Settings tiles
   (`settings_tiles`), and Settings gains an About section (`Section::About`,
@@ -675,14 +693,13 @@ face is #40's `AboutRow` in Settings, fed from the same view.
 - **Kept general on purpose** (the owner asked for general blocks):
   `one-column`, `medium` titles, `show` on page blocks and a fixed
   `accent` tone. About doesn't use them; tests convert them and check
-  the output, and Slint compiled that output once during review (CI
-  compiles only the real templates).
+  the output, and since step 3 every build compiles them too
+  (`codegen/test_templates/`).
 - **Measured on the TV at the end:** § 8's About page check (opening it,
   scrolling the notices) runs in the final on-TV pass with the rest.
-- **Open:** a version inside right-to-left text isn't an isolated LTR run
-  (§ 3) on the tile or the page, as before this step; the converter
-  refuses bidi characters, so it needs a schema form (e.g. an `args`
-  flag) when it is done.
+- **Done in step 3:** a version inside right-to-left text is an isolated
+  LTR run (§ 3) on the tile, the row and the page (`{"ltr": prop}`
+  arguments, § 4.1), and in Settings' Updates line.
 - **No page action in the view yet:** OK on About stays the model's
   (`Effect::Update`); `PanelAction` comes with a second page that has one.
 - **One new text:** the title "RustTV", kept as "RustTV" in every language
@@ -690,9 +707,11 @@ face is #40's `AboutRow` in Settings, fed from the same view.
 - **Look:** compared pixel by pixel with desktop snapshots of the Android
   layout before and after (`RUSTTV_NO_DEVICE=1`; About page and scrolled
   notices; English, Ukrainian while downloading, Arabic idle and with an
-  update available). The surface panel is identical; in English and
-  Arabic the blocks under the licence paragraph sit 1.5u lower (2 px at
-  2560 × 1440), Ukrainian is identical but for a few pixels. A small
+  update available). A mid-review build had the blocks under the licence
+  paragraph 1.5u lower in English and Arabic; re-measured in step 3, the
+  merged step 2 draws the About page pixel-identical to the build before
+  it (English and Ukrainian, page and scrolled notices; Arabic differs
+  only in the updater's animated dots, caught at another frame). A small
   heading keeps a 36u line box (`PageTitle`), so the notices start where
   they did whatever the font. Settings' RustTV row is checked by a test
   (`about_row_and_page_come_from_the_about_view`): the desktop demo
@@ -706,6 +725,45 @@ from events the remote thread already sends (no new polling). Its page
 stays the current Remote page, moved onto blocks; `Rows` is added here
 because the phone list needs it. Its place is recorded in History (§ 9 Q9):
 `launcher_state` stops leaving it out, and snapshots need format 5.
+
+*Built 2026-11-20, with these differences from the plan above:*
+- **No `PanelId` or `Line`:** views carry template property values
+  (step 2), so `remote_view(phones, pairing)` returns a `PanelView` with
+  a tile and a page and no row (Remote isn't in Settings' list). No
+  trait: About's and Remote's views take different data.
+- **Tile:** the Remote badge (`rusttv-remote`, rendered by
+  `scripts/brand/render.sh` from the phone icon, rounded like the RustTV
+  logo), the paired phones as the value ("No phones" / "Phones: 2"), and
+  "Pairing" in the accent while pairing is open; the About tile's size
+  and look. The "Phones: {}" wording avoids plural forms, which the
+  schema doesn't have yet (History needs them). The hero glow still
+  comes from the Remote banner, which the phone still gets as its picture.
+- **Events, not polling:** the count and the pairing state are set as two
+  globals (`RemotePanel`) when Home starts the listener, pairing opens
+  or closes (Back, a phone paired, too many wrong tries), a phone is
+  removed, and when the pairing secret's own two minutes run out (a
+  one-shot timer, `pairing_timer`). Never the tile list.
+- **Page:** `templates/remote_page.json`: the new `header`, a `picture`
+  (the banner, the `Pictures` global build.rs generates from
+  `convert.rs` `PICTURES`), a dim `paragraph` (the note moved out of
+  `Strings`) and `rows` in the surface panel. `MenuRow` moved to
+  `ui/blocks.slint`, and home.slint feeds the page Home's rows, focus,
+  first row, status line and pointer callback. Compared pixel by pixel
+  with the page before (English, Ukrainian, Arabic): identical except one
+  thing `Rows` now draws as a general block must: a row's `dim` and
+  `current` (ui.rs always set them; the old page dropped them), so
+  "Pointer in other apps" is dim where there is no pointer service and
+  shows the accent dot when it is on.
+- **History:** Remote's place is recorded (§ 6, § 9 Q9); see HISTORY.md
+  § 1.
+- **Checked:** the desktop demo (`--demo-remote`, which now also shows the
+  tile) with `RUSTTV_NO_DEVICE=1`, `RUSTTV_REMOTE_PAIR=1` and
+  `RUSTTV_LANG=uk`/`ar`; three new texts in all 20 languages, measured at
+  the tile's sizes (27u and 23u in a 218u line). Tests: the view, the
+  tile's globals per event without a tile-list change, the page's rows
+  under the pointer, the snapshot, an older snapshot restoring, and the
+  history diff.
+- **Measured on the TV at the end**, with the rest (§ 8).
 
 **Step 4 — History as a panel**, per § 4 "History's faces", after its
 cheap "last entry + pending count" message exists.

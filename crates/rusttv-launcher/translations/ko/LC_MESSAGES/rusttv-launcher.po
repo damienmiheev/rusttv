@@ -497,3 +497,15 @@ msgstr "설치 중"
 #: templates/about_tile.json
 msgid "Update available"
 msgstr "업데이트 있음"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "휴대폰 없음"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "휴대폰: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "연결 중"

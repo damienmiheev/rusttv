@@ -497,3 +497,15 @@ msgstr "ההתקנה מתבצעת"
 #: templates/about_tile.json
 msgid "Update available"
 msgstr "יש עדכון"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "אין טלפונים"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "טלפונים: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "צימוד פתוח"

@@ -58,8 +58,8 @@ pub struct State {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Launcher {
-    /// Tile names in order: app component names, `about`, `settings`,
-    /// `folder:<number>`.
+    /// Tile names in order ([`is_tile_name`]): apps, built-in tiles
+    /// (`about`, `settings`, `hidden-apps`, `remote`), `folder:<number>`.
     #[serde(default)]
     pub order: Vec<String>,
     /// Folders by tile name (`folder:<number>`).

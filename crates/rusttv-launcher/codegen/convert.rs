@@ -12,8 +12,9 @@ const TOKENS: [&str; 5] = ["bg", "surface", "text", "text-dim", "accent"];
 
 /// Names a generated component's own properties already use (a
 /// `Rectangle`'s and every element's), and Slint words (a row's props are
-/// function parameters). A page's scroll box is fed through `scroll-*`
-/// (Home owns the scrolling).
+/// function parameters). Home feeds a page's scroll box through `scroll-*`
+/// (it owns the scrolling), its rows through `rows-*` (it owns the focus)
+/// and its header's status line through `header-status`.
 const RESERVED_PROPS: [&str; 27] = [
     "u",
     "if",
@@ -47,7 +48,7 @@ const RESERVED_PROPS: [&str; 27] = [
 
 /// Families of element properties (`min-width`, `drop-shadow-blur`, …),
 /// refused by prefix so a new one in Slint is covered too.
-const RESERVED_PREFIXES: [&str; 13] = [
+const RESERVED_PREFIXES: [&str; 15] = [
     "min-",
     "max-",
     "preferred-",
@@ -61,16 +62,20 @@ const RESERVED_PREFIXES: [&str; 13] = [
     "cache-",
     "absolute-",
     "scroll-",
+    "rows-",
+    "header-",
 ];
 
 /// Names a component must not shadow: Slint's own, theme.slint's,
-/// badges.slint's and std-widgets' (blocks.slint's are [`BLOCKS_SLINT`]).
-/// A clash with a name of home.slint's own fails the Slint build instead.
-const RESERVED_COMPONENTS: [&str; 11] = [
+/// badges.slint's, pictures.slint's and std-widgets' (blocks.slint's are
+/// [`BLOCKS_SLINT`]). A clash with a name of home.slint's own fails the
+/// Slint build instead.
+const RESERVED_COMPONENTS: [&str; 12] = [
     "Theme",
     "Dir",
     "Hints",
     "Badges",
+    "Pictures",
     "Text",
     "Image",
     "Rectangle",
@@ -81,14 +86,19 @@ const RESERVED_COMPONENTS: [&str; 11] = [
 ];
 
 /// Everything ui/blocks.slint exports, which a generated page imports.
-pub const BLOCKS_SLINT: [&str; 10] = [
+pub const BLOCKS_SLINT: [&str; 15] = [
     "PageColumn",
     "PageSurface",
+    "PageHeader",
     "PageTitle",
     "PageText",
     "PageHint",
     "PageSlintBadge",
+    "PagePicture",
     "PageScrollBox",
+    "PageRows",
+    "MenuRow",
+    "SettingsRow",
     "TitleSize",
     "TextSize",
     "Tone",
@@ -107,11 +117,18 @@ const MARKS: [(&str, &str); 1] = [("slint", "PageSlintBadge")];
 /// Long texts Home loads for a page's `scroll-box` (ui.rs).
 const SCROLL_SOURCES: [&str; 1] = ["notices"];
 
+/// Lists Home fills for a page's `rows` (ui.rs): the RustTV Remote page's.
+const ROWS_SOURCES: [&str; 1] = ["remote"];
+
+/// Pictures Home provides for a page's `picture` block: build.rs makes them
+/// the `Pictures` global (`pictures.slint`), which Rust sets.
+pub const PICTURES: [&str; 1] = ["remote-banner"];
+
 /// Converts `json` into Slint source: a tile is a component, a row a global
 /// of pure functions (its words, for Settings' list), a page a component
-/// of blocks (blocks.slint). The output imports `Theme`, `Dir`, `Badges`
-/// and the blocks by name, found through the compiler's include paths, so
-/// every file shares the one `Dir.rtl`. `badges` are the names of the
+/// of blocks (blocks.slint). The output imports `Theme`, `Dir`, `Badges`,
+/// `Pictures` and the blocks by name, found through the compiler's include
+/// paths, so every file shares the one `Dir.rtl`. `badges` are the names of the
 /// pictures in `Badges` (set from Rust); nothing else can be an image.
 pub fn convert(json: &str, badges: &[&str]) -> Result<String, String> {
     let doc = parse(json)?;
@@ -215,7 +232,7 @@ impl Cx<'_> {
         out.push_str("import { Theme, Dir } from \"theme.slint\";\n");
         out.push_str("import { Badges } from \"badges.slint\";\n\n");
         let _ = writeln!(out, "export component {name} inherits Rectangle {{");
-        self.declare(out, false);
+        self.declare(out, None);
         let _ = writeln!(
             out,
             "    width: {} * u;",
@@ -291,7 +308,8 @@ impl Cx<'_> {
     }
 
     /// A page: blocks in one column, or in a narrow column and the surface
-    /// panel beside it (`start` and `end`, mirrored in right-to-left).
+    /// panel beside it (`start` and `end`, mirrored in right-to-left), under
+    /// an optional header (a list page's title and status line).
     fn page(
         &self,
         name: &str,
@@ -299,7 +317,7 @@ impl Cx<'_> {
         at: &str,
         out: &mut String,
     ) -> Result<(), String> {
-        only(body, at, &["layout", "start", "end"])?;
+        only(body, at, &["layout", "header", "start", "end"])?;
         let layout = string(field(body, at, "layout")?, &format!("{at}.layout"))?;
         let two = match layout {
             "one-column" => false,
@@ -314,57 +332,97 @@ impl Cx<'_> {
             return Err(format!("{at}.end: a one-column page has only a start"));
         }
         let mut blocks = String::new();
-        let mut scroll = false;
+        let header = body.contains_key("header");
+        if let Some(value) = body.get("header") {
+            let at = format!("{at}.header");
+            let value = object(value, &at)?;
+            only(value, &at, &["title", "hint"])?;
+            let title = self.words(field(value, &at, "title")?, &format!("{at}.title"))?;
+            let hint = match value.get("hint") {
+                Some(hint) => self.words(hint, &format!("{at}.hint"))?,
+                None => "\"\"".into(),
+            };
+            let _ = writeln!(
+                blocks,
+                "    PageHeader {{\n        u: root.u;\n        title: {title};\n        hint: {hint};\n        status: root.header-status;\n    }}"
+            );
+        }
+        // The page's one focus block (a scroll box or rows), where Home's
+        // Up and Down go.
+        let mut focus = None;
         let _ = writeln!(
             blocks,
-            "    PageColumn {{\n        u: root.u;\n        wide: {};",
+            "    PageColumn {{\n        u: root.u;\n        wide: {};\n        header: {header};",
             !two
         );
-        self.blocks(body, at, "start", false, &mut scroll, &mut blocks)?;
+        self.blocks(body, at, "start", false, &mut focus, &mut blocks)?;
         blocks.push_str("    }\n");
         if two {
-            blocks.push_str("    PageSurface {\n        u: root.u;\n");
-            self.blocks(body, at, "end", true, &mut scroll, &mut blocks)?;
-            let _ = writeln!(blocks, "        fills: {scroll};\n    }}");
+            let _ = writeln!(
+                blocks,
+                "    PageSurface {{\n        u: root.u;\n        header: {header};"
+            );
+            let before = focus;
+            self.blocks(body, at, "end", true, &mut focus, &mut blocks)?;
+            // A scroll box or rows in the panel take its height.
+            let _ = writeln!(blocks, "        fills: {};\n    }}", focus != before);
         }
 
         out.push_str("import { Theme } from \"theme.slint\";\n");
+        out.push_str("import { Pictures } from \"pictures.slint\";\n");
         let _ = writeln!(
             out,
             "import {{ {} }} from \"blocks.slint\";\n",
             BLOCKS_SLINT.join(", ")
         );
         let _ = writeln!(out, "export component {name} inherits Rectangle {{");
-        self.declare(out, scroll);
+        self.declare(out, focus);
+        if header {
+            out.push_str("    in property <string> header-status;\n");
+        }
         out.push_str("    background: Theme.bg;\n\n");
         out.push_str(&blocks);
         out.push_str("}\n");
         Ok(())
     }
 
-    /// `in` properties: `u`, the template's own, and the scroll box's.
-    fn declare(&self, out: &mut String, scroll: bool) {
+    /// `in` properties: `u`, the template's own, and those Home feeds a
+    /// page's focus block (`scroll-box` or `rows`) through.
+    fn declare(&self, out: &mut String, focus: Option<&str>) {
         out.push_str("    in property <length> u;\n");
         for prop in self.props {
             let _ = writeln!(out, "    in property <string> {prop};");
         }
-        if scroll {
-            out.push_str("    in property <string> scroll-text;\n");
-            out.push_str("    in property <float> scroll-position;\n");
-            out.push_str("    in property <float> scroll-fraction: 1;\n");
+        match focus {
+            Some("scroll-box") => {
+                out.push_str("    in property <string> scroll-text;\n");
+                out.push_str("    in property <float> scroll-position;\n");
+                out.push_str("    in property <float> scroll-fraction: 1;\n");
+            }
+            Some(_) => {
+                out.push_str("    in property <[SettingsRow]> rows-model;\n");
+                out.push_str("    in property <int> rows-focus;\n");
+                out.push_str("    in property <int> rows-first;\n");
+                out.push_str(
+                    "    // The pointer on a row: its index; 0 moved over it, 1 clicked.\n",
+                );
+                out.push_str("    callback rows-pointer(int, int);\n");
+            }
+            None => {}
         }
     }
 
-    /// The blocks of a page's `side` (`start` or `end`). A scroll box fills
-    /// the surface panel's height, so it lives there, once per page: Up and
-    /// Down scroll it (Home's keys, PANELS.md § 4).
+    /// The blocks of a page's `side` (`start` or `end`). A page has at most
+    /// one focus block, where Home's Up and Down go (PANELS.md § 4): a
+    /// scroll box, which fills the surface panel's height and so lives
+    /// there, or rows, on either side.
     fn blocks(
         &self,
         body: &Map<String, Value>,
         page: &str,
         side: &str,
         surface: bool,
-        scroll: &mut bool,
+        focus: &mut Option<&'static str>,
         out: &mut String,
     ) -> Result<(), String> {
         let at = format!("{page}.{side}");
@@ -372,16 +430,19 @@ impl Cx<'_> {
             let at = format!("{at}[{i}]");
             let (kind, block) = node(block, &at)?;
             let at = format!("{at}.{kind}");
-            let allowed: &[&str] = match kind {
-                "title" => &["value", "size", "show"],
-                "paragraph" => &["value", "size", "tone", "show"],
-                "hint" => &["value", "show"],
-                // Slint's attribution is never conditional.
-                "mark" => &["name"],
-                "scroll-box" => &["source"],
+            let (kind, allowed): (&'static str, &[&str]) = match kind {
+                "title" => ("title", &["value", "size", "show"]),
+                "paragraph" => ("paragraph", &["value", "size", "tone", "show"]),
+                "hint" => ("hint", &["value", "show"]),
+                "picture" => ("picture", &["name", "show"]),
+                // Slint's attribution is never conditional, and Home's focus
+                // relies on the focus blocks being there.
+                "mark" => ("mark", &["name"]),
+                "scroll-box" => ("scroll-box", &["source"]),
+                "rows" => ("rows", &["source"]),
                 other => {
                     return Err(format!(
-                        "{at}: unknown block {other:?} (title, paragraph, hint, mark, scroll-box)"
+                        "{at}: unknown block {other:?} (title, paragraph, hint, picture, mark, scroll-box, rows)"
                     ));
                 }
             };
@@ -406,6 +467,11 @@ impl Cx<'_> {
                     "PageText"
                 }
                 "hint" => "PageHint",
+                "picture" => {
+                    let picture = listed(block, &at, "name", &PICTURES, "a picture Home provides")?;
+                    fields.push(format!("source: Pictures.{picture}"));
+                    "PagePicture"
+                }
                 "mark" => {
                     let mark = string(field(block, &at, "name")?, &format!("{at}.name"))?;
                     MARKS
@@ -419,28 +485,32 @@ impl Cx<'_> {
                             )
                         })?
                 }
-                _ => {
-                    let source = string(field(block, &at, "source")?, &format!("{at}.source"))?;
-                    if !SCROLL_SOURCES.contains(&source) {
-                        return Err(format!(
-                            "{at}.source: {source:?} is not a text Home loads ({})",
-                            SCROLL_SOURCES.join(", ")
-                        ));
-                    }
+                "scroll-box" => {
+                    listed(block, &at, "source", &SCROLL_SOURCES, "a text Home loads")?;
                     if !surface {
                         return Err(format!(
                             "{at}: a scroll-box goes in a two-column page's end (the surface panel)"
                         ));
-                    }
-                    if std::mem::replace(scroll, true) {
-                        return Err(format!("{at}: a page has at most one scroll-box"));
                     }
                     fields.push("text: root.scroll-text".into());
                     fields.push("position: root.scroll-position".into());
                     fields.push("fraction: root.scroll-fraction".into());
                     "PageScrollBox"
                 }
+                _ => {
+                    listed(block, &at, "source", &ROWS_SOURCES, "a list Home fills")?;
+                    fields.push("model: root.rows-model".into());
+                    fields.push("focused: root.rows-focus".into());
+                    fields.push("first: root.rows-first".into());
+                    fields.push(format!("outset: {surface}"));
+                    "PageRows"
+                }
             };
+            if matches!(kind, "scroll-box" | "rows") && focus.replace(kind).is_some() {
+                return Err(format!(
+                    "{at}: a page has at most one focus block (scroll-box or rows)"
+                ));
+            }
             if matches!(kind, "title" | "paragraph" | "hint") {
                 let value = self.words(field(block, &at, "value")?, &format!("{at}.value"))?;
                 let text = if kind == "hint" { "value" } else { "text" };
@@ -449,6 +519,11 @@ impl Cx<'_> {
             let _ = writeln!(out, "        {show}{component} {{\n            u: root.u;");
             for field in fields {
                 let _ = writeln!(out, "            {field};");
+            }
+            if kind == "rows" {
+                out.push_str(
+                    "            pointer(index, action) => {\n                root.rows-pointer(index, action);\n            }\n",
+                );
             }
             out.push_str("        }\n");
         }
@@ -594,6 +669,8 @@ impl Cx<'_> {
     }
 
     /// Text: `{"tr": "literal {}", "args": [props]}` or a `select` of those.
+    /// An arg `{"ltr": prop}` is a left-to-right run isolated from the text
+    /// around it, so a version inside Arabic text keeps its order.
     fn words(&self, value: &Value, at: &str) -> Result<String, String> {
         let body = object(value, at)?;
         if body.contains_key("select") {
@@ -624,7 +701,7 @@ impl Cx<'_> {
             Some(args) => array(args, &format!("{at}.args"))?
                 .iter()
                 .enumerate()
-                .map(|(i, arg)| self.prop(arg, &format!("{at}.args[{i}]")))
+                .map(|(i, arg)| self.arg(arg, &format!("{at}.args[{i}]")))
                 .collect::<Result<Vec<_>, String>>()?,
             None => Vec::new(),
         };
@@ -637,9 +714,32 @@ impl Cx<'_> {
         }
         let args: String = args
             .iter()
-            .map(|p| format!(", {}{p}", self.scope))
+            .map(|&(prop, ltr)| {
+                let prop = format!("{}{prop}", self.scope);
+                if ltr {
+                    // U+2066 LEFT-TO-RIGHT ISOLATE … U+2069 POP DIRECTIONAL
+                    // ISOLATE, as Slint escapes.
+                    format!(", \"\\u{{2066}}\" + {prop} + \"\\u{{2069}}\"")
+                } else {
+                    format!(", {prop}")
+                }
+            })
             .collect();
         Ok(format!("@tr({}{args})", quote(literal)))
+    }
+
+    /// A text's argument: a property's name, or `{"ltr": name}` (that
+    /// property as a left-to-right isolate). Returns the name and whether it
+    /// is isolated.
+    fn arg<'v>(&self, value: &'v Value, at: &str) -> Result<(&'v str, bool), String> {
+        match value.as_object() {
+            Some(body) => {
+                only(body, at, &["ltr"])?;
+                let prop = self.prop(field(body, at, "ltr")?, &format!("{at}.ltr"))?;
+                Ok((prop, true))
+            }
+            None => Ok((self.prop(value, at)?, false)),
+        }
     }
 
     /// Colour: a token name or a `select` of token names.
@@ -753,6 +853,26 @@ fn choice<'v>(
         Err(format!(
             "{at}.{key}: {value:?} is not {}",
             options.join(", ")
+        ))
+    }
+}
+
+/// `key` of `map`: a name from `names`, a fixed list Home knows (`what`
+/// says what it holds).
+fn listed<'v>(
+    map: &'v Map<String, Value>,
+    at: &str,
+    key: &str,
+    names: &[&str],
+    what: &str,
+) -> Result<&'v str, String> {
+    let name = string(field(map, at, key)?, &format!("{at}.{key}"))?;
+    if names.contains(&name) {
+        Ok(name)
+    } else {
+        Err(format!(
+            "{at}.{key}: {name:?} is not {what} ({})",
+            names.join(", ")
         ))
     }
 }

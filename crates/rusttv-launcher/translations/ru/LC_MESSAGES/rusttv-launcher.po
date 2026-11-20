@@ -497,3 +497,15 @@ msgstr "Установка"
 #: templates/about_tile.json
 msgid "Update available"
 msgstr "Есть обновление"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "Нет телефонов"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "Телефоны: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "Подключение"

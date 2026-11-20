@@ -497,3 +497,15 @@ msgstr "Yükleniyor"
 #: templates/about_tile.json
 msgid "Update available"
 msgstr "Güncelleme var"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "Telefon yok"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "Telefonlar: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "Eşleniyor"

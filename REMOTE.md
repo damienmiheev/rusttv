@@ -184,10 +184,13 @@ to its home screen.
 
 - **As built (2026-10-25):** RustTV Remote is a page of its own (owner
   decision 2026-10-25), opened from its own built-in Home tile (`remote`,
-  after About and Settings; it moves like them, and its banner is the
-  remote from the phone's home-screen icon). The page shows that banner
-  and what a phone may do, then "Pair a phone" and the paired phones (OK,
-  then OK again, removes one). "Pair a phone"
+  after About and Settings; it moves like them). Since 2026-11-20 the tile
+  is a panel (PANELS.md step 3): the remote badge, how many phones are
+  paired, and "Pairing" while pairing is open; its place is in the TV's
+  history (HISTORY.md § 1). The page, drawn from a panel template, shows
+  the banner (the remote from the phone's home-screen icon) and what a
+  phone may do, then "Pair a phone" and the paired phones (OK, then OK
+  again, removes one). "Pair a phone"
   starts the listener if needed and opens a FLAG_SECURE screen with the QR
   code (drawn by the launcher from `qrcode`'s modules) and the TV's address
   (the source address of its route to the internet, found with a UDP

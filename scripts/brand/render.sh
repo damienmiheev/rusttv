@@ -23,6 +23,7 @@ shot icon-background.html 432 432 "$OUT/bg.png"
 shot icon-foreground.html 432 432 "$OUT/fg.png"
 shot banner.html 960 540 "$OUT/banner.png"
 shot remote-icon.html 512 512 "$OUT/remote-icon.png"
+shot "remote-icon.html?badge" 512 512 "$OUT/remote-badge.png"
 shot logo.html 1280 640 "$OUT/logo.png"
 for tile in about settings hidden remote; do
     shot "tile.html?$tile" 960 540 "$OUT/tile-$tile.png"
@@ -61,5 +62,8 @@ for name, px in [("mdpi", 108), ("hdpi", 162), ("xhdpi", 216), ("xxhdpi", 324), 
 # RustTV Remote's Home Screen icon on phones (remote-icon.html), full square.
 Image.open(out / "remote-icon.png").convert("RGB").resize((180, 180), Image.LANCZOS).save(
     root / "crates/rusttv-remote/page/icon.png", optimize=True)
-print("wrote docs/brand/{icon-1024,icon-512,logo-1280x640}.png, banner, tile banners, adaptive icon layers, remote icon")
+# The launcher's Remote tile badge (build.rs BADGES), rounded like the icon.
+Image.open(out / "remote-badge.png").convert("RGBA").resize((128, 128), Image.LANCZOS).save(
+    root / "crates/rusttv-launcher/assets/badges/rusttv-remote.png", optimize=True)
+print("wrote docs/brand/{icon-1024,icon-512,logo-1280x640}.png, banner, tile banners, adaptive icon layers, remote icon and badge")
 PY

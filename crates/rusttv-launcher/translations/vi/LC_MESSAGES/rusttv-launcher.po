@@ -497,3 +497,15 @@ msgstr "Đang cài đặt"
 #: templates/about_tile.json
 msgid "Update available"
 msgstr "Có bản cập nhật"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "Chưa ghép nối"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "Điện thoại: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "Đang ghép nối"

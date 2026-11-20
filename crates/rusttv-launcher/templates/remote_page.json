@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "component": "RemotePage",
+  "face": "page",
+  "props": [],
+  "root": { "page": {
+    "layout": "two-columns",
+    "header": { "title": { "tr": "RustTV Remote" },
+                "hint": { "tr": "Up and Down choose, OK opens. Back returns." } },
+    "start": [
+      { "picture": { "name": "remote-banner" } },
+      { "paragraph": { "value": { "tr": "Use a phone as a remote, keyboard and touchpad. It can press keys and type, but never change settings or approve anything." },
+                       "size": "small", "tone": "dim" } }
+    ],
+    "end": [
+      { "rows": { "source": "remote" } }
+    ] } }
+}

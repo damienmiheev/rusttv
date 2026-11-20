@@ -70,13 +70,17 @@ takeover = "active"
   equality compares parsed values; all values are strings.
 - **`[launcher]`:** tile names in order, hidden apps, the update switch; no
   focus. Uninstalled apps' names are kept (as the order file does). The
-  RustTV Remote tile (`remote`) is left out: every Home has it, and builds
-  that don't know the name must keep reading the history; a restored order
-  gets it back at its end.
+  RustTV Remote tile (`remote`) is recorded too (*since 2026-11-20*,
+  PANELS.md § 9 Q9), so undo brings back its place; since every Home has
+  it, every new snapshot is format 5 (below), which builds before format 5
+  refuse. Older snapshots don't have it: they still restore, and Home puts
+  the tile at the end. A change list never names `remote` as added or
+  removed (an older snapshot only lacks it), only as moved.
 - **Linux tile names** (format 5): on Linux, apps are desktop entries, named
   by their id (`org.kde.dolphin.desktop`). A snapshot holding one, in the
   order, hidden or in a folder, is written as format 5, which older builds
-  refuse; Android snapshots stay in the oldest format that holds them.
+  refuse. So is every snapshot with the RustTV Remote tile in its order
+  (above): on Android too, new snapshots are format 5.
 - **Folders** (*added 2026-10-25*): a folder is the tile `folder:<number>`
   in `order`, and `[launcher.folders."folder:<number>"]` holds its name (1–40
   characters, no control characters; shown only, never run) and its apps in

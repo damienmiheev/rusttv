@@ -150,10 +150,21 @@ pub fn diff(old: &State, new: &State) -> Vec<Change> {
             .collect()
     };
     let (before, after) = (on_home(was), on_home(now));
-    for tile in after.iter().filter(|tile| !before.contains(tile)) {
+    // Every Home has the RustTV Remote tile; snapshots before format 5 left
+    // it out, so it only seems to come or go (only its moves count).
+    let shown = |tile: &&String| tile.as_str() != "remote";
+    for tile in after
+        .iter()
+        .filter(shown)
+        .filter(|tile| !before.contains(tile))
+    {
         changes.push(Change::Added { tile: tile.clone() });
     }
-    for tile in before.iter().filter(|tile| !after.contains(tile)) {
+    for tile in before
+        .iter()
+        .filter(shown)
+        .filter(|tile| !after.contains(tile))
+    {
         changes.push(Change::Removed { tile: tile.clone() });
     }
     for (folder, then) in &now.folders {
@@ -433,6 +444,26 @@ mod tests {
             diff(&added, &old),
             vec![Change::Removed {
                 tile: "e.f/.New".into()
+            }]
+        );
+    }
+
+    /// A snapshot from before the RustTV Remote tile was recorded doesn't
+    /// make it look added (or removed, going back); its moves count.
+    #[test]
+    fn the_remote_tile_is_never_added_or_removed_only_moved() {
+        let mut old = State::new();
+        old.launcher.order = ["a.b/.A", "about"].map(String::from).to_vec();
+        let mut new = State::new();
+        new.launcher.order = ["a.b/.A", "about", "remote"].map(String::from).to_vec();
+        assert_eq!(diff(&old, &new), []);
+        assert_eq!(diff(&new, &old), []);
+        let mut moved = new.clone();
+        moved.launcher.order = ["remote", "a.b/.A", "about"].map(String::from).to_vec();
+        assert_eq!(
+            diff(&new, &moved),
+            vec![Change::Reordered {
+                moved: vec!["remote".into(), "a.b/.A".into(), "about".into()]
             }]
         );
     }

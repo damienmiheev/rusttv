@@ -7,16 +7,16 @@
     "layout": "two-columns",
     "start": [
       { "title": { "value": { "tr": "RustTV" }, "size": "large" } },
-      { "paragraph": { "value": { "tr": "Version {} · MIT OR Apache-2.0", "args": ["version"] },
+      { "paragraph": { "value": { "tr": "Version {} · MIT OR Apache-2.0", "args": [{ "ltr": "version" }] },
                   "tone": "dim" } },
       { "paragraph": {
           "value": { "select": "update", "cases": {
             "checking": { "tr": "Checking for updates…" },
             "up-to-date": { "tr": "Up to date" },
             "available": { "tr": "Version {} available — press OK to install",
-                           "args": ["update-detail"] },
+                           "args": [{ "ltr": "update-detail" }] },
             "needs-permission": { "tr": "Allow RustTV to install apps, then press OK to install {}",
-                                  "args": ["update-detail"] },
+                                  "args": [{ "ltr": "update-detail" }] },
             "downloading": { "tr": "Downloading {}%", "args": ["update-detail"] },
             "installing": { "tr": "Installing…" },
             "installed": { "tr": "Update installed" },

@@ -1,4 +1,5 @@
-//! The RustTV Remote page (REMOTE.md § 2), opened from its Home tile: the
+//! The RustTV Remote panel (PANELS.md § 10 step 3): its tile's values, and
+//! its page (REMOTE.md § 2), opened from its Home tile: the
 //! pairing screen (QR code, then "Allow?" with the match code and OK on the
 //! remote), the pointer's row, the paired phones, and removing one. Phones can never do any of
 //! this themselves: ui.rs passes them only Back on this page and nothing
@@ -6,10 +7,11 @@
 
 use std::time::Duration;
 
-use slint::{ComponentHandle, Image, Model, Rgba8Pixel, SharedPixelBuffer, Timer};
+use slint::{ComponentHandle, Image, Model, Rgba8Pixel, SharedPixelBuffer, Timer, TimerMode};
 
-use super::{Controller, HomeWindow, SettingsRow, Strings, settings_view};
+use super::{Controller, HomeWindow, RemotePanel, SettingsRow, Strings, settings_view};
 use crate::model::Input;
+use crate::panels;
 use crate::platform::PointerState;
 use crate::remote;
 use crate::remote_page::{Action, RemotePage};
@@ -121,9 +123,13 @@ impl Controller {
                 }
             }
         };
+        if matches!(pairing.phase, Phase::Waiting) {
+            self.pairing_opened();
+        }
         // The code carries a pairing secret: keep it out of screen captures.
         self.platform.set_secure(true);
         self.pairing = Some(pairing);
+        self.show_remote_panel();
         self.render();
     }
 
@@ -212,6 +218,7 @@ impl Controller {
         let Some(pairing) = self.pairing.take() else {
             return;
         };
+        self.pairing_timer.stop();
         self.platform.set_secure(false);
         if let Some(link) = &self.remote {
             if let Phase::Asking { request, .. } = pairing.phase {
@@ -248,9 +255,47 @@ impl Controller {
 
     /// Too many wrong pairing tries: the code no longer works.
     pub(super) fn pairing_closed(&mut self) {
+        self.pairing_timer.stop();
+        self.show_remote_panel();
         if let Some(pairing) = &mut self.pairing {
             pairing.phase = Phase::Failed(4);
             self.render();
+        }
+    }
+
+    /// Pairing opened (the listener has a fresh secret for
+    /// [`rusttv_remote::PAIRING_TIME`]): the tile says "Pairing" until it
+    /// closes, a phone pairs, or that time is up.
+    pub(super) fn pairing_opened(&mut self) {
+        let me = self.me.clone();
+        self.pairing_timer.start(
+            TimerMode::SingleShot,
+            rusttv_remote::PAIRING_TIME,
+            move || {
+                if let Some(controller) = me.upgrade() {
+                    controller.borrow().show_remote_panel();
+                }
+            },
+        );
+    }
+
+    /// Sets the RustTV Remote tile's values (src/panels.rs `remote_view`):
+    /// window-global properties, so a change redraws the tile without
+    /// touching the tile list. Called from the remote's events (pairing,
+    /// a phone paired or removed), never polled.
+    pub(super) fn show_remote_panel(&self) {
+        let phones = self
+            .remote
+            .as_ref()
+            .map_or(0, |link| link.remote().phones().len());
+        let pairing = self.pairing_timer.running();
+        let Some(window) = self.window.upgrade() else {
+            return;
+        };
+        if let Some(tile) = panels::remote_view(phones, pairing).tile {
+            let panel = window.global::<RemotePanel>();
+            panel.set_phones(tile.props.get("phones").into());
+            panel.set_status(tile.props.get("status").into());
         }
     }
 
@@ -288,6 +333,7 @@ impl Controller {
         if let Some(page) = &mut self.remote_page {
             page.set_phones(rows);
         }
+        self.show_remote_panel();
     }
 
     /// Fills the RustTV Remote page's rows.
@@ -329,7 +375,6 @@ impl Controller {
                     ..SettingsRow::default()
                 }),
         );
-        window.set_remote_banner(self.builtins.remote.image.clone());
         let row = page.row();
         window.set_remote_row(i32::try_from(row).unwrap_or(i32::MAX));
         window.set_remote_first_row(
