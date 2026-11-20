@@ -488,3 +488,15 @@ msgstr "Slint (Royalty-free License 2.0), Skia, Rust-Bibliotheken"
 
 msgid "Source code"
 msgstr "Quellcode"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "Wird geladen"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "Wird installiert"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "Update verfügbar"

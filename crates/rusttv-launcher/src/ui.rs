@@ -19,6 +19,7 @@ use crate::model::{
     Scroll, State, TileId,
 };
 use crate::order_file;
+use crate::panels;
 use crate::platform::{
     AppEntry, Artwork, Bitmap, Platform, PlatformError, PointerState, UpdateStatus,
 };
@@ -45,7 +46,8 @@ mod generated {
     slint::include_modules!();
 }
 use generated::{
-    Dir, Effects, Hints, HomeWindow, Pointer, ReviewLine, SettingsRow, Strings, TileData,
+    AboutPanel, Badges, Dir, Effects, Hints, HomeWindow, Pointer, ReviewLine, SettingsRow, Strings,
+    TileData,
 };
 
 mod device_view;
@@ -446,6 +448,20 @@ impl Demo {
     }
 }
 
+/// Sets the About panel's values (src/panels.rs): two window-global
+/// properties, so a status change redraws the tile without touching the
+/// tile list.
+fn show_about_panel(window: &HomeWindow, status: &UpdateStatus) {
+    let Some(tile) = panels::about_view(env!("CARGO_PKG_VERSION"), status).tile else {
+        return;
+    };
+    let about = window.global::<AboutPanel>();
+    about.set_version(tile.get("version").into());
+    about.set_status(tile.get("status").into());
+}
+
+include!(concat!(env!("OUT_DIR"), "/badges.rs"));
+
 /// Sets the effects: `reduced` (Settings → Effects) turns shadows and the
 /// backdrop glow off, for a weak GPU.
 fn apply_effects(window: &HomeWindow, reduced: bool) {
@@ -545,6 +561,7 @@ fn start(
         options.right_to_left |= i18n::is_right_to_left(language);
     }
     window.global::<Dir>().set_rtl(options.right_to_left);
+    set_badges(&window);
     let reduced = options
         .order_file
         .as_deref()
@@ -929,6 +946,7 @@ impl Controller {
         window.set_network_icons(ModelRc::from(link_codes.clone()));
         window.set_version(env!("CARGO_PKG_VERSION").into());
         window.set_update_status(update_line(window, &UpdateStatus::Idle));
+        show_about_panel(window, &UpdateStatus::Idle);
 
         let (order, folders, hidden, saved_focus) =
             options
@@ -1618,8 +1636,8 @@ impl Controller {
         self.schedule_update_poll();
     }
 
-    /// Pushes a changed update status to the About page's line and the About
-    /// tile's dot; an unchanged one costs nothing.
+    /// Pushes a changed update status to the About page's line, the About
+    /// tile's caption and Settings' dot; an unchanged one costs nothing.
     fn show_update(&mut self, status: UpdateStatus) {
         if status == self.update {
             return;
@@ -1627,6 +1645,7 @@ impl Controller {
         if let Some(window) = self.window.upgrade() {
             window.set_update_status(update_line(&window, &status));
             window.set_update_available(status.is_available());
+            show_about_panel(&window, &status);
         }
         self.update = status;
         // Settings' About tab shows the status in a row.
@@ -3733,6 +3752,35 @@ mod tests {
         screen.set_update(UpdateStatus::Available("0.2.0".into()));
         screen.wait(POLL * 4);
         assert!(!screen.window.get_update_available());
+    }
+
+    #[test]
+    fn the_about_tile_caption_follows_the_update_without_redrawing_home() {
+        let screen = screen(None);
+        let about = screen.window.global::<AboutPanel>();
+        assert_eq!(about.get_version(), env!("CARGO_PKG_VERSION"));
+        assert_eq!(about.get_status(), "");
+        let tiles = screen.window.get_tiles();
+        let before: Vec<TileData> = tiles.iter().collect();
+        let artwork = screen.artwork_calls();
+
+        screen.set_update(UpdateStatus::Available("0.2.0".into()));
+        screen.come_back();
+        assert_eq!(about.get_status(), "update");
+        // Settings keeps its dot; About shows the caption instead.
+        assert!(screen.window.get_update_available());
+
+        screen.set_update(UpdateStatus::Downloading(30));
+        screen.come_back();
+        assert_eq!(about.get_status(), "downloading");
+        screen.set_update(UpdateStatus::Failed("no network".into()));
+        screen.wait(POLL + 1);
+        assert_eq!(about.get_status(), "");
+
+        // Only the two globals changed: same tile rows, no artwork asked for.
+        let after: Vec<TileData> = screen.window.get_tiles().iter().collect();
+        assert_eq!(before, after);
+        assert_eq!(screen.artwork_calls(), artwork);
     }
 
     #[test]

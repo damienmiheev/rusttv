@@ -7,6 +7,12 @@
 //!
 //! `RUSTTV_LANG=<tag>` (e.g. `uk`, `ar`) shows that translation.
 //!
+//! `RUSTTV_UPDATE=available|downloading|installing` makes the made-up updater
+//! report that state, to see the About tile's caption.
+//!
+//! `RUSTTV_NO_DEVICE=1` leaves out the made-up device controls, so Home has
+//! no top-right menu and shows the About and Settings tiles, as on Android.
+//!
 //! `RUSTTV_REMOTE_PAIR=1` starts RustTV Remote with pairing open and prints
 //! the pairing link; every phone that asks is allowed (REMOTE.md).
 //!
@@ -23,7 +29,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use rusttv_launcher::{
-    Bitmap, DemoStep, FakePlatform, RunOptions, run, run_demo, start_desktop_history,
+    Bitmap, DemoStep, FakePlatform, RunOptions, UpdateStatus, run, run_demo, start_desktop_history,
 };
 
 /// Prints the launcher's info, warning and error messages, so the desktop dev
@@ -274,7 +280,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         std::fs::create_dir_all(&dir)?;
         options.order_file = Some(dir.join("order.toml"));
         start_desktop_history(dir);
-        return Ok(run(FakePlatform::sample().with_device(), options)?);
+        return Ok(run(sample_platform(), options)?);
     };
     let dir = match (flag.as_str(), args.next()) {
         ("--order", Some(file)) => {
@@ -287,7 +293,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 parent
             });
             options.order_file = Some(file);
-            return Ok(run(FakePlatform::sample().with_device(), options)?);
+            return Ok(run(sample_platform(), options)?);
         }
         ("--demo", Some(dir)) => PathBuf::from(dir),
         ("--demo-remote", Some(dir)) => {
@@ -309,7 +315,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     options.order_file = Some(state.join("order.toml"));
     start_desktop_history(state);
 
-    let mut platform = FakePlatform::sample().with_device();
+    let mut platform = sample_platform();
     platform.fail_launches_of(FAILING_APP);
     let failures: Rc<RefCell<Vec<String>>> = Rc::default();
     let record = failures.clone();
@@ -329,6 +335,25 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else {
         Err(failures.join("; ").into())
     }
+}
+
+/// The made-up apps and device, with the updater state from `RUSTTV_UPDATE`.
+fn sample_platform() -> FakePlatform {
+    let mut platform = if std::env::var_os("RUSTTV_NO_DEVICE").is_some() {
+        FakePlatform::sample().without_menu()
+    } else {
+        FakePlatform::sample().with_device()
+    };
+    let status = match std::env::var("RUSTTV_UPDATE").as_deref() {
+        Ok("available") => Some(UpdateStatus::Available("9.9.9".into())),
+        Ok("downloading") => Some(UpdateStatus::Downloading(40)),
+        Ok("installing") => Some(UpdateStatus::Installing),
+        _ => None,
+    };
+    if let Some(status) = status {
+        platform.set_update_status(status);
+    }
+    platform
 }
 
 /// Writes an uncompressed 32-bit BMP, which macOS `sips` and most viewers read.

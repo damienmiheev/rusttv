@@ -488,3 +488,15 @@ msgstr "עוצמת קול"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "‏✓ במקלדת מאשר, חזרה מבטלת"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "ההורדה מתבצעת"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "ההתקנה מתבצעת"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "יש עדכון"

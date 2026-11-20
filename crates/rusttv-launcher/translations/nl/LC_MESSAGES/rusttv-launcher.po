@@ -488,3 +488,15 @@ msgstr "Volume"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "✓ op het toetsenbord bevestigt, Terug annuleert"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "Downloaden"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "Installeren"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "Nieuwe versie"

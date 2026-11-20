@@ -488,3 +488,15 @@ msgstr "مستوى الصوت"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "✓ على لوحة المفاتيح للتأكيد، «رجوع» للإلغاء"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "جارٍ التنزيل"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "جارٍ التثبيت"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "تحديث متاح"

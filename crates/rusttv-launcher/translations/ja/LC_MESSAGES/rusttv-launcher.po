@@ -488,3 +488,15 @@ msgstr "音量"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "キーボードの ✓ で確定、戻るでキャンセル"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "ダウンロード中"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "インストール中"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "アップデートがあります"
