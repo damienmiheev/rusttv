@@ -2,8 +2,8 @@
 
 Status (2026-11-20): **being built** on the `panels` branch: steps 1
 and 1b (About's tile, its phone caption) and 2 (About's page and row) are
-done (§ 10). Written from the owner's answers on 2026-10-25 (§ Owner decisions), checked against the code by an
-independent review (§ Review log), and re-checked against main on 2026-11-20
+done (§ 10). Written from the owner's answers on 2026-10-25 (§ Owner
+decisions), checked against the code by an independent review (§ Review log), and re-checked against main on 2026-11-20
 (§ 10 has the build plan). Replaces ROADMAP.md § Parked
 ideas → "Panels: add-ons with several faces". The theme builder gets its own
 design later; this doc only says how panels sit in a theme.
@@ -288,12 +288,22 @@ Rules the schema enforces (unknown fields are errors):
     don't (an attribution is never hidden, and Home's focus can rely on
     the scroll box). A `scroll-box` goes in `end` only, once; its page
     gets `scroll-text`, `scroll-position` and `scroll-fraction` properties
-    that Home fills from the text `source` names (it owns the scrolling),
-    so those names are reserved.
+    that Home fills (it owns the scrolling), so those names are reserved.
+    `source` names that text from a fixed list Home knows (`notices`);
+    today it is declarative (home.slint binds About's page to the
+    notices), and a loader reads it to know what to fetch. The box's
+    scroll bar sits in the surface panel's end padding, which is one more
+    reason it lives only there.
 - **Conditions** (`show`, a row's `attention`): a property's name (true when not
   empty) or a `select` of `true`/`false` (else `false`).
-- **Nodes:** `column` (later `row`), `text`, `image` in a tile. Only the
-  root sets size, radius and background.
+- **Nodes:** `column` (later a horizontal one), `text`, `image` in a
+  tile. Only the root sets size, radius and background. A node's fields
+  depend on the face: a tile's `text` takes sizes in `u` and colour
+  tokens, a page's `text` takes the block's variants. A loader reads
+  `face` first.
+- **No untranslated literals:** every text is `@tr`, brand names too
+  ("RustTV" is a message translated as itself), so the "every text is
+  translatable" rule has no exception to check.
 - **Sizes** are numbers in `u` (the launcher's unit). The converter writes
   `N * u`; the phone page uses the same scale.
 - **Colours** are `Theme` token names only (`bg`, `surface`, `text`,
@@ -352,7 +362,7 @@ What step 1 must add because of it:
 - **Fit:** the Ukrainian "Update available" doesn't fit the caption at 23u,
   so the design pass checks every language.
 
-**About's faces (v1):**
+**About's faces (v1):** (as built: § 10 step 2's notes)
 - **Tile:** the RustTV logo and "RustTV <version>". The caption follows the
   updater's state (`UpdateStatus`, `ui.rs`):
   - Available, NeedsPermission → "Update available" (accent);
@@ -627,16 +637,24 @@ face is #40's `AboutRow` in Settings, fed from the same view.
   state (`update`: `idle`, `checking`, …, `failed`) and its detail, and a
   page `text` selects the words and an accent `tone`. The plan's `Status`
   block is that text, so the schema has one block less. Settings' Updates
-  row still uses `Strings.update-line`; a test keeps their nine texts the
-  same.
+  row still uses `Strings.update-line`; a test (`ui.rs`) checks both
+  say the same for every status.
 - **Templates carry `"schema": 1`**, for the later runtime loader and
   editor.
 - **The row face is Settings' RustTV row** (`AboutRow::RustTv`, OK opens
   the page), drawn as today: "RustTV <version>" and the licence line. The
   plan's "Update available" stays on the Updates row right under it, so it
   isn't shown twice. The row template becomes the `AboutListRow` global's
-  functions. Settings' unused "Licences and third-party notices" texts
-  went with the old `Strings.about-row` cases.
+  functions. `Strings.about-row` went: its unused "Licences and
+  third-party notices" texts with it, the Updates row takes the Updates
+  section's name and the Source row `Strings.source-code`.
+- **Kept general on purpose** (the owner asked for general blocks):
+  `one-column`, `medium` titles, `show` on page blocks and a fixed
+  `accent` tone are tested but About doesn't use them.
+- **Open:** a version inside right-to-left text isn't an isolated LTR run
+  (§ 3) on the tile or the page, as before this step; the converter
+  refuses bidi characters, so it needs a schema form (e.g. an `args`
+  flag) when it is done.
 - **No page action in the view yet:** OK on About stays the model's
   (`Effect::Update`); `PanelAction` comes with a second page that has one.
 - **One new text:** the title "RustTV", kept as "RustTV" in every language

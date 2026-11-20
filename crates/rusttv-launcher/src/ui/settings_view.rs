@@ -731,12 +731,12 @@ impl Controller {
                 }
             }
             AboutRow::Update => SettingsRow {
-                title: strings.invoke_about_row(1),
+                title: strings.invoke_section_name(section_value(Section::Updates)),
                 detail: window.get_update_status(),
                 current: self.update.is_available(),
                 ..SettingsRow::default()
             },
-            AboutRow::Source => row(strings.invoke_about_row(2), SOURCE),
+            AboutRow::Source => row(strings.invoke_source_code(), SOURCE),
             AboutRow::Host(index) => {
                 let (label, value) = page.host().get(index).cloned().unwrap_or_default();
                 row(label.into(), &value)

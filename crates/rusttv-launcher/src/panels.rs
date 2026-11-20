@@ -42,7 +42,9 @@ pub(crate) struct PanelPage {
     pub props: Props,
 }
 
-/// Which faces a panel has right now: a face is shown only when it is `Some`.
+/// Which faces a panel has: `None` for a face the panel doesn't have. About
+/// has all three, and Home relies on it (tests check it): the About page and
+/// Settings' RustTV row are always there.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PanelView {
     pub tile: Option<PanelTile>,
@@ -97,41 +99,36 @@ pub(crate) fn about_view(version: &str, status: &UpdateStatus) -> PanelView {
     }
 }
 
+/// Every `UpdateStatus` with a detail, for tests across modules.
+#[cfg(test)]
+pub(crate) const UPDATE_STATUSES: [UpdateStatus; 9] = [
+    UpdateStatus::Idle,
+    UpdateStatus::Checking,
+    UpdateStatus::UpToDate,
+    UpdateStatus::Available(String::new()),
+    UpdateStatus::NeedsPermission(String::new()),
+    UpdateStatus::Downloading(40),
+    UpdateStatus::Installing,
+    UpdateStatus::Installed,
+    UpdateStatus::Failed(String::new()),
+];
+
+/// About's page template's updater line: the text that selects on `update`.
+#[cfg(test)]
+pub(crate) fn updater_line(page: &serde_json::Value) -> &serde_json::Value {
+    ["start", "end"]
+        .iter()
+        .flat_map(|side| page["root"]["page"][side].as_array().expect("blocks"))
+        .filter_map(|block| block.get("text"))
+        .find(|text| text["value"]["select"] == "update")
+        .expect("the updater's line")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Every `UpdateStatus`, a download twice. The match fails to compile
-    /// when a variant is added, until it is listed here too.
-    const STATUSES: [UpdateStatus; 10] = [
-        UpdateStatus::Idle,
-        UpdateStatus::Checking,
-        UpdateStatus::UpToDate,
-        UpdateStatus::Available(String::new()),
-        UpdateStatus::NeedsPermission(String::new()),
-        UpdateStatus::Downloading(10),
-        UpdateStatus::Downloading(90),
-        UpdateStatus::Installing,
-        UpdateStatus::Installed,
-        UpdateStatus::Failed(String::new()),
-    ];
-
-    #[test]
-    fn statuses_list_every_variant() {
-        for status in &STATUSES {
-            match status {
-                UpdateStatus::Idle
-                | UpdateStatus::Checking
-                | UpdateStatus::UpToDate
-                | UpdateStatus::Available(_)
-                | UpdateStatus::NeedsPermission(_)
-                | UpdateStatus::Downloading(_)
-                | UpdateStatus::Installing
-                | UpdateStatus::Installed
-                | UpdateStatus::Failed(_) => {}
-            }
-        }
-    }
+    use super::UPDATE_STATUSES as STATUSES;
 
     fn caption(status: &UpdateStatus) -> String {
         about_view("1.2.3", status)
@@ -260,42 +257,23 @@ mod tests {
         }
     }
 
-    /// The page's updater line: the text that selects on `update`.
-    fn updater_line(page: &serde_json::Value) -> &serde_json::Value {
-        ["start", "end"]
-            .iter()
-            .flat_map(|side| page["root"]["page"][side].as_array().expect("blocks"))
-            .filter_map(|block| block.get("text"))
-            .find(|text| text["value"]["select"] == "update")
-            .expect("the updater's line")
-    }
-
-    /// The page's updater line and Settings' Updates row
-    /// (`Strings.update-line`, ui/home.slint) say the same nine things.
+    /// [`UPDATE_STATUSES`] holds each variant once: a new variant fails to
+    /// compile here until it is given a place, and then the list must hold it.
     #[test]
-    fn the_updater_line_matches_settings() {
-        let page = template("about_page");
-        let line = &updater_line(&page)["value"];
-        let mut ids: Vec<&str> = line["cases"]
-            .as_object()
-            .expect("cases")
-            .values()
-            .chain(std::iter::once(&line["else"]))
-            .map(|text| text["tr"].as_str().expect("a text"))
-            .collect();
-        ids.sort_unstable();
-        let home = include_str!("../ui/home.slint");
-        let start = home
-            .find("function update-line(")
-            .expect("Strings.update-line");
-        let body = &home[start..start + home[start..].find("\n    }").expect("its end")];
-        let mut settings: Vec<&str> = body
-            .split("@tr(\"")
-            .skip(1)
-            .map(|rest| &rest[..rest.find('"').expect("a closing quote")])
-            .collect();
-        settings.sort_unstable();
-        assert_eq!(ids, settings);
+    fn statuses_list_every_variant() {
+        let place = |status: &UpdateStatus| match status {
+            UpdateStatus::Idle => 0,
+            UpdateStatus::Checking => 1,
+            UpdateStatus::UpToDate => 2,
+            UpdateStatus::Available(_) => 3,
+            UpdateStatus::NeedsPermission(_) => 4,
+            UpdateStatus::Downloading(_) => 5,
+            UpdateStatus::Installing => 6,
+            UpdateStatus::Installed => 7,
+            UpdateStatus::Failed(_) => 8,
+        };
+        let places: Vec<usize> = STATUSES.iter().map(place).collect();
+        assert_eq!(places, (0..STATUSES.len()).collect::<Vec<_>>());
     }
 
     /// The About page keeps Slint's attribution (its Royalty-free License)

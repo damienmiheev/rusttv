@@ -124,10 +124,10 @@ export global Strings {
         if section == 5 { return @tr("About"); }
         return @tr("Animations");
     }
-    // Settings' About tab (ui/settings_view.rs `AboutRow`): 1 updates, 2
-    // source code. The RustTV row is About's row face (templates/about_row.json).
-    public pure function about-row(row: int) -> string {
-        if row == 1 { return @tr("Updates"); }
+    // Settings' About tab (ui/settings_view.rs `AboutRow`): the Source row's
+    // title. (Its Updates row is named like the Updates section; its RustTV
+    // row is About's row face, templates/about_row.json.)
+    public pure function source-code() -> string {
         return @tr("Source code");
     }
     // settings.rs ANIMATION_CHOICES: off to slowest.
@@ -721,8 +721,9 @@ export component HomeWindow inherits Window {
     in property <Glow> hero-b-glow;
     in property <bool> hero-a-front: true;
     in property <string> toast;
-    // The updater's line in Settings' About section (ui.rs `update_line`),
-    // and whether an update waits to be installed (a dot on the Settings tile).
+    // The updater's line for Settings' Updates row (ui.rs `update_line`; Rust
+    // keeps it here and reads it back), and whether an update waits to be
+    // installed (a dot on the Settings tile).
     in property <string> update-status;
     in property <bool> update-available;
     // A slice of the licence notices from the line at the top of the panel

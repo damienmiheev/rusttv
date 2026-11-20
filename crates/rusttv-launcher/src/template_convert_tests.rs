@@ -2,7 +2,7 @@
 //! anything outside the schema is a clear error, and no text can break out
 //! of its Slint string (PANELS.md § 4.1).
 
-use crate::template_convert::convert;
+use crate::template_convert::{BLOCKS_SLINT, convert};
 
 const OK: &str = include_str!("../templates/about_tile.json");
 const ROW: &str = include_str!("../templates/about_row.json");
@@ -144,6 +144,10 @@ fn rejects_what_the_schema_does_not_hold() {
         ),
         (
             OK.replace("[\"version\", \"status\"]", "[\"version\", \"root\"]"),
+            "is taken",
+        ),
+        (
+            ROW.replace("[\"version\"]", "[\"title\"]"),
             "is taken",
         ),
         (
@@ -310,4 +314,28 @@ fn texts_cannot_break_out_of_their_string() {
     let out = run(&PAGE.replace("Third-party notices", r#"x\"; \\(e)"#)).expect("converts");
     assert!(out.contains(r#"text: @tr("x\"; \\(e)");"#), "{out}");
     assert!(err(&PAGE.replace("Third-party notices", r"a\u2066b")).contains("control or bidi"));
+}
+
+/// A generated page imports exactly what ui/blocks.slint exports, and no
+/// template may name a component after one of them.
+#[test]
+fn pages_import_every_block_component() {
+    let blocks = include_str!("../ui/blocks.slint");
+    let mut exported: Vec<&str> = blocks
+        .lines()
+        .filter_map(|line| {
+            let rest = line
+                .strip_prefix("export component ")
+                .or_else(|| line.strip_prefix("export enum "))?;
+            rest.split_whitespace().next()
+        })
+        .collect();
+    exported.sort_unstable();
+    let mut listed = BLOCKS_SLINT.to_vec();
+    listed.sort_unstable();
+    assert_eq!(exported, listed);
+    for name in BLOCKS_SLINT {
+        let json = PAGE.replace("\"AboutPage\"", &format!("\"{name}\""));
+        assert!(err(&json).contains("UpperCamelCase"), "{name}");
+    }
 }

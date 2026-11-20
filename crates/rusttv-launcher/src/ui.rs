@@ -3557,7 +3557,9 @@ mod tests {
     }
 
     /// Settings' RustTV row is About's row face (templates/about_row.json),
-    /// and the page gets the view's values (templates/about_page.json).
+    /// and the page's values reach `AboutPanel` (templates/about_page.json).
+    /// That home.slint binds them into the page is seen in the desktop
+    /// snapshots, not here.
     #[test]
     fn about_row_and_page_come_from_the_about_view() {
         let screen = screen(None);
@@ -3724,18 +3726,51 @@ mod tests {
 
     const POLL: u64 = UPDATE_POLL.as_millis() as u64;
 
+    /// What the About page's updater line says (English), worded by its
+    /// template (templates/about_page.json) from the values Home gave it.
+    fn page_line(window: &HomeWindow) -> String {
+        let about = window.global::<AboutPanel>();
+        let page: serde_json::Value =
+            serde_json::from_str(include_str!("../templates/about_page.json")).expect("JSON");
+        let line = &panels::updater_line(&page)["value"];
+        let case = &line["cases"][about.get_update().as_str()];
+        let text = if case.is_null() { &line["else"] } else { case };
+        text["tr"]
+            .as_str()
+            .expect("a text")
+            .replace("{}", about.get_update_detail().as_str())
+    }
+
+    /// The About page and Settings' Updates row say the same for every
+    /// status, each from its own words.
+    #[test]
+    fn the_about_page_and_settings_word_every_status_alike() {
+        let screen = screen(None);
+        for status in &panels::UPDATE_STATUSES {
+            let status = match status {
+                UpdateStatus::Available(_) => UpdateStatus::Available("0.2.0".into()),
+                UpdateStatus::NeedsPermission(_) => UpdateStatus::NeedsPermission("0.2.0".into()),
+                UpdateStatus::Failed(_) => UpdateStatus::Failed("no network".into()),
+                other => other.clone(),
+            };
+            show_about_panel(&screen.window, &status);
+            assert_eq!(
+                page_line(&screen.window),
+                update_line(&screen.window, &status).as_str(),
+                "{status:?}"
+            );
+        }
+    }
+
     #[test]
     fn ok_on_about_checks_for_updates_when_none_is_known() {
         let screen = screen(None);
         open_about(&screen);
-        assert_eq!(
-            screen.window.get_update_status(),
-            "Press OK to check for updates"
-        );
+        assert_eq!(page_line(&screen.window), "Press OK to check for updates");
 
         screen.tap(OK);
         assert_eq!(screen.update_calls(), (1, 0));
-        assert_eq!(screen.window.get_update_status(), "Up to date");
+        assert_eq!(page_line(&screen.window), "Up to date");
         assert!(!screen.window.get_update_available());
         assert_eq!(screen.window.get_mode(), mode_value(State::About));
     }
@@ -3749,12 +3784,12 @@ mod tests {
 
         open_about(&screen);
         assert_eq!(
-            screen.window.get_update_status(),
+            page_line(&screen.window),
             "Version 0.2.0 available — press OK to install"
         );
         screen.tap(OK);
         assert_eq!(screen.update_calls(), (0, 1));
-        assert_eq!(screen.window.get_update_status(), "Installing…");
+        assert_eq!(page_line(&screen.window), "Installing…");
         assert!(!screen.window.get_update_available());
 
         // OK while it runs does nothing.
@@ -3765,7 +3800,7 @@ mod tests {
         screen.set_update(UpdateStatus::Failed("Android refused it".into()));
         screen.wait(POLL + 1);
         assert_eq!(
-            screen.window.get_update_status(),
+            page_line(&screen.window),
             "Update failed: Android refused it"
         );
     }
@@ -3777,7 +3812,7 @@ mod tests {
         let screen = screen_with(platform, None);
         open_about(&screen);
         assert_eq!(
-            screen.window.get_update_status(),
+            page_line(&screen.window),
             "Allow RustTV to install apps, then press OK to install 0.2.0"
         );
         assert!(screen.window.get_update_available());
@@ -3898,7 +3933,7 @@ mod tests {
         open_about(&screen);
         screen.set_update(UpdateStatus::Downloading(40));
         screen.wait(POLL + 1);
-        assert_eq!(screen.window.get_update_status(), "Downloading 40%");
+        assert_eq!(page_line(&screen.window), "Downloading 40%");
 
         // Closed while it runs: still followed, so the dot is right when it ends.
         screen.tap(BACK);

@@ -12,8 +12,15 @@ const TOKENS: [&str; 5] = ["bg", "surface", "text", "text-dim", "accent"];
 
 /// Names the generated component's own properties already use; a page's
 /// scroll box is fed through the `scroll-*` ones (Home owns the scrolling).
-const RESERVED_PROPS: [&str; 24] = [
+const RESERVED_PROPS: [&str; 30] = [
     "u",
+    // Slint words, and a row's function names (its props are parameters).
+    "if",
+    "for",
+    "return",
+    "title",
+    "detail",
+    "attention",
     "root",
     "self",
     "parent",
@@ -40,8 +47,8 @@ const RESERVED_PROPS: [&str; 24] = [
 ];
 
 /// Names a component must not shadow: Slint's own, theme.slint's,
-/// badges.slint's and blocks.slint's.
-const RESERVED_COMPONENTS: [&str; 20] = [
+/// badges.slint's and std-widgets' (blocks.slint's are [`BLOCKS_SLINT`]).
+const RESERVED_COMPONENTS: [&str; 11] = [
     "Theme",
     "Dir",
     "Hints",
@@ -53,15 +60,20 @@ const RESERVED_COMPONENTS: [&str; 20] = [
     "VerticalLayout",
     "HorizontalLayout",
     "AboutSlint",
-    "TitleSize",
-    "TextSize",
-    "Tone",
+];
+
+/// Everything ui/blocks.slint exports, which a generated page imports.
+pub const BLOCKS_SLINT: [&str; 10] = [
     "PageColumn",
     "PageSurface",
     "PageTitle",
     "PageText",
     "PageHint",
+    "PageSlintBadge",
     "PageScrollBox",
+    "TitleSize",
+    "TextSize",
+    "Tone",
 ];
 
 /// The template format's version: a runtime loader or an editor refuses a
@@ -95,7 +107,7 @@ pub fn convert(json: &str, badges: &[&str]) -> Result<String, String> {
     if !name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
         || !name.chars().all(|c| c.is_ascii_alphanumeric())
         || RESERVED_COMPONENTS.contains(&name)
-        || MARKS.iter().any(|(_, mark)| *mark == name)
+        || BLOCKS_SLINT.contains(&name)
     {
         return Err(format!(
             "component: {name:?} must be an UpperCamelCase name"
@@ -287,9 +299,10 @@ impl Cx<'_> {
         }
 
         out.push_str("import { Theme } from \"theme.slint\";\n");
-        out.push_str(
-            "import { PageColumn, PageSurface, PageTitle, PageText, PageHint, PageSlintBadge, \
-             PageScrollBox, TitleSize, TextSize, Tone } from \"blocks.slint\";\n\n",
+        let _ = writeln!(
+            out,
+            "import {{ {} }} from \"blocks.slint\";\n",
+            BLOCKS_SLINT.join(", ")
         );
         let _ = writeln!(out, "export component {name} inherits Rectangle {{");
         self.declare(out, scroll);

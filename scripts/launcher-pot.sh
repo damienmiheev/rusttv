@@ -28,5 +28,7 @@ out = re.escape(sys.argv[1].rstrip("/"))
 path = "translations/rusttv-launcher.pot"
 text = open(path, encoding="utf-8").read()
 text = re.sub(out + r"/([a-z_]+)\.slint:\d+", r"templates/\1.json", text)
+# The extractor repeats a reference line for a text used twice; keep one.
+text = re.sub(r"^(#: [^\n]*\n)\1+", r"\1", text, flags=re.M)
 open(path, "w", encoding="utf-8").write(text)
 PY

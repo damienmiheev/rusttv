@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
-"POT-Creation-Date: 2026-11-20 18:51+0000\n"
+"POT-Creation-Date: 2026-11-20 19:33+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -13,46 +13,37 @@ msgstr ""
 "Plural-Forms: nplurals=1; plural=0;\n"
 
 #: ui/home.slint:68
-#: ui/home.slint:68
 msgid "Checking for updates…"
 msgstr ""
 
-#: ui/home.slint:69
 #: ui/home.slint:69
 msgid "Up to date"
 msgstr ""
 
 #: ui/home.slint:70
-#: ui/home.slint:70
 msgid "Version {} available — press OK to install"
 msgstr ""
 
-#: ui/home.slint:71
 #: ui/home.slint:71
 msgid "Allow RustTV to install apps, then press OK to install {}"
 msgstr ""
 
 #: ui/home.slint:72
-#: ui/home.slint:72
 msgid "Downloading {}%"
 msgstr ""
 
-#: ui/home.slint:73
 #: ui/home.slint:73
 msgid "Installing…"
 msgstr ""
 
 #: ui/home.slint:74
-#: ui/home.slint:74
 msgid "Update installed"
 msgstr ""
 
 #: ui/home.slint:75
-#: ui/home.slint:75
 msgid "Update failed: {}"
 msgstr ""
 
-#: ui/home.slint:76
 #: ui/home.slint:76
 msgid "Press OK to check for updates"
 msgstr ""
@@ -141,7 +132,7 @@ msgstr ""
 msgid "Couldn't load the licence notices: {}"
 msgstr ""
 
-#: ui/home.slint:120 ui/home.slint:130
+#: ui/home.slint:120
 msgid "Updates"
 msgstr ""
 
@@ -667,7 +658,6 @@ msgstr ""
 msgid "Third-party notices"
 msgstr ""
 
-#: templates/about_row.json
 #: templates/about_row.json
 msgid "RustTV {}"
 msgstr ""
