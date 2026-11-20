@@ -14,13 +14,13 @@ use std::sync::mpsc::{self, Sender};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use rusttv_remote::protocol::{
-    FolderView, HomeMode, HomeView, MenuChoice, MenuView, Picture, TextField, TileView, TvMessage,
-    picture_data,
+    Caption, FolderView, HomeMode, HomeView, MenuChoice, MenuView, Picture, TextField, TileView,
+    TvMessage, picture_data,
 };
 use rusttv_remote::tls::Authority;
 use rusttv_remote::{Event, Options, Outlet, PAGE, PhoneId, Phones, Remote, RemoteError};
 
-use crate::platform::Pictures;
+use crate::platform::{Pictures, UpdateStatus};
 use crate::remote_page::PhoneRow;
 
 use crate::model::{FOLDER_PAGE_SIZE, Home, MenuItem, State, TileId};
@@ -297,6 +297,12 @@ impl Link {
         }
     }
 
+    /// The last view sent to the phones.
+    #[cfg(test)]
+    pub(crate) fn last(&self) -> Option<&TvMessage> {
+        self.last.as_ref()
+    }
+
     /// Sends `message` to the phones if it differs from the last one.
     pub(crate) fn push(&mut self, message: TvMessage) {
         if self.last.as_ref() == Some(&message) {
@@ -413,16 +419,30 @@ pub(crate) fn qr_pixels(text: &str, scale: usize) -> Option<(u32, Vec<u8>)> {
     Some((u32::try_from(side).ok()?, pixels))
 }
 
+/// About's caption on the phone: the tile's `status` from its panel view
+/// (`panels::about_view`), the same value the TV's tile draws.
+pub(crate) fn about_caption(update: &UpdateStatus) -> Option<Caption> {
+    let tile = crate::panels::about_view(env!("CARGO_PKG_VERSION"), update).tile?;
+    match tile.get("status") {
+        "update" => Some(Caption::Update),
+        "downloading" => Some(Caption::Downloading),
+        "installing" => Some(Caption::Installing),
+        _ => None,
+    }
+}
+
 /// What Home looks like, for the phones (REMOTE.md § 4).
 ///
 /// `label` names a tile as the TV shows it; `review` is the approval screen
 /// (phones get nothing from it and their input is dropped); `rename` is the
-/// folder name being typed.
+/// folder name being typed; `update` is the updater's state, which About's
+/// tile shows as its caption.
 pub(crate) fn home_view(
     home: &Home,
     label: &dyn Fn(&TileId) -> String,
     review: bool,
     rename: Option<String>,
+    update: &UpdateStatus,
 ) -> HomeView {
     let mut tiles: Vec<TileView> = home
         .tiles()
@@ -432,6 +452,9 @@ pub(crate) fn home_view(
             label: label(id),
             banner: None,
             folder: None,
+            caption: (*id == TileId::About)
+                .then(|| about_caption(update))
+                .flatten(),
         })
         .collect();
     for (number, folder) in home.folders() {
@@ -443,6 +466,7 @@ pub(crate) fn home_view(
                 label: label(&id),
                 banner: None,
                 folder: Some(folder_name.clone()),
+                caption: None,
             });
         }
     }
@@ -504,6 +528,7 @@ pub(crate) fn home_view(
                     label: label(&id),
                     banner: None,
                     folder: None,
+                    caption: None,
                 }
             })
             .collect();
@@ -561,7 +586,7 @@ mod tests {
     #[test]
     fn the_view_lists_tiles_in_order_with_focus() {
         let home = home();
-        let view = home_view(&home, &label, false, None);
+        let view = home_view(&home, &label, false, None, &UpdateStatus::Idle);
         assert_eq!(view.tiles[0].id, "com.example.a00/.Main");
         assert_eq!(view.focused.as_deref(), Some("com.example.a00/.Main"));
         assert!(view.tiles.iter().any(|tile| tile.id == "remote"));
@@ -570,10 +595,58 @@ mod tests {
     }
 
     #[test]
+    fn about_carries_the_update_caption_and_no_other_tile_does() {
+        let mut home = home();
+        // As on Android: About is a tile.
+        home.set_settings_tiles(true);
+        let tiles = home_view(&home, &label, false, None, &UpdateStatus::Idle).tiles;
+        assert!(tiles.iter().any(|tile| tile.id == "about"), "{tiles:?}");
+        let cases = [
+            (UpdateStatus::Idle, None),
+            (UpdateStatus::Checking, None),
+            (UpdateStatus::UpToDate, None),
+            (
+                UpdateStatus::Available("2.0.0".into()),
+                Some(Caption::Update),
+            ),
+            (
+                UpdateStatus::NeedsPermission("2.0.0".into()),
+                Some(Caption::Update),
+            ),
+            (UpdateStatus::Downloading(10), Some(Caption::Downloading)),
+            (UpdateStatus::Downloading(90), Some(Caption::Downloading)),
+            (UpdateStatus::Installing, Some(Caption::Installing)),
+            (UpdateStatus::Installed, None),
+            (UpdateStatus::Failed("no network".into()), None),
+        ];
+        for (status, expected) in cases {
+            let view = home_view(&home, &label, false, None, &status);
+            for tile in &view.tiles {
+                let want = if tile.id == "about" { expected } else { None };
+                assert_eq!(tile.caption, want, "{status:?} {}", tile.id);
+            }
+        }
+        // The download's progress doesn't change the view, so it isn't resent.
+        assert_eq!(
+            home_view(&home, &label, false, None, &UpdateStatus::Downloading(10)),
+            home_view(&home, &label, false, None, &UpdateStatus::Downloading(90))
+        );
+    }
+
+    #[test]
     fn review_and_renaming_show_as_their_modes() {
         let home = home();
-        assert_eq!(home_view(&home, &label, true, None).mode, HomeMode::Review);
-        let renaming = home_view(&home, &label, false, Some("Stream".into()));
+        assert_eq!(
+            home_view(&home, &label, true, None, &UpdateStatus::Idle).mode,
+            HomeMode::Review
+        );
+        let renaming = home_view(
+            &home,
+            &label,
+            false,
+            Some("Stream".into()),
+            &UpdateStatus::Idle,
+        );
         assert_eq!(renaming.mode, HomeMode::Text);
         assert_eq!(renaming.text.unwrap().value, "Stream");
     }
@@ -589,7 +662,7 @@ mod tests {
         home.handle(Input::Tick, ms(1700));
         home.handle(Input::OkPressed, ms(1800));
         home.handle(Input::OkReleased, ms(1810));
-        let view = home_view(&home, &label, false, None);
+        let view = home_view(&home, &label, false, None, &UpdateStatus::Idle);
         let inside: Vec<&str> = view
             .tiles
             .iter()

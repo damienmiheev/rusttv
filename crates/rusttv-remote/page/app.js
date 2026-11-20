@@ -590,11 +590,13 @@
       const element = old.get(tile.id);
       if (!element) return fresh;
       element.className = fresh.className;
-      element.setAttribute("aria-label", nameOf(tile));
+      element.setAttribute("aria-label", fresh.getAttribute("aria-label"));
       if (!(gesture && element === gesture.element)) {
-        // The same picture: keep its element, so it isn't decoded again.
+        // The same picture and caption: keep its element, so it isn't
+        // decoded again.
         const was = element.firstChild, art = fresh.firstChild;
-        if (art.dataset.picture && was?.dataset.picture === art.dataset.picture) fresh.replaceChild(was, art);
+        if (art.dataset.picture && was?.dataset.picture === art.dataset.picture
+          && was.dataset.caption === art.dataset.caption) fresh.replaceChild(was, art);
         element.replaceChildren(...fresh.childNodes);
       }
       return element;
@@ -613,14 +615,39 @@
     return key ? t(key) : tile.label;
   }
 
+  // A tile's caption (REMOTE.md § 4), from a fixed list: About's update
+  // state. Anything else shows none.
+  const CAPTIONS = new Map([
+    ["update", "caption_update"], ["downloading", "caption_downloading"], ["installing", "caption_installing"],
+  ]);
+  function captionOf(tile) {
+    const key = CAPTIONS.get(tile.caption);
+    return key ? t(key) : "";
+  }
+
+  // On the picture's bottom start corner, as on the TV: "update" in the
+  // accent, the others dim.
+  function addCaption(box, tile) {
+    const text = captionOf(tile);
+    if (!text) return;
+    const caption = document.createElement("small");
+    caption.className = "caption" + (tile.caption === "update" ? " update" : "");
+    caption.textContent = text;
+    box.dataset.caption = tile.caption;
+    box.append(caption);
+  }
+
   function tileButton(tile, tiles, focused) {
     const button = document.createElement("button");
     const moving = dragging && gesture && tile.id === gesture.id;
     const target = dragging && gesture && gesture.on && tile.id === gesture.over;
     button.className = "tile" + (tile.id === focused ? " focused" : "") + (moving ? " dragging" : "") + (target ? " over" : "");
     button.dataset.id = tile.id;
-    button.setAttribute("aria-label", nameOf(tile));
-    button.append(art(tile, tiles));
+    const caption = captionOf(tile);
+    button.setAttribute("aria-label", caption ? `${nameOf(tile)}, ${caption}` : nameOf(tile));
+    const box = art(tile, tiles);
+    addCaption(box, tile);
+    button.append(box);
     const name = document.createElement("div");
     name.className = "name";
     name.textContent = nameOf(tile);

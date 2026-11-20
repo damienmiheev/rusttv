@@ -67,6 +67,10 @@ header { position: relative; display: flex; align-items: center; gap: 12px; padd
 .art.icon { flex-direction: column; gap: 6px; background: var(--raised); }
 .art.icon img { width: 34%; aspect-ratio: 1; object-fit: contain; }
 .art.icon span { font-size: 13px; font-weight: 600; }
+/* A tile's caption (About: the update), on the picture as on the TV. */
+.art .caption { position: absolute; inset-inline-start: 6px; bottom: 6px; max-width: calc(100% - 12px); padding: 2px 7px; border-radius: 7px;
+  background: #0E1014D9; font-size: 11px; font-weight: 600; line-height: 1.4; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.art .caption.update { color: var(--accent); }
 .tile.focused .art { transform: scale(1.05); box-shadow: 0 16px 32px -6px #000000B3; }
 .tile .name { font-size: 13px; font-weight: 500; color: var(--faint); padding-left: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tile.focused .name { color: var(--text); }

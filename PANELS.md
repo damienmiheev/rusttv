@@ -420,8 +420,8 @@ its own.
 - **Phone mirror:** the Apps mirror already sends every tile
   (`TileView {id, label, banner, folder}`, `protocol.rs`). It gains an
   optional `caption` so the phone shows "Update available" too (additive;
-  unknown fields are ignored, REMOTE.md § 4). `panel:<id>` is added to
-  `is_tile_id` with the first new panel tile.
+  unknown fields are ignored, REMOTE.md § 4); built in step 1b.
+  `panel:<id>` is added to `is_tile_id` with the first new panel tile.
 
 ## 7. Data-only panels (level 2) — parked
 
@@ -539,8 +539,16 @@ decision log, CHANGELOG.
   tile list.
 - **The hero glow still comes from About's banner** (`assets/tiles/about.png`
   stays for the glow and the phone's picture). No visible glow change.
-- **The phone mirror's `caption` is a follow-up PR (step 1b).** It needs a
-  protocol field and texts in all 21 phone languages.
+- **The phone mirror's `caption` came in a follow-up PR (step 1b, done
+  2026-11-20).** `TileView.caption` is a fixed enum (`update`,
+  `downloading`, `installing`) left out of the JSON when there is none;
+  `remote::home_view` fills it on About from `about_view`'s `status`, and
+  a change of the caption pushes the view while RustTV is in front (the
+  download's percent sends nothing). The phone draws it as a small label on the
+  picture's start corner, with the launcher's wordings in all 21 phone
+  languages (`page/i18n.js`, keys `caption_*`). The phone doesn't run the
+  JSON template yet; that waits for a panel whose phone face needs more
+  than a caption.
 - **Badges are images set from Rust** (`Badges` global in `ui/theme.slint`),
   like the tiles' banners. The launcher loads no `@image-url`.
 - **The converter lives in `codegen/convert.rs`** (`build/` is git-ignored).
