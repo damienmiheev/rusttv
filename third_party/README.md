@@ -79,3 +79,19 @@ Philips. Not reported upstream yet.
 
 **Removing it.** Once a Slint release fixes the leak, delete
 this directory and the `[patch.crates-io]` section, and re-measure.
+
+## reis 0.7.1: accept a libei client without a name
+
+`reis-0.7.1/` is the crates.io source of reis 0.7.1 (MIT, `LICENSE`),
+unchanged except for `reis-null-name.patch` (applied to
+`src/eiproto_eis.rs`). The Linux portal (`rusttv-portal`,
+`crates/rusttv-launcher/src/linux/portal.rs`) serves libei with it.
+
+**Why.** libei sends `ei_handshake.name` with a NULL string when the client
+never called `ei_configure_name`; libei's own server takes that. KDE Connect
+26.08 sets no name, so reis ended its handshake with "NULL value for
+non-nullable argument" and the phone's touchpad and keyboard did nothing.
+
+**What the patch does.** The handshake's name is read as optional; a missing
+name becomes the empty string. Nothing else changes.
+

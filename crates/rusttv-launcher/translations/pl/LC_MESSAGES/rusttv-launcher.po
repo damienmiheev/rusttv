@@ -431,3 +431,60 @@ msgstr "Cienie i tło"
 
 msgid "No shadows or backdrop: smoother on a slow graphics chip"
 msgstr "Bez cieni i tła: płynniej na wolnym układzie graficznym"
+
+msgid "Audio"
+msgstr "Dźwięk"
+
+msgid "Close app"
+msgstr "Zamknij aplikację"
+
+msgid "KDE Connect"
+msgstr "KDE Connect"
+
+msgid "Licences and third-party notices"
+msgstr "Licencje i informacje o podmiotach trzecich"
+
+msgid "Loading…"
+msgstr "Wczytywanie…"
+
+msgid "MIT OR Apache-2.0 · licences and third-party notices"
+msgstr "MIT OR Apache-2.0 · licencje i informacje o podmiotach trzecich"
+
+msgid "Modify"
+msgstr "Edytuj"
+
+msgid "Muted"
+msgstr "Wyciszono"
+
+msgid "Network"
+msgstr "Sieć"
+
+msgid "Power"
+msgstr "Zasilanie"
+
+msgid "RustTV {}"
+msgstr "RustTV {}"
+
+msgid "Search"
+msgstr "Szukaj"
+
+msgid "Size"
+msgstr "Rozmiar"
+
+msgid "Size: {} %"
+msgstr "Rozmiar: {} %"
+
+msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
+msgstr "Slint (Royalty-free License 2.0), Skia, biblioteki Rust"
+
+msgid "Source code"
+msgstr "Kod źródłowy"
+
+msgid "The app restarts at the new size"
+msgstr "Aplikacja uruchomi się ponownie w nowym rozmiarze"
+
+msgid "Volume"
+msgstr "Głośność"
+
+msgid "✓ on the keyboard confirms, Back cancels"
+msgstr "✓ na klawiaturze potwierdza, Wstecz anuluje"

@@ -431,3 +431,60 @@ msgstr "Gölgeler ve arka plan"
 
 msgid "No shadows or backdrop: smoother on a slow graphics chip"
 msgstr "Gölge ve arka plan yok: yavaş grafik çipinde daha akıcı"
+
+msgid "Audio"
+msgstr "Ses"
+
+msgid "Close app"
+msgstr "Uygulamayı kapat"
+
+msgid "KDE Connect"
+msgstr "KDE Connect"
+
+msgid "Licences and third-party notices"
+msgstr "Lisanslar ve üçüncü taraf bildirimleri"
+
+msgid "Loading…"
+msgstr "Yükleniyor…"
+
+msgid "MIT OR Apache-2.0 · licences and third-party notices"
+msgstr "MIT OR Apache-2.0 · lisanslar ve üçüncü taraf bildirimleri"
+
+msgid "Modify"
+msgstr "Düzenle"
+
+msgid "Muted"
+msgstr "Sessiz"
+
+msgid "Network"
+msgstr "Ağ"
+
+msgid "Power"
+msgstr "Güç"
+
+msgid "RustTV {}"
+msgstr "RustTV {}"
+
+msgid "Search"
+msgstr "Ara"
+
+msgid "Size"
+msgstr "Boyut"
+
+msgid "Size: {} %"
+msgstr "Boyut: %{}"
+
+msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
+msgstr "Slint (Royalty-free License 2.0), Skia, Rust kitaplıkları"
+
+msgid "Source code"
+msgstr "Kaynak kodu"
+
+msgid "The app restarts at the new size"
+msgstr "Uygulama yeni boyutta yeniden başlar"
+
+msgid "Volume"
+msgstr "Ses düzeyi"
+
+msgid "✓ on the keyboard confirms, Back cancels"
+msgstr "Klavyede ✓ onaylar, Geri iptal eder"

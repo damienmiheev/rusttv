@@ -19,6 +19,25 @@ field in `--json` output says which contract you get, CLI.md).
   and as soon as a key is pressed. Moving apps and making folders stay on
   the arrow keys as before.
 
+- A Linux home screen (feature `linux`, binary `rusttv-launcher-linux`):
+  the apps of the machine's desktop entries in a Wayland compositor such as
+  labwc. It has a top-right menu (Modify, Settings and the quick panels the
+  device has: Audio, Network, KDE Connect, Power), device settings,
+  an on-screen keyboard for other apps and game controllers over USB or
+  Bluetooth. Settings has an About tab there. Android keeps its About and
+  Settings tiles and has no top-right menu (`Platform::top_right_menu`). A
+  history snapshot with Linux tile names (`*.desktop`) is written as
+  format 5.
+
+- `rusttv-portal`, a remote desktop portal backend for compositors without
+  one: it serves only `xdg-desktop-portal` and gives remote input only to
+  KDE Connect (the phone as touchpad and keyboard); every other app is
+  refused.
+
+- Linux keeps at most `max_apps` apps running and closes background apps
+  when memory runs low (`~/.config/rusttv/linux.toml`). Stopping background
+  apps (`freeze_background`) is off unless the config turns it on.
+
 ### CLI
 
 - Schema `rusttv.v11`: history changes have the new kind `effects`, and

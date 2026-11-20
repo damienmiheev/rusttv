@@ -1,0 +1,547 @@
+// The top-right menu over Home, the quick panels it opens, the volume bar,
+// and the rows of platform controls (src/device.rs) shared with Settings.
+// Rust owns all state (src/ui/device_view.rs); this file only draws it.
+// Sizes are reference pixels on a 1920×1080 canvas, multiplied by `u`.
+
+// The colours of `Theme` in home.slint (kept in step by hand).
+global Colours {
+    out property <color> bg: #0E1014;
+    out property <color> surface: #1C1F26;
+    out property <color> text: #F2F3F5;
+    out property <color> text-dim: #A4A9B4;
+    out property <color> accent: #F5A524;
+}
+
+// One row of a Settings panel or quick panel (ui.rs `settings_rows`,
+// ui/device_view.rs).
+export struct SettingsRow {
+    title: string,
+    // A second, dim line; empty for one-line rows.
+    detail: string,
+    // The current choice: an accent dot.
+    current: bool,
+    // Shown dim (e.g. animations without the grant).
+    dim: bool,
+    // A slider: a level bar after the detail, filled to `level` (0..1).
+    slider: bool,
+    level: float,
+}
+
+// A row in the long-press menu's style (home.slint `MenuRow`), with a level
+// bar for sliders. Left and right are mirrored when `rtl`.
+export component ControlRow inherits Rectangle {
+    in property <length> u;
+    in property <bool> rtl;
+    in property <string> text;
+    in property <string> detail;
+    in property <bool> selected;
+    in property <bool> current;
+    in property <bool> dim;
+    in property <bool> slider;
+    in property <float> level;
+    height: (detail == "" && !slider ? 64 : 96) * u;
+    border-radius: 10 * u;
+    background: selected ? Colours.text : Colours.text.with-alpha(0);
+    animate background { duration: 120ms; }
+
+    pure function place-x(x: length, width: length) -> length {
+        return rtl ? self.width - x - width : x;
+    }
+    property <TextHorizontalAlignment> start: rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+
+    if current: Rectangle {
+        x: root.place-x(18 * u, 10 * u);
+        y: (detail == "" ? (parent.height - self.height) / 2 : 28 * u);
+        width: 10 * u;
+        height: 10 * u;
+        border-radius: self.width / 2;
+        background: Colours.accent;
+    }
+    Text {
+        x: root.place-x(44 * u, self.width);
+        y: detail == "" && !slider ? 0 : 12 * u;
+        width: parent.width - 68 * u;
+        height: detail == "" && !slider ? parent.height : 34 * u;
+        text: root.text;
+        font-size: 27 * u;
+        font-weight: 500;
+        color: selected ? Colours.bg : dim ? Colours.text-dim : Colours.text;
+        horizontal-alignment: root.start;
+        vertical-alignment: center;
+        overflow: elide;
+        animate color { duration: 120ms; }
+    }
+    if detail != "" || slider: Text {
+        x: root.place-x(44 * u, self.width);
+        y: 50 * u;
+        width: slider ? 110 * u : parent.width - 68 * u;
+        height: 32 * u;
+        text: root.detail;
+        font-size: 25 * u;
+        color: selected ? Colours.bg.with-alpha(0.7) : Colours.text-dim;
+        horizontal-alignment: root.start;
+        vertical-alignment: center;
+        overflow: elide;
+        animate color { duration: 120ms; }
+    }
+    if slider: Rectangle {
+        x: root.place-x(170 * u, self.width);
+        y: 62 * u;
+        width: parent.width - 214 * u;
+        height: 8 * u;
+        border-radius: self.height / 2;
+        background: selected ? Colours.bg.with-alpha(0.2) : #FFFFFF26;
+        Rectangle {
+            x: rtl ? parent.width - self.width : 0;
+            width: parent.width * clamp(level, 0, 1);
+            height: parent.height;
+            border-radius: parent.border-radius;
+            background: selected ? Colours.bg : Colours.accent;
+        }
+    }
+}
+
+// The top-right menu (like Plasma Bigscreen's): round icon buttons, the
+// focused one a light disc like a selected menu row, with its name below.
+// `actions` are model.rs `QuickAction` codes (ui/device_view.rs
+// `quick_code`): 0 Search, 1 Modify, 2 Audio, 3 Network, 4 KDE Connect,
+// 5 Settings, 6 Power. Its top-right corner sits at its parent's.
+export component QuickBar inherits Rectangle {
+    in property <length> u;
+    in property <bool> rtl;
+    in property <[int]> actions;
+    // -1 while focus is on the tiles.
+    in property <int> selected: -1;
+    // The network interfaces, shown in the Network entry (code 3), one icon
+    // each: 100 + bars (0 not connected, 1..4) for Wi-Fi, 200 / 201 for a
+    // cable unplugged / connected (ui/device_view.rs `link_code`). The codes
+    // in `actions` are ascending, so the entries after Network are those
+    // with a higher code.
+    in property <[int]> links;
+    // A click on entry `index`.
+    callback clicked(int);
+    // The pointer moved onto entry `index`.
+    callback hovered(int);
+
+    property <length> size: 72 * u;
+    property <length> gap: 18 * u;
+    property <length> link-width: 44 * u;
+    // How much wider the Network entry is than a round one.
+    property <length> net-extra: max(0px, links.length * link-width + 28 * u - size);
+    property <length> bar-width: max(0px, actions.length * (size + gap) - gap + net-extra);
+
+    // Left edge of entry `i` (code `code`) in left-to-right order, and its width.
+    pure function start(i: int, code: int) -> length {
+        return i * (size + gap) + (code > 3 ? net-extra : 0px);
+    }
+    pure function span(code: int) -> length {
+        return code == 3 ? size + net-extra : size;
+    }
+    // Wi-Fi with `bars` arcs (1..4), drawn over a dim full icon.
+    pure function wifi(bars: int) -> string {
+        if bars >= 4 { return "M 2 9 A 14 14 0 0 1 22 9 M 5.5 12.5 A 9 9 0 0 1 18.5 12.5 M 9 16 A 4.5 4.5 0 0 1 15 16 M 12 19 L 12 19.5"; }
+        if bars == 3 { return "M 5.5 12.5 A 9 9 0 0 1 18.5 12.5 M 9 16 A 4.5 4.5 0 0 1 15 16 M 12 19 L 12 19.5"; }
+        if bars == 2 { return "M 9 16 A 4.5 4.5 0 0 1 15 16 M 12 19 L 12 19.5"; }
+        return "M 12 19 L 12 19.5";
+    }
+    // An Ethernet socket.
+    property <string> wired: "M 4 7 L 20 7 L 20 19 L 4 19 Z M 8 19 L 8 15 M 12 19 L 12 15 M 16 19 L 16 15 M 9 7 L 9 4 L 15 4 L 15 7";
+
+    pure function name(code: int) -> string {
+        if code == 0 { return @tr("Search"); }
+        if code == 1 { return @tr("Modify"); }
+        if code == 2 { return @tr("Audio"); }
+        if code == 3 { return @tr("Network"); }
+        if code == 4 { return @tr("KDE Connect"); }
+        if code == 5 { return @tr("Settings"); }
+        return @tr("Power");
+    }
+    // 24 × 24 outline icons, drawn as strokes.
+    pure function icon(code: int) -> string {
+        if code == 0 { return "M 10 3 A 7 7 0 1 0 10 17 A 7 7 0 1 0 10 3 Z M 15 15 L 21 21"; }
+        if code == 1 { return "M 4 20 L 4 16 L 15 5 L 19 9 L 8 20 Z M 13 7 L 17 11"; }
+        if code == 2 { return "M 3 9 L 7 9 L 12 5 L 12 19 L 7 15 L 3 15 Z M 15.5 9 A 4 4 0 0 1 15.5 15 M 18 6 A 8 8 0 0 1 18 18"; }
+        if code == 3 { return "M 2 9 A 14 14 0 0 1 22 9 M 5.5 12.5 A 9 9 0 0 1 18.5 12.5 M 9 16 A 4.5 4.5 0 0 1 15 16 M 12 19 L 12 19.5"; }
+        if code == 4 { return "M 7 2 L 17 2 L 17 22 L 7 22 Z M 10.5 18.5 L 13.5 18.5"; }
+        if code == 5 { return "M 19.18 9.51 L 21.77 9.86 L 21.77 14.14 L 19.18 14.49 L 18.84 15.32 L 20.42 17.39 L 17.39 20.42 L 15.32 18.84 L 14.49 19.18 L 14.14 21.77 L 9.86 21.77 L 9.51 19.18 L 8.68 18.84 L 6.61 20.42 L 3.58 17.39 L 5.16 15.32 L 4.82 14.49 L 2.23 14.14 L 2.23 9.86 L 4.82 9.51 L 5.16 8.68 L 3.58 6.61 L 6.61 3.58 L 8.68 5.16 L 9.51 4.82 L 9.86 2.23 L 14.14 2.23 L 14.49 4.82 L 15.32 5.16 L 17.39 3.58 L 20.42 6.61 L 18.84 8.68 Z M 15.2 12 A 3.2 3.2 0 1 0 8.8 12 A 3.2 3.2 0 1 0 15.2 12 Z"; }
+        return "M 12 2.5 L 12 11 M 6.5 5.5 A 8 8 0 1 0 17.5 5.5";
+    }
+
+    width: bar-width;
+    height: size;
+
+    for code[i] in actions: button := Rectangle {
+        property <bool> focused: i == selected;
+        property <color> ink: focused ? Colours.bg : Colours.text;
+        width: root.span(code);
+        x: rtl ? root.width - root.start(i, code) - self.width : root.start(i, code);
+        height: size;
+        border-radius: self.height / 2;
+        background: focused ? Colours.text : #0000005C;
+        animate background { duration: 120ms; }
+        if code != 3 || links.length == 0: Path {
+            x: (parent.width - parent.height * 0.5) / 2;
+            y: parent.height * 0.25;
+            width: parent.height * 0.5;
+            height: parent.height * 0.5;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: root.icon(code);
+            stroke: parent.ink;
+            stroke-width: 2.6 * u;
+            fill: transparent;
+        }
+        // Network: one icon per interface; the dim full icon under a Wi-Fi's
+        // bars, a dim socket for an unplugged cable.
+        if code == 3: Rectangle {
+            x: 14 * u;
+            width: parent.width - 28 * u;
+            for link[j] in links: Rectangle {
+                property <bool> is-wifi: link < 200;
+                property <bool> up: is-wifi ? link > 100 : link == 201;
+                x: rtl ? parent.width - (j + 1) * root.link-width : j * root.link-width;
+                width: root.link-width;
+                Path {
+                    x: (parent.width - 36 * u) / 2;
+                    y: (root.size - 36 * u) / 2;
+                    width: 36 * u;
+                    height: 36 * u;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: parent.is-wifi ? root.wifi(4) : root.wired;
+                    stroke: button.ink;
+                    stroke-width: 2.6 * u;
+                    fill: transparent;
+                    opacity: parent.up && !parent.is-wifi ? 1 : 0.35;
+                }
+                if is-wifi && up: Path {
+                    x: (parent.width - 36 * u) / 2;
+                    y: (root.size - 36 * u) / 2;
+                    width: 36 * u;
+                    height: 36 * u;
+                    viewbox-width: 24;
+                    viewbox-height: 24;
+                    commands: root.wifi(link - 100);
+                    stroke: button.ink;
+                    stroke-width: 2.6 * u;
+                    fill: transparent;
+                }
+            }
+        }
+        TouchArea {
+            mouse-cursor: pointer;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.move {
+                    root.hovered(i);
+                }
+            }
+            clicked => { root.clicked(i); }
+        }
+    }
+    if selected >= 0: Text {
+        property <length> centre: (rtl ? root.width - root.start(selected, actions[selected]) - root.span(actions[selected]) : root.start(selected, actions[selected])) + root.span(actions[selected]) / 2;
+        x: rtl ? max(self.centre - 160 * u, -60 * u) : min(self.centre - 160 * u, root.width + 60 * u - 320 * u);
+        y: size + 14 * u;
+        width: 320 * u;
+        horizontal-alignment: center;
+        text: root.name(actions[selected]);
+        font-size: 25 * u;
+        font-weight: 500;
+        color: Colours.text;
+        overflow: elide;
+    }
+}
+
+// A quick panel under the top-right menu: its title, a status line while
+// reading or after a failure, and its controls. Rows past the panel scroll
+// by rows (`first-row`).
+export component QuickPanel inherits Rectangle {
+    in property <length> u;
+    in property <bool> rtl;
+    in property <string> title;
+    in property <string> status;
+    in property <[SettingsRow]> rows;
+    in property <int> focused-row;
+    in property <int> first-row;
+    callback row-clicked(int);
+    // The pointer moved onto row `index`.
+    callback row-hovered(int);
+
+    property <length> pitch: 104 * u;
+    property <int> shown: min(6, max(1, rows.length - first-row));
+    property <length> list-y: (status == "" ? 96 : 140) * u;
+
+    width: 720 * u;
+    height: self.list-y + self.shown * self.pitch + 16 * u;
+    border-radius: 16 * u;
+    background: Colours.surface;
+    drop-shadow-color: #00000080;
+    drop-shadow-blur: 40 * u;
+    drop-shadow-offset-y: 16 * u;
+    clip: true;
+
+    Text {
+        x: 40 * u;
+        y: 32 * u;
+        width: parent.width - 80 * u;
+        horizontal-alignment: rtl ? right : left;
+        text: title;
+        font-size: 33 * u;
+        font-weight: 500;
+        color: Colours.text;
+        overflow: elide;
+    }
+    if status != "": Text {
+        x: 40 * u;
+        y: 88 * u;
+        width: parent.width - 80 * u;
+        horizontal-alignment: rtl ? right : left;
+        text: status;
+        font-size: 25 * u;
+        color: Colours.text-dim;
+        overflow: elide;
+    }
+    Rectangle {
+        y: list-y;
+        height: parent.height - self.y - 16 * u;
+        clip: true;
+        for data[i] in rows: ControlRow {
+            x: 16 * u;
+            y: (i - first-row) * pitch;
+            width: parent.width - 32 * u;
+            u: root.u;
+            rtl: root.rtl;
+            text: data.title;
+            detail: data.detail;
+            current: data.current;
+            dim: data.dim;
+            slider: data.slider;
+            level: data.level;
+            selected: i == focused-row;
+            visible: i >= first-row;
+        }
+        for data[i] in rows: TouchArea {
+            x: 16 * u;
+            y: (i - first-row) * pitch;
+            width: parent.width - 32 * u;
+            height: pitch;
+            visible: i >= first-row;
+            mouse-cursor: pointer;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.move {
+                    root.row-hovered(i);
+                }
+            }
+            clicked => { root.row-clicked(i); }
+        }
+    }
+}
+
+// The power menu, opened by the power key or the menu's Power entry: the
+// whole screen dims and its actions stand large in the middle, as on Android
+// TV. The rows are the platform's Power panel (src/device.rs).
+export component PowerMenu inherits Rectangle {
+    in property <length> u;
+    in property <string> title;
+    in property <string> status;
+    in property <[SettingsRow]> rows;
+    in property <int> focused-row;
+    callback row-clicked(int);
+    // The pointer moved onto row `index`.
+    callback row-hovered(int);
+    // A click beside the actions closes the menu.
+    callback dismissed();
+
+    property <length> pitch: 132 * u;
+    property <length> button-width: 640 * u;
+    property <length> list-height: rows.length * pitch;
+
+    background: #000000D8;
+
+    TouchArea {
+        clicked => { root.dismissed(); }
+    }
+    Path {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - list-height) / 2 - 220 * u;
+        width: 96 * u;
+        height: 96 * u;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: "M 12 3 L 12 11 M 7.05 6.05 A 7 7 0 1 0 16.95 6.05";
+        stroke: Colours.text;
+        stroke-width: 2 * u;
+        fill: transparent;
+    }
+    Text {
+        y: (parent.height - list-height) / 2 - 100 * u;
+        width: parent.width;
+        horizontal-alignment: center;
+        text: status != "" ? status : title;
+        font-size: 36 * u;
+        color: status != "" ? Colours.text-dim : Colours.text;
+    }
+    for data[i] in rows: Rectangle {
+        property <bool> focused: i == focused-row;
+        x: (parent.width - button-width) / 2;
+        y: (parent.height - list-height) / 2 + i * pitch;
+        width: button-width;
+        height: pitch - 28 * u;
+        border-radius: self.height / 2;
+        background: focused ? Colours.text : Colours.surface;
+        animate background { duration: 120ms; }
+        Text {
+            text: data.title;
+            font-size: 38 * u;
+            font-weight: 500;
+            color: parent.focused ? Colours.bg : Colours.text;
+        }
+        TouchArea {
+            mouse-cursor: pointer;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.move {
+                    root.row-hovered(i);
+                }
+            }
+            clicked => { root.row-clicked(i); }
+        }
+    }
+}
+
+// The volume bar: a speaker (crossed out when muted) and the level, at the
+// top of the screen. Fades out when `shown` goes false (ui/device_view.rs
+// hides it ~1.5 s after the last volume key).
+export component VolumeOsd inherits Rectangle {
+    in property <length> u;
+    in property <bool> shown;
+    in property <float> level;
+    in property <bool> muted;
+
+    width: 520 * u;
+    height: 88 * u;
+    border-radius: self.height / 2;
+    background: Colours.surface.with-alpha(0.95);
+    drop-shadow-color: #00000080;
+    drop-shadow-blur: 32 * u;
+    opacity: shown ? 1 : 0;
+    visible: self.opacity > 0;
+    animate opacity { duration: shown ? 120ms : 400ms; easing: ease-out; }
+
+    Path {
+        x: 30 * u;
+        y: 22 * u;
+        width: 44 * u;
+        height: 44 * u;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: muted
+            ? "M 3 9 L 7 9 L 12 5 L 12 19 L 7 15 L 3 15 Z M 16 9 L 22 15 M 22 9 L 16 15"
+            : "M 3 9 L 7 9 L 12 5 L 12 19 L 7 15 L 3 15 Z M 15.5 9 A 4 4 0 0 1 15.5 15 M 18 6 A 8 8 0 0 1 18 18";
+        stroke: Colours.text;
+        stroke-width: 2.6 * u;
+        fill: transparent;
+    }
+    Rectangle {
+        x: 96 * u;
+        y: (parent.height - self.height) / 2;
+        width: 300 * u;
+        height: 10 * u;
+        border-radius: self.height / 2;
+        background: #FFFFFF26;
+        Rectangle {
+            x: 0;
+            width: parent.width * clamp(level, 0, 1);
+            height: parent.height;
+            border-radius: parent.border-radius;
+            background: muted ? Colours.text-dim : Colours.accent;
+        }
+    }
+    Text {
+        x: 412 * u;
+        width: 80 * u;
+        height: parent.height;
+        vertical-alignment: center;
+        horizontal-alignment: right;
+        text: muted ? @tr("Muted") : round(level * 100) + "%";
+        font-size: 27 * u;
+        font-weight: 500;
+        color: Colours.text;
+    }
+}
+
+// A text prompt: a Wi-Fi password, a name. A text field in the upper half;
+// the system's on-screen keyboard (on Linux RustTV's, `linux/keyboard`)
+// opens at the bottom when the field takes focus, as for any app. Enter
+// confirms (`done`), Back or Escape cancels.
+export component TextPromptView inherits Rectangle {
+    in property <length> u;
+    in property <string> title;
+    in property <bool> secret;
+    in-out property <string> text;
+    callback done(string);
+    callback cancelled();
+
+    property <length> field-w: 1100 * u;
+    property <length> left: (root.width - field-w) / 2;
+
+    background: #000000E0;
+    TouchArea { }
+
+    Text {
+        x: left;
+        y: 160 * u;
+        width: field-w;
+        text: title;
+        font-size: 36 * u;
+        color: Colours.text;
+        overflow: elide;
+    }
+    Rectangle {
+        x: left;
+        y: 224 * u;
+        width: field-w;
+        height: 92 * u;
+        border-radius: 12 * u;
+        background: Colours.surface;
+        border-width: 2 * u;
+        border-color: Colours.accent;
+        FocusScope {
+            key-pressed(event) => {
+                if event.text == Key.Escape || event.text == "\u{F748}" {
+                    root.cancelled();
+                    return accept;
+                }
+                reject
+            }
+            field := TextInput {
+                x: 28 * u;
+                width: parent.width - 56 * u;
+                height: parent.height;
+                text <=> root.text;
+                input-type: root.secret ? InputType.password : InputType.text;
+                single-line: true;
+                font-size: 40 * u;
+                color: Colours.text;
+                vertical-alignment: center;
+                accepted => {
+                    root.done(self.text);
+                }
+                init => {
+                    self.focus();
+                }
+            }
+        }
+        TouchArea {
+            clicked => { field.focus(); }
+        }
+    }
+    Text {
+        x: left;
+        y: 340 * u;
+        width: field-w;
+        text: @tr("✓ on the keyboard confirms, Back cancels");
+        font-size: 28 * u;
+        color: Colours.text-dim;
+        overflow: elide;
+    }
+}

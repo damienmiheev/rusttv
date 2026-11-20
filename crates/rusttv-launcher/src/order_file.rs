@@ -105,7 +105,8 @@ pub(crate) fn load(path: &Path) -> Loaded {
 
 /// The tile a name in the file stands for. [`TileId::Hidden`] in `keys` is
 /// dropped when the order meets the app list, and so is a folder without
-/// a `[folders]` entry.
+/// a `[folders]` entry; so are About and Settings where a top-right menu
+/// has Settings.
 pub(crate) fn tile_for_name(name: String) -> TileId {
     match name.as_str() {
         ABOUT => TileId::About,
@@ -342,7 +343,7 @@ mod tests {
         Order::from_keys([
             (TileId::App("com.example.b/.Main".to_owned()), 1000),
             (TileId::App("com.example.a/.Tv \"quoted\"".to_owned()), 1500),
-            (TileId::About, 2000),
+            (TileId::Settings, 2000),
         ])
     }
 
@@ -352,7 +353,7 @@ mod tests {
         let order = Order::from_keys([
             (TileId::App("com.example.b/.Main".to_owned()), 1000),
             (TileId::Remote, 1500),
-            (TileId::About, 2000),
+            (TileId::Settings, 2000),
         ]);
         save(
             &dir.file(),
@@ -363,7 +364,7 @@ mod tests {
         )
         .unwrap();
         let state = launcher_state(&dir.0);
-        assert_eq!(state.order, ["com.example.b/.Main", "about"]);
+        assert_eq!(state.order, ["com.example.b/.Main", "settings"]);
         // Older RustTV builds still read it.
         assert!(
             state
@@ -402,7 +403,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let shorter = Order::from_keys([(TileId::About, 1000)]);
+        let shorter = Order::from_keys([(TileId::Settings, 1000)]);
         save(
             &dir.file(),
             &shorter,
@@ -418,7 +419,7 @@ mod tests {
     fn the_focused_tile_is_saved_and_loads_back() {
         let dir = TempDir::new("focus");
         let app = TileId::App("com.example.a/.Tv \"quoted\"".to_owned());
-        for focus in [app, TileId::About, TileId::Hidden] {
+        for focus in [app, TileId::Settings, TileId::Hidden] {
             save(
                 &dir.file(),
                 &sample(),

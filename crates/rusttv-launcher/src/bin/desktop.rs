@@ -68,12 +68,25 @@ fn ms(millis: u64) -> DemoStep {
 
 /// Walks through every state of the home screen. Sample order: Browser, Files,
 /// Fitness, Games, Kids, Movies / Music, News, Photos, Podcasts, Radio, Series /
-/// Sports, Weather, About.
+/// Sports, Weather, Settings, RustTV Remote. The top-right menu has Modify,
+/// Audio, Network, KDE Connect, Settings and Power (`FakePlatform::with_device`).
 fn demo_script() -> Vec<DemoStep> {
     use DemoStep::{Press, Release, Snapshot, Tap};
     vec![
         ms(800),
         Snapshot("01-start"),
+        Tap(UP),
+        ms(300),
+        Snapshot("01b-top-menu"),
+        Tap(RIGHT),
+        Tap(OK),
+        ms(600),
+        Snapshot("01c-audio-panel"),
+        Tap(LEFT),
+        ms(300),
+        Snapshot("01d-audio-quieter"),
+        Tap(BACK),
+        Tap(BACK),
         Tap(RIGHT),
         Tap(RIGHT),
         ms(400),
@@ -86,13 +99,36 @@ fn demo_script() -> Vec<DemoStep> {
         Tap(DOWN),
         ms(500),
         Snapshot("05-short-last-row"),
+        // Settings, its About tab (the last), then the notices (its last row).
+        Tap(OK),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(DOWN),
+        ms(600),
+        Snapshot("06-settings-display-tab"),
+        Tap(DOWN),
+        Tap(RIGHT),
+        ms(400),
+        Snapshot("06a-settings-about"),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(DOWN),
+        Tap(DOWN),
         Tap(OK),
         ms(400),
-        Snapshot("06-about-page"),
+        Snapshot("06b-about-page"),
         Tap(DOWN),
         Tap(DOWN),
         ms(300),
-        Snapshot("06b-about-scrolled"),
+        Snapshot("06c-about-scrolled"),
+        Tap(BACK),
+        Tap(BACK),
         Tap(BACK),
         Tap(BACK),
         ms(500),
@@ -142,12 +178,12 @@ fn demo_script() -> Vec<DemoStep> {
         Tap(OK),
         ms(400),
         Snapshot("16-shown-again"),
+        // Settings (HISTORY.md § 8), from the top-right menu: Up to it,
+        // then its fifth entry.
         Tap(UP),
-        // Settings: the last tile (HISTORY.md § 8).
-        Tap(DOWN),
-        Tap(DOWN),
-        Tap(DOWN),
-        Tap(RIGHT),
+        Tap(UP),
+        Tap(UP),
+        Tap(UP),
         Tap(RIGHT),
         Tap(RIGHT),
         Tap(RIGHT),
@@ -193,8 +229,8 @@ fn demo_script() -> Vec<DemoStep> {
     ]
 }
 
-/// RustTV Remote in Settings (REMOTE.md § 2): the section, then the pairing
-/// code. Settings is the last tile: Sports, Weather, About, Settings.
+/// The RustTV Remote page (REMOTE.md § 2), then the pairing code. Its tile
+/// is the last: Sports, Weather, Settings, RustTV Remote.
 fn remote_script() -> Vec<DemoStep> {
     use DemoStep::{Snapshot, Tap};
     vec![
@@ -206,11 +242,6 @@ fn remote_script() -> Vec<DemoStep> {
         Tap(RIGHT),
         Tap(OK),
         ms(600),
-        Tap(DOWN),
-        Tap(DOWN),
-        Tap(DOWN),
-        Tap(RIGHT),
-        ms(300),
         Snapshot("remote-1-settings"),
         Tap(OK),
         ms(300),
@@ -233,6 +264,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         // RUSTTV_REMOTE_PAIR=1 starts the phone remote with pairing open.
         remote_pairing: std::env::var_os("RUSTTV_REMOTE_PAIR").is_some(),
         remote_port: None,
+        no_key_hints: false,
     };
     let mut script = demo_script();
     let mut args = std::env::args().skip(1);
@@ -242,7 +274,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         std::fs::create_dir_all(&dir)?;
         options.order_file = Some(dir.join("order.toml"));
         start_desktop_history(dir);
-        return Ok(run(FakePlatform::sample(), options)?);
+        return Ok(run(FakePlatform::sample().with_device(), options)?);
     };
     let dir = match (flag.as_str(), args.next()) {
         ("--order", Some(file)) => {
@@ -255,7 +287,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 parent
             });
             options.order_file = Some(file);
-            return Ok(run(FakePlatform::sample(), options)?);
+            return Ok(run(FakePlatform::sample().with_device(), options)?);
         }
         ("--demo", Some(dir)) => PathBuf::from(dir),
         ("--demo-remote", Some(dir)) => {
@@ -277,7 +309,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     options.order_file = Some(state.join("order.toml"));
     start_desktop_history(state);
 
-    let mut platform = FakePlatform::sample();
+    let mut platform = FakePlatform::sample().with_device();
     platform.fail_launches_of(FAILING_APP);
     let failures: Rc<RefCell<Vec<String>>> = Rc::default();
     let record = failures.clone();

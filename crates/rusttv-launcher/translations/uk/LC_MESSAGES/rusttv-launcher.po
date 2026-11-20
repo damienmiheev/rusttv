@@ -431,3 +431,60 @@ msgstr "Тіні й тло"
 
 msgid "No shadows or backdrop: smoother on a slow graphics chip"
 msgstr "Без тіней і тла: плавніше на слабкому графічному чипі"
+
+msgid "Audio"
+msgstr "Звук"
+
+msgid "Close app"
+msgstr "Закрити застосунок"
+
+msgid "KDE Connect"
+msgstr "KDE Connect"
+
+msgid "Licences and third-party notices"
+msgstr "Ліцензії та повідомлення третіх сторін"
+
+msgid "Loading…"
+msgstr "Завантаження…"
+
+msgid "MIT OR Apache-2.0 · licences and third-party notices"
+msgstr "MIT OR Apache-2.0 · ліцензії та повідомлення третіх сторін"
+
+msgid "Modify"
+msgstr "Змінити"
+
+msgid "Muted"
+msgstr "Без звуку"
+
+msgid "Network"
+msgstr "Мережа"
+
+msgid "Power"
+msgstr "Живлення"
+
+msgid "RustTV {}"
+msgstr "RustTV {}"
+
+msgid "Search"
+msgstr "Пошук"
+
+msgid "Size"
+msgstr "Розмір"
+
+msgid "Size: {} %"
+msgstr "Розмір: {} %"
+
+msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
+msgstr "Slint (Royalty-free License 2.0), Skia, бібліотеки Rust"
+
+msgid "Source code"
+msgstr "Вихідний код"
+
+msgid "The app restarts at the new size"
+msgstr "Застосунок перезапуститься в новому розмірі"
+
+msgid "Volume"
+msgstr "Гучність"
+
+msgid "✓ on the keyboard confirms, Back cancels"
+msgstr "✓ на клавіатурі — підтвердити, «Назад» — скасувати"

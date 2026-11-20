@@ -36,11 +36,11 @@ Ukrainian is reviewed by the owner first.
 
 ## Change a text
 
-Change it in `home.slint`, regenerate the template, and update every `.po`
-file: a `msgid` that no longer matches shows English. Regenerate with
-Slint's extractor (`cargo install slint-tr-extractor`), without the default
-context (`build.rs` turns it off):
+Change it in `home.slint` or `quick.slint`, regenerate the template, and
+update every `.po` file: a `msgid` that no longer matches shows English.
+Regenerate with Slint's extractor (`cargo install slint-tr-extractor`) over
+both files, without the default context (`build.rs` turns it off):
 
 ```bash
-slint-tr-extractor --no-default-translation-context ui/home.slint -o translations/rusttv-launcher.pot
+slint-tr-extractor --no-default-translation-context ui/home.slint ui/quick.slint -o translations/rusttv-launcher.pot
 ```

@@ -431,3 +431,60 @@ msgstr "Bóng đổ và nền"
 
 msgid "No shadows or backdrop: smoother on a slow graphics chip"
 msgstr "Không bóng đổ hay nền: mượt hơn trên chip đồ họa chậm"
+
+msgid "Audio"
+msgstr "Âm thanh"
+
+msgid "Close app"
+msgstr "Đóng ứng dụng"
+
+msgid "KDE Connect"
+msgstr "KDE Connect"
+
+msgid "Licences and third-party notices"
+msgstr "Giấy phép và thông báo của bên thứ ba"
+
+msgid "Loading…"
+msgstr "Đang tải…"
+
+msgid "MIT OR Apache-2.0 · licences and third-party notices"
+msgstr "MIT OR Apache-2.0 · giấy phép và thông báo của bên thứ ba"
+
+msgid "Modify"
+msgstr "Chỉnh sửa"
+
+msgid "Muted"
+msgstr "Đã tắt tiếng"
+
+msgid "Network"
+msgstr "Mạng"
+
+msgid "Power"
+msgstr "Nguồn"
+
+msgid "RustTV {}"
+msgstr "RustTV {}"
+
+msgid "Search"
+msgstr "Tìm kiếm"
+
+msgid "Size"
+msgstr "Kích thước"
+
+msgid "Size: {} %"
+msgstr "Kích thước: {} %"
+
+msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
+msgstr "Slint (Royalty-free License 2.0), Skia, thư viện Rust"
+
+msgid "Source code"
+msgstr "Mã nguồn"
+
+msgid "The app restarts at the new size"
+msgstr "Ứng dụng khởi động lại với kích thước mới"
+
+msgid "Volume"
+msgstr "Âm lượng"
+
+msgid "✓ on the keyboard confirms, Back cancels"
+msgstr "✓ trên bàn phím để xác nhận, Quay lại để hủy"

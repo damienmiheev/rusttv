@@ -431,3 +431,60 @@ msgstr "छाया और बैकग्राउंड"
 
 msgid "No shadows or backdrop: smoother on a slow graphics chip"
 msgstr "छाया या बैकग्राउंड नहीं: धीमे ग्राफ़िक्स चिप पर ज़्यादा स्मूथ"
+
+msgid "Audio"
+msgstr "ऑडियो"
+
+msgid "Close app"
+msgstr "ऐप बंद करें"
+
+msgid "KDE Connect"
+msgstr "KDE Connect"
+
+msgid "Licences and third-party notices"
+msgstr "लाइसेंस और तृतीय-पक्ष सूचनाएँ"
+
+msgid "Loading…"
+msgstr "लोड हो रहा है…"
+
+msgid "MIT OR Apache-2.0 · licences and third-party notices"
+msgstr "MIT OR Apache-2.0 · लाइसेंस और तृतीय-पक्ष सूचनाएँ"
+
+msgid "Modify"
+msgstr "बदलें"
+
+msgid "Muted"
+msgstr "म्यूट"
+
+msgid "Network"
+msgstr "नेटवर्क"
+
+msgid "Power"
+msgstr "पावर"
+
+msgid "RustTV {}"
+msgstr "RustTV {}"
+
+msgid "Search"
+msgstr "खोजें"
+
+msgid "Size"
+msgstr "आकार"
+
+msgid "Size: {} %"
+msgstr "आकार: {} %"
+
+msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
+msgstr "Slint (Royalty-free License 2.0), Skia, Rust लाइब्रेरी"
+
+msgid "Source code"
+msgstr "सोर्स कोड"
+
+msgid "The app restarts at the new size"
+msgstr "ऐप नए आकार में फिर से शुरू होता है"
+
+msgid "Volume"
+msgstr "वॉल्यूम"
+
+msgid "✓ on the keyboard confirms, Back cancels"
+msgstr "कीबोर्ड पर ✓ पुष्टि करता है, वापस रद्द करता है"

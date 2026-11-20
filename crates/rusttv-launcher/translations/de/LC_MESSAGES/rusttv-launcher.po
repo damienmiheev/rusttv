@@ -41,6 +41,24 @@ msgstr "OK drücken, um nach Updates zu suchen"
 msgid "Hide from Home"
 msgstr "Auf dem Startbildschirm ausblenden"
 
+msgid "Size: {} %"
+msgstr "Größe: {} %"
+
+msgid "Size"
+msgstr "Größe"
+
+msgid "Volume"
+msgstr "Lautstärke"
+
+msgid "Muted"
+msgstr "Stumm"
+
+msgid "Close app"
+msgstr "App schließen"
+
+msgid "The app restarts at the new size"
+msgstr "Die App startet in der neuen Größe neu"
+
 msgid "Move"
 msgstr "Verschieben"
 
@@ -431,3 +449,42 @@ msgstr "Schatten und Hintergrund"
 
 msgid "No shadows or backdrop: smoother on a slow graphics chip"
 msgstr "Keine Schatten oder Hintergrund: flüssiger bei einem langsamen Grafikchip"
+
+msgid "Loading…"
+msgstr "Wird geladen…"
+
+msgid "✓ on the keyboard confirms, Back cancels"
+msgstr "✓ auf der Tastatur bestätigt, Zurück bricht ab"
+
+msgid "Audio"
+msgstr "Audio"
+
+msgid "KDE Connect"
+msgstr "KDE Connect"
+
+msgid "Licences and third-party notices"
+msgstr "Lizenzen und Hinweise zu Drittanbietern"
+
+msgid "MIT OR Apache-2.0 · licences and third-party notices"
+msgstr "MIT OR Apache-2.0 · Lizenzen und Hinweise zu Drittanbietern"
+
+msgid "Modify"
+msgstr "Bearbeiten"
+
+msgid "Network"
+msgstr "Netzwerk"
+
+msgid "Power"
+msgstr "Ein/Aus"
+
+msgid "RustTV {}"
+msgstr "RustTV {}"
+
+msgid "Search"
+msgstr "Suche"
+
+msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
+msgstr "Slint (Royalty-free License 2.0), Skia, Rust-Bibliotheken"
+
+msgid "Source code"
+msgstr "Quellcode"

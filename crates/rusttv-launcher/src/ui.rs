@@ -15,8 +15,8 @@ use slint::{
 use crate::history::History;
 use crate::i18n;
 use crate::model::{
-    App, Category, Effect, FolderNames, Home, Input, LAUNCH_TIMEOUT, LONG_PRESS, MOVE_IDLE_TIMEOUT,
-    MenuItem, Scroll, State, TileId,
+    App, Category, Effect, FolderNames, Home, Input, LONG_PRESS, MOVE_IDLE_TIMEOUT, MenuItem,
+    Scroll, State, TileId,
 };
 use crate::order_file;
 use crate::platform::{
@@ -44,8 +44,11 @@ use rusttv_remote::protocol::{
 mod generated {
     slint::include_modules!();
 }
-use generated::{Dir, Effects, HomeWindow, Pointer, ReviewLine, SettingsRow, Strings, TileData};
+use generated::{
+    Dir, Effects, Hints, HomeWindow, Pointer, ReviewLine, SettingsRow, Strings, TileData,
+};
 
+mod device_view;
 mod remote_view;
 mod settings_view;
 
@@ -72,6 +75,9 @@ const HERO_DELAY: Duration = Duration::from_millis(150);
 
 /// How long the "couldn't open" message stays.
 const TOAST_TIME: Duration = Duration::from_secs(3);
+
+/// Tiles per row of Hidden apps (home.slint).
+const HIDDEN_COLUMNS: usize = 6;
 
 /// Size of the small copy of each banner kept to compute its hero glow.
 const GLOW_SOURCE_SIZE: (u32, u32) = (48, 27);
@@ -104,6 +110,14 @@ const BACKDROP_BASE_TONE: f64 = 12.0;
 /// tone, colourful but dark enough for the white title.
 const BACKDROP_GLOW_TONE: f64 = 30.0;
 
+/// Size of the baked hero backdrop ([`crate::platform::Glow::paint`]): a
+/// 320-wide 16:9 screen down to `Glow::HEIGHT` (780 of 1080 rows, 130 of
+/// 180); the GPU scales it to the screen.
+const BACKDROP_SIZE: (u32, u32) = (320, 130);
+
+/// `Theme.bg` in `home.slint`: the page under the grid.
+const PAGE_COLOUR: [u8; 3] = [0x0E, 0x10, 0x14];
+
 /// Lines of the notices passed to the window at a time: more than fit, the
 /// rest is clipped (long lines wrap). Only a slice is laid out, never all
 /// ~10,000 lines.
@@ -135,8 +149,13 @@ const SCROLL_STEP: f32 = 40.0;
 /// How long the mouse pointer stays after it last moved.
 const POINTER_REST: Duration = Duration::from_secs(4);
 
-/// Tiles per row of Hidden apps (home.slint).
-const HIDDEN_COLUMNS: usize = 6;
+/// How far (in pixels) the pointer has to move from where it rested when
+/// the launcher came back before hovering focuses again.
+#[cfg_attr(
+    not(feature = "linux"),
+    allow(dead_code, reason = "set from the Linux window hook")
+)]
+const PARKED_SLACK: f64 = 16.0;
 
 /// Settings for [`run`].
 #[derive(Debug, Clone, Default)]
@@ -165,6 +184,10 @@ pub struct RunOptions {
     /// The phone remote's port: `None` is [`rusttv_remote::PORT`]; tests use
     /// `Some(0)` for any free port.
     pub remote_port: Option<u16>,
+    /// Leave out the hints that only say which keys move around ("Back
+    /// returns", "Up and Down choose"): for a home screen driven as much by
+    /// a pointer as by keys (Linux).
+    pub no_key_hints: bool,
 }
 
 /// Reports activity lifecycle events to a running home screen.
@@ -178,6 +201,7 @@ impl Lifecycle {
     /// The launcher left the screen: an app opened or the screen turned off.
     pub fn paused(&self) {
         self.deliver(|controller| {
+            controller.close_overlay(true);
             controller.away = true;
             controller.input(Input::Paused);
         });
@@ -186,6 +210,86 @@ impl Lifecycle {
     /// The launcher is on screen again; re-reads the app list if it changed.
     pub fn resumed(&self) {
         self.deliver(Controller::resume);
+    }
+
+    /// The process of app `id` ended. If that app was being launched (it
+    /// ended before its window came up), the launch splash closes. For
+    /// platforms that start apps as their own processes (Linux); there the
+    /// launcher resumes when it gets the keyboard focus back.
+    #[cfg_attr(
+        not(all(target_os = "linux", feature = "linux")),
+        allow(dead_code, reason = "called by the Linux binary")
+    )]
+    pub fn app_ended(&self, id: String) {
+        self.deliver(move |controller| {
+            // Closed for a new size in the app overlay: it starts again.
+            if controller.restart.as_deref() == Some(id.as_str()) {
+                controller.restart = None;
+                controller.launch(&id);
+                return;
+            }
+            // Closed for a new size: it starts again at that size.
+            if controller.relaunch.as_deref() == Some(id.as_str()) {
+                controller.relaunch = None;
+                if controller.home.launching() == Some(id.as_str()) {
+                    controller.launch(&id);
+                }
+                return;
+            }
+            if controller.home.launching() == Some(id.as_str()) {
+                controller.input(Input::Paused);
+            }
+        });
+    }
+
+    /// A volume key pressed outside the window (Linux: `--volume`, bound
+    /// to the remote's keys in the compositor): changes the volume and
+    /// shows the volume bar.
+    #[cfg_attr(
+        not(all(target_os = "linux", feature = "linux")),
+        allow(dead_code, reason = "called by the Linux binary")
+    )]
+    pub fn volume(&self, change: crate::device::VolumeChange) {
+        self.deliver(move |controller| controller.volume_key(change));
+    }
+
+    /// Home held (Linux: `--app-menu`): the app overlay over the app in
+    /// front (its size, the volume, closing it), or closes it when it is
+    /// open. Over the home screen, or where there is no overlay, just Home.
+    #[cfg_attr(
+        not(all(target_os = "linux", feature = "linux")),
+        allow(dead_code, reason = "called by the Linux binary")
+    )]
+    pub fn app_menu(&self) {
+        self.deliver(|controller| {
+            if controller.overlay {
+                controller.close_overlay(false);
+                return;
+            }
+            if controller.away
+                && let Some(id) = controller.platform.last_app()
+                && controller.open_overlay(id)
+            {
+                return;
+            }
+            controller.away = true;
+            controller.input(Input::Paused);
+            controller.resume();
+            controller.after_pointer(None);
+        });
+    }
+
+    /// The power key: like Home, then the power menu (restart, power off)
+    /// over the tiles, where the platform offers one. One delivery, so
+    /// nothing runs between Home and the menu.
+    pub fn power_menu(&self) {
+        self.deliver(|controller| {
+            controller.away = true;
+            controller.input(Input::Paused);
+            controller.resume();
+            let effect = controller.home.open_power();
+            controller.after_pointer(effect);
+        });
     }
 
     /// Runs `event` on the controller from a fresh timer callback, so it never
@@ -207,6 +311,18 @@ impl std::fmt::Debug for Lifecycle {
             .field("running", &running)
             .finish()
     }
+}
+
+/// The app overlay closed (see [`Platform::open_overlay`]); from any thread.
+#[cfg_attr(
+    not(all(target_os = "linux", feature = "linux")),
+    allow(dead_code, reason = "called by the Linux overlay")
+)]
+pub(crate) fn overlay_closed(closed: crate::platform::OverlayClosed) {
+    // Fails only once the event loop has stopped.
+    let _ = slint::invoke_from_event_loop(move || {
+        settings_view::with_controller(|controller| controller.overlay_closed(closed));
+    });
 }
 
 /// The pointer's accessibility service went on or off (REMOTE.md § 5);
@@ -338,6 +454,55 @@ fn apply_effects(window: &HomeWindow, reduced: bool) {
     effects.set_backdrop(!reduced);
 }
 
+/// Shows or hides the mouse pointer over the whole window, at once (a
+/// TouchArea's `mouse-cursor` only changes with the next pointer event).
+fn show_pointer(window: &HomeWindow, shown: bool) {
+    window.global::<Pointer>().set_shown(shown);
+    #[cfg(all(target_os = "linux", feature = "linux"))]
+    {
+        use slint::winit_030::WinitWindowAccessor as _;
+        window
+            .window()
+            .with_winit_window(|winit| winit.set_cursor_visible(shown));
+    }
+}
+
+/// Air-mouse remotes send OK as a left click, at wherever the pointer
+/// is. While the pointer is hidden (the D-pad is in use), a click is OK on
+/// the focused item instead. Returns whether `event` was such a click.
+#[cfg(feature = "linux")]
+fn click_is_ok_while_pointer_hidden(
+    home: &slint::Weak<HomeWindow>,
+    controller: &Weak<RefCell<Controller>>,
+    event: &slint::winit_030::winit::event::WindowEvent,
+) -> bool {
+    use slint::winit_030::winit::event::{ElementState, MouseButton, WindowEvent};
+
+    let WindowEvent::MouseInput {
+        state,
+        button: MouseButton::Left,
+        ..
+    } = event
+    else {
+        return false;
+    };
+    let hidden = home
+        .upgrade()
+        .is_some_and(|window| !window.global::<Pointer>().get_shown());
+    let Some(controller) = controller.upgrade().filter(|_| hidden) else {
+        return false;
+    };
+    let Ok(mut controller) = controller.try_borrow_mut() else {
+        return false;
+    };
+    // A text prompt's field takes clicks as they are.
+    if controller.prompt.is_some() {
+        return false;
+    }
+    controller.key("\n", *state == ElementState::Pressed, false);
+    true
+}
+
 /// Shows how many frames were drawn in the last second, in a corner.
 /// Showing the count draws one more frame a second; at rest it stays put.
 fn count_frames(window: &HomeWindow) {
@@ -386,6 +551,10 @@ fn start(
         .and_then(std::path::Path::parent)
         .is_some_and(|dir| dir.join(order_file::REDUCED_EFFECTS).exists());
     apply_effects(&window, reduced);
+    window
+        .global::<Effects>()
+        .set_baked_backdrop(platform.top_right_menu());
+    window.global::<Hints>().set_keys(!options.no_key_hints);
     if std::env::var_os("RUSTTV_FPS").is_some_and(|value| value != "0") {
         count_frames(&window);
     }
@@ -411,11 +580,47 @@ fn start(
         }
     });
     let weak = Rc::downgrade(&controller);
+    window.on_quick_hovered(move |index| {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow_mut().quick_hovered(index);
+        }
+    });
+    let weak = Rc::downgrade(&controller);
     window.on_settings_pointer(move |panel, index, action| {
         if let Some(controller) = weak.upgrade() {
             controller
                 .borrow_mut()
                 .settings_pointer(panel, index, action);
+        }
+    });
+    let weak = Rc::downgrade(&controller);
+    window.on_quick_clicked(move |index| {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow_mut().quick_clicked(index);
+        }
+    });
+    let weak = Rc::downgrade(&controller);
+    window.on_quick_row_clicked(move |row| {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow_mut().quick_row_clicked(row);
+        }
+    });
+    let weak = Rc::downgrade(&controller);
+    window.on_quick_dismissed(move || {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow_mut().quick_dismissed();
+        }
+    });
+    let weak = Rc::downgrade(&controller);
+    window.on_prompt_done(move |text| {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow_mut().prompt_done(&text);
+        }
+    });
+    let weak = Rc::downgrade(&controller);
+    window.on_prompt_cancelled(move || {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow_mut().prompt_cancelled();
         }
     });
     let weak = Rc::downgrade(&controller);
@@ -444,13 +649,92 @@ fn start(
             this.render();
         }
     });
+    #[cfg(feature = "linux")]
+    pause_when_covered(&window, &controller);
     Ok((window, controller))
 }
 
-/// Shows or hides the mouse pointer over the whole window (home.slint
-/// `Pointer`).
-fn show_pointer(window: &HomeWindow, shown: bool) {
-    window.global::<Pointer>().set_shown(shown);
+/// The volume keys of a remote or keyboard, which Slint drops (it has no
+/// key text for them).
+#[cfg(feature = "linux")]
+fn volume_change(
+    event: &slint::winit_030::winit::event::KeyEvent,
+) -> Option<crate::device::VolumeChange> {
+    use crate::device::VolumeChange;
+    use slint::winit_030::winit::event::ElementState;
+    use slint::winit_030::winit::keyboard::{Key, NamedKey};
+
+    if event.state != ElementState::Pressed {
+        return None;
+    }
+    match event.logical_key {
+        Key::Named(NamedKey::AudioVolumeUp) => Some(VolumeChange::Up),
+        Key::Named(NamedKey::AudioVolumeDown) => Some(VolumeChange::Down),
+        Key::Named(NamedKey::AudioVolumeMute) => Some(VolumeChange::Mute),
+        _ => None,
+    }
+}
+
+/// A desktop app has no activity lifecycle: an app's window is up when the
+/// compositor takes the keyboard focus from the launcher, and the launcher
+/// is back when it gets the focus again. Losing it during a launch ends the
+/// launch splash, like Android's pause.
+///
+/// This is the window's one event filter (Slint keeps only the last one
+/// set), so it also turns clicks into OK while the pointer is hidden.
+#[cfg(feature = "linux")]
+fn pause_when_covered(window: &HomeWindow, controller: &Rc<RefCell<Controller>>) {
+    use slint::winit_030::{EventResult, WinitWindowAccessor as _, winit::event::WindowEvent};
+
+    let weak = Rc::downgrade(controller);
+    let home = window.as_weak();
+    window.window().on_winit_window_event(move |_, event| {
+        if click_is_ok_while_pointer_hidden(&home, &weak, event) {
+            return EventResult::PreventDefault;
+        }
+        // Before Slint turns it into a hover: is this a move of the person's?
+        if let Some(controller) = weak.upgrade()
+            && let Ok(mut controller) = controller.try_borrow_mut()
+        {
+            match event {
+                WindowEvent::CursorEntered { .. } => controller.park_pointer(),
+                WindowEvent::CursorMoved { position, .. } => {
+                    controller.pointer_at(position.x, position.y);
+                }
+                _ => {}
+            }
+        }
+        // Volume keys while the launcher has the keyboard (the compositor
+        // may bind them itself: see `--volume` in src/bin/linux.rs).
+        if let WindowEvent::KeyboardInput { event, .. } = event
+            && let Some(change) = volume_change(event)
+        {
+            let weak = weak.clone();
+            Timer::single_shot(Duration::ZERO, move || {
+                if let Some(controller) = weak.upgrade() {
+                    controller.borrow_mut().volume_key(change);
+                }
+            });
+            return EventResult::PreventDefault;
+        }
+        if let WindowEvent::Focused(focused) = *event {
+            let weak = weak.clone();
+            // Not from inside the event filter: the controller may be borrowed.
+            Timer::single_shot(Duration::ZERO, move || {
+                let Some(controller) = weak.upgrade() else {
+                    return;
+                };
+                let mut this = controller.borrow_mut();
+                if !focused && this.home.state() == State::Launching {
+                    this.away = true;
+                    this.input(Input::Paused);
+                } else if focused && this.away {
+                    this.resume();
+                }
+            });
+        }
+        EventResult::Propagate
+    });
 }
 
 /// Time since the home screen started; passed in so tests can use Slint's mocked time.
@@ -497,10 +781,6 @@ struct Controller {
     renaming: Option<u32>,
     /// Confirms a rename once the keyboard's last word is in the field.
     rename_timer: Timer,
-    /// Scroll-wheel movement not yet turned into a row.
-    scroll_rest: f32,
-    /// Hides the mouse pointer once it rests.
-    pointer_timer: Timer,
     /// The long-press menu's item names; empty while it is closed.
     menu_items: Rc<VecModel<SharedString>>,
     hero: Option<TileId>,
@@ -556,6 +836,28 @@ struct Controller {
     /// Another app is on screen (Android paused the launcher): phones get
     /// the touchpad, not the Home mirror.
     away: bool,
+    /// The app whose size changed in the open menu; it restarts at the new
+    /// size once the menu closes.
+    resized: Option<String>,
+    /// The app closed to restart at a new size; it opens again when its
+    /// process has ended.
+    relaunch: Option<String>,
+    /// Whether the app overlay is open (holding Home over an app).
+    overlay: bool,
+    /// The compositor reports where the pointer is when it enters the
+    /// window again, as an app in front closes or goes (an air mouse left
+    /// resting over some tile); that is no move of the person's. Until the
+    /// pointer moves [`PARKED_SLACK`] away from there, hovering focuses
+    /// nothing. `parked_at`: that first report.
+    parked: bool,
+    #[cfg_attr(
+        not(feature = "linux"),
+        allow(dead_code, reason = "set from the Linux window hook")
+    )]
+    parked_at: Option<(f64, f64)>,
+    /// The app closed in the app overlay to restart at a new size; it
+    /// opens again when its process has ended.
+    restart: Option<String>,
     /// The phones connected now; the pointer hides with the last.
     connected: std::collections::HashSet<rusttv_remote::PhoneId>,
     /// The last app in front that is an installed app: overlays (the TV's
@@ -565,6 +867,33 @@ struct Controller {
     front_dpad: bool,
     /// Whether that app takes a search from the phone.
     front_search: bool,
+    /// The platform's device settings (Settings tabs, quick panels, the
+    /// volume); `None` where it has none.
+    device: Option<std::sync::Arc<dyn crate::device::DeviceSettings>>,
+    /// Changes sent to the device and not answered yet: reads of its
+    /// settings wait for them, so a slider doesn't jump back.
+    device_pending: usize,
+    /// The quick panel while it is open, and its status line ("…" while
+    /// reading, or why a change failed).
+    quick: Option<crate::device::PanelPage>,
+    quick_status: String,
+    quick_rows: Rc<VecModel<SettingsRow>>,
+    /// The top-right menu's entries, as quick.slint codes.
+    quick_codes: Rc<VecModel<i32>>,
+    /// Hides the volume bar after the last volume key.
+    volume_timer: Timer,
+    /// The platform tab Settings opens on once its tabs are read.
+    settings_tab: Option<&'static str>,
+    /// The network interfaces on the Network entry, as quick.slint codes.
+    link_codes: Rc<VecModel<i32>>,
+    /// Reads the network interfaces again every [`device_view::LINKS_EVERY`].
+    links_timer: Timer,
+    /// Scroll-wheel movement not yet turned into a row.
+    scroll_rest: f32,
+    /// Hides the mouse pointer once it rests.
+    pointer_timer: Timer,
+    /// The open text prompt, and the device control its text is for.
+    prompt: Option<device_view::Prompt>,
 }
 
 impl Controller {
@@ -592,6 +921,12 @@ impl Controller {
         window.set_review_lines(ModelRc::from(review_lines.clone()));
         let review_code = Rc::new(VecModel::default());
         window.set_review_code(ModelRc::from(review_code.clone()));
+        let quick_rows = Rc::new(VecModel::default());
+        window.set_quick_rows(ModelRc::from(quick_rows.clone()));
+        let quick_codes = Rc::new(VecModel::default());
+        window.set_quick_actions(ModelRc::from(quick_codes.clone()));
+        let link_codes = Rc::new(VecModel::default());
+        window.set_network_icons(ModelRc::from(link_codes.clone()));
         window.set_version(env!("CARGO_PKG_VERSION").into());
         window.set_update_status(update_line(window, &UpdateStatus::Idle));
 
@@ -608,6 +943,13 @@ impl Controller {
                 });
         // Focus is restored before the app list arrives, which keeps it by identity.
         let mut home = Home::new(order, folders, hidden, options.right_to_left);
+        home.set_launch_timeout(platform.launch_timeout());
+        home.set_app_sizes(platform.scales_apps());
+        let quick_actions = device_view::quick_actions(platform.as_ref());
+        // Without a top-right menu (Android), About and Settings are tiles.
+        home.set_settings_tiles(quick_actions.is_empty());
+        home.set_quick_actions(quick_actions);
+        let device = platform.device_settings();
         let strings = window.global::<Strings>();
         home.set_folder_names(FolderNames(Category::ALL.map(|category| {
             strings
@@ -617,6 +959,8 @@ impl Controller {
         if let Some(id) = &saved_focus {
             home.focus_on(id);
         }
+        let right_to_left = options.right_to_left;
+        let baked = platform.top_right_menu();
         let controller = Rc::new_cyclic(|me| {
             RefCell::new(Self {
                 home,
@@ -624,7 +968,7 @@ impl Controller {
                 options,
                 apps: HashMap::new(),
                 glows: HashMap::new(),
-                builtins: Builtins::new(),
+                builtins: Builtins::new(baked, right_to_left),
                 shown: Vec::new(),
                 tiles,
                 hidden_shown: Vec::new(),
@@ -633,8 +977,6 @@ impl Controller {
                 folder_tiles,
                 renaming: None,
                 rename_timer: Timer::default(),
-                scroll_rest: 0.0,
-                pointer_timer: Timer::default(),
                 menu_items,
                 hero: None,
                 hero_a_front: true,
@@ -670,10 +1012,29 @@ impl Controller {
                 remote_rows,
                 pairing: None,
                 away: false,
+                resized: None,
+                relaunch: None,
+                overlay: false,
+                parked: false,
+                parked_at: None,
+                restart: None,
                 connected: std::collections::HashSet::new(),
                 front_app: None,
                 front_dpad: false,
                 front_search: false,
+                device,
+                device_pending: 0,
+                quick: None,
+                quick_status: String::new(),
+                quick_rows,
+                quick_codes,
+                volume_timer: Timer::default(),
+                settings_tab: None,
+                link_codes,
+                links_timer: Timer::default(),
+                scroll_rest: 0.0,
+                pointer_timer: Timer::default(),
+                prompt: None,
             })
         });
         *controller.borrow().options.lifecycle.0.borrow_mut() = Rc::downgrade(&controller);
@@ -687,6 +1048,7 @@ impl Controller {
             // does not wait for its backdrop; it fades in like any focus change.
             this.render();
             this.refresh_update();
+            this.start_links();
         }
         controller
     }
@@ -849,6 +1211,21 @@ impl Controller {
     /// swallowed here: passed on, each restarted the long-press timer, so move
     /// mode only began on release. Held arrows keep repeating, to scroll.
     fn key(&mut self, text: &str, pressed: bool, repeat: bool) -> bool {
+        // The prompt's text field has the keys; this sees only what it left.
+        if self.prompt.is_some() {
+            return false;
+        }
+        // The Menu key (keyboards; a controller's top button): the focused
+        // tile's menu, as a long OK. Not while the pairing, trust or review
+        // screen is open: those take only their own keys.
+        if text == "\u{F735}" {
+            if pressed && !repeat && self.pairing.is_none() && self.review.is_none() {
+                self.hide_pointer();
+                self.home.long_press();
+                self.after_pointer(None);
+            }
+            return true;
+        }
         let Some(input) = input_for_key(text, pressed) else {
             return false;
         };
@@ -858,6 +1235,113 @@ impl Controller {
             self.input(input);
         }
         true
+    }
+
+    fn input(&mut self, input: Input) {
+        // The pairing and trust screens take the remote's keys wherever they
+        // were opened (trust can open over Home).
+        if self.pairing.is_some()
+            && !matches!(input, Input::Tick | Input::Paused | Input::LaunchFailed)
+        {
+            self.pairing_input(input);
+            return;
+        }
+        // The text prompt takes the remote's keys while it is open; Back
+        // from the phone remote closes it.
+        if self.prompt.is_some()
+            && !matches!(input, Input::Tick | Input::Paused | Input::LaunchFailed)
+        {
+            if input == Input::Back {
+                self.prompt_cancelled();
+            }
+            return;
+        }
+        let effect = self.home.handle(input, (self.clock)());
+        if input != Input::Tick {
+            self.pressed = input == Input::OkPressed
+                && matches!(self.home.state(), State::Browse | State::Folder);
+            self.restart_idle();
+        }
+        self.apply(effect);
+        // Remember focus while the launcher is off screen, in case Android
+        // stops it there: back on Home, focus is on the app that was opened.
+        if input == Input::Paused && self.home.focused() != self.saved_focus.as_ref() {
+            self.save_order();
+        }
+        if input == Input::Paused {
+            self.prompt = None;
+            self.close_settings_view();
+            self.close_quick_view();
+            self.schedule_pack();
+            self.end_rename();
+        }
+        if let Some(notices) = &mut self.notices {
+            match input {
+                Input::Up => notices.scroll_up(),
+                Input::Down => notices.scroll_down(),
+                _ => {}
+            }
+        }
+        self.schedule_tick();
+        // Stops polling once About closes and nothing runs.
+        self.schedule_update_poll();
+        self.render();
+    }
+
+    /// Carries out what the model asked for.
+    fn apply(&mut self, effect: Option<Effect>) {
+        match effect {
+            Some(Effect::Launch(id)) => self.launch(&id),
+            Some(Effect::ShowLaunchError(id)) => {
+                let label = self.apps.get(&id).map_or(id.as_str(), |app| &app.label);
+                let text = self
+                    .window
+                    .upgrade()
+                    .map(|window| window.global::<Strings>().invoke_couldnt_open(label.into()));
+                self.show_toast(text.unwrap_or_default());
+            }
+            Some(Effect::SaveOrder) => {
+                self.save_order();
+                // The person moved, hid or showed an app (HISTORY.md § 2).
+                if let Some(history) = History::get() {
+                    history.launcher_edited();
+                }
+            }
+            Some(Effect::OpenSettings) => self.open_settings(),
+            Some(Effect::OpenSettingsTab(tab)) => {
+                self.settings_tab = Some(tab);
+                self.open_settings();
+            }
+            Some(Effect::Settings(input)) => self.settings_input(input),
+            Some(Effect::OpenRemote) => self.open_remote_page(),
+            Some(Effect::Remote(input)) => self.remote_page_input(input),
+            Some(Effect::Quick(action)) => self.open_quick(action),
+            Some(Effect::QuickInput(input)) => self.quick_input(input),
+            Some(Effect::OpenAbout) => {
+                self.open_notices();
+                self.refresh_update();
+            }
+            Some(Effect::Update) => self.update_action(),
+            Some(Effect::RenameFolder(id)) => self.start_rename(id),
+            Some(Effect::ResizeApp(id, step)) => {
+                let size = self.platform.app_scale(&id);
+                let new = step.apply(size);
+                if new != size {
+                    self.platform.set_app_scale(&id, new);
+                    self.resized = Some(id);
+                }
+            }
+            // `render` fills the page and queues its artwork.
+            Some(Effect::OpenHidden) | None => {}
+        }
+        // A resized app that stays in the background closes, so it opens
+        // at its new size next time (a launch restarts it right away).
+        if self.home.state() != State::Menu
+            && let Some(id) = self.resized.take()
+            && self.platform.is_running(&id)
+        {
+            self.platform.close_app(&id);
+        }
     }
 
     /// A mouse over (`action` 0), click on (1) or right click on (2) entry
@@ -875,30 +1359,71 @@ impl Controller {
         else {
             return;
         };
-        // The tile takes the move from the background's TouchArea: show the
-        // pointer here too.
-        self.pointer_moved();
         if !self.pointer_reaches(false) {
             return;
         }
         let effect = match action {
             0 => {
+                if self.hover_settling() {
+                    return;
+                }
+                // The tile takes the move from the background's TouchArea:
+                // show the pointer here too.
+                self.pointer_moved();
                 if !self.home.hover(&tile) {
                     return;
                 }
                 None
             }
-            _ => self.home.point(&tile, action == 2, (self.clock)()),
+            _ => {
+                self.parked = false;
+                self.home.point(&tile, action == 2, (self.clock)())
+            }
         };
         self.after_pointer(effect);
+    }
+
+    /// A click on entry `index` of the top-right menu.
+    fn quick_clicked(&mut self, index: i32) {
+        self.parked = false;
+        if !self.pointer_reaches(false) {
+            return;
+        }
+        let Ok(index) = usize::try_from(index) else {
+            return;
+        };
+        let effect = self.home.point_quick(index);
+        self.after_pointer(effect);
+    }
+
+    /// The pointer over entry `index` of the top-right menu.
+    fn quick_hovered(&mut self, index: i32) {
+        if self.hover_settling() {
+            return;
+        }
+        self.pointer_moved();
+        if !self.pointer_reaches(false) {
+            return;
+        }
+        if let Ok(index) = usize::try_from(index)
+            && self.home.hover_quick(index)
+        {
+            self.after_pointer(None);
+        }
     }
 
     /// The pointer on item `index` of a list (home.slint `list-pointer`):
     /// hovering walks the focus there with the D-pad's own steps, so the
     /// pointer and the remote can't disagree; a click then presses OK.
     fn list_pointer(&mut self, list: i32, index: i32, action: i32) {
+        if action == 0 && self.hover_settling() {
+            return;
+        }
+        if action != 0 {
+            self.parked = false;
+        }
         self.pointer_moved();
-        if !self.pointer_reaches(list == 3) {
+        if !self.pointer_reaches(list == 4) {
             return;
         }
         let Ok(target) = usize::try_from(index) else {
@@ -908,7 +1433,8 @@ impl Controller {
             0 => (HomeWindow::get_menu_selected, 1),
             1 => (HomeWindow::get_hidden_focus, HIDDEN_COLUMNS),
             2 => (HomeWindow::get_remote_row, 1),
-            3 => (HomeWindow::get_review_row, 1),
+            3 => (HomeWindow::get_quick_row, 1),
+            4 => (HomeWindow::get_review_row, 1),
             _ => return,
         };
         self.walk_focus(target, columns, read);
@@ -972,7 +1498,6 @@ impl Controller {
     /// The scroll wheel: one row per notch (a notch is about 120 px; a
     /// touchpad's small steps add up).
     fn scrolled(&mut self, delta: f32) {
-        self.pointer_moved();
         // On the review screen the wheel reads its list, nothing more.
         if !self.pointer_reaches(self.review.is_some()) {
             return;
@@ -982,6 +1507,43 @@ impl Controller {
             let down = self.scroll_rest > 0.0;
             self.scroll_rest -= SCROLL_STEP.copysign(self.scroll_rest);
             self.input(if down { Input::Down } else { Input::Up });
+        }
+    }
+
+    /// Whether the pointer still rests where it was when the launcher came
+    /// back (see [`Controller::parked`]).
+    fn hover_settling(&self) -> bool {
+        self.parked
+    }
+
+    /// The pointer entered the window (see [`Controller::parked`]).
+    #[cfg_attr(
+        not(feature = "linux"),
+        allow(dead_code, reason = "called by the Linux window hook")
+    )]
+    fn park_pointer(&mut self) {
+        self.parked = true;
+        self.parked_at = None;
+    }
+
+    /// The pointer is at (`x`, `y`) in the window: the first report after
+    /// it entered is where it rests; moving away from there
+    /// lets hovering focus again.
+    #[cfg_attr(
+        not(feature = "linux"),
+        allow(dead_code, reason = "called by the Linux window hook")
+    )]
+    fn pointer_at(&mut self, x: f64, y: f64) {
+        if !self.parked {
+            return;
+        }
+        match self.parked_at {
+            None => self.parked_at = Some((x, y)),
+            Some((rest_x, rest_y)) => {
+                if (x - rest_x).hypot(y - rest_y) > PARKED_SLACK {
+                    self.parked = false;
+                }
+            }
         }
     }
 
@@ -1027,79 +1589,6 @@ impl Controller {
         }
     }
 
-    fn input(&mut self, input: Input) {
-        // The pairing and trust screens take the remote's keys wherever they
-        // were opened (trust can open over Home).
-        if self.pairing.is_some()
-            && !matches!(input, Input::Tick | Input::Paused | Input::LaunchFailed)
-        {
-            self.pairing_input(input);
-            return;
-        }
-        let effect = self.home.handle(input, (self.clock)());
-        if input != Input::Tick {
-            self.pressed = input == Input::OkPressed
-                && matches!(self.home.state(), State::Browse | State::Folder);
-            self.restart_idle();
-        }
-        self.apply(effect);
-        // Remember focus while the launcher is off screen, in case Android
-        // stops it there: back on Home, focus is on the app that was opened.
-        if input == Input::Paused && self.home.focused() != self.saved_focus.as_ref() {
-            self.save_order();
-        }
-        if input == Input::Paused {
-            self.close_settings_view();
-            self.schedule_pack();
-            self.end_rename();
-        }
-        if let Some(notices) = &mut self.notices {
-            match input {
-                Input::Up => notices.scroll_up(),
-                Input::Down => notices.scroll_down(),
-                _ => {}
-            }
-        }
-        self.schedule_tick();
-        // Stops polling once About closes and nothing runs.
-        self.schedule_update_poll();
-        self.render();
-    }
-
-    /// Carries out what the model asked for.
-    fn apply(&mut self, effect: Option<Effect>) {
-        match effect {
-            Some(Effect::Launch(id)) => self.launch(&id),
-            Some(Effect::ShowLaunchError(id)) => {
-                let label = self.apps.get(&id).map_or(id.as_str(), |app| &app.label);
-                let text = self
-                    .window
-                    .upgrade()
-                    .map(|window| window.global::<Strings>().invoke_couldnt_open(label.into()));
-                self.show_toast(text.unwrap_or_default());
-            }
-            Some(Effect::SaveOrder) => {
-                self.save_order();
-                // The person moved, hid or showed an app (HISTORY.md § 2).
-                if let Some(history) = History::get() {
-                    history.launcher_edited();
-                }
-            }
-            Some(Effect::OpenSettings) => self.open_settings(),
-            Some(Effect::Settings(input)) => self.settings_input(input),
-            Some(Effect::OpenRemote) => self.open_remote_page(),
-            Some(Effect::Remote(input)) => self.remote_page_input(input),
-            Some(Effect::OpenAbout) => {
-                self.open_notices();
-                self.refresh_update();
-            }
-            Some(Effect::Update) => self.update_action(),
-            Some(Effect::RenameFolder(id)) => self.start_rename(id),
-            // `render` fills the page and queues its artwork.
-            Some(Effect::OpenHidden) | None => {}
-        }
-    }
-
     /// OK on the About page: installs the available update, else checks for
     /// one; nothing while a step runs. A failed bridge call shows as the status.
     fn update_action(&mut self) {
@@ -1140,12 +1629,16 @@ impl Controller {
             window.set_update_available(status.is_available());
         }
         self.update = status;
+        // Settings' About tab shows the status in a row.
+        if self.settings.is_some() {
+            self.render();
+        }
     }
 
-    /// Polls the updater every [`UPDATE_POLL`] while the About page is open or
-    /// an update step runs, else stops.
+    /// Polls the updater every [`UPDATE_POLL`] while the About page or
+    /// Settings (its About tab) is open or an update step runs, else stops.
     fn schedule_update_poll(&mut self) {
-        if self.home.state() != State::About && !self.update.is_busy() {
+        if !matches!(self.home.state(), State::About | State::Settings) && !self.update.is_busy() {
             self.update_timer.stop();
             return;
         }
@@ -1208,7 +1701,75 @@ impl Controller {
         }
     }
 
+    /// Opens the app overlay over app `id`; `false` if the platform has
+    /// none.
+    fn open_overlay(&mut self, id: String) -> bool {
+        let Some(window) = self.window.upgrade() else {
+            return false;
+        };
+        let title = self
+            .apps
+            .get(&id)
+            .map_or_else(|| id.clone(), |app| app.label.clone());
+        let size = self
+            .platform
+            .scales_apps()
+            .then(|| self.platform.app_scale(&id));
+        let opened = self.platform.open_overlay(crate::platform::AppOverlay {
+            app: id,
+            title,
+            size,
+            texts: overlay_texts(&window),
+        });
+        self.overlay = opened;
+        opened
+    }
+
+    /// Closes the app overlay if it is open; `to_home`: for the home screen.
+    fn close_overlay(&mut self, to_home: bool) {
+        if self.overlay {
+            self.platform.close_overlay(to_home);
+        }
+    }
+
+    /// The app overlay closed: closes the app if that was chosen; a new
+    /// size restarts it (or, when Home closed the overlay, closes it, so it
+    /// opens at that size next time).
+    fn overlay_closed(&mut self, closed: crate::platform::OverlayClosed) {
+        self.overlay = false;
+        let crate::platform::OverlayClosed {
+            app,
+            size,
+            close_app,
+            to_home,
+        } = closed;
+        if close_app {
+            self.platform.close_app(&app);
+            return;
+        }
+        let Some(size) = size.filter(|size| *size != self.platform.app_scale(&app)) else {
+            return;
+        };
+        self.platform.set_app_scale(&app, size);
+        if self.platform.is_running(&app) {
+            self.platform.close_app(&app);
+            if !to_home {
+                self.restart = Some(app);
+            }
+        }
+    }
+
     fn launch(&mut self, id: &str) {
+        // Resized while it ran: close it first; it opens again when it has
+        // ended (`Lifecycle::app_ended`), at the new size.
+        if self.resized.as_deref() == Some(id) {
+            self.resized = None;
+            if self.platform.is_running(id) {
+                self.platform.close_app(id);
+                self.relaunch = Some(id.to_owned());
+                return;
+            }
+        }
         match self.platform.launch(id) {
             Ok(()) => {
                 if let Some(delay) = self.options.simulated_pause {
@@ -1229,7 +1790,7 @@ impl Controller {
     fn schedule_tick(&mut self) {
         let delay = match self.home.state() {
             State::Browse if self.pressed => LONG_PRESS,
-            State::Launching => LAUNCH_TIMEOUT,
+            State::Launching => self.home.launch_timeout(),
             State::Folder if self.pressed => LONG_PRESS,
             State::Moving => self.home.folder_due().map_or(MOVE_IDLE_TIMEOUT, |due| {
                 due.saturating_sub((self.clock)()).min(MOVE_IDLE_TIMEOUT)
@@ -1240,7 +1801,9 @@ impl Controller {
             | State::Hidden
             | State::Settings
             | State::Remote
-            | State::Folder => {
+            | State::Folder
+            | State::Bar
+            | State::Quick => {
                 self.tick_timer.stop();
                 return;
             }
@@ -1366,9 +1929,13 @@ impl Controller {
         }
         self.render_folder(&window);
         let (items, selected) = self.home.menu().unwrap_or_default();
+        let size = match self.home.menu_tile() {
+            Some(TileId::App(id)) => self.platform.app_scale(&id),
+            _ => 100,
+        };
         let labels: Vec<SharedString> = items
             .iter()
-            .map(|item| menu_label(&window, *item))
+            .map(|item| menu_label(&window, *item, size))
             .collect();
         if !self.menu_items.iter().eq(labels.iter().cloned()) {
             self.menu_items.set_vec(labels);
@@ -1395,6 +1962,8 @@ impl Controller {
             mode_value(self.home.state())
         });
         self.render_settings(&window);
+        self.render_quick(&window);
+        self.render_prompt(&window);
         self.render_remote_page(&window);
         self.render_pairing(&window);
         window.set_pressed(self.pressed);
@@ -1756,6 +2325,10 @@ impl Controller {
 
     /// Typing on the phone, into the folder name being edited.
     fn phone_text(&mut self, edit: TextEdit) {
+        if self.prompt.is_some() {
+            self.prompt_text(edit);
+            return;
+        }
         if self.renaming.is_none() {
             return;
         }
@@ -1817,7 +2390,11 @@ impl Controller {
             return Some(cached.clone());
         }
         let source = self.apps.get(component)?.glow_source.as_ref()?;
-        let glow = hero_glow(source);
+        let glow = hero_glow(
+            source,
+            self.platform.top_right_menu(),
+            self.options.right_to_left,
+        );
         self.glows.insert(component.to_owned(), glow.clone());
         Some(glow)
     }
@@ -1936,18 +2513,18 @@ impl Controller {
                     ..TileData::default()
                 };
             }
-            TileId::About => {
-                return TileData {
-                    image: self.builtins.about.image.clone(),
-                    kind: 3,
-                    ..TileData::default()
-                };
-            }
             TileId::Hidden => {
                 return TileData {
                     label: "Hidden apps".into(),
                     image: self.builtins.hidden.image.clone(),
                     kind: 5,
+                    ..TileData::default()
+                };
+            }
+            TileId::About => {
+                return TileData {
+                    image: self.builtins.about.image.clone(),
+                    kind: 3,
                     ..TileData::default()
                 };
             }
@@ -2038,7 +2615,7 @@ struct BuiltinView {
 
 impl BuiltinView {
     /// Wraps a banner's RGBA bytes ([`BUILTIN_BANNER_SIZE`]).
-    fn new(rgba: &[u8]) -> Self {
+    fn new(rgba: &[u8], baked: bool, right_to_left: bool) -> Self {
         let (width, height) = BUILTIN_BANNER_SIZE;
         // build.rs checks the size, so this is always `Some`.
         let Some(bitmap) = Bitmap::new(width, height, rgba.to_vec()) else {
@@ -2047,12 +2624,17 @@ impl BuiltinView {
         };
         Self {
             image: image(&bitmap),
-            glow: hero_glow(&bitmap.shrink(GLOW_SOURCE_SIZE.0, GLOW_SOURCE_SIZE.1)),
+            glow: hero_glow(
+                &bitmap.shrink(GLOW_SOURCE_SIZE.0, GLOW_SOURCE_SIZE.1),
+                baked,
+                right_to_left,
+            ),
         }
     }
 }
 
-/// The About, Settings and Hidden apps tiles' banners and glows, made once.
+/// The Settings, RustTV Remote and Hidden apps tiles' banners and glows,
+/// made once.
 struct Builtins {
     about: BuiltinView,
     settings: BuiltinView,
@@ -2061,12 +2643,12 @@ struct Builtins {
 }
 
 impl Builtins {
-    fn new() -> Self {
+    fn new(baked: bool, right_to_left: bool) -> Self {
         Self {
-            about: BuiltinView::new(ABOUT_BANNER),
-            settings: BuiltinView::new(SETTINGS_BANNER),
-            remote: BuiltinView::new(REMOTE_BANNER),
-            hidden: BuiltinView::new(HIDDEN_BANNER),
+            about: BuiltinView::new(ABOUT_BANNER, baked, right_to_left),
+            settings: BuiltinView::new(SETTINGS_BANNER, baked, right_to_left),
+            remote: BuiltinView::new(REMOTE_BANNER, baked, right_to_left),
+            hidden: BuiltinView::new(HIDDEN_BANNER, baked, right_to_left),
         }
     }
 
@@ -2153,16 +2735,33 @@ fn mode_value(state: State) -> i32 {
         State::Settings => 6,
         State::Folder => 8,
         State::Remote => 10,
+        State::Bar => 11,
+        State::Quick => 12,
     }
 }
 
-/// What the long-press menu shows for an item.
-fn menu_label(window: &HomeWindow, item: MenuItem) -> SharedString {
-    let item = match item {
-        MenuItem::Move => 0,
-        MenuItem::Hide => 1,
-    };
-    window.global::<Strings>().invoke_menu_label(item)
+/// What the long-press menu shows for an item; `size` is the app's size
+/// in percent.
+fn menu_label(window: &HomeWindow, item: MenuItem, size: u32) -> SharedString {
+    let strings = window.global::<Strings>();
+    match item {
+        MenuItem::Move => strings.invoke_menu_label(0),
+        MenuItem::Hide => strings.invoke_menu_label(1),
+        MenuItem::Size => strings.invoke_menu_size(size.to_string().into()),
+    }
+}
+
+/// The app overlay's texts, in the current language (`Strings.overlay-text`).
+fn overlay_texts(window: &HomeWindow) -> crate::platform::OverlayTexts {
+    let strings = window.global::<Strings>();
+    let text = |item| strings.invoke_overlay_text(item).to_string();
+    crate::platform::OverlayTexts {
+        size: text(0),
+        volume: text(1),
+        muted: text(2),
+        close: text(3),
+        restarts: text(4),
+    }
 }
 
 /// The About page's update line for a status, in the current language
@@ -2205,10 +2804,24 @@ fn input_for_key(text: &str, pressed: bool) -> Option<Input> {
 }
 
 /// The hero glow for artwork, from its small copy (see [`GLOW_SOURCE_SIZE`]).
-fn hero_glow(source: &Bitmap) -> generated::Glow {
+/// With `baked` (`Effects.baked-backdrop`, where there is a top-right menu)
+/// the backdrop is painted once into a small picture; otherwise home.slint
+/// draws it from the other fields.
+fn hero_glow(source: &Bitmap, baked: bool, right_to_left: bool) -> generated::Glow {
     let glow = source.glow(BACKDROP_BASE_TONE, BACKDROP_GLOW_TONE);
     let colour = |[red, green, blue]: [u8; 3]| slint::Color::from_rgb_u8(red, green, blue);
+    let backdrop = if baked {
+        let (width, height) = BACKDROP_SIZE;
+        slint::Image::from_rgb8(SharedPixelBuffer::clone_from_slice(
+            &glow.paint(width, height, PAGE_COLOUR, right_to_left),
+            width,
+            height,
+        ))
+    } else {
+        slint::Image::default()
+    };
     generated::Glow {
+        backdrop,
         base: colour(glow.base),
         color: colour(glow.colour),
         x: glow.x,
@@ -2345,6 +2958,54 @@ mod tests {
         fn search(&mut self, app: &str, query: &str) {
             self.platform.borrow_mut().search(app, query);
         }
+
+        fn top_right_menu(&self) -> bool {
+            self.platform.borrow().top_right_menu()
+        }
+
+        fn quick_actions(&self) -> Vec<crate::model::QuickAction> {
+            self.platform.borrow().quick_actions()
+        }
+
+        fn quick_action_app(&self, action: crate::model::QuickAction) -> Option<String> {
+            self.platform.borrow().quick_action_app(action)
+        }
+
+        fn device_settings(&self) -> Option<std::sync::Arc<dyn crate::device::DeviceSettings>> {
+            self.platform.borrow().device_settings()
+        }
+
+        fn scales_apps(&self) -> bool {
+            self.platform.borrow().scales_apps()
+        }
+
+        fn app_scale(&self, id: &str) -> u32 {
+            self.platform.borrow().app_scale(id)
+        }
+
+        fn set_app_scale(&mut self, id: &str, percent: u32) {
+            self.platform.borrow_mut().set_app_scale(id, percent);
+        }
+
+        fn is_running(&self, id: &str) -> bool {
+            self.platform.borrow().is_running(id)
+        }
+
+        fn close_app(&mut self, id: &str) {
+            self.platform.borrow_mut().close_app(id);
+        }
+
+        fn last_app(&self) -> Option<String> {
+            self.platform.borrow().last_app()
+        }
+
+        fn open_overlay(&mut self, overlay: crate::platform::AppOverlay) -> bool {
+            self.platform.borrow_mut().open_overlay(overlay)
+        }
+
+        fn close_overlay(&mut self, to_home: bool) {
+            self.platform.borrow_mut().close_overlay(to_home);
+        }
     }
 
     struct Screen {
@@ -2361,7 +3022,7 @@ mod tests {
     const LEFT: &str = "\u{F702}";
     const BACK: &str = "\u{F748}";
 
-    /// The home screen with three apps (A, B, C, then About), focus on A.
+    /// The home screen with three apps (A, B, C, then Settings), focus on A.
     fn screen(order_file: Option<PathBuf>) -> Screen {
         screen_with(abc(), order_file)
     }
@@ -2519,7 +3180,7 @@ mod tests {
     fn built_in_tiles_show_their_banners_and_an_amber_glow() {
         let screen = screen(None);
         let tiles = screen.window.get_tiles();
-        for tile in tiles.iter().filter(|tile| tile.kind == 3 || tile.kind == 6) {
+        for tile in tiles.iter().filter(|tile| tile.kind == 6 || tile.kind == 8) {
             let size = tile.image.size();
             assert_eq!((size.width, size.height), (320, 180));
         }
@@ -2532,11 +3193,66 @@ mod tests {
         } else {
             (screen.window.get_hero_b(), screen.window.get_hero_b_glow())
         };
-        assert_eq!(hero.kind, 3);
+        assert_eq!(hero.kind, 8);
         let size = hero.image.size();
         assert_eq!((size.width, size.height), (320, 180));
         assert!(glow.strength > 0.5);
         assert!(glow.color.red() > glow.color.blue());
+    }
+
+    #[test]
+    fn without_a_top_right_menu_about_and_settings_are_tiles() {
+        let screen = screen_with(abc().without_menu(), None);
+        let kinds: Vec<i32> = screen
+            .window
+            .get_tiles()
+            .iter()
+            .map(|tile| tile.kind)
+            .collect();
+        assert_eq!(
+            kinds[3..],
+            [3, 6, 8],
+            "A, B, C, About, Settings, RustTV Remote"
+        );
+        for tile in screen
+            .window
+            .get_tiles()
+            .iter()
+            .filter(|tile| tile.kind == 3)
+        {
+            let size = tile.image.size();
+            assert_eq!((size.width, size.height), (320, 180));
+        }
+        assert_eq!(screen.window.get_quick_actions().row_count(), 0);
+        // The backdrop is drawn as before, not baked into a picture.
+        assert!(!screen.window.global::<Effects>().get_baked_backdrop());
+        // Up from the first row reaches no menu.
+        screen.tap(UP);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        // About opens the notices, as before the menu; one Back is Home.
+        for _ in 0..3 {
+            screen.tap(RIGHT);
+        }
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::About));
+        assert!(!screen.window.get_notices().is_empty());
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        // Settings keeps its sections: no About tab.
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        settle(&screen);
+        let sections: Vec<String> = screen
+            .window
+            .get_settings_sections()
+            .iter()
+            .map(|section| section.to_string())
+            .collect();
+        assert!(
+            !sections.iter().any(|section| section == "About"),
+            "{sections:?}"
+        );
     }
 
     #[test]
@@ -2635,17 +3351,7 @@ mod tests {
             .map(|(id, _)| id.clone())
             .collect();
         let app = |name: &str| TileId::App(format!("{name}/.Main"));
-        assert_eq!(
-            saved,
-            [
-                app("b"),
-                app("a"),
-                app("c"),
-                TileId::About,
-                TileId::Settings,
-                TileId::Remote
-            ]
-        );
+        assert_eq!(saved, [app("b"), app("a"), app("c"), TileId::Remote]);
     }
 
     #[test]
@@ -2692,15 +3398,15 @@ mod tests {
         }
         screen.lifecycle.resumed();
         screen.wait(1);
-        // A, B, C loading; About, Settings, RustTV Remote.
-        assert_eq!(screen.kinds(), [4, 4, 4, 3, 6, 8]);
+        // A, B, C loading; RustTV Remote.
+        assert_eq!(screen.kinds(), [4, 4, 4, 8]);
         assert_eq!(screen.artwork_calls(), 0);
 
         assert_eq!(screen.shared.platform.borrow().artwork_loaded_calls(), 0);
 
         screen.wait(20);
         screen.wait(20);
-        assert_eq!(screen.kinds(), [0, 0, 0, 3, 6, 8]);
+        assert_eq!(screen.kinds(), [0, 0, 0, 8]);
         assert_eq!(screen.artwork_calls(), 3);
         // Told once, after the last picture, so it can free what it decoded.
         assert_eq!(screen.shared.platform.borrow().artwork_loaded_calls(), 1);
@@ -2719,9 +3425,8 @@ mod tests {
             screen.tap(DOWN);
             screen.tap(OK); // Hide from Home
             assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
-            // A, C, About, Settings, RustTV Remote, Hidden apps; focus on C,
-            // where B was.
-            assert_eq!(screen.kinds(), [0, 0, 3, 6, 8, 5]);
+            // A, C, RustTV Remote, Hidden apps; focus on C, where B was.
+            assert_eq!(screen.kinds(), [0, 0, 8, 5]);
             assert_eq!(screen.window.get_focused_index(), 1);
             assert!(screen.launched().is_empty());
         }
@@ -2729,10 +3434,10 @@ mod tests {
 
         // Started again, with artwork loaded later as on Android: B's is not read.
         let screen = screen_with(abc().with_lazy_artwork(), Some(file.clone()));
-        assert_eq!(screen.kinds(), [4, 4, 3, 6, 8, 5]);
+        assert_eq!(screen.kinds(), [4, 4, 8, 5]);
         screen.wait(20);
         screen.wait(20);
-        assert_eq!(screen.kinds(), [0, 0, 3, 6, 8, 5]);
+        assert_eq!(screen.kinds(), [0, 0, 8, 5]);
         assert_eq!(screen.artwork_calls(), 2);
 
         // Its page reads it.
@@ -2755,10 +3460,11 @@ mod tests {
             0
         );
 
-        // OK puts it back, before About; the page closes with focus on it.
+        // OK puts it back, before RustTV Remote; the page closes with focus
+        // on it.
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
-        assert_eq!(screen.kinds(), [0, 0, 0, 3, 6, 8]);
+        assert_eq!(screen.kinds(), [0, 0, 0, 8]);
         assert_eq!(screen.window.get_focused_index(), 2);
         assert_eq!(screen.window.get_tiles().row_data(2).unwrap().label, "B");
         assert!(order_file::load(&file).hidden.is_empty());
@@ -2786,11 +3492,26 @@ mod tests {
         assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
     }
 
-    /// Focuses About (after A, B, C) and opens it.
+    /// Opens Settings with a click on its entry in the top-right menu.
+    fn click_settings(window: &HomeWindow) {
+        let index = window
+            .get_quick_actions()
+            .iter()
+            .position(|code| code == 5)
+            .unwrap();
+        window.invoke_quick_clicked(i32::try_from(index).unwrap());
+    }
+
+    /// Opens Settings, its About tab (the last) and there the licence
+    /// notices: the About page.
     fn open_about(screen: &Screen) {
-        for _ in 0..3 {
-            screen.tap(RIGHT);
+        click_settings(&screen.window);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        for _ in 0..10 {
+            screen.tap(DOWN);
         }
+        // The first row, RustTV, opens them.
+        screen.tap(RIGHT);
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::About));
     }
@@ -2846,10 +3567,11 @@ mod tests {
         screen.tap(DOWN);
 
         screen.tap(BACK);
-        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
         assert_eq!(screen.window.get_notices(), "");
 
-        // Opening again reads them again, from the top.
+        // Opening again (focus is still on the notices row) reads them
+        // again, from the top.
         screen.tap(OK);
         assert_eq!(screen.shared.notices.get(), 2);
         assert!(
@@ -2893,13 +3615,18 @@ mod tests {
         thread_local!(static BACKEND: () = i_slint_backend_testing::init_no_event_loop());
         BACKEND.with(|_| {});
         let (window, _controller) = start(Broken, RunOptions::default(), real_clock()).unwrap();
-        // Only About is left; OK opens it.
-        window
-            .window()
-            .dispatch_event(WindowEvent::KeyPressed { text: OK.into() });
-        window
-            .window()
-            .dispatch_event(WindowEvent::KeyReleased { text: OK.into() });
+        // No top-right menu (like Android): the About tile, focused first on
+        // an empty Home, opens the notices.
+        let tap = |text: &str| {
+            window
+                .window()
+                .dispatch_event(WindowEvent::KeyPressed { text: text.into() });
+            window
+                .window()
+                .dispatch_event(WindowEvent::KeyReleased { text: text.into() });
+        };
+        assert_eq!(window.get_quick_actions().row_count(), 0, "no menu");
+        tap(OK);
         assert_eq!(window.get_mode(), mode_value(State::About));
         assert!(
             window
@@ -3370,7 +4097,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let screen = screen_with_remote(dir.join("order.toml"));
-        // A, B, C, About, Settings, RustTV Remote: its own page.
+        // A, B, C, RustTV Remote: its own page.
         for _ in 0..5 {
             screen.tap(RIGHT);
         }
@@ -3426,71 +4153,27 @@ mod tests {
     }
 
     #[test]
-    fn the_mouse_focuses_and_opens_tiles_and_the_keys_hide_it() {
+    fn only_with_a_top_right_menu_the_backdrop_is_baked() {
+        // The third tile after A, B, C is built in: its glow is there at once.
+        let front_glow = |screen: &Screen| {
+            for _ in 0..3 {
+                screen.tap(RIGHT);
+            }
+            screen.wait(HERO_DELAY.as_millis() as u64 + 50);
+            let glow = if screen.window.get_hero_a_front() {
+                screen.window.get_hero_a_glow()
+            } else {
+                screen.window.get_hero_b_glow()
+            };
+            let size = glow.backdrop.size();
+            (size.width, size.height)
+        };
         let screen = screen(None);
-        screen.window.invoke_pointer_moved();
-        assert!(screen.window.global::<Pointer>().get_shown());
-        screen.window.invoke_tile_pointer(false, 2, 0);
-        assert_eq!(screen.window.get_focused_index(), 2);
-        screen.tap(LEFT);
-        assert!(!screen.window.global::<Pointer>().get_shown());
-        // Moving over a tile brings the pointer back.
-        screen.window.invoke_tile_pointer(false, 1, 0);
-        assert!(screen.window.global::<Pointer>().get_shown());
-        screen.window.invoke_tile_pointer(false, 0, 1);
-        assert_eq!(screen.launched(), ["a/.Main"]);
-    }
-
-    #[test]
-    fn the_secondary_button_opens_the_tile_menu_and_the_pointer_picks_in_it() {
-        let screen = screen(None);
-        screen.window.invoke_tile_pointer(false, 0, 2);
-        assert_eq!(screen.window.get_mode(), mode_value(State::Menu));
-        screen.window.invoke_list_pointer(0, 1, 0);
-        assert_eq!(screen.window.get_menu_selected(), 1, "hover focuses");
-        assert_eq!(screen.window.get_mode(), mode_value(State::Menu));
-        screen.window.invoke_list_pointer(0, 0, 1); // Move
-        assert_eq!(screen.window.get_mode(), mode_value(State::Moving));
-    }
-
-    #[test]
-    fn the_wheel_moves_one_row_per_notch() {
-        let screen = screen(None);
-        let start = screen.window.get_focused_index();
-        screen.window.invoke_scrolled(SCROLL_STEP / 2.0);
-        assert_eq!(screen.window.get_focused_index(), start, "half a notch");
-        screen.window.invoke_scrolled(SCROLL_STEP / 2.0);
-        screen.window.invoke_scrolled(-SCROLL_STEP);
-        assert_eq!(screen.window.get_focused_index(), start, "down and up");
-    }
-
-    #[test]
-    fn the_pointer_focuses_and_picks_in_settings() {
-        let (dir, _history) = history_dir();
-        let screen = screen(Some(dir.join("order.toml")));
-        // A, B, C, About, Settings.
-        screen.window.invoke_tile_pointer(false, 4, 1);
-        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
-        settle(&screen);
-        // Updates, then its Off row.
-        let updates = screen
-            .window
-            .get_settings_sections()
-            .iter()
-            .position(|section| section == "Updates")
-            .unwrap();
-        let updates = i32::try_from(updates).unwrap();
-        screen.window.invoke_settings_pointer(false, updates, 0);
-        assert_eq!(screen.window.get_settings_section(), updates);
-        assert_eq!(screen.window.get_settings_row(), -1);
-        screen.window.invoke_settings_pointer(true, 1, 0);
-        assert_eq!(screen.window.get_settings_row(), 1, "hover focuses");
-        screen.window.invoke_settings_pointer(true, 1, 1);
-        assert_eq!(
-            screen.window.get_mode(),
-            7,
-            "a click is OK: the review opens"
-        );
+        assert!(screen.window.global::<Effects>().get_baked_backdrop());
+        assert_eq!(front_glow(&screen), BACKDROP_SIZE);
+        let screen = screen_with(abc().without_menu(), None);
+        assert!(!screen.window.global::<Effects>().get_baked_backdrop());
+        assert_eq!(front_glow(&screen), (0, 0), "drawn, as before");
     }
 
     #[test]
@@ -3524,6 +4207,11 @@ mod tests {
         screen.window.invoke_tile_pointer(false, 0, 1);
         screen.window.invoke_tile_pointer(false, 0, 2);
         screen.window.invoke_scrolled(SCROLL_STEP * 3.0);
+        // Neither the Menu key nor the top-right menu reaches behind it.
+        screen.tap("\u{F735}");
+        screen.window.invoke_quick_hovered(0);
+        screen.window.invoke_quick_clicked(0);
+        screen.window.invoke_quick_dismissed();
         assert!(screen.launched().is_empty(), "no app opens behind it");
         assert_eq!(screen.window.get_focused_index(), focus);
         assert_eq!(
@@ -3540,11 +4228,7 @@ mod tests {
         let (dir, _history) = history_dir();
         let screen = screen(Some(dir.join("order.toml")));
         crate::history::History::get().unwrap().launcher_edited();
-        // A, B, C, About, Settings.
-        for _ in 0..4 {
-            screen.tap(RIGHT);
-        }
-        screen.tap(OK);
+        click_settings(&screen.window);
         settle(&screen);
         screen.tap(RIGHT); // focus on Normal, the current choice
         screen.tap(UP);
@@ -3555,12 +4239,12 @@ mod tests {
         let row = screen.window.get_review_row();
         screen.window.invoke_scrolled(SCROLL_STEP);
         assert_eq!(screen.window.get_review_row(), row + 1);
-        screen.window.invoke_list_pointer(3, 4, 1);
+        screen.window.invoke_list_pointer(4, 4, 1);
         assert_eq!(screen.window.get_review_phase(), 1);
         // Now neither the wheel (Down, a wrong first arrow), a click nor a
         // tile under the screen counts.
         screen.window.invoke_scrolled(SCROLL_STEP);
-        screen.window.invoke_list_pointer(3, 4, 1);
+        screen.window.invoke_list_pointer(4, 4, 1);
         screen.window.invoke_tile_pointer(false, 0, 1);
         assert_eq!(screen.window.get_review_phase(), 1);
         // FakePlatform's code: left, up, right, down.
@@ -3584,15 +4268,11 @@ mod tests {
         // An entry to compare the change with, whether or not another test
         // recorded one already.
         crate::history::History::get().unwrap().launcher_edited();
-        // A, B, C, About, Settings.
-        for _ in 0..4 {
-            screen.tap(RIGHT);
-        }
-        screen.tap(OK);
+        click_settings(&screen.window);
         assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
         settle(&screen);
-        // Animations, Effects, Updates, History.
-        assert_eq!(screen.window.get_settings_sections().row_count(), 4);
+        // Animations, Effects, Updates, History, About.
+        assert_eq!(screen.window.get_settings_sections().row_count(), 5);
         assert_eq!(screen.window.get_settings_rows().row_count(), 7);
         screen.tap(RIGHT); // focus on Normal, the current choice
         assert_eq!(screen.window.get_settings_row(), 4);
@@ -3639,10 +4319,7 @@ mod tests {
     fn a_wrong_arrow_changes_nothing_and_says_so() {
         let (dir, _history) = history_dir();
         let screen = screen(Some(dir.join("order.toml")));
-        for _ in 0..4 {
-            screen.tap(RIGHT);
-        }
-        screen.tap(OK);
+        click_settings(&screen.window);
         settle(&screen);
         screen.tap(RIGHT);
         screen.tap(UP);
@@ -3659,4 +4336,450 @@ mod tests {
             "Nothing changed: wrong code."
         );
     }
+
+    // --- top-right menu, quick panels, volume ---
+
+    /// The menu's entries as quick.slint codes.
+    fn quick_codes(screen: &Screen) -> Vec<i32> {
+        screen.window.get_quick_actions().iter().collect()
+    }
+
+    #[test]
+    fn the_menu_shows_modify_and_settings_and_what_the_platform_offers() {
+        let screen = screen(None);
+        assert_eq!(quick_codes(&screen), [1, 5], "Modify and Settings");
+        let screen = screen_with(abc().with_device(), None);
+        assert_eq!(quick_codes(&screen), [1, 2, 3, 4, 5, 6]);
+        assert_eq!(screen.window.get_quick_selected(), -1);
+        screen.tap(UP);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Bar));
+        assert_eq!(screen.window.get_quick_selected(), 0);
+        // Settings, the fifth entry, opens the Settings page.
+        for _ in 0..4 {
+            screen.tap(RIGHT);
+        }
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+    }
+
+    #[test]
+    fn the_audio_panel_reads_the_device_and_sends_changes() {
+        let platform = abc().with_device();
+        let device = platform.device().unwrap();
+        let screen = screen_with(platform, None);
+        screen.tap(UP);
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Quick));
+        settle(&screen);
+        assert_eq!(screen.window.get_quick_title(), "Audio");
+        let rows = screen.window.get_quick_rows();
+        assert_eq!(rows.row_count(), 3);
+        let volume = rows.row_data(0).unwrap();
+        assert!(volume.slider);
+        assert_eq!(volume.detail, "40");
+        // Right raises the slider at once; the device hears of it.
+        screen.tap(RIGHT);
+        assert_eq!(
+            screen.window.get_quick_rows().row_data(0).unwrap().detail,
+            "45"
+        );
+        screen.tap(DOWN);
+        screen.tap(OK);
+        settle(&screen);
+        // Each change runs on its own thread: in either order.
+        let mut changes = device.changes();
+        changes.sort();
+        assert_eq!(
+            changes,
+            ["audio/mute=Toggle(true)", "audio/volume=Number(45)"]
+        );
+        assert_eq!(screen.window.get_quick_row(), 1);
+        // Back closes the panel, focus back on Audio in the menu.
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Bar));
+        assert_eq!(screen.window.get_quick_selected(), 1);
+    }
+
+    #[test]
+    fn home_closes_a_quick_panel_and_the_menu() {
+        let screen = screen_with(abc().with_device(), None);
+        screen.tap(UP);
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Quick));
+        // Home: the Linux binary's `--home`, or Android's pause and resume.
+        screen.lifecycle.paused();
+        screen.lifecycle.resumed();
+        screen.wait(1);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert_eq!(screen.window.get_quick_selected(), -1);
+        assert_eq!(screen.window.get_focused_index(), 0);
+    }
+
+    #[test]
+    fn the_power_key_opens_the_power_menu_full_screen_and_a_click_beside_closes_it() {
+        let screen = screen_with(abc().with_device(), None);
+        screen.tap(RIGHT);
+        screen.lifecycle.power_menu();
+        settle(&screen);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Quick));
+        assert!(screen.window.get_quick_power());
+        screen.window.invoke_quick_dismissed();
+        assert_ne!(screen.window.get_mode(), mode_value(State::Quick));
+    }
+
+    fn menu_texts(screen: &Screen) -> Vec<String> {
+        screen
+            .window
+            .get_menu_items()
+            .iter()
+            .map(String::from)
+            .collect()
+    }
+
+    #[test]
+    fn holding_home_over_an_app_opens_its_overlay_and_a_new_size_restarts_it() {
+        let screen = screen_with(abc().with_app_sizes(), None);
+        screen.tap(RIGHT);
+        screen.launch_and_leave();
+        screen.lifecycle.app_menu();
+        screen.wait(1);
+        let opened = screen.shared.platform.borrow().overlays().to_vec();
+        assert_eq!(opened.len(), 1);
+        assert_eq!(opened[0].app, "b/.Main");
+        assert_eq!(opened[0].title, "B");
+        assert_eq!(opened[0].size, Some(100));
+        assert_eq!(opened[0].texts.close, "Close app");
+        // Holding Home again closes it.
+        screen.lifecycle.app_menu();
+        screen.wait(1);
+        assert!(!screen.shared.platform.borrow().overlay_open());
+        // Closed at 125 %: the app closes, and opens again once it ended.
+        screen
+            ._controller
+            .borrow_mut()
+            .overlay_closed(crate::platform::OverlayClosed {
+                app: "b/.Main".into(),
+                size: Some(125),
+                close_app: false,
+                to_home: false,
+            });
+        assert_eq!(screen.shared.platform.borrow().closed(), ["b/.Main"]);
+        assert_eq!(screen.shared.platform.borrow().app_scale("b/.Main"), 125);
+        screen.lifecycle.app_ended("b/.Main".into());
+        screen.wait(1);
+        assert_eq!(screen.launched(), ["b/.Main", "b/.Main"]);
+    }
+
+    #[test]
+    fn the_overlay_closes_the_app_and_home_keeps_a_resized_app_closed() {
+        let screen = screen_with(abc().with_app_sizes(), None);
+        screen.launch_and_leave();
+        screen.lifecycle.app_menu();
+        screen.wait(1);
+        let closed = |size, close_app, to_home| crate::platform::OverlayClosed {
+            app: "a/.Main".into(),
+            size,
+            close_app,
+            to_home,
+        };
+        // Nothing changed: the app stays.
+        screen
+            ._controller
+            .borrow_mut()
+            .overlay_closed(closed(Some(100), false, false));
+        assert!(screen.shared.platform.borrow().closed().is_empty());
+        // Home after a new size: closed, not started again.
+        screen
+            ._controller
+            .borrow_mut()
+            .overlay_closed(closed(Some(90), false, true));
+        screen.lifecycle.app_ended("a/.Main".into());
+        screen.wait(1);
+        assert_eq!(screen.launched(), ["a/.Main"]);
+        assert_eq!(screen.shared.platform.borrow().closed(), ["a/.Main"]);
+        // Close app.
+        screen.launch_and_leave();
+        screen
+            ._controller
+            .borrow_mut()
+            .overlay_closed(closed(Some(90), true, false));
+        assert_eq!(
+            screen.shared.platform.borrow().closed(),
+            ["a/.Main", "a/.Main"]
+        );
+    }
+
+    #[test]
+    fn a_pointer_resting_over_a_tile_moves_no_focus_as_the_launcher_comes_back() {
+        let screen = screen_with(abc(), None);
+        screen.tap(RIGHT);
+        screen.launch_and_leave();
+        // The app went: the pointer enters the window again.
+        screen._controller.borrow_mut().park_pointer();
+        // The compositor's report of where the pointer rests: no focus.
+        screen._controller.borrow_mut().pointer_at(800.0, 900.0);
+        screen.window.invoke_tile_pointer(false, 2, 0);
+        assert_eq!(screen.window.get_focused_index(), 1);
+        // A tremble of the air mouse: still none.
+        screen._controller.borrow_mut().pointer_at(806.0, 904.0);
+        screen.window.invoke_tile_pointer(false, 2, 0);
+        assert_eq!(screen.window.get_focused_index(), 1);
+        // Moved away: hovering focuses as ever.
+        screen._controller.borrow_mut().pointer_at(900.0, 900.0);
+        screen.window.invoke_tile_pointer(false, 2, 0);
+        assert_eq!(screen.window.get_focused_index(), 2);
+    }
+
+    #[test]
+    fn holding_home_over_the_home_screen_is_home() {
+        let screen = screen_with(abc().with_app_sizes(), None);
+        screen.tap(RIGHT);
+        screen.lifecycle.app_menu();
+        screen.wait(1);
+        assert!(screen.shared.platform.borrow().overlays().is_empty());
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+    }
+
+    #[test]
+    fn the_menu_key_opens_the_focused_tiles_menu() {
+        let screen = screen(None);
+        screen.tap(RIGHT);
+        screen.tap("\u{F735}");
+        assert_eq!(screen.window.get_mode(), mode_value(State::Menu));
+        assert_eq!(menu_texts(&screen), ["Move", "Hide from Home"]);
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+    }
+
+    #[test]
+    fn the_pointer_and_ok_step_an_apps_size_in_its_tile_menu() {
+        let screen = screen_with(abc().with_app_sizes(), None);
+        screen.window.invoke_tile_pointer(false, 0, 2);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Menu));
+        screen.window.invoke_list_pointer(0, 2, 0);
+        assert_eq!(screen.window.get_menu_selected(), 2, "hover focuses");
+        screen.window.invoke_list_pointer(0, 2, 1);
+        assert_eq!(menu_texts(&screen)[2], "Size: 110 %");
+        screen.tap(OK);
+        assert_eq!(menu_texts(&screen)[2], "Size: 125 %");
+        screen.tap(LEFT);
+        assert_eq!(menu_texts(&screen)[2], "Size: 110 %");
+        // A does not run: nothing to restart; it opens at 110 % next time.
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert!(screen.shared.platform.borrow().closed().is_empty());
+        assert!(screen.launched().is_empty());
+    }
+
+    #[test]
+    fn the_wheel_moves_one_row_per_notch() {
+        let screen = screen_with(abc().without_menu(), None);
+        let start = screen.window.get_focused_index();
+        screen.window.invoke_scrolled(SCROLL_STEP / 2.0);
+        assert_eq!(screen.window.get_focused_index(), start, "half a notch");
+        screen.window.invoke_scrolled(SCROLL_STEP / 2.0);
+        screen.window.invoke_scrolled(-SCROLL_STEP);
+        assert_eq!(screen.window.get_focused_index(), start, "down and up");
+    }
+
+    #[test]
+    fn the_mouse_focuses_and_opens_tiles_and_the_keys_hide_it() {
+        let screen = screen(None);
+        screen.window.invoke_pointer_moved();
+        assert!(screen.window.global::<Pointer>().get_shown());
+        screen.window.invoke_tile_pointer(false, 2, 0);
+        assert_eq!(screen.window.get_focused_index(), 2);
+        // The wheel moves a row per notch.
+        screen.window.invoke_scrolled(SCROLL_STEP);
+        screen.tap(LEFT);
+        assert!(!screen.window.global::<Pointer>().get_shown());
+        // Moving over a tile brings the pointer back.
+        screen.window.invoke_tile_pointer(false, 1, 0);
+        assert!(screen.window.global::<Pointer>().get_shown());
+        screen.window.invoke_tile_pointer(false, 0, 1);
+        assert_eq!(screen.launched(), ["a/.Main"]);
+    }
+
+    /// Settings → Display → Device name, OK: its text prompt.
+    fn open_name_prompt(screen: &Screen) {
+        click_settings(&screen.window);
+        settle(screen);
+        // Display is the first platform tab; Device name its third row.
+        let display = screen
+            .window
+            .get_settings_sections()
+            .iter()
+            .position(|section| section == "Display")
+            .unwrap();
+        for _ in 0..display {
+            screen.tap(DOWN);
+        }
+        screen.tap(RIGHT);
+        screen.tap(DOWN);
+        screen.tap(DOWN);
+        screen.tap(OK);
+        assert!(screen.window.get_prompt_shown());
+        assert_eq!(screen.window.get_prompt_title(), "Device name");
+    }
+
+    #[test]
+    fn a_text_control_asks_in_a_text_field_and_sends_the_text() {
+        let platform = abc().with_device();
+        let device = platform.device().unwrap();
+        let screen = screen_with(platform, None);
+        open_name_prompt(&screen);
+        // The field has the keys (the system keyboard types into it).
+        screen.tap("q");
+        screen.tap("x");
+        assert_eq!(screen.window.get_prompt_text(), "qx");
+        screen.tap(OK);
+        settle(&screen);
+        assert!(!screen.window.get_prompt_shown());
+        assert!(
+            device
+                .changes()
+                .contains(&"display/name=Text(\"qx\")".to_owned())
+        );
+        // The keys are back on Settings.
+        screen.tap(OK);
+        assert!(screen.window.get_prompt_shown());
+        assert_eq!(screen.window.get_prompt_text(), "", "a new prompt is empty");
+    }
+
+    #[test]
+    fn back_closes_the_text_prompt_without_a_change() {
+        let platform = abc().with_device();
+        let device = platform.device().unwrap();
+        let screen = screen_with(platform, None);
+        open_name_prompt(&screen);
+        screen.tap("q");
+        screen.tap(BACK);
+        settle(&screen);
+        assert!(!screen.window.get_prompt_shown());
+        assert!(
+            !device
+                .changes()
+                .iter()
+                .any(|change| change.starts_with("display/name"))
+        );
+        screen.tap(OK);
+        assert!(
+            screen.window.get_prompt_shown(),
+            "the keys are back on Settings"
+        );
+    }
+
+    #[test]
+    fn the_pointer_focuses_and_picks_in_the_tile_menu() {
+        let screen = screen(None);
+        screen.long_press_ok();
+        screen.window.invoke_list_pointer(0, 1, 0);
+        assert_eq!(screen.window.get_menu_selected(), 1, "hover focuses");
+        assert_eq!(screen.window.get_mode(), mode_value(State::Menu));
+        screen.window.invoke_list_pointer(0, 0, 1); // Move
+        assert_eq!(screen.window.get_mode(), mode_value(State::Moving));
+    }
+
+    #[test]
+    fn the_pointer_focuses_and_picks_in_settings() {
+        let screen = screen_with(abc().with_device(), None);
+        click_settings(&screen.window);
+        settle(&screen);
+        let display = screen
+            .window
+            .get_settings_sections()
+            .iter()
+            .position(|section| section == "Display")
+            .unwrap();
+        let display = i32::try_from(display).unwrap();
+        screen.window.invoke_settings_pointer(false, display, 0);
+        assert_eq!(screen.window.get_settings_section(), display);
+        assert_eq!(screen.window.get_settings_row(), -1);
+        // Device name, the third row: a click opens its prompt.
+        screen.window.invoke_settings_pointer(true, 2, 0);
+        assert_eq!(screen.window.get_settings_row(), 2);
+        screen.window.invoke_settings_pointer(true, 2, 1);
+        assert!(screen.window.get_prompt_shown());
+        assert_eq!(screen.window.get_prompt_title(), "Device name");
+    }
+
+    #[test]
+    fn the_pointer_focuses_the_top_right_menu() {
+        let screen = screen_with(abc().with_device(), None);
+        assert_eq!(screen.window.get_quick_selected(), -1);
+        screen.window.invoke_quick_hovered(0);
+        assert_eq!(screen.window.get_quick_selected(), 0);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Bar));
+    }
+
+    #[test]
+    fn kde_connect_opens_its_app_without_a_splash() {
+        let screen = screen_with(abc().with_device(), None);
+        screen.tap(UP);
+        for _ in 0..3 {
+            screen.tap(RIGHT);
+        }
+        screen.tap(OK);
+        assert_eq!(screen.launched(), ["a/.Main"]);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Bar));
+    }
+
+    #[test]
+    fn platform_tabs_show_in_settings_before_about() {
+        let screen = screen_with(abc().with_device(), None);
+        click_settings(&screen.window);
+        settle(&screen);
+        let sections: Vec<SharedString> = screen.window.get_settings_sections().iter().collect();
+        assert_eq!(
+            sections[sections.len() - 2..],
+            [SharedString::from("Display"), SharedString::from("About")]
+        );
+        // About lists the host's facts.
+        for _ in 0..10 {
+            screen.tap(DOWN);
+        }
+        let rows: Vec<SharedString> = screen
+            .window
+            .get_settings_rows()
+            .iter()
+            .map(|row| row.detail)
+            .collect();
+        assert!(
+            rows.contains(&SharedString::from("Fake OS 1.0")),
+            "{rows:?}"
+        );
+    }
+
+    #[test]
+    fn volume_keys_change_the_volume_and_show_the_bar_for_a_while() {
+        let platform = abc().with_device();
+        let device = platform.device().unwrap();
+        let screen = screen_with(platform, None);
+        screen
+            ._controller
+            .borrow_mut()
+            .volume_key(crate::device::VolumeChange::Up);
+        settle(&screen);
+        // `settle` lets 2 s pass: the bar has shown and faded again.
+        assert!(!screen.window.get_volume_shown());
+        assert_eq!(device.changes(), ["volume Up"]);
+        screen.lifecycle.volume(crate::device::VolumeChange::Mute);
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(5));
+            screen.wait(16);
+            if screen.window.get_volume_shown() {
+                break;
+            }
+        }
+        assert!(screen.window.get_volume_shown());
+        assert!(screen.window.get_volume_muted());
+        assert!((screen.window.get_volume_level() - 0.45).abs() < 0.001);
+        screen.wait(VOLUME_SHOWN_MS);
+        assert!(!screen.window.get_volume_shown());
+    }
+
+    /// How long the volume bar stays (ui/device_view.rs), with a margin.
+    const VOLUME_SHOWN_MS: u64 = 1600;
 }

@@ -471,7 +471,10 @@ pub(crate) fn home_view(
             State::Menu => HomeMode::Menu,
             State::Hidden => HomeMode::Hidden,
             State::Settings | State::About | State::Remote => HomeMode::Settings,
-            State::Browse | State::Launching | State::Folder => HomeMode::Browse,
+            // The top-right menu and its panels are over Home.
+            State::Browse | State::Launching | State::Folder | State::Bar | State::Quick => {
+                HomeMode::Browse
+            }
         }
     };
     // The menu and the hidden apps page, as on the TV.
@@ -481,9 +484,11 @@ pub(crate) fn home_view(
         .map(|(items, selected)| MenuView {
             items: items
                 .iter()
-                .map(|item| match item {
-                    MenuItem::Move => MenuChoice::Move,
-                    MenuItem::Hide => MenuChoice::Hide,
+                // The phone has no Size control; the TV shows it.
+                .filter_map(|item| match item {
+                    MenuItem::Move => Some(MenuChoice::Move),
+                    MenuItem::Hide => Some(MenuChoice::Hide),
+                    MenuItem::Size => None,
                 })
                 .collect(),
             selected: u8::try_from(selected).unwrap_or(u8::MAX),
@@ -559,7 +564,7 @@ mod tests {
         let view = home_view(&home, &label, false, None);
         assert_eq!(view.tiles[0].id, "com.example.a00/.Main");
         assert_eq!(view.focused.as_deref(), Some("com.example.a00/.Main"));
-        assert!(view.tiles.iter().any(|tile| tile.id == "about"));
+        assert!(view.tiles.iter().any(|tile| tile.id == "remote"));
         assert_eq!(view.mode, HomeMode::Browse);
         assert!(view.folder.is_none() && view.text.is_none());
     }
@@ -576,14 +581,11 @@ mod tests {
     #[test]
     fn folder_apps_are_listed_with_their_folder_and_the_open_folder_is_named() {
         let mut home = home();
-        // Long press opens the menu; Move; Right onto a01; wait; drop.
+        // Drag the first app onto the second from the phone; wait; drop.
         let ms = Duration::from_millis;
-        home.handle(Input::OkPressed, ms(0));
-        home.handle(Input::Tick, ms(700));
-        home.handle(Input::OkReleased, ms(710));
-        home.handle(Input::OkPressed, ms(720)); // Move
-        home.handle(Input::OkReleased, ms(730));
-        home.handle(Input::Right, ms(1000));
+        let (first, second) = (home.tiles()[0].clone(), home.tiles()[1].clone());
+        assert!(home.pick_up(&first, ms(0)));
+        home.drag_over(&second, true, ms(1000));
         home.handle(Input::Tick, ms(1700));
         home.handle(Input::OkPressed, ms(1800));
         home.handle(Input::OkReleased, ms(1810));
