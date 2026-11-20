@@ -444,9 +444,6 @@ msgstr "KDE Connect"
 msgid "Loading…"
 msgstr "Đang tải…"
 
-msgid "MIT OR Apache-2.0 · licences and third-party notices"
-msgstr "MIT OR Apache-2.0 · giấy phép và thông báo của bên thứ ba"
-
 msgid "Modify"
 msgstr "Chỉnh sửa"
 

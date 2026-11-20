@@ -107,8 +107,9 @@ takeover = "active"
   one without is still `format = 1`, so builds that read only format 1 keep
   reading a history until the first folder (then they say
   `HISTORY_FORMAT_NEWER`). The changes it adds: a folder made, removed or
-  renamed, and an app put in or taken out of a folder; an app moving into a
-  folder is not "removed from Home".
+  renamed, and an app (since format 7 also a built-in tile) put in or
+  taken out of a folder; a tile moving into a folder is not "removed from
+  Home".
 - **Phones** (*added 2026-10-27*): `[launcher.phones]` holds the phones
   paired with RustTV Remote, id (32 hex digits) → name (1–40 characters, no
   control characters). **Never their keys.** A snapshot with a phone is

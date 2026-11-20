@@ -496,15 +496,15 @@ pub(crate) fn home_view(
         }
     }
     let open = home.open_folder();
-    let focused = match (home.state(), open) {
-        // A page opened from a tile in a folder (or from the RustTV quick
-        // panel): the phone names the page, not the tile focused under it.
-        (State::About, _) => Some(name_of(&TileId::About)),
-        (State::Remote, _) => Some(name_of(&TileId::Remote)),
-        (_, Some(open)) => open
+    let focused = match (home.page(), open) {
+        // A built-in page (from its tile on Home or in a folder, the RustTV
+        // quick panel or the top-right menu): the phone names the page, not
+        // the tile focused under it.
+        (Some(page), _) => Some(name_of(&page)),
+        (None, Some(open)) => open
             .focus
             .and_then(|index| home.folders().get(&open.id)?.apps.get(index).cloned()),
-        (_, None) => home.focused().map(name_of),
+        (None, None) => home.focused().map(name_of),
     };
     let folder = open.and_then(|open| {
         Some(FolderView {
@@ -666,6 +666,73 @@ mod tests {
         let view = home_view(&home, &label, false, None, &update, waiting);
         assert_eq!(view.mode, HomeMode::Settings);
         assert_eq!(view.focused.as_deref(), Some("about"));
+    }
+
+    /// The phone drags a built-in tile in and out of a folder, and a page
+    /// opened from a tile in a folder (or for History) is named by the
+    /// page, not by the folder under it.
+    #[test]
+    fn the_phone_moves_built_in_tiles_through_folders_and_names_their_pages() {
+        let mut home = home();
+        let now = Duration::ZERO;
+        let view =
+            |home: &Home| home_view(home, &label, false, None, &UpdateStatus::Idle, NO_HISTORY);
+        // Remote rests on History: a folder of both, open, Remote moving.
+        assert!(home.pick_up(&TileId::Remote, now));
+        home.drag_over(&TileId::Panel(PanelId::History), true, now);
+        home.handle(Input::Tick, crate::model::FOLDER_HOVER);
+        home.handle(Input::OkPressed, crate::model::FOLDER_HOVER);
+        home.handle(Input::OkReleased, crate::model::FOLDER_HOVER);
+        assert_eq!(home.state(), State::Folder);
+        let inside = view(&home);
+        let inside: Vec<(&str, Option<&str>)> = inside
+            .tiles
+            .iter()
+            .filter(|tile| tile.folder.is_some())
+            .map(|tile| (tile.id.as_str(), tile.folder.as_deref()))
+            .collect();
+        assert_eq!(
+            inside,
+            [
+                ("panel:history", Some("folder:1")),
+                ("remote", Some("folder:1"))
+            ]
+        );
+        // A tap on Remote in the open folder: its page, named so.
+        assert_eq!(
+            home.point(&TileId::Remote, false, now),
+            Some(crate::model::Effect::OpenRemote)
+        );
+        assert_eq!(view(&home).focused.as_deref(), Some("remote"));
+        home.close_remote();
+        // History from the folder opens Settings, named History.
+        home.handle(Input::OkPressed, now);
+        home.handle(Input::OkReleased, now);
+        assert_eq!(
+            home.point(&TileId::Panel(PanelId::History), false, now),
+            Some(crate::model::Effect::OpenHistory)
+        );
+        let named = view(&home);
+        assert_eq!(named.mode, HomeMode::Settings);
+        assert_eq!(named.focused.as_deref(), Some("panel:history"));
+        home.close_settings();
+        // Dragged out of the open folder: back on Home after it.
+        home.handle(Input::OkPressed, now);
+        home.handle(Input::OkReleased, now);
+        assert!(home.pick_up(&TileId::Remote, now));
+        home.drag_out(now);
+        home.handle(Input::OkPressed, now);
+        let out = view(&home);
+        assert!(
+            out.tiles
+                .iter()
+                .any(|tile| tile.id == "remote" && tile.folder.is_none())
+        );
+        assert!(
+            out.tiles.iter().any(
+                |tile| tile.id == "panel:history" && tile.folder.as_deref() == Some("folder:1")
+            )
+        );
     }
 
     #[test]

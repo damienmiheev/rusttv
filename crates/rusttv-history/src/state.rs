@@ -60,8 +60,7 @@ pub struct State {
 #[serde(deny_unknown_fields)]
 pub struct Launcher {
     /// Tile names in order ([`is_tile_name`]): apps, built-in tiles
-    /// (`about`, `settings`, `remote`), panel tiles (`panel:<id>`),
-    /// `folder:<number>`.
+    /// ([`BUILTIN_NAMES`]), panel tiles (`panel:<id>`), `folder:<number>`.
     #[serde(default)]
     pub order: Vec<String>,
     /// Folders by tile name (`folder:<number>`).
@@ -85,8 +84,8 @@ pub struct Launcher {
 }
 
 impl Launcher {
-    /// Every tile name it holds: the order, hidden apps, folders and their
-    /// apps.
+    /// Every tile name it holds: the order, hidden tiles, folders and their
+    /// tiles.
     fn tile_names(&self) -> impl Iterator<Item = &String> {
         self.order
             .iter()
@@ -374,12 +373,17 @@ fn needs_format_five(name: &String) -> bool {
     !name.contains('/') && (name == "remote" || name.ends_with(".desktop"))
 }
 
+/// The built-in tiles' names (format 1, `remote` format 5). The launcher
+/// never hides or folders `hidden-apps` (the Hidden apps tile), but a
+/// hand-edited snapshot could, so it counts like the others.
+const BUILTIN_NAMES: [&str; 4] = ["about", "settings", "hidden-apps", "remote"];
+
 /// Whether a tile name is a built-in or panel tile's. Hidden or in a
 /// folder, it needs format 7: builds before it accept the name there
 /// ([`is_tile_name`]) but would show the tile anyway and drop it from
 /// its folder.
 fn is_builtin_name(name: &str) -> bool {
-    matches!(name, "about" | "settings" | "hidden-apps" | "remote") || is_panel_name(name)
+    BUILTIN_NAMES.contains(&name) || is_panel_name(name)
 }
 
 /// Whether a tile name is a panel tile's, `panel:<id>` (format 6; builds
@@ -408,8 +412,7 @@ fn is_panel_name(name: &str) -> bool {
 pub fn is_tile_name(name: &str) -> bool {
     match name.split_once('/') {
         None => {
-            matches!(name, "about" | "settings" | "hidden-apps" | "remote")
-                || is_panel_name(name)
+            is_builtin_name(name)
                 || name
                     .strip_prefix("folder:")
                     .is_some_and(|number| number.parse::<u32>().is_ok() && !number.starts_with('+'))
@@ -627,17 +630,38 @@ mod tests {
     /// the tile on Home (and drop it from the folder), so they must refuse.
     #[test]
     fn built_in_tiles_hidden_or_in_folders_need_format_seven() {
-        for name in ["about", "settings", "remote", "panel:history"] {
-            let mut hidden = sample();
-            hidden.launcher.order.push("panel:history".into());
+        // An Android Home: every built-in tile in the order, an app hidden.
+        let home = |order: &[&str]| {
+            let mut state = sample();
+            state.launcher.order = order.iter().map(|name| (*name).to_owned()).collect();
+            state
+        };
+        let all = [
+            "com.example.a/.Main",
+            "about",
+            "settings",
+            "remote",
+            "panel:history",
+        ];
+        let normal = home(&all);
+        assert_eq!(normal.needed_format(), 6, "built-in tiles in the order");
+        assert!(normal.to_toml().unwrap().starts_with("format = 6\n"));
+        for name in [
+            "about",
+            "settings",
+            "remote",
+            "panel:history",
+            "hidden-apps",
+        ] {
+            let others: Vec<&str> = all.iter().copied().filter(|tile| *tile != name).collect();
+            let mut hidden = home(&others);
             hidden.launcher.hidden.insert(name.into());
-            let mut in_folder = sample();
-            in_folder.launcher.order.push("folder:1".into());
+            let mut in_folder = home(&[others.as_slice(), &["folder:1"]].concat());
             in_folder.launcher.folders.insert(
                 "folder:1".into(),
                 Folder {
                     name: "RustTV".into(),
-                    apps: vec![name.into(), "com.example.a/.Main".into()],
+                    apps: vec![name.into(), "com.example.b/.Main".into()],
                 },
             );
             for state in [hidden, in_folder] {
@@ -652,11 +676,19 @@ mod tests {
                 );
             }
         }
-        // In the order (`about` is in the sample's) they stay older
-        // formats, and so do hidden apps.
-        assert!(sample().launcher.order.contains(&"about".to_owned()));
-        assert!(!sample().launcher.hidden.is_empty());
-        assert_eq!(sample().needed_format(), 1);
+    }
+
+    /// Snapshots written by older builds still load in this one.
+    #[test]
+    fn older_snapshots_still_load() {
+        for text in [
+            "format = 1\n[launcher]\norder = [\"a.b/.M\", \"about\", \"settings\"]\nhidden = [\"c.d/.M\"]\n",
+            "format = 5\n[launcher]\norder = [\"a.b/.M\", \"about\", \"settings\", \"remote\"]\n",
+            "format = 6\n[launcher]\norder = [\"a.b/.M\", \"remote\", \"panel:history\"]\n\n[launcher.folders.\"folder:1\"]\nname = \"V\"\napps = [\"e.f/.M\"]\n",
+        ] {
+            let state = State::parse(text).unwrap_or_else(|error| panic!("{text}: {error}"));
+            assert!(state.needed_format() <= state.format, "{text}");
+        }
     }
 
     #[test]

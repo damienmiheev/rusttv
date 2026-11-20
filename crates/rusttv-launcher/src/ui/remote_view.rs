@@ -270,6 +270,9 @@ impl Controller {
         if let Some(pairing) = &mut self.pairing {
             pairing.phase = Phase::Failed(4);
             self.render();
+        } else if self.panels_row.is_some() {
+            // The RustTV quick panel's row says it too.
+            self.render();
         }
     }
 
@@ -285,7 +288,12 @@ impl Controller {
             rusttv_remote::PAIRING_TIME,
             move || {
                 if let Some(controller) = me.upgrade() {
-                    controller.borrow().show_remote_panel();
+                    let mut controller = controller.borrow_mut();
+                    controller.show_remote_panel();
+                    // The RustTV quick panel's row says it too.
+                    if controller.panels_row.is_some() {
+                        controller.render();
+                    }
                 }
             },
         );

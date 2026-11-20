@@ -1,5 +1,5 @@
 //! Reads and writes the tile order file, `order.toml`: the tile order,
-//! folders, hidden apps and the last focused tile.
+//! folders, hidden tiles and the last focused tile.
 //!
 //! The launcher's own private state, not a change to the TV, so it is outside
 //! the CLI safety engine.
@@ -22,7 +22,8 @@ struct OrderFile {
     /// The tile focused when the launcher last left the screen.
     #[serde(default)]
     focus: Option<String>,
-    /// Component names of apps kept off Home.
+    /// Names of tiles kept off Home: apps' components, built-in tiles'
+    /// names.
     #[serde(default)]
     hidden: BTreeSet<String>,
     /// Tile name → order key.
@@ -45,7 +46,8 @@ struct FolderEntry {
 pub(crate) struct Loaded {
     /// The stored order, or an empty one (first run) when there is none.
     pub order: Order,
-    /// Component names of apps kept off Home.
+    /// Names of tiles kept off Home: apps' components, built-in tiles'
+    /// names.
     pub hidden: BTreeSet<String>,
     /// Folders by number.
     pub folders: BTreeMap<u32, Folder>,
@@ -184,15 +186,16 @@ pub(crate) const UPDATE_CHECK_OFF: &str = "update-check-off";
 pub(crate) const REDUCED_EFFECTS: &str = "effects-reduced";
 
 /// The launcher's own state as history records it: tiles in order,
-/// folders, hidden apps, the paired phones and the update switch. `dir` holds `order.toml` and
+/// folders, hidden tiles, the paired phones and the update switch. `dir` holds `order.toml` and
 /// the flag file.
 pub(crate) fn launcher_state(dir: &Path) -> rusttv_history::Launcher {
     let loaded = load(&dir.join("order.toml"));
     rusttv_history::Launcher {
         // The RustTV Remote tile too (`remote`, PANELS.md § 9 Q9) and
         // History's (`panel:history`, § 6), so their places come back on
-        // undo; such a snapshot needs format 6. An older snapshot without
-        // them, written back, gets them at the order's end.
+        // undo; such a snapshot needs format 6 (7 with a built-in tile
+        // hidden or in a folder). An older snapshot without them, written
+        // back, gets them at the order's end.
         order: loaded
             .order
             .keys()

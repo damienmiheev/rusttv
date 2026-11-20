@@ -527,10 +527,12 @@ its own.
   - The Hidden apps page lists the hidden apps by label, then this Home's
     hidden built-in tiles in their first-run order, drawn as their tiles;
     OK (or a tap on the phone) puts one back at Home's end block.
-  - `reconcile` takes the built-in tiles that are hidden or in a folder
-    and neither keeps nor re-adds them on the grid; About and Settings in
-    a folder or hidden are left out where they aren't tiles (a top-right
-    menu); hidden wins over a folder, and a name is in one folder only.
+  - `refresh` works out the built-in tiles that are hidden or in a
+    folder, and `reconcile` neither keeps nor re-adds them on the grid.
+    `refresh` leaves About and Settings out of folders and the Hidden apps
+    page where they aren't tiles (a top-right menu; a hidden one stays in
+    `hidden` for when they are); hidden wins over a folder, and a name is
+    in one folder only.
   - Folder minis show a built-in tile's banner (the same picture its hero
     glow and the phone use).
   - **Settings stays reachable:** the Hidden apps tile is on Home whenever
@@ -551,8 +553,13 @@ its own.
     folder and their caption, the hidden apps page's tiles too; the menu
     offers Hide for them (`menu { choice: hide }`), and a tap on the hidden
     apps page puts one back. The phone asks the picture of `panel:history`
-    like the other built-in tiles. On the About or RustTV Remote page,
-    `focused` names that page (REMOTE.md § 4).
+    like the other built-in tiles. On a built-in page (About, RustTV
+    Remote, Settings, Settings opened on History) `focused` names that
+    page's tile, wherever it was opened from (`Home::page`; REMOTE.md
+    § 4).
+  - The Hidden apps page keeps its name and its hint ("OK puts the app
+    back on Home"): built-in tiles are listed there as app-like tiles, so
+    no text changed and no translation is new.
   - CLI JSON stays `rusttv.v11` (unreleased): `launcher.hidden` and
     folders' `apps` may hold built-in names, `hidden` and `in_folder` may
     name them (CLI.md).
@@ -772,10 +779,13 @@ face is #40's `AboutRow` in Settings, fed from the same view.
 - **The row face is Settings' RustTV row** (`AboutRow::RustTv`, OK opens
   the page), drawn as today: "RustTV <version>" and the licence line. The
   plan's "Update available" stays on the Updates row right under it, so it
-  isn't shown twice (*changed 2026-11-21*: the row face shows the tile's
-  caption in place of the licence line, as the RustTV quick panel needs
-  it; one face everywhere, § 10 "Later"). The row template becomes the `AboutListRow` global's
-  functions. `Strings.about-row` went: its unused "Licences and
+  isn't shown twice. *Changed 2026-11-21* (§ 10 "Later"): the row face
+  shows the tile's caption ("Update available" with the accent dot,
+  "Downloading", "Installing") in place of its second line, as the RustTV
+  quick panel needs it, so Settings shows it on this row too, next to the
+  Updates row; without a caption the second line is "Third-party notices"
+  (the licence line didn't fit the quick panel). The row template
+  becomes the `AboutListRow` global's functions. `Strings.about-row` went: its unused "Licences and
   third-party notices" texts with it, the Updates row takes the Updates
   section's name and the Source row `Strings.source-code`.
 - **Kept general on purpose** (the owner asked for general blocks):
@@ -941,8 +951,8 @@ cheap "last entry + pending count" message exists.
 **Later, each after a Claude design canvas** (owner's rule for visuals):
 the faces left open in § 9 — status corner, banner, ambient. Panel rows in
 #40's quick panel (§ 9 Q10) and hide and folders for panel tiles (format
-7) are built (below); the owner asked for them without a canvas, keeping
-the existing look.
+7) are built (below), without a canvas: the owner asked for them to keep
+the existing look (2026-11-21).
 
 *Built 2026-11-21: panel rows in the top-right menu* (§ 9 Q3, Q10):
 - **A RustTV entry** (`QuickAction::Panels`, code 7 in `quick.slint`,
@@ -954,12 +964,22 @@ the existing look.
 - **Rows are the panels' row faces**, from the same views as their tiles
   (one source): About's `AboutListRow` (now with `status`: the tile's
   caption, "Update available" with the accent dot, "Downloading" or
-  "Installing", else the licence line, also on Settings' RustTV row),
+  "Installing", else "Third-party notices", also on Settings' RustTV
+  row),
   a new `RemoteListRow` (`templates/remote_row.json`: "RustTV Remote" over
   the tile's phones line, or "Pairing" with the dot; `remote_view` now has
   a row) and `HistoryListRow` (two lines from the start, `tall`). No new
-  texts: every wording is the tiles', already measured at the narrower
-  tile line (218u against the row's 616u).
+  texts: the captions are the tiles', and "Third-party notices" is the
+  About page's heading. Each was measured in all 21 languages at the
+  row's width (620u: 25u details, 27u titles; widest "Third-party
+  notices" in Russian, 424u). The old licence line, "MIT OR Apache-2.0 ·
+  licences and third-party notices", went: it didn't fit 620u in twelve
+  languages, English included.
+- **One panel open at a time:** another entry (the power key too) closes
+  the RustTV panel before opening its own; Home, the pointer's click
+  beside it (`quick_dismissed`) and Back close it. Its rows follow the
+  update, pairing and History's age while it is open (History's age is
+  read again when it opens).
 - **Keys and pointer:** Up and Down pick a row, OK (on release, as in the
   other quick panels) opens its page (`Home::open_panel_row`: About's
   page, the RustTV Remote page, Settings on History), Back closes the

@@ -82,10 +82,7 @@ fn the_about_templates_convert() {
     )));
     // The tile's caption, else the licence line; the dot for an update.
     assert!(row.contains("@tr(\"Update available\")"), "{row}");
-    assert!(
-        row.contains("@tr(\"MIT OR Apache-2.0 · licences and third-party notices\")"),
-        "{row}"
-    );
+    assert!(row.contains("@tr(\"Third-party notices\")"), "{row}");
     assert!(
         row.contains("-> bool {\n        return (status == \"update\" ? true : false);"),
         "{row}"

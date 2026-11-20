@@ -521,7 +521,7 @@ impl Controller {
 
     /// An app's label with its package id, for the review screen and the
     /// history (labels come from apps, so bidi controls and line breaks go).
-    fn tile_label(&self, tile: &str) -> String {
+    pub(super) fn tile_label(&self, tile: &str) -> String {
         // A built-in tile hidden or put in a folder (PANELS.md § 6).
         if let Some(window) = self.window.upgrade() {
             let name = window.global::<Strings>().invoke_builtin_name(tile.into());

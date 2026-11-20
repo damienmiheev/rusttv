@@ -318,10 +318,7 @@ mod tests {
         let row = &template("about_row")["root"]["list-row"];
         assert_eq!(row["detail"]["select"], "status");
         assert_eq!(row["detail"]["cases"], caption);
-        assert_eq!(
-            row["detail"]["else"]["tr"],
-            "MIT OR Apache-2.0 · licences and third-party notices"
-        );
+        assert_eq!(row["detail"]["else"]["tr"], "Third-party notices");
         assert_eq!(
             row["attention"]["cases"],
             serde_json::json!({"update": true})

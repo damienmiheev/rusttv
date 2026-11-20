@@ -205,7 +205,7 @@ the file chooses them (or names a package in `also`).
 ## History
 
 *HISTORY.md.* The launcher keeps a history of what RustTV manages on the TV
-(its tile order, hidden apps and update switch, the three animation
+(its tile order, hidden tiles and update switch, the three animation
 settings, the catalog packages' states, the firmware and whether Home is
 taken over) as git commits in its private storage; this computer keeps a
 full copy of each, `<state dir>/history/<history id>.git` (a normal bare

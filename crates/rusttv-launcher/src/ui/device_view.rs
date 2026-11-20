@@ -16,7 +16,7 @@ use crate::device::{
     Control, ControlKind, Link, PanelAction, PanelPage, QuickPanel, Tab, Value, Volume,
     VolumeChange,
 };
-use crate::model::{Input, QUICK_PANELS, QuickAction, TileId};
+use crate::model::{Input, PanelId, QUICK_PANELS, QuickAction, State, TileId};
 use crate::platform::Platform;
 use rusttv_remote::protocol::TextEdit;
 
@@ -119,8 +119,12 @@ impl Controller {
     /// Carries out a top-right menu entry the platform does: opens its
     /// quick panel, or its app.
     pub(super) fn open_quick(&mut self, action: QuickAction) {
+        // One quick panel at a time: another entry replaces the open one.
+        self.close_quick_view();
         if action == QuickAction::Panels {
             self.panels_row = Some(0);
+            // History's age as of now, not of the last focus change.
+            self.show_history_panel();
             return;
         }
         if let Some(panel) = action.panel() {
@@ -236,6 +240,11 @@ impl Controller {
 
     /// The scrim around the open quick panel was clicked: it closes.
     pub(super) fn quick_dismissed(&mut self) {
+        if self.panels_row.is_some() && self.pointer_reaches(false) {
+            self.panels_input(0, Input::Back);
+            self.render();
+            return;
+        }
         if self.quick.is_some() && self.pointer_reaches(false) {
             self.panel_action(Some(PanelAction::Close));
             self.render();
@@ -434,6 +443,10 @@ impl Controller {
                 .quick_selected()
                 .map_or(-1, |selected| i32::try_from(selected).unwrap_or(i32::MAX)),
         );
+        if self.home.state() != State::Quick {
+            // Closed another way (Home, a page opened from the menu).
+            self.panels_row = None;
+        }
         if let Some(row) = self.panels_row {
             self.render_panels(window, row);
             return;
@@ -465,10 +478,12 @@ impl Controller {
             self.quick_rows.set_vec(rows);
         }
     }
+
     /// Draws the RustTV quick panel: each panel's row face, from the same
     /// view as its tile (PANELS.md § 2).
     fn render_panels(&mut self, window: &HomeWindow, row: usize) {
         window.set_quick_power(false);
+        // A name, the same in every language (quick.slint's entry too).
         window.set_quick_title("RustTV".into());
         window.set_quick_status(SharedString::new());
         window.set_quick_row(i32::try_from(row).unwrap_or(i32::MAX));
@@ -478,7 +493,12 @@ impl Controller {
             .map(|tile| match tile {
                 TileId::About => self.about_list_row(window),
                 TileId::Remote => self.remote_row(window),
-                _ => self.history_row(window),
+                TileId::Panel(PanelId::History) => self.history_row(window),
+                // Every row of `QUICK_PANELS` has a face above (a test
+                // opens each).
+                TileId::Settings | TileId::App(_) | TileId::Hidden | TileId::Folder(_) => {
+                    SettingsRow::default()
+                }
             })
             .collect();
         if !self.quick_rows.iter().eq(rows.iter().cloned()) {

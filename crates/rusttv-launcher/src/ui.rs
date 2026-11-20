@@ -1688,9 +1688,9 @@ impl Controller {
         let caption_changed =
             crate::remote::about_caption(&status) != crate::remote::about_caption(&self.update);
         self.update = status;
-        // Settings' About tab shows the status in a row; rendering also
-        // updates the phones.
-        if self.settings.is_some() {
+        // Settings' About tab and the RustTV quick panel show the status in
+        // a row; rendering also updates the phones.
+        if self.settings.is_some() || self.panels_row.is_some() {
             self.render();
         } else if caption_changed && !self.away {
             self.push_remote_view();
@@ -3660,10 +3660,7 @@ mod tests {
             first.title,
             format!("RustTV {}", ltr(env!("CARGO_PKG_VERSION"))).as_str()
         );
-        assert_eq!(
-            first.detail,
-            "MIT OR Apache-2.0 · licences and third-party notices"
-        );
+        assert_eq!(first.detail, "Third-party notices");
         assert!(!first.current);
 
         screen.tap(RIGHT);
@@ -5172,7 +5169,6 @@ mod tests {
         };
         open_panel(&screen);
         assert_eq!(screen.window.get_quick_title(), "RustTV");
-        assert!(!screen.window.get_quick_power());
         let rows: Vec<SettingsRow> = screen.window.get_quick_rows().iter().collect();
         let texts: Vec<(&str, &str, bool)> = rows
             .iter()
@@ -5182,20 +5178,36 @@ mod tests {
         assert_eq!(
             texts[..2],
             [
-                (
-                    version.as_str(),
-                    "MIT OR Apache-2.0 · licences and third-party notices",
-                    false
-                ),
+                (version.as_str(), "Third-party notices", false),
                 ("RustTV Remote", "No phones", false),
             ]
         );
-        // History's row: its age once the history has been read (another
-        // test's history thread may have been), two lines from the start.
+        // History's row: its age once the process's history has been read
+        // (another test may have read it), two lines from the start.
         assert_eq!(texts[2].0, "History");
         assert!(rows[2].tall);
         assert_eq!(texts.len(), 3);
         assert_eq!(screen.window.get_quick_row(), 0);
+
+        // Up stops at the first row, Down at the last.
+        screen.tap(UP);
+        assert_eq!(screen.window.get_quick_row(), 0);
+        for _ in 0..4 {
+            screen.tap(DOWN);
+        }
+        assert_eq!(screen.window.get_quick_row(), 2);
+        screen.tap(UP);
+        screen.tap(UP);
+
+        // Downloading and installing show on About's row as on its tile.
+        for (status, words) in [
+            (UpdateStatus::Downloading(40), "Downloading"),
+            (UpdateStatus::Installing, "Installing"),
+        ] {
+            screen._controller.borrow_mut().show_update(status);
+            let row = screen.window.get_quick_rows().row_data(0).unwrap();
+            assert_eq!((row.detail.as_str(), row.current), (words, false));
+        }
 
         // An update and pairing show on the rows as on the tiles.
         {
@@ -5244,6 +5256,81 @@ mod tests {
         assert_eq!(screen.window.get_mode(), mode_value(State::Bar));
         let selected = usize::try_from(screen.window.get_quick_selected()).unwrap();
         assert_eq!(quick_codes(&screen)[selected], 7);
+
+        // From the keys: Up from Home, Right to RustTV (after Modify), OK.
+        screen.tap(DOWN);
+        screen.tap(UP);
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_quick_title(), "RustTV");
+        // A click beside it closes it too.
+        screen.window.invoke_quick_dismissed();
+        assert_eq!(screen.window.get_mode(), mode_value(State::Bar));
+        // Home (the launcher leaving the screen) closes it, and the next
+        // quick panel takes the keys itself.
+        open_panel(&screen);
+        screen.lifecycle.paused();
+        screen.lifecycle.resumed();
+        screen.wait(1);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert!(screen._controller.borrow().panels_row.is_none());
+    }
+
+    /// Another entry of the top-right menu replaces the RustTV panel: the
+    /// power key over it opens the power menu, and Audio's controls take
+    /// the keys after it.
+    #[test]
+    fn another_quick_panel_replaces_the_rusttv_panel() {
+        let screen = screen_with(abc().with_device(), None);
+        let click = |code: i32| {
+            let index = quick_codes(&screen)
+                .iter()
+                .position(|known| *known == code)
+                .unwrap();
+            screen
+                .window
+                .invoke_quick_clicked(i32::try_from(index).unwrap());
+        };
+        click(7);
+        assert_eq!(screen.window.get_quick_title(), "RustTV");
+        screen.lifecycle.power_menu();
+        settle(&screen);
+        assert!(screen.window.get_quick_power());
+        assert!(screen._controller.borrow().panels_row.is_none());
+        screen.tap(BACK);
+        click(7);
+        // After the power menu, the panel isn't drawn full screen.
+        assert!(!screen.window.get_quick_power());
+        assert_eq!(screen.window.get_quick_title(), "RustTV");
+        click(2); // Audio
+        settle(&screen);
+        assert_eq!(screen.window.get_quick_title(), "Audio");
+        assert!(screen.window.get_quick_rows().row_data(0).unwrap().slider);
+    }
+
+    /// Settings' change list names hidden or foldered built-in tiles as
+    /// their tiles do, in the window's language; apps keep their own label.
+    #[test]
+    fn change_lines_name_built_in_tiles_in_words() {
+        let screen = screen(None);
+        let controller = screen._controller.borrow();
+        for (name, words) in [
+            ("about", "About"),
+            ("settings", "Settings"),
+            ("remote", "RustTV Remote"),
+            ("panel:history", "History"),
+        ] {
+            assert_eq!(controller.tile_label(name), words);
+        }
+        // Every built-in tile this build has (model.rs `name_of`) has words.
+        for tile in [TileId::About, TileId::Settings, TileId::Remote]
+            .into_iter()
+            .chain(PanelId::ALL.map(TileId::Panel))
+        {
+            let name = order_file::name_of(&tile);
+            assert_ne!(controller.tile_label(&name), name, "{name}");
+        }
+        assert_eq!(controller.tile_label("b/.Main"), "B (b)");
     }
 
     /// Every built-in tile hides like an app (PANELS.md § 6). The Hidden
@@ -5420,9 +5507,23 @@ mod tests {
         assert_eq!(screen.window.get_folder_focus(), 1);
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::Remote));
+        let order: Vec<TileId> = screen
+            ._controller
+            .borrow()
+            .home
+            .order()
+            .keys()
+            .iter()
+            .map(|(id, _)| id.clone())
+            .collect();
         assert_eq!(
-            screen._controller.borrow().home.order().keys().len(),
-            4,
+            order,
+            [
+                TileId::App("a/.Main".into()),
+                TileId::App("b/.Main".into()),
+                TileId::App("c/.Main".into()),
+                TileId::Folder(1)
+            ],
             "neither tile is back on Home"
         );
     }

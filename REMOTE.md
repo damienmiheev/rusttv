@@ -165,7 +165,8 @@ to its home screen.
     is off on plain HTTP.
   - As built (2026-10-25): the phone asks for each app it has no fresh
     picture of; the TV checks the app is installed and listed (on Home, in
-    a folder or on the hidden apps page), and its picture thread draws the banner (else the icon)
+    a folder or on the hidden apps page; a built-in tile's picture is
+    always there), and its picture thread draws the banner (else the icon)
     through `Bridge.tilePicture` and compresses it to WebP with Android's
     own encoder, then sends it to that phone only. After each burst it asks
     Android for one garbage collection, as the launcher does after loading
@@ -403,8 +404,9 @@ echoed.
     formatted when Home reads it (resume, focus changes), never on a
     timer;
   - the open folder and its page;
-  - the focused tile (on the About or RustTV Remote page, that page's
-    tile, wherever it was opened from);
+  - the focused tile (on a built-in page, that page's tile, wherever it
+    was opened from: `about`, `remote`, `settings`, or `panel:history` for
+    Settings opened on History);
   - the mode: browse, menu, moving, hidden list, settings, review, or text
     with its label;
   - the open long-press menu (its items and the selected one), and on the

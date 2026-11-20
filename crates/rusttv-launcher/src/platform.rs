@@ -169,7 +169,7 @@ pub trait Platform {
     /// pointer's service on or off.
     fn open_pointer_settings(&mut self) {}
 
-    /// Whether Home has the top-right menu (Modify, Settings and
+    /// Whether Home has the top-right menu (Modify, RustTV, Settings and
     /// [`Platform::quick_actions`]). Without it (Android), About and
     /// Settings are tiles.
     fn top_right_menu(&self) -> bool {

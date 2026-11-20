@@ -343,9 +343,10 @@ fn history_script(right_to_left: bool) -> Vec<DemoStep> {
 /// Panel tiles hidden and in folders, and the RustTV quick panel
 /// (PANELS.md § 2, § 6): RustTV Remote's menu (Move, Hide), Remote held
 /// over History until they make a folder, the open folder and its tile,
-/// History hidden from inside it, the Hidden apps page, then (under a
-/// top-right menu) the RustTV entry's panel, Down to Remote's row and OK.
-fn panels_script(right_to_left: bool) -> Vec<DemoStep> {
+/// History hidden from inside it, the Hidden apps page, then, with a
+/// top-right menu (`menu`; not with `RUSTTV_NO_DEVICE=1`), the RustTV
+/// entry's panel, Down to Remote's row and OK.
+fn panels_script(right_to_left: bool, menu: bool) -> Vec<DemoStep> {
     use DemoStep::{Press, Release, Snapshot, Tap};
     let (forward, back) = if right_to_left {
         (LEFT, RIGHT)
@@ -399,8 +400,14 @@ fn panels_script(right_to_left: bool) -> Vec<DemoStep> {
         Snapshot("panels-7-hidden-page"),
         Tap(BACK),
         ms(300),
+    ]);
+    if !menu {
+        return steps;
+    }
+    steps.extend([
         // Back on Home goes to the first row; Up reaches the top-right
-        // menu, where RustTV is the fifth entry.
+        // menu, where RustTV is the fifth entry (Modify, Audio, Network,
+        // KDE Connect, RustTV).
         Tap(BACK),
         Tap(UP),
     ]);
@@ -483,7 +490,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         ("--demo-panels", Some(dir)) => {
             let language = options.language.as_deref().unwrap_or_default();
-            script = panels_script(is_right_to_left(language));
+            let menu = std::env::var_os("RUSTTV_NO_DEVICE").is_none();
+            script = panels_script(is_right_to_left(language), menu);
             PathBuf::from(dir)
         }
         _ => {

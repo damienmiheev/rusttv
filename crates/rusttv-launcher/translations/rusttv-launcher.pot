@@ -2,7 +2,7 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
-"POT-Creation-Date: 2026-11-20 23:20+0000\n"
+"POT-Creation-Date: 2026-11-20 23:41+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -648,7 +648,7 @@ msgstr ""
 msgid "Up and Down scroll the notices. Back returns."
 msgstr ""
 
-#: templates/about_page.json
+#: templates/about_page.json templates/about_row.json
 msgid "Third-party notices"
 msgstr ""
 
@@ -666,10 +666,6 @@ msgstr ""
 
 #: templates/about_row.json templates/about_tile.json
 msgid "Update available"
-msgstr ""
-
-#: templates/about_row.json
-msgid "MIT OR Apache-2.0 · licences and third-party notices"
 msgstr ""
 
 #: templates/history_row.json templates/history_tile.json

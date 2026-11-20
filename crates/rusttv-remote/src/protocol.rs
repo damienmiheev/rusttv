@@ -257,8 +257,9 @@ pub fn picture_data(webp: &[u8]) -> Option<String> {
 pub struct HomeView {
     /// Visible tiles in order. Tiles inside folders (apps and built-in
     /// tiles) are listed too, with their folder; hidden tiles never are.
-    /// In [`HomeMode::Settings`] for the About or RustTV Remote page,
-    /// [`HomeView::focused`] names that page's tile.
+    /// In [`HomeMode::Settings`] (a built-in page), [`HomeView::focused`]
+    /// names that page's tile: `about`, `remote`, `settings`, or
+    /// `panel:history` for Settings opened on History.
     pub tiles: Vec<TileView>,
     /// The focused tile.
     pub focused: Option<String>,

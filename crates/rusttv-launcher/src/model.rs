@@ -408,7 +408,8 @@ pub const QUICK_PANELS: [TileId; 3] = [
 pub enum MenuItem {
     /// Pick the tile up to move it.
     Move,
-    /// Take the app off Home; it stays installed and is listed under Hidden apps.
+    /// Take the app or built-in tile off Home; it stays installed and is
+    /// listed under Hidden apps.
     Hide,
     /// The app's size on screen (its UI scale): OK steps through the sizes,
     /// Left and Right make it smaller or bigger. Only where the platform can
@@ -750,7 +751,11 @@ enum Mode {
     About {
         from_settings: bool,
     },
-    Settings,
+    /// The Settings page; `history` when History's tile or row opened it
+    /// (on its History section).
+    Settings {
+        history: bool,
+    },
     Remote,
     /// `selected` indexes `Home::quick_actions`.
     Bar {
@@ -787,7 +792,7 @@ fn menu_items(tile: Option<&TileId>, sizes: bool) -> &'static [MenuItem] {
     }
 }
 
-/// The home screen: tile order, folders, hidden apps, focus, scroll position and mode.
+/// The home screen: tile order, folders, hidden tiles, focus, scroll position and mode.
 #[derive(Debug, Clone)]
 pub struct Home {
     order: Order,
@@ -801,8 +806,8 @@ pub struct Home {
     /// The hidden apps page: installed hidden apps by label, then this
     /// Home's hidden built-in tiles in [`BUILTINS`] order.
     hidden_apps: Vec<String>,
-    /// Tiles in display order: the order, then [`TileId::Hidden`] if any app is
-    /// hidden. During a move this differs from `order`.
+    /// Tiles in display order: the order, then [`TileId::Hidden`] if any app
+    /// or built-in tile is hidden. During a move this differs from `order`.
     tiles: Vec<TileId>,
     focus: usize,
     first_row: usize,
@@ -825,7 +830,7 @@ pub struct Home {
 }
 
 impl Home {
-    /// Creates a home screen with a stored order, folders and hidden apps;
+    /// Creates a home screen with a stored order, folders and hidden tiles;
     /// call [`Home::set_apps`] next.
     pub fn new(
         order: Order,
@@ -955,7 +960,7 @@ impl Home {
         self.refresh()
     }
 
-    /// Rebuilds the tiles from the app list, folders, hidden apps and order,
+    /// Rebuilds the tiles from the app list, folders, hidden tiles and order,
     /// keeping focus on the same tile; returns whether the order or a folder
     /// changed.
     fn refresh(&mut self) -> bool {
@@ -1437,7 +1442,7 @@ impl Home {
         }
     }
 
-    /// Replaces the order, folders and hidden apps (the history rewrote
+    /// Replaces the order, folders and hidden tiles (the history rewrote
     /// them), keeping focus on the same tile where it still exists.
     pub fn replace_order(
         &mut self,
@@ -1481,7 +1486,7 @@ impl Home {
 
     /// Leaves the Settings page (it decides when: Back on its section list).
     pub fn close_settings(&mut self) {
-        if matches!(self.mode, Mode::Settings) {
+        if matches!(self.mode, Mode::Settings { .. }) {
             self.mode = Mode::Browse;
         }
     }
@@ -1489,7 +1494,7 @@ impl Home {
     /// Opens the About page from the Settings page (its About tab); Back
     /// returns to Settings.
     pub fn open_about(&mut self) -> Option<Effect> {
-        if !matches!(self.mode, Mode::Settings) {
+        if !matches!(self.mode, Mode::Settings { .. }) {
             return None;
         }
         self.mode = Mode::About {
@@ -1526,6 +1531,20 @@ impl Home {
         }
     }
 
+    /// The built-in tile whose page is open, wherever it was opened from
+    /// (its tile on Home or in a folder, the RustTV quick panel, the
+    /// top-right menu): About, RustTV Remote, History (Settings opened on
+    /// it) or Settings.
+    pub fn page(&self) -> Option<TileId> {
+        match self.mode {
+            Mode::About { .. } => Some(TileId::About),
+            Mode::Remote => Some(TileId::Remote),
+            Mode::Settings { history: true } => Some(TileId::Panel(PanelId::History)),
+            Mode::Settings { history: false } => Some(TileId::Settings),
+            _ => None,
+        }
+    }
+
     /// The app being launched (component name), if a launch is in flight.
     pub fn launching(&self) -> Option<&str> {
         match &self.mode {
@@ -1541,7 +1560,7 @@ impl Home {
             Mode::Moving { .. } => State::Moving,
             Mode::Launching { .. } => State::Launching,
             Mode::About { .. } => State::About,
-            Mode::Settings => State::Settings,
+            Mode::Settings { .. } => State::Settings,
             Mode::Remote => State::Remote,
             Mode::Menu { .. } => State::Menu,
             Mode::Hidden { .. } => State::Hidden,
@@ -1573,7 +1592,7 @@ impl Home {
             (
                 Mode::Moving { .. }
                 | Mode::About { .. }
-                | Mode::Settings
+                | Mode::Settings { .. }
                 | Mode::Remote
                 | Mode::Menu { .. }
                 | Mode::Hidden { .. }
@@ -1603,14 +1622,14 @@ impl Home {
             }
             (Mode::About { from_settings }, Input::Back) => {
                 self.mode = if *from_settings {
-                    Mode::Settings
+                    Mode::Settings { history: false }
                 } else {
                     Mode::Browse
                 };
                 None
             }
             (Mode::About { .. }, Input::OkPressed) => Some(Effect::Update),
-            (Mode::Settings, input) => Some(Effect::Settings(input)),
+            (Mode::Settings { .. }, input) => Some(Effect::Settings(input)),
             (Mode::Remote, input) => Some(Effect::Remote(input)),
             (Mode::Quick { .. }, input) => Some(Effect::QuickInput(input)),
             (Mode::Bar { selected }, _) => {
@@ -1685,11 +1704,11 @@ impl Home {
                         None
                     }
                     QuickAction::Settings => {
-                        self.mode = Mode::Settings;
+                        self.mode = Mode::Settings { history: false };
                         Some(Effect::OpenSettings)
                     }
                     QuickAction::Network => {
-                        self.mode = Mode::Settings;
+                        self.mode = Mode::Settings { history: false };
                         Some(Effect::OpenSettingsTab("network"))
                     }
                     action if action.opens_panel() => {
@@ -2142,9 +2161,11 @@ impl Home {
                 },
                 Effect::OpenAbout,
             ),
-            TileId::Settings => (Mode::Settings, Effect::OpenSettings),
+            TileId::Settings => (Mode::Settings { history: false }, Effect::OpenSettings),
             TileId::Remote => (Mode::Remote, Effect::OpenRemote),
-            TileId::Panel(PanelId::History) => (Mode::Settings, Effect::OpenHistory),
+            TileId::Panel(PanelId::History) => {
+                (Mode::Settings { history: true }, Effect::OpenHistory)
+            }
             TileId::App(_) | TileId::Hidden | TileId::Folder(_) => return None,
         };
         self.mode = mode;
@@ -3601,20 +3622,27 @@ mod tests {
 
     #[test]
     fn folders_and_the_hidden_apps_tile_never_go_into_a_folder() {
-        // The Hidden apps tile never takes a tile in: a00 can't move onto it.
+        // The Hidden apps tile never takes a tile in: neither an app nor a
+        // built-in tile can move onto it (the arrows stop before it, the
+        // phone's drag is ignored), and `can_take` refuses it.
         let mut home = home(2);
         press(&mut home, &[Input::Right]);
         hide(&mut home);
-        assert_eq!(home.tiles().last(), Some(&TileId::Hidden));
-        assert!(home.focus_on(&id("a00")));
-        pick_up(&mut home);
-        press(&mut home, &[Input::Right; 4]);
-        assert_ne!(home.tiles().last(), Some(&id("a00")), "it stays before it");
-        assert!(
-            home.moving_over()
-                .is_none_or(|over| home.tiles()[over] != TileId::Hidden)
+        assert_eq!(
+            home.tiles(),
+            [id("a00"), TileId::Remote, HISTORY, TileId::Hidden]
         );
-        home.handle(Input::Tick, ms(60_000));
+        for moving in [id("a00"), TileId::Remote] {
+            assert!(home.focus_on(&moving));
+            pick_up(&mut home);
+            press(&mut home, &[Input::Right; 4]);
+            assert_eq!(home.tiles().last(), Some(&TileId::Hidden));
+            assert_eq!(home.tiles()[2], moving, "it stops before it");
+            home.drag_over(&TileId::Hidden, true, ms(1000));
+            assert_ne!(home.moving_over(), Some(3), "never over it");
+            assert!(!home.can_take(3), "{moving:?}");
+            press(&mut home, &[Input::Back]);
+        }
         assert!(home.folders().is_empty());
 
         // A folder moved onto an app makes nothing: no folders in folders.
@@ -3888,8 +3916,12 @@ mod tests {
             Input::Tick,
         ];
         let mut seed: u64 = 0x2545_F491_4F6C_DD1D;
-        for _ in 0..200 {
-            let mut home = home(9);
+        for run in 0..200 {
+            // Half with About and Settings as tiles (Android).
+            let settings_tiles = run % 2 == 1;
+            let mut home = Home::new(Order::default(), BTreeMap::new(), BTreeSet::new(), false);
+            home.set_settings_tiles(settings_tiles);
+            home.set_apps(&apps(9));
             let mut now = Duration::ZERO;
             let mut pressed = Vec::new();
             for _ in 0..60 {
@@ -3912,6 +3944,10 @@ mod tests {
                 all.sort_unstable();
                 let mut expected: Vec<String> = (0..9).map(|n| format!("a{n:02}")).collect();
                 expected.extend(["panel:history".to_owned(), "remote".to_owned()]);
+                if settings_tiles {
+                    expected.extend(["about".to_owned(), "settings".to_owned()]);
+                }
+                expected.sort_unstable();
                 assert_eq!(all, expected, "after {pressed:?}");
                 assert!(home.folders().values().all(|f| !f.apps.is_empty()));
                 for folder in home.folders().keys() {
@@ -3922,6 +3958,17 @@ mod tests {
                             .count(),
                         1
                     );
+                }
+                // Browsing, the saved order is the grid: nothing hidden or
+                // in a folder stays in it.
+                if home.state() == State::Browse {
+                    let grid: Vec<TileId> = home
+                        .tiles()
+                        .iter()
+                        .filter(|tile| **tile != TileId::Hidden)
+                        .cloned()
+                        .collect();
+                    assert_eq!(home.order().ids(), grid, "after {pressed:?}");
                 }
             }
         }
@@ -4056,7 +4103,8 @@ mod tests {
             hidden_page(&home),
             ["about", "settings", "remote", "panel:history"]
         );
-        // Settings is two presses away: the Hidden apps tile, then OK on it.
+        // Settings is reachable: OK on the Hidden apps tile, then on
+        // Settings there.
         assert!(home.focus_on(&TileId::Hidden));
         press(&mut home, &[Input::OkPressed, Input::OkReleased]);
         assert_eq!(home.state(), State::Hidden);
@@ -4066,7 +4114,7 @@ mod tests {
             Some(Effect::SaveOrder)
         );
         assert!(home.tiles().contains(&TileId::Settings));
-        // A tap on the phone puts History back; Back leaves the page.
+        // A tap on the phone puts History back.
         assert_eq!(
             home.point(&HISTORY, false, Duration::ZERO),
             Some(Effect::SaveOrder)
@@ -4173,5 +4221,122 @@ mod tests {
         home.point_quick(audio);
         assert_eq!(home.state(), State::Quick);
         assert_eq!(home.open_panel_row(0), None);
+    }
+
+    #[test]
+    fn a_built_in_tile_leaves_its_folder_like_an_app() {
+        // Folder 1 = [remote, panel:history]: History leaves it past its
+        // edge, just after the folder's tile.
+        let mut home = home_with_built_in_folder(false);
+        assert!(home.focus_on(&TileId::Folder(1)));
+        press(&mut home, &[Input::OkPressed, Input::OkReleased]);
+        press(&mut home, &[Input::Right]);
+        assert_eq!(home.current(), Some(HISTORY));
+        pick_up(&mut home);
+        press(&mut home, &[Input::Right]);
+        assert_eq!(
+            home.tiles(),
+            [id("a00"), id("a01"), TileId::Folder(1), HISTORY]
+        );
+        assert_eq!(home.folders()[&1].apps, ["remote"]);
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed]),
+            Some(Effect::SaveOrder)
+        );
+        assert_eq!(
+            home.order().ids(),
+            [id("a00"), id("a01"), TileId::Folder(1), HISTORY]
+        );
+        // The last one out: the folder goes, Remote takes its place.
+        assert!(home.focus_on(&TileId::Folder(1)));
+        press(
+            &mut home,
+            &[Input::OkReleased, Input::OkPressed, Input::OkReleased],
+        );
+        pick_up(&mut home);
+        press(&mut home, &[Input::Right]);
+        assert!(home.folders().is_empty());
+        assert_eq!(
+            home.tiles(),
+            [id("a00"), id("a01"), TileId::Remote, HISTORY]
+        );
+    }
+
+    #[test]
+    fn cancelling_a_move_that_made_a_folder_of_built_in_tiles_undoes_it() {
+        let mut home = home(1);
+        assert!(home.focus_on(&TileId::Remote));
+        pick_up(&mut home);
+        home.handle(Input::Right, ms(1000));
+        home.handle(Input::Tick, ms(1000) + FOLDER_HOVER);
+        assert_eq!(home.folders().len(), 1);
+        press(&mut home, &[Input::Back]);
+        assert!(home.folders().is_empty());
+        assert_eq!(home.tiles(), [id("a00"), TileId::Remote, HISTORY]);
+        assert_eq!(home.focused(), Some(&TileId::Remote));
+        // Leaving the folder it just made before the drop undoes it too.
+        pick_up(&mut home);
+        home.handle(Input::Right, ms(1000));
+        home.handle(Input::Tick, ms(1000) + FOLDER_HOVER);
+        assert_eq!(home.state(), State::Moving);
+        press(&mut home, &[Input::Right]);
+        assert!(home.folders().is_empty());
+        assert_eq!(home.tiles(), [id("a00"), HISTORY, TileId::Remote]);
+    }
+
+    #[test]
+    fn about_and_settings_follow_settings_tiles_set_after_the_apps() {
+        let folders = BTreeMap::from([(
+            1,
+            Folder {
+                name: "RustTV".into(),
+                apps: vec!["settings".into(), "remote".into()],
+            },
+        )]);
+        let hidden = BTreeSet::from(["about".to_owned()]);
+        let mut home = Home::new(Order::default(), folders, hidden, false);
+        home.set_settings_tiles(true);
+        home.set_apps(&apps(1));
+        assert_eq!(home.hidden_apps(), ["about"]);
+        assert_eq!(home.folders()[&1].apps, ["settings", "remote"]);
+        assert!(!home.tiles().contains(&TileId::Settings));
+        // A top-right menu takes them: About is no longer listed, Settings
+        // leaves the folder; About stays hidden for when they are tiles.
+        home.set_settings_tiles(false);
+        assert!(home.hidden_apps().is_empty());
+        assert_eq!(home.folders()[&1].apps, ["remote"]);
+        assert!(home.is_hidden(&TileId::About));
+        assert!(!home.tiles().contains(&TileId::About));
+        home.set_settings_tiles(true);
+        assert_eq!(home.hidden_apps(), ["about"]);
+        assert!(home.tiles().contains(&TileId::Settings), "back at the end");
+        assert!(!home.tiles().contains(&TileId::About));
+    }
+
+    #[test]
+    fn reconcile_leaves_out_built_in_tiles_that_are_away() {
+        let mut order = Order::from_keys([
+            (id("a"), 1000),
+            (TileId::About, 2000),
+            (TileId::Remote, 3000),
+            (HISTORY, 4000),
+        ]);
+        let away = [TileId::Remote, TileId::About];
+        assert!(order.reconcile(&[app("a", "A")], &BTreeSet::new(), true, &away));
+        assert_eq!(order.ids(), [id("a"), HISTORY, TileId::Settings]);
+        // Not added back on the next pass either.
+        assert!(!order.reconcile(&[app("a", "A")], &BTreeSet::new(), true, &away));
+        // Back from away: at the end.
+        assert!(order.reconcile(&[app("a", "A")], &BTreeSet::new(), true, &[]));
+        assert_eq!(
+            order.ids(),
+            [
+                id("a"),
+                HISTORY,
+                TileId::Settings,
+                TileId::About,
+                TileId::Remote
+            ]
+        );
     }
 }

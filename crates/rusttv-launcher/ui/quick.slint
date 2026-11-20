@@ -51,7 +51,7 @@ export component ControlRow inherits Rectangle {
 
     if current: Rectangle {
         x: root.place-x(18 * u, 10 * u);
-        y: (detail == "" ? (parent.height - self.height) / 2 : 28 * u);
+        y: (root.one-line ? (parent.height - self.height) / 2 : 28 * u);
         width: 10 * u;
         height: 10 * u;
         border-radius: self.width / 2;

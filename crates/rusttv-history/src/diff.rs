@@ -25,7 +25,8 @@ pub enum Change {
         /// The tile's name.
         tile: String,
     },
-    /// A tile left Home (an app was removed).
+    /// A tile left Home (an app was removed); a tile hidden is only
+    /// [`Change::Hidden`].
     Removed {
         /// The tile's name.
         tile: String,
@@ -37,7 +38,7 @@ pub enum Change {
         /// Its name.
         name: String,
     },
-    /// A folder went (its last app left it).
+    /// A folder went (its last tile left it).
     FolderRemoved {
         /// Its tile name.
         folder: String,
@@ -53,20 +54,20 @@ pub enum Change {
         /// After.
         new: String,
     },
-    /// An app on Home went into a folder or came out of one.
+    /// An app or a built-in tile went into a folder or came out of one.
     InFolder {
-        /// The app's component name.
+        /// The tile's name (an app's component, or `about`, `panel:history`).
         tile: String,
         /// The folder's tile name.
         folder: String,
         /// The folder's name.
         name: String,
-        /// Whether the app is in the folder now.
+        /// Whether the tile is in the folder now.
         inside: bool,
     },
-    /// An app was hidden or shown again.
+    /// An app or a built-in tile was hidden or shown again.
     Hidden {
-        /// The app's component name.
+        /// The tile's name (an app's component, or `about`, `panel:history`).
         tile: String,
         /// Whether it is hidden now.
         hidden: bool,
@@ -449,19 +450,31 @@ mod tests {
                 },
             ]
         );
-        // And back: shown again, out of the folder.
-        let back = diff(&new, &old);
-        assert!(
-            back.iter()
-                .all(|change| !matches!(change, Change::Added { .. } | Change::Removed { .. })),
-            "{back:?}"
-        );
+        // And back: shown again, out of the folder; still nothing added.
+        let out = |tile: &str| Change::InFolder {
+            tile: tile.into(),
+            folder: "folder:1".into(),
+            name: "RustTV".into(),
+            inside: false,
+        };
         assert_eq!(
-            back.iter()
-                .filter(|change| matches!(change, Change::Hidden { hidden: false, .. }))
-                .count(),
-            2,
-            "{back:?}"
+            diff(&new, &old),
+            [
+                out("settings"),
+                out("panel:history"),
+                Change::FolderRemoved {
+                    folder: "folder:1".into(),
+                    name: "RustTV".into(),
+                },
+                Change::Hidden {
+                    tile: "about".into(),
+                    hidden: false,
+                },
+                Change::Hidden {
+                    tile: "com.example.a/.Main".into(),
+                    hidden: false,
+                },
+            ]
         );
     }
 

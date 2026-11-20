@@ -76,12 +76,13 @@ field in `--json` output says which contract you get, CLI.md).
   names hiding a tile only as hidden, no longer also as removed.
 - The top-right menu (Linux) has a RustTV entry: a quick panel with the
   panels' rows, "RustTV <version>" (with "Update available",
-  "Downloading" or "Installing" while there is an update, else the
-  licence line), RustTV Remote (the paired phones, or "Pairing") and
-  History (the last change's age, or "Waiting"), each from the same view
-  as its tile; OK or a click opens its page. Settings' RustTV row shows
-  the update caption the same way. No new texts. The desktop build takes
-  `--demo-panels <dir>`.
+  "Downloading" or "Installing" while there is an update, else
+  "Third-party notices"), RustTV Remote (the paired phones, or
+  "Pairing") and History (the last change's age, or "Waiting"), each from
+  the same view as its tile; OK or a click opens its page. Settings'
+  RustTV row shows the same (its long licence line, which didn't fit the
+  panel in most languages, became "Third-party notices"). No new texts.
+  The desktop build takes `--demo-panels <dir>`.
 - Settings → Effects: Reduced turns the tile shadows and the backdrop glow
   off, for a weak GPU. The choice is in the TV's history and kept as the
   `effects-reduced` flag file next to `order.toml`, so an image can preset
@@ -127,7 +128,9 @@ field in `--json` output says which contract you get, CLI.md).
 - The phone's mirror shows built-in tiles in folders and on the hidden
   apps page, with their pictures and captions; its menu offers Hide for
   them, and a tap on the hidden apps page puts one back (REMOTE.md § 4).
-  On the About or RustTV Remote page, `focused` names that page's tile.
+  On a built-in page (About, RustTV Remote, Settings, or Settings opened
+  on History), `focused` names that page's tile, wherever it was opened
+  from.
 
 ### CLI
 

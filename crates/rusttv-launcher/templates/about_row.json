@@ -9,6 +9,6 @@
       "update": { "tr": "Update available" },
       "downloading": { "tr": "Downloading" },
       "installing": { "tr": "Installing" } },
-      "else": { "tr": "MIT OR Apache-2.0 · licences and third-party notices" } },
+      "else": { "tr": "Third-party notices" } },
     "attention": { "select": "status", "cases": { "update": true } } } }
 }

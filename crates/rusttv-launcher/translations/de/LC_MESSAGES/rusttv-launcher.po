@@ -462,9 +462,6 @@ msgstr "Audio"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "MIT OR Apache-2.0 · licences and third-party notices"
-msgstr "MIT OR Apache-2.0 · Lizenzen und Hinweise zu Drittanbietern"
-
 msgid "Modify"
 msgstr "Bearbeiten"
 
