@@ -444,9 +444,6 @@ msgstr "KDE Connect"
 msgid "Loading…"
 msgstr "Wczytywanie…"
 
-msgid "MIT OR Apache-2.0 · licences and third-party notices"
-msgstr "MIT OR Apache-2.0 · licencje i informacje o podmiotach trzecich"
-
 msgid "Modify"
 msgstr "Edytuj"
 

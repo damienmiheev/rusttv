@@ -7,9 +7,13 @@
 
 use std::time::Duration;
 
-use slint::{ComponentHandle, Image, Model, Rgba8Pixel, SharedPixelBuffer, Timer, TimerMode};
+use slint::{
+    ComponentHandle, Image, Model, Rgba8Pixel, SharedPixelBuffer, SharedString, Timer, TimerMode,
+};
 
-use super::{Controller, HomeWindow, RemotePanel, SettingsRow, Strings, settings_view};
+use super::{
+    Controller, HomeWindow, RemoteListRow, RemotePanel, SettingsRow, Strings, settings_view,
+};
 use crate::model::Input;
 use crate::panels;
 use crate::platform::PointerState;
@@ -266,6 +270,9 @@ impl Controller {
         if let Some(pairing) = &mut self.pairing {
             pairing.phase = Phase::Failed(4);
             self.render();
+        } else if self.panels_row.is_some() {
+            // The RustTV quick panel's row says it too.
+            self.render();
         }
     }
 
@@ -281,7 +288,12 @@ impl Controller {
             rusttv_remote::PAIRING_TIME,
             move || {
                 if let Some(controller) = me.upgrade() {
-                    controller.borrow().show_remote_panel();
+                    let mut controller = controller.borrow_mut();
+                    controller.show_remote_panel();
+                    // The RustTV quick panel's row says it too.
+                    if controller.panels_row.is_some() {
+                        controller.render();
+                    }
                 }
             },
         );
@@ -292,18 +304,39 @@ impl Controller {
     /// touching the tile list. Called from the remote's events (pairing,
     /// a phone paired or removed), never polled.
     pub(super) fn show_remote_panel(&self) {
+        let Some(window) = self.window.upgrade() else {
+            return;
+        };
+        if let Some(tile) = self.remote_panel_view().tile {
+            let panel = window.global::<RemotePanel>();
+            panel.set_phones(tile.props.get("phones").into());
+            panel.set_status(tile.props.get("status").into());
+        }
+    }
+
+    /// Remote's view: the paired phones, and whether pairing is open.
+    fn remote_panel_view(&self) -> panels::PanelView {
         let phones = self
             .remote
             .as_ref()
             .map_or(0, |link| link.remote().phones().len());
-        let pairing = self.pairing_timer.running();
-        let Some(window) = self.window.upgrade() else {
-            return;
+        panels::remote_view(phones, self.pairing_timer.running())
+    }
+
+    /// Remote's row face (PANELS.md § 4), in the RustTV quick panel: from
+    /// the same view as its tile.
+    pub(super) fn remote_row(&self, window: &HomeWindow) -> SettingsRow {
+        let face = window.global::<RemoteListRow>();
+        let Some(view) = self.remote_panel_view().row else {
+            return SettingsRow::default();
         };
-        if let Some(tile) = panels::remote_view(phones, pairing).tile {
-            let panel = window.global::<RemotePanel>();
-            panel.set_phones(tile.props.get("phones").into());
-            panel.set_status(tile.props.get("status").into());
+        let phones: SharedString = view.props.get("phones").into();
+        let status: SharedString = view.props.get("status").into();
+        SettingsRow {
+            title: face.invoke_title(phones.clone(), status.clone()),
+            detail: face.invoke_detail(phones.clone(), status.clone()),
+            current: face.invoke_attention(phones, status),
+            ..SettingsRow::default()
         }
     }
 

@@ -442,8 +442,9 @@
   // IndexedDB and asks again after a week, so a connection only fetches what
   // is new. Until it arrives, the tile shows a colour from its id.
   const WEEK_MS = 7 * 24 * 3600 * 1000;
-  // The launcher's own tiles; their pictures come from the TV too.
-  const BUILTINS = ["about", "settings", "remote", "hidden-apps"];
+  // The launcher's own tiles, panel tiles included; their pictures come
+  // from the TV too. They can be hidden and in folders like apps.
+  const BUILTINS = ["about", "settings", "remote", "hidden-apps", "panel:history"];
   const pictures = new Map(); // id -> { kind, url, at }
   const asked = new Set();
   const db = new Promise((resolve) => {

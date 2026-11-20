@@ -96,7 +96,7 @@ pub(crate) enum ChangeView {
     Reordered { moved: Vec<String> },
     /// A tile appeared on Home (an app installed).
     Added { tile: String },
-    /// A tile left Home (an app removed).
+    /// A tile left Home (an app removed; not one hidden).
     Removed { tile: String },
     /// A folder made on Home.
     FolderAdded { folder: String, name: String },
@@ -108,14 +108,14 @@ pub(crate) enum ChangeView {
         old: String,
         new: String,
     },
-    /// An app put into a folder or taken out of it.
+    /// An app or a built-in tile put into a folder or taken out of it.
     InFolder {
         tile: String,
         folder: String,
         name: String,
         inside: bool,
     },
-    /// An app hidden or shown again.
+    /// An app or a built-in tile hidden or shown again.
     Hidden { tile: String, hidden: bool },
     /// A phone paired with RustTV Remote.
     PhonePaired { phone: String, name: String },

@@ -36,7 +36,10 @@ export component ControlRow inherits Rectangle {
     in property <bool> dim;
     in property <bool> slider;
     in property <float> level;
-    height: (detail == "" && !slider ? 64 : 96) * u;
+    // Two lines tall even while `detail` is empty (`SettingsRow.tall`).
+    in property <bool> tall;
+    property <bool> one-line: detail == "" && !slider && !tall;
+    height: (one-line ? 64 : 96) * u;
     border-radius: 10 * u;
     background: selected ? Theme.text : Theme.text.with-alpha(0);
     animate background { duration: 120ms; }
@@ -48,7 +51,7 @@ export component ControlRow inherits Rectangle {
 
     if current: Rectangle {
         x: root.place-x(18 * u, 10 * u);
-        y: (detail == "" ? (parent.height - self.height) / 2 : 28 * u);
+        y: (root.one-line ? (parent.height - self.height) / 2 : 28 * u);
         width: 10 * u;
         height: 10 * u;
         border-radius: self.width / 2;
@@ -56,9 +59,9 @@ export component ControlRow inherits Rectangle {
     }
     Text {
         x: root.place-x(44 * u, self.width);
-        y: detail == "" && !slider ? 0 : 12 * u;
+        y: root.one-line ? 0 : 12 * u;
         width: parent.width - 68 * u;
-        height: detail == "" && !slider ? parent.height : 34 * u;
+        height: root.one-line ? parent.height : 34 * u;
         text: root.text;
         font-size: 27 * u;
         font-weight: 500;
@@ -102,7 +105,8 @@ export component ControlRow inherits Rectangle {
 // focused one a light disc like a selected menu row, with its name below.
 // `actions` are model.rs `QuickAction` codes (ui/device_view.rs
 // `quick_code`): 0 Search, 1 Modify, 2 Audio, 3 Network, 4 KDE Connect,
-// 5 Settings, 6 Power. Its top-right corner sits at its parent's.
+// 5 Settings, 6 Power, 7 RustTV (the panels' rows, PANELS.md § 2). Its
+// top-right corner sits at its parent's.
 export component QuickBar inherits Rectangle {
     in property <length> u;
     in property <bool> rtl;
@@ -111,9 +115,9 @@ export component QuickBar inherits Rectangle {
     in property <int> selected: -1;
     // The network interfaces, shown in the Network entry (code 3), one icon
     // each: 100 + bars (0 not connected, 1..4) for Wi-Fi, 200 / 201 for a
-    // cable unplugged / connected (ui/device_view.rs `link_code`). The codes
-    // in `actions` are ascending, so the entries after Network are those
-    // with a higher code.
+    // cable unplugged / connected (ui/device_view.rs `link_code`). Entries
+    // before Network have a lower code and those after it a higher one
+    // (model.rs `QuickAction::ALL`).
     in property <[int]> links;
     // A click on entry `index`.
     callback clicked(int);
@@ -151,6 +155,8 @@ export component QuickBar inherits Rectangle {
         if code == 3 { return @tr("Network"); }
         if code == 4 { return @tr("KDE Connect"); }
         if code == 5 { return @tr("Settings"); }
+        // A name, the same in every language.
+        if code == 7 { return "RustTV"; }
         return @tr("Power");
     }
     // 24 × 24 outline icons, drawn as strokes.
@@ -160,6 +166,8 @@ export component QuickBar inherits Rectangle {
         if code == 2 { return "M 3 9 L 7 9 L 12 5 L 12 19 L 7 15 L 3 15 Z M 15.5 9 A 4 4 0 0 1 15.5 15 M 18 6 A 8 8 0 0 1 18 18"; }
         if code == 3 { return "M 2 9 A 14 14 0 0 1 22 9 M 5.5 12.5 A 9 9 0 0 1 18.5 12.5 M 9 16 A 4.5 4.5 0 0 1 15 16 M 12 19 L 12 19.5"; }
         if code == 4 { return "M 7 2 L 17 2 L 17 22 L 7 22 Z M 10.5 18.5 L 13.5 18.5"; }
+        // Four tiles: RustTV's own panels.
+        if code == 7 { return "M 4 4 L 10 4 L 10 10 L 4 10 Z M 14 4 L 20 4 L 20 10 L 14 10 Z M 4 14 L 10 14 L 10 20 L 4 20 Z M 14 14 L 20 14 L 20 20 L 14 20 Z"; }
         if code == 5 { return "M 19.18 9.51 L 21.77 9.86 L 21.77 14.14 L 19.18 14.49 L 18.84 15.32 L 20.42 17.39 L 17.39 20.42 L 15.32 18.84 L 14.49 19.18 L 14.14 21.77 L 9.86 21.77 L 9.51 19.18 L 8.68 18.84 L 6.61 20.42 L 3.58 17.39 L 5.16 15.32 L 4.82 14.49 L 2.23 14.14 L 2.23 9.86 L 4.82 9.51 L 5.16 8.68 L 3.58 6.61 L 6.61 3.58 L 8.68 5.16 L 9.51 4.82 L 9.86 2.23 L 14.14 2.23 L 14.49 4.82 L 15.32 5.16 L 17.39 3.58 L 20.42 6.61 L 18.84 8.68 Z M 15.2 12 A 3.2 3.2 0 1 0 8.8 12 A 3.2 3.2 0 1 0 15.2 12 Z"; }
         return "M 12 2.5 L 12 11 M 6.5 5.5 A 8 8 0 1 0 17.5 5.5";
     }
@@ -314,6 +322,7 @@ export component QuickPanel inherits Rectangle {
             dim: data.dim;
             slider: data.slider;
             level: data.level;
+            tall: data.tall;
             selected: i == focused-row;
             visible: i >= first-row;
         }

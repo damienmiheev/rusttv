@@ -183,9 +183,11 @@ impl SettingsPage {
         self.loaded
     }
 
-    /// Whether Settings has its About tab: only where a top-right menu
-    /// replaces the About tile (Linux). Without one, the About tile opens
-    /// the About page and Settings stays as it was.
+    /// Whether Settings has its About tab: where a top-right menu replaces
+    /// the About tile (Linux), and while the About tile is hidden, so the
+    /// licence notices and Slint's attribution stay reachable (PANELS.md
+    /// § 6). Otherwise the About tile opens the About page and Settings
+    /// stays as it was.
     pub fn with_about(mut self, about: bool) -> Self {
         self.about = about;
         self

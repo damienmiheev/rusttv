@@ -6,6 +6,9 @@ use crate::template_convert::{BLOCKS_SLINT, convert};
 
 const OK: &str = include_str!("../templates/about_tile.json");
 const ROW: &str = include_str!("../templates/about_row.json");
+/// About's row's accent dot, as its template writes it.
+const ROW_ATTENTION: &str =
+    "\"attention\": { \"select\": \"status\", \"cases\": { \"update\": true } }";
 const PAGE: &str = include_str!("../templates/about_page.json");
 
 /// The test-only templates (codegen/test_templates/, compiled by build.rs
@@ -74,10 +77,16 @@ fn the_about_templates_convert() {
     let row = run(ROW).expect("row converts");
     assert!(row.contains("export global AboutListRow {"));
     assert!(row.contains(&format!(
-        "public pure function title(version: string) -> string {{\n        return @tr(\"RustTV {{}}\", {});",
+        "public pure function title(version: string, status: string) -> string {{\n        return @tr(\"RustTV {{}}\", {});",
         isolated("version")
     )));
-    assert!(row.contains("-> bool {\n        return false;"), "{row}");
+    // The tile's caption, else the licence line; the dot for an update.
+    assert!(row.contains("@tr(\"Update available\")"), "{row}");
+    assert!(row.contains("@tr(\"Third-party notices\")"), "{row}");
+    assert!(
+        row.contains("-> bool {\n        return (status == \"update\" ? true : false);"),
+        "{row}"
+    );
 
     let page = run(PAGE).expect("page converts");
     assert!(page.contains("export component AboutPage inherits Rectangle {"));
@@ -434,7 +443,7 @@ fn rejects_what_the_schema_does_not_hold() {
             "is taken",
         ),
         (
-            ROW.replace("[\"version\"]", "[\"title\"]"),
+            ROW.replace("[\"version\", \"status\"]", "[\"version\", \"title\"]"),
             "is taken",
         ),
         (
@@ -498,13 +507,13 @@ fn rejects_what_the_schema_does_not_hold() {
             "unknown field \"heading\"",
         ),
         (
-            ROW.replace("\"detail\"", "\"attention\": \"secret\", \"detail\""),
+            ROW.replace(ROW_ATTENTION, "\"attention\": \"secret\""),
             "\"secret\" is not in props",
         ),
         (
             ROW.replace(
-                "\"detail\"",
-                "\"attention\": { \"select\": \"version\", \"cases\": { \"1\": \"yes\" } }, \"detail\"",
+                ROW_ATTENTION,
+                "\"attention\": { \"select\": \"version\", \"cases\": { \"1\": \"yes\" } }",
             ),
             "expected true or false",
         ),

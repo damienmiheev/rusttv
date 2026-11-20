@@ -1,8 +1,9 @@
 # Panels — design
 
-Status (2026-11-20): **being built** on the `panels` branch: steps 1
-and 1b (About's tile, its phone caption) and 2 (About's page and row) are
-done (§ 10). Written from the owner's answers on 2026-10-25 (§ Owner
+Status (2026-11-21): **being built** on the `panels` branch: steps 1
+to 4 (About, RustTV Remote and History as panels) are done, and of the
+"Later" items the panel rows in the top-right menu and hide and folders
+for panel tiles (§ 10). Written from the owner's answers on 2026-10-25 (§ Owner
 decisions), checked against the code by an independent review (§ Review
 log), and re-checked against main on 2026-11-20 (§ 10 has the build
 plan). Replaces ROADMAP.md § Parked
@@ -26,7 +27,8 @@ the phone. "Panels" is the word for people; "add-ons" is the word in code.
    is the smallest real panel. History follows.
 5. **Placement:** anywhere on the grid, exactly like an app: move, hide,
    put in a folder. *After review:* v1 ships Move only, as About does today;
-   hide and folders come with the next state format (§ 6).
+   hide and folders come with the next state format (§ 6). *Built
+   2026-11-21* with state format 7 (§ 6, § 10).
 6. **Tile look:** the app tile's frame, radius and focus (scale + shadow +
    label), with live content inside instead of a banner. Focus adds nothing
    else.
@@ -105,9 +107,10 @@ Added 2026-11-20:
 - **No extra work:** a data change touches one model row or one property;
   nothing polls for a tile.
 
-Not in v1: status corner, quick panel, banner, ambient, hide and folders for
-panel tiles, toggles and change requests, data-only panels, the theme
-builder, Settings as a panel (History became one in step 4, § 10). Never:
+Not in v1: status corner, banner, ambient, toggles and change requests,
+data-only panels, the theme builder, Settings as a panel (History became
+one in step 4, § 10). The quick panel's rows and hide and folders for
+panel tiles came after v1 (§ 10, "Later"). Never:
 two instances of one panel, panels running other people's code before level
 3 is approved.
 
@@ -116,10 +119,10 @@ two instances of one panel, panels running other people's code before level
 | Face | Where | v1 | Status |
 |---|---|---|---|
 | **Page** | Full screen: a layout filled with blocks (§ 4) | yes | decided |
-| **Tile** | 1×1 on the Home grid (folders later, § 6) | yes | decided |
+| **Tile** | 1×1 on the Home grid; hidden and in folders like an app (§ 6) | yes | built |
 | **Row** | One line in a list (the Settings list, the quick panel) | yes | decided |
 | **Status corner** | Top-right of Home, not focusable | no | starts with a clock; the rest is open |
-| **Quick panel** | A row in #40's top-right menu (decision 25) | no | decided; which rows is open |
+| **Quick panel** | The row face in the top-right menu's RustTV panel (decision 25) | later | built: About, RustTV Remote, History (§ 10) |
 | **Phone** | RustTV Remote page | partly | the Apps mirror already shows every tile (§ 6) |
 | **Banner** | Short message that slides in | no | open (§ 9) |
 | **Hero** | Area above the grid | partly | today's hero redraws the focused tile larger (§ 4) |
@@ -482,15 +485,16 @@ its own.
 
 ## 6. Home, the order file and the phone
 
-- **v1: About moves like today** (Move only, `menu_items`, `model.rs`). It
-  keeps its id `about` in the order file and the snapshot, so v1 needs no
-  format change.
+- **v1: About moved like before** (Move only, `menu_items`, `model.rs`).
+  It keeps its id `about` in the order file and the snapshot, so v1 needed
+  no format change. Since 2026-11-21 built-in tiles hide and go into
+  folders too (below).
 - **State formats (2026-11-20):** folders 2, phones 3, reduced effects 4
   and, since #40, format 5 (`remote` and `.desktop` tile names,
   `needs_format_five`; `needed_format`, `state.rs`). The latest release
   (0.3.2) reads up to format 3. "The next format" below meant 6, which
   step 4 took for panel tiles (`panel:<id>`); hide and folders for panel
-  tiles now need format 7.
+  tiles took format 7.
 - **The Remote tile is in History** (since step 3, § 9 Q9):
   `launcher_state` (`order_file.rs`) records `remote` like any tile, so
   every new snapshot is format 5, which released builds (0.3.2 and older)
@@ -503,21 +507,62 @@ its own.
   (`settings_tiles`), and Settings gains an About section (`Section::About`,
   `AboutRow`). So About's tile face exists only where those tiles do
   (Android), and About's **row** face is that `AboutRow` section.
-- **Hide and folders for panel tiles come later, with the next format**
-  (decision 5; format 7 since step 4). Today an app's menu is Move + Hide,
-  folders are made by holding a moving tile over another, and a built-in
-  tile can do neither. Making it possible means:
-  - `needed_format` returns the next format when a built-in or panel tile
-    is in `hidden` or in a folder. The id is already valid there (`is_tile_name`), so an
-    older build would read such a snapshot without refusing it and get it
-    wrong;
-  - the Hidden apps page lists hidden panels (today it lists installed apps
-    only);
-  - `reconcile` stops re-adding a built-in tile that is inside a folder;
-  - folder minis get a picture for panel tiles;
-  - the licence notices and Slint's attribution stay reachable when About is
-    hidden (e.g. from its Settings row). Check the Slint licence's
-    attribution clause first.
+- **Hide and folders for panel tiles** (decision 5; *built 2026-11-21*,
+  format 7). The About, Settings, RustTV Remote and History tiles' menu is
+  Move + Hide, like an app's, and holding a moving tile over another makes
+  a folder of them (with apps or other built-in tiles); a folder and the
+  Hidden apps tile still can't go into one. As built:
+  - **Names, not a new type:** `hidden` and a folder's `apps` hold tile
+    names (`name_of`, `model.rs`): apps by component, built-in tiles by
+    their order-file name (`about`, `settings`, `remote`, `panel:<id>`),
+    which never hold a `/`. So `order.toml` keeps its shape; an older
+    launcher reading it shows such a tile on Home anyway (an unknown
+    hidden name is ignored, a foldered one dropped from its folder).
+  - `needed_format` (`state.rs`) returns 7 when a built-in or panel tile
+    is in `hidden` or in a folder: the names are already valid there
+    (`is_tile_name`), so builds that read up to 6 must refuse such a
+    snapshot (`HISTORY_FORMAT_NEWER`) rather than get it wrong. A change
+    list names hiding a tile, or showing it again, only as `hidden`, never
+    also as removed or added (apps too).
+  - The Hidden apps page lists the hidden apps by label, then this Home's
+    hidden built-in tiles in their first-run order, drawn as their tiles;
+    OK (or a tap on the phone) puts one back at Home's end block.
+  - `refresh` works out the built-in tiles that are hidden or in a
+    folder, and `reconcile` neither keeps nor re-adds them on the grid.
+    `refresh` leaves About and Settings out of folders and the Hidden apps
+    page where they aren't tiles (a top-right menu; a hidden one stays in
+    `hidden` for when they are); hidden wins over a folder, and a name is
+    in one folder only.
+  - Folder minis show a built-in tile's banner (the same picture its hero
+    glow and the phone use).
+  - **Settings stays reachable:** the Hidden apps tile is on Home whenever
+    anything is hidden and can be neither hidden nor put in a folder, so a
+    hidden Settings is two presses away (that tile, then OK on Settings).
+    History's tile also opens Settings.
+  - **The licence notices and Slint's attribution stay reachable:** Slint's
+    Royalty-free licence 2.0 § 2 (a) asks for `AboutSlint` "in an 'About'
+    screen or dialog that is accessible from the top level menu of the
+    Application". While the About tile is hidden, Settings gains its About
+    section (`SettingsPage::with_about`), whose RustTV row opens the About
+    page with the mark; About in a folder is still on Home's top level, and
+    a hidden one is on the Hidden apps page. Under a top-right menu the
+    About section and the RustTV quick panel's About row are always there.
+  - OK on a built-in tile in a folder opens its page; Back from it returns
+    to Home (an app launched from a folder comes back to the open folder).
+  - **Phone mirror:** built-in tiles in a folder are listed with their
+    folder and their caption, the hidden apps page's tiles too; the menu
+    offers Hide for them (`menu { choice: hide }`), and a tap on the hidden
+    apps page puts one back. The phone asks the picture of `panel:history`
+    like the other built-in tiles. On a built-in page (About, RustTV
+    Remote, Settings, Settings opened on History) `focused` names the
+    tile that opened that page, wherever it was (`Home::page`; REMOTE.md
+    § 4).
+  - The Hidden apps page keeps its name and its hint ("OK puts the app
+    back on Home"): built-in tiles are listed there as app-like tiles, so
+    no text changed and no translation is new.
+  - CLI JSON stays `rusttv.v11` (unreleased): `launcher.hidden` and
+    folders' `apps` may hold built-in names, `hidden` and `in_folder` may
+    name them (CLI.md).
 - **A new panel tile** (History, step 4) is `TileId::Panel(PanelId)`,
   written `panel:<id>` in the order file and in `state.toml`
   (`panel:history`). Ids are 1–40 lowercase letters, digits and single `-`,
@@ -597,6 +642,9 @@ Recommendation first in each.
    glyphs from panels in `Attention` / clock optional / no glyphs.
 3. **Quick panel:** *answered by Q10:* #40's top-right menu; which panel
    rows go in it (About, Remote, Updates) is decided when it is built.
+   *Built 2026-11-21:* a RustTV entry with About's, RustTV Remote's and
+   History's rows (§ 10); About's row carries the update caption, so no
+   separate Updates row.
 4. **Banner:** over Home only, one at a time, 4 s, no overlay permission /
    over other apps (`SYSTEM_ALERT_WINDOW`; not recommended).
 5. **Hero:** the focused panel's tile larger (what exists today) / a pinned
@@ -618,7 +666,8 @@ Recommendation first in each.
 10. **Name clash with #40's quick panel:** *decided 2026-11-20:* fold this
     doc's quick-panel face into #40's top-right menu (`Mode::Quick`,
     `quick.slint`). Panels add rows to it later (About, Remote, Updates);
-    the long-press key idea (decision 14) is dropped.
+    the long-press key idea (decision 14) is dropped. *Built 2026-11-21*
+    (§ 10).
 
 ## 10. Build plan
 
@@ -730,8 +779,13 @@ face is #40's `AboutRow` in Settings, fed from the same view.
 - **The row face is Settings' RustTV row** (`AboutRow::RustTv`, OK opens
   the page), drawn as today: "RustTV <version>" and the licence line. The
   plan's "Update available" stays on the Updates row right under it, so it
-  isn't shown twice. The row template becomes the `AboutListRow` global's
-  functions. `Strings.about-row` went: its unused "Licences and
+  isn't shown twice. *Changed 2026-11-21* (§ 10 "Later"): the row face
+  shows the tile's caption ("Update available" with the accent dot,
+  "Downloading", "Installing") in place of its second line, as the RustTV
+  quick panel needs it, so Settings shows it on this row too, next to the
+  Updates row; without a caption the second line is "Third-party notices"
+  (the licence line didn't fit the quick panel). The row template
+  becomes the `AboutListRow` global's functions. `Strings.about-row` went: its unused "Licences and
   third-party notices" texts with it, the Updates row takes the Updates
   section's name and the Source row `Strings.source-code`.
 - **Kept general on purpose** (the owner asked for general blocks):
@@ -773,7 +827,8 @@ because the phone list needs it. Its place is recorded in History (§ 9 Q9):
 *Built 2026-11-20, with these differences from the plan above:*
 - **No `PanelId` or `Line`:** views carry template property values
   (step 2), so `remote_view(phones, pairing)` returns a `PanelView` with
-  a tile and a page and no row (Remote isn't in Settings' list). No
+  a tile and a page and no row (Remote isn't in Settings' list; a row
+  came on 2026-11-21 for the RustTV quick panel, § 10 "Later"). No
   trait: About's and Remote's views take different data.
 - **Tile:** the Remote badge (`rusttv-remote`, rendered by
   `scripts/brand/render.sh` from the phone icon, rounded like the RustTV
@@ -894,8 +949,65 @@ cheap "last entry + pending count" message exists.
 - **Measured on the TV at the end**, with the rest (§ 8).
 
 **Later, each after a Claude design canvas** (owner's rule for visuals):
-the faces left open in § 9 — status corner, panel rows in #40's quick panel (§ 9 Q10),
-banner, ambient — and hide and folders for panel tiles (format 7).
+the faces left open in § 9 — status corner, banner, ambient. Panel rows in
+#40's quick panel (§ 9 Q10) and hide and folders for panel tiles (format
+7) are built (below), without a canvas: the owner asked for them to keep
+the existing look (2026-11-21).
+
+*Built 2026-11-21: panel rows in the top-right menu* (§ 9 Q3, Q10):
+- **A RustTV entry** (`QuickAction::Panels`, code 7 in `quick.slint`,
+  the RustTV name in every language, a four-tile icon) sits before
+  Settings and is always there, like Modify and Settings; only where a
+  top-right menu exists (`Platform::top_right_menu`; Android has the
+  tiles instead). It opens a quick panel titled "RustTV" with three rows
+  (`QUICK_PANELS`, `model.rs`): About, RustTV Remote, History.
+- **Rows are the panels' row faces**, from the same views as their tiles
+  (one source): About's `AboutListRow` (now with `status`: the tile's
+  caption, "Update available" with the accent dot, "Downloading" or
+  "Installing", else "Third-party notices", also on Settings' RustTV
+  row),
+  a new `RemoteListRow` (`templates/remote_row.json`: "RustTV Remote" over
+  the tile's phones line, or "Pairing" with the dot; `remote_view` now has
+  a row) and `HistoryListRow` (two lines from the start, `tall`). No new
+  texts: the captions are the tiles', and "Third-party notices" is the
+  About page's heading. Each was measured in all 21 languages at the
+  row's width (620u: 25u details, 27u titles; widest "Third-party
+  notices" in Russian, 424u). The old licence line, "MIT OR Apache-2.0 ·
+  licences and third-party notices", went: it didn't fit 620u in twelve
+  languages, English included.
+- **One panel open at a time:** another entry (the power key too) closes
+  the RustTV panel before opening its own; Home, the pointer's click
+  beside it (`quick_dismissed`) and Back close it. Its rows follow the
+  update and pairing while it is open; History's age is read when it
+  opens.
+- **Keys and pointer:** Up and Down pick a row, OK (on release, as in the
+  other quick panels) opens its page (`Home::open_panel_row`: About's
+  page, the RustTV Remote page, Settings on History), Back closes the
+  panel. A click opens the row; hovering focuses it through the same
+  `list_pointer` walk as the other quick panels.
+- **Checked:** `--demo-panels <dir>` (desktop) in English and Arabic, with
+  `RUSTTV_UPDATE=available RUSTTV_REMOTE_PAIR=1` for the accent rows, and
+  with `RUSTTV_NO_DEVICE=1` (Android layout) for the hidden and foldered
+  tiles. Tests: the rows from their views (update, pairing), OK, a click
+  and the pointer opening each page, Back; the templates' cases against the
+  tiles'.
+
+*Built 2026-11-21: hide and folders for panel tiles* (§ 6 has the rules):
+- **Model:** built-in tiles' menu is Move + Hide; a moving built-in tile
+  makes or joins a folder like an app (`can_take`, `take_into_folder`),
+  in a folder it moves, hides, leaves and opens like an app; folders and
+  the Hidden apps tile never go into a folder.
+- **History:** state format 7; older snapshots (formats 1 to 6) still
+  load; a format-7 snapshot is refused by builds that read up to 6.
+- **Checked:** the desktop demo (above), LTR and Arabic, Linux and
+  Android layouts. Tests: every built-in tile hidden and shown again, the
+  Hidden apps tile staying, Settings reached and its About section while
+  About is hidden (and gone again after), a restart keeping them, folders
+  of built-in tiles only (minis, opening their pages, hiding from inside),
+  `reconcile` not re-adding them, About and Settings dropped from folders
+  under a top-right menu, the phone's view and Hide, the order file and
+  the history snapshot (format 7, older formats refused or kept), and the
+  change list (only `hidden` / `in_folder`).
 
 **Review 2026-11-20 (fresh-eyes subagent, against main 1333a5a and #40's
 head):** fixed here: format numbers after #40, About's tile and row after

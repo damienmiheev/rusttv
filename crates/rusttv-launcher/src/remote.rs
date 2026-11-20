@@ -25,7 +25,7 @@ use crate::remote_page::PhoneRow;
 
 use crate::history::Summary;
 use crate::model::{FOLDER_PAGE_SIZE, Home, MenuItem, PanelId, State, TileId};
-use crate::order_file::name_of;
+use crate::order_file::{name_of, tile_for_name};
 
 /// Where the paired phones are kept, under the launcher's files directory.
 const PHONES_FILE: &str = "remote/phones.toml";
@@ -468,46 +468,43 @@ pub(crate) fn home_view(
     update: &UpdateStatus,
     history: (Option<Caption>, Option<u32>),
 ) -> HomeView {
-    let mut tiles: Vec<TileView> = home
-        .tiles()
-        .iter()
-        .map(|id| {
-            let (caption, count) = match id {
-                TileId::About => (about_caption(update), None),
-                TileId::Panel(PanelId::History) => history,
-                _ => (None, None),
-            };
-            TileView {
-                id: name_of(id),
-                label: label(id),
-                banner: None,
-                folder: None,
-                caption,
-                count,
-            }
-        })
-        .collect();
+    // A panel tile shows its caption wherever it is: on Home, in a folder
+    // or on the hidden apps page (PANELS.md § 6).
+    let view = |id: &TileId, folder: Option<String>| {
+        let (caption, count) = match id {
+            TileId::About => (about_caption(update), None),
+            TileId::Panel(PanelId::History) => history,
+            _ => (None, None),
+        };
+        TileView {
+            id: name_of(id),
+            label: label(id),
+            banner: None,
+            folder,
+            caption,
+            count,
+        }
+    };
+    let mut tiles: Vec<TileView> = home.tiles().iter().map(|id| view(id, None)).collect();
     for (number, folder) in home.folders() {
         let folder_name = name_of(&TileId::Folder(*number));
-        for app in &folder.apps {
-            let id = TileId::App(app.clone());
-            tiles.push(TileView {
-                id: name_of(&id),
-                label: label(&id),
-                banner: None,
-                folder: Some(folder_name.clone()),
-                caption: None,
-                count: None,
-            });
+        for name in &folder.apps {
+            tiles.push(view(
+                &tile_for_name(name.clone()),
+                Some(folder_name.clone()),
+            ));
         }
     }
     let open = home.open_folder();
-    let focused = match open {
-        Some(open) => open
+    let focused = match (home.page(), open) {
+        // A built-in page (from its tile on Home or in a folder, the RustTV
+        // quick panel or the top-right menu): the phone names the page, not
+        // the tile focused under it.
+        (Some(page), _) => Some(name_of(&page)),
+        (None, Some(open)) => open
             .focus
-            .and_then(|index| home.folders().get(&open.id)?.apps.get(index).cloned())
-            .map(|app| name_of(&TileId::App(app))),
-        None => home.focused().map(name_of),
+            .and_then(|index| home.folders().get(&open.id)?.apps.get(index).cloned()),
+        (None, None) => home.focused().map(name_of),
     };
     let folder = open.and_then(|open| {
         Some(FolderView {
@@ -552,17 +549,7 @@ pub(crate) fn home_view(
         let hidden: Vec<TileView> = home
             .hidden_apps()
             .iter()
-            .map(|app| {
-                let id = TileId::App(app.clone());
-                TileView {
-                    id: name_of(&id),
-                    label: label(&id),
-                    banner: None,
-                    folder: None,
-                    caption: None,
-                    count: None,
-                }
-            })
+            .map(|name| view(&tile_for_name(name.clone()), None))
             .collect();
         let focus = home
             .hidden_focus()
@@ -627,6 +614,125 @@ mod tests {
         assert!(view.tiles.iter().any(|tile| tile.id == "remote"));
         assert_eq!(view.mode, HomeMode::Browse);
         assert!(view.folder.is_none() && view.text.is_none());
+    }
+
+    /// The phone hides a built-in tile through its menu (Hide, as for an
+    /// app), sees it on the hidden apps page with its caption, and taps it
+    /// back (PANELS.md § 6). A built-in page is named by the page.
+    #[test]
+    fn the_phone_hides_built_in_tiles_and_sees_them_hidden() {
+        let mut home = home();
+        home.set_settings_tiles(true);
+        let waiting = (Some(Caption::Waiting), None);
+        let about = TileId::About;
+        assert!(home.point(&about, true, Duration::ZERO).is_none());
+        let view = home_view(&home, &label, false, None, &UpdateStatus::Idle, waiting);
+        let menu = view.menu.expect("About's menu");
+        assert_eq!(menu.items, [MenuChoice::Move, MenuChoice::Hide]);
+        home.menu_pick(MenuItem::Hide, Duration::ZERO);
+        assert!(
+            home.point(&TileId::Panel(PanelId::History), true, Duration::ZERO)
+                .is_none()
+        );
+        home.menu_pick(MenuItem::Hide, Duration::ZERO);
+        home.point(&TileId::Hidden, false, Duration::ZERO);
+        let update = UpdateStatus::Available("2.0.0".into());
+        let view = home_view(&home, &label, false, None, &update, waiting);
+        assert_eq!(view.mode, HomeMode::Hidden);
+        let hidden: Vec<(&str, Option<Caption>)> = view
+            .hidden
+            .iter()
+            .map(|tile| (tile.id.as_str(), tile.caption))
+            .collect();
+        assert_eq!(
+            hidden,
+            [
+                ("about", Some(Caption::Update)),
+                ("panel:history", Some(Caption::Waiting))
+            ]
+        );
+        assert_eq!(view.focused.as_deref(), Some("about"));
+        assert!(!view.tiles.iter().any(|tile| tile.id == "about"));
+        // A tap puts About back.
+        home.point(&about, false, Duration::ZERO);
+        assert!(!home.is_hidden(&about));
+        // The About page, opened from Settings' tile, is named by the page
+        // for the phone, not by the tile focused under it.
+        home.handle(Input::Back, Duration::ZERO);
+        assert!(home.focus_on(&TileId::Settings));
+        home.handle(Input::OkPressed, Duration::ZERO);
+        home.handle(Input::OkReleased, Duration::ZERO);
+        assert_eq!(home.open_about(), Some(crate::model::Effect::OpenAbout));
+        let view = home_view(&home, &label, false, None, &update, waiting);
+        assert_eq!(view.mode, HomeMode::Settings);
+        assert_eq!(view.focused.as_deref(), Some("about"));
+    }
+
+    /// The phone drags a built-in tile in and out of a folder, and a page
+    /// opened from a tile in a folder (or for History) is named by the
+    /// page, not by the folder under it.
+    #[test]
+    fn the_phone_moves_built_in_tiles_through_folders_and_names_their_pages() {
+        let mut home = home();
+        let now = Duration::ZERO;
+        let view =
+            |home: &Home| home_view(home, &label, false, None, &UpdateStatus::Idle, NO_HISTORY);
+        // Remote rests on History: a folder of both, open, Remote moving.
+        assert!(home.pick_up(&TileId::Remote, now));
+        home.drag_over(&TileId::Panel(PanelId::History), true, now);
+        home.handle(Input::Tick, crate::model::FOLDER_HOVER);
+        home.handle(Input::OkPressed, crate::model::FOLDER_HOVER);
+        home.handle(Input::OkReleased, crate::model::FOLDER_HOVER);
+        assert_eq!(home.state(), State::Folder);
+        let inside = view(&home);
+        let inside: Vec<(&str, Option<&str>)> = inside
+            .tiles
+            .iter()
+            .filter(|tile| tile.folder.is_some())
+            .map(|tile| (tile.id.as_str(), tile.folder.as_deref()))
+            .collect();
+        assert_eq!(
+            inside,
+            [
+                ("panel:history", Some("folder:1")),
+                ("remote", Some("folder:1"))
+            ]
+        );
+        // A tap on Remote in the open folder: its page, named so.
+        assert_eq!(
+            home.point(&TileId::Remote, false, now),
+            Some(crate::model::Effect::OpenRemote)
+        );
+        assert_eq!(view(&home).focused.as_deref(), Some("remote"));
+        home.close_remote();
+        // History from the folder opens Settings, named History.
+        home.handle(Input::OkPressed, now);
+        home.handle(Input::OkReleased, now);
+        assert_eq!(
+            home.point(&TileId::Panel(PanelId::History), false, now),
+            Some(crate::model::Effect::OpenHistory)
+        );
+        let named = view(&home);
+        assert_eq!(named.mode, HomeMode::Settings);
+        assert_eq!(named.focused.as_deref(), Some("panel:history"));
+        home.close_settings();
+        // Dragged out of the open folder: back on Home after it.
+        home.handle(Input::OkPressed, now);
+        home.handle(Input::OkReleased, now);
+        assert!(home.pick_up(&TileId::Remote, now));
+        home.drag_out(now);
+        home.handle(Input::OkPressed, now);
+        let out = view(&home);
+        assert!(
+            out.tiles
+                .iter()
+                .any(|tile| tile.id == "remote" && tile.folder.is_none())
+        );
+        assert!(
+            out.tiles.iter().any(
+                |tile| tile.id == "panel:history" && tile.folder.as_deref() == Some("folder:1")
+            )
+        );
     }
 
     #[test]

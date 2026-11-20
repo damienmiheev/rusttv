@@ -13,6 +13,7 @@ import { AboutTile } from "about_tile.slint";
 import { AboutListRow } from "about_row.slint";
 import { AboutPage } from "about_page.slint";
 import { RemoteTile } from "remote_tile.slint";
+import { RemoteListRow } from "remote_row.slint";
 import { RemotePage } from "remote_page.slint";
 import { HistoryTile } from "history_tile.slint";
 import { HistoryListRow } from "history_row.slint";
@@ -39,13 +40,14 @@ export struct TileData {
     // 5 the Hidden apps tile, 6 the Settings tile, 7 a folder, 8 the RustTV
     // Remote tile, 9 History's tile.
     kind: int,
-    // A folder's first four apps (banners or icons), drawn small on its tile.
+    // A folder's first four tiles (banners or icons; a built-in tile's
+    // banner), drawn small on its tile.
     minis: [image],
 }
 
 // One row of a Settings panel: `SettingsRow` in quick.slint.
 export { SettingsRow }
-export { Dir, Badges, Pictures, Hints, AboutListRow, HistoryListRow }
+export { Dir, Badges, Pictures, Hints, AboutListRow, HistoryListRow, RemoteListRow }
 
 // The About panel's values (src/panels.rs `about_view`), one source for
 // every face that shows them: the tile, its hero copy and the page. A name
@@ -228,6 +230,15 @@ export global Strings {
     }
     public pure function time-unknown() -> string {
         return @tr("time unknown");
+    }
+    // A built-in tile's name in the change list (model.rs `name_of`), as its
+    // tile shows it; "" for any other name.
+    public pure function builtin-name(name: string) -> string {
+        if name == "about" { return @tr("About"); }
+        if name == "settings" { return @tr("Settings"); }
+        if name == "remote" { return @tr("RustTV Remote"); }
+        if name == "panel:history" { return @tr("History"); }
+        return "";
     }
     // ui.rs `change_line`: 0 reordered, 1 hid, 2 showed, 3 update check,
     // 4 setting, 5 package, 6 firmware, 7 Home takeover, 8 nothing,

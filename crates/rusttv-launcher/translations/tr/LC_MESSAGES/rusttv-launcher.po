@@ -444,9 +444,6 @@ msgstr "KDE Connect"
 msgid "Loading…"
 msgstr "Yükleniyor…"
 
-msgid "MIT OR Apache-2.0 · licences and third-party notices"
-msgstr "MIT OR Apache-2.0 · lisanslar ve üçüncü taraf bildirimleri"
-
 msgid "Modify"
 msgstr "Düzenle"
 
