@@ -20,6 +20,13 @@ export enum TextSize {
     small,
 }
 
+export enum Tone {
+    normal,
+    dim,
+    // Asks for attention (e.g. an update waits to be installed).
+    accent,
+}
+
 // The page's start column: 560 u beside the surface panel (two columns), or
 // the whole width (one column). Fills the page; mirrored in right-to-left.
 export component PageColumn inherits Rectangle {
@@ -39,6 +46,8 @@ export component PageColumn inherits Rectangle {
 // The surface panel at the end side of a two-column page. Fills the page.
 export component PageSurface inherits Rectangle {
     in property <length> u;
+    // A block (a scroll box) fills the panel's height.
+    in property <bool> fills;
     Rectangle {
         x: Dir.x(720 * u, self.width, root.width);
         y: 90 * u;
@@ -54,6 +63,11 @@ export component PageSurface inherits Rectangle {
             padding-right: 48 * u;
             spacing: 24 * u;
             @children
+            // Takes the height no block wants (a scroll box takes it
+            // instead), so text blocks keep their own height at the top.
+            if !fills: Rectangle {
+                vertical-stretch: 1;
+            }
         }
     }
 }
@@ -67,30 +81,22 @@ export component PageTitle inherits Text {
     color: Theme.text;
     overflow: elide;
     vertical-alignment: top;
-    // A heading in the surface panel keeps one line's box whatever the
-    // font, so the block under it starts where it always did.
+    // A heading in the surface panel has a fixed 36 u line box whatever the
+    // font or script, so the block under it starts where it always did.
     min-height: size == TitleSize.small ? 36 * u : 0;
+    max-height: size == TitleSize.small ? 36 * u : 1000 * u;
     vertical-stretch: 0;
 }
 
-// One paragraph; wraps.
+// One paragraph; wraps. A state line (the updater's) is a normal-size text
+// whose tone turns to the accent when it asks for attention.
 export component PageText inherits Text {
     in property <length> u;
     in property <TextSize> size;
-    in property <bool> dim;
+    in property <Tone> tone;
     horizontal-alignment: Dir.start;
     font-size: (size == TextSize.small ? 25 : 29) * u;
-    color: dim ? Theme.text-dim : Theme.text;
-    wrap: word-wrap;
-}
-
-// One state line (the updater's); the accent when it asks for attention.
-export component PageStatus inherits Text {
-    in property <length> u;
-    in property <bool> attention;
-    horizontal-alignment: Dir.start;
-    font-size: 29 * u;
-    color: attention ? Theme.accent : Theme.text;
+    color: tone == Tone.accent ? Theme.accent : tone == Tone.dim ? Theme.text-dim : Theme.text;
     wrap: word-wrap;
 }
 

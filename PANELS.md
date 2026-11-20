@@ -129,7 +129,10 @@ panel doesn't list.
 
 No trait until a second panel exists. v1 is one pure function per panel
 that returns a small value; Home keeps the last value and applies only what
-changed. Sketch (names open until built):
+changed. Sketch (names open until built; *as built in steps 1 and 2*,
+`PanelTile`, `PanelRow` and `PanelPage` each carry the values of their
+template's properties, `Props`, and a page's layout and blocks live in its
+template, ARCHITECTURE.md D29):
 
 ```rust
 pub(crate) enum PanelId { About }                 // History, Clock later
@@ -181,8 +184,8 @@ component and, later, one web component for the phone face.
 | View | Used by | Content |
 |---|---|---|
 | `PanelTile` | tile | icon, value (one short line), caption (dim, or accent for `Attention`) |
-| `PanelRow` | row | label, value |
-| `PanelPage` | page | a `Layout` (one column, or two: a narrow left and the 1110u surface panel on the right, as About and Settings are today; mirrored in RTL) filled with blocks |
+| `PanelRow` | row | title, dim detail, accent dot (Settings' row look) |
+| `PanelPage` | page | a layout (one column, or two: a narrow start column and the 1110u surface panel at the end, as About is today; mirrored in RTL) filled with blocks |
 
 **Page blocks (v1, what About needs):** one Slint component each in
 `ui/blocks.slint` (`PageTitle`, `PageText`, …), which holds their sizes;
@@ -191,9 +194,8 @@ colours come from `Theme`. The JSON key and fields are in § 4.1.
 | Block | Draws | Focus |
 |---|---|---|
 | `Title` | a title: `large` 76u (a page of its own, About), `medium` 57u (list pages), `small` 29u (a heading in the surface panel) | no |
-| `Text` | one paragraph; normal (29u) or small (25u); dim or normal; wraps | no |
-| `Status` | one line; accent for `Attention` (the updater's line); wraps | no |
-| `Badge` | a built-in mark from a fixed list (`slint`: Slint's `AboutSlint`, at a fixed 240u so the attribution can't be shrunk) | no |
+| `Text` | one paragraph; normal (29u) or small (25u); tone normal, dim or accent (the plan's `Status`: the updater's line turns to the accent for `Attention`); wraps | no |
+| `Badge` | a built-in mark from a fixed list (`slint`: Slint's `AboutSlint`, at a fixed 240u and never conditional, so the attribution can't be shrunk or hidden) | no |
 | `ScrollBox` | long text Home loads (a fixed list: `notices`) filling the surface panel's height; Up/Down scroll; at most one per page | yes |
 | `Hint` | the dim key hint ("Up and Down scroll the notices. Back returns."); empty when `Hints.keys` is off | no |
 
@@ -201,9 +203,14 @@ Layouts: `one-column` (blocks in one 1740u column) or `two-columns` (a
 560u start column and the 1110u surface panel at the end side, as About is
 today); both mirrored in RTL.
 
-Later blocks, when a panel needs them: `Rows` (a focusable list, for
-Settings and History), toggle and chevron rows. Badges stay a fixed list:
-nothing decodes an image from a panel.
+Later blocks, when a panel needs them: `Rows` (a focusable list with
+pointer hover and click, for Remote, Settings and History), toggle and
+chevron rows. Step 3 (the Remote page) also needs a header above both
+columns (a 57u title and a line under it, the surface panel then at 260u),
+a status line that replaces the key hint and shows without key hints, a
+picture Home provides from a fixed list (the Remote banner, the pairing
+QR code) and an elided one-line text. Badges stay a fixed list: nothing
+decodes an image from a panel.
 
 Focus and keys on a page are Home's, not the panel's: Up/Down move between
 focusable blocks or scroll a `ScrollBox`; Back leaves; OK runs the page's
@@ -239,7 +246,7 @@ small JS renderer. One source, two surfaces, nothing to keep in sync by hand.
 **Schema (sketch, About's tile):**
 
 ```json
-{ "component": "AboutTile",
+{ "schema": 1, "component": "AboutTile", "face": "tile",
   "props": ["version", "status"],
   "root": { "column": {
     "width": 250, "height": 141, "radius": 12, "background": "surface",
@@ -259,7 +266,11 @@ small JS renderer. One source, two surfaces, nothing to keep in sync by hand.
 ```
 
 Rules the schema enforces (unknown fields are errors):
-- **Faces:** `"face"` is `tile`, `row` or `page` and fixes the root:
+- **Version:** `"schema": 1`, required; a converter, loader or editor
+  refuses a version it doesn't know.
+- **Faces:** `"face"` is `tile`, `row` or `page` and fixes the root. Both
+  are kept: the face says where the template is shown, the root which
+  node it is, and a later face (the status corner) may reuse a root kind.
   - `tile`: a `column` (above), drawn as a component.
   - `row`: a `list-row` with `title`, optional `detail` (texts) and
     optional `attention` (a condition: the accent dot). Settings draws
@@ -269,14 +280,17 @@ Rules the schema enforces (unknown fields are errors):
     the list.
   - `page`: a `page` with `layout` (`one-column` or `two-columns`),
     `start` and, for two columns, `end`: arrays of the § 4 blocks. Keys:
-    `title` (`value`, `size`: `large`/`medium`/`small`), `text` (`value`,
-    `size`: `normal`/`small`, `tone`: `normal`/`dim`), `status` (`value`,
-    `attention`), `hint` (`value`), `badge` (`name`), `scroll-box`
-    (`source`). `title`, `text`, `status` and `badge` take an optional
-    `show`. A `scroll-box` goes in `end` only, once; its page gets
-    `scroll-text`, `scroll-position` and `scroll-fraction` properties that
-    Home fills (it owns the scrolling), so those names are reserved.
-- **Conditions** (`show`, `attention`): a property's name (true when not
+    `title` (`value`, `size`: `large`/`medium`/`small`, default `medium`),
+    `text` (`value`, `size`: `normal`/`small`, default `normal`, `tone`:
+    `normal`/`dim`/`accent` or a `select` of them, default `normal`),
+    `hint` (`value`), `badge` (`name`), `scroll-box` (`source`). `title`,
+    `text` and `hint` take an optional `show`; a badge and a scroll box
+    don't (an attribution is never hidden, and Home's focus can rely on
+    the scroll box). A `scroll-box` goes in `end` only, once; its page
+    gets `scroll-text`, `scroll-position` and `scroll-fraction` properties
+    that Home fills from the text `source` names (it owns the scrolling),
+    so those names are reserved.
+- **Conditions** (`show`, a row's `attention`): a property's name (true when not
   empty) or a `select` of `true`/`false` (else `false`).
 - **Nodes:** `column` (later `row`), `text`, `image` in a tile. Only the
   root sets size, radius and background.
@@ -610,9 +624,13 @@ face is #40's `AboutRow` in Settings, fed from the same view.
   sizes in `u`, so a later theme changes every page. `Hints` moved to
   `ui/theme.slint` so generated pages can read it.
 - **The updater's line is words in the template**: the view names the
-  state (`update`: `idle`, `checking`, …, `failed`) and its detail, and the
-  page's `status` selects the text (the msgids of `Strings.update-line`,
-  which Settings' Updates row still uses).
+  state (`update`: `idle`, `checking`, …, `failed`) and its detail, and a
+  page `text` selects the words and an accent `tone`. The plan's `Status`
+  block is that text, so the schema has one block less. Settings' Updates
+  row still uses `Strings.update-line`; a test keeps their nine texts the
+  same.
+- **Templates carry `"schema": 1`**, for the later runtime loader and
+  editor.
 - **The row face is Settings' RustTV row** (`AboutRow::RustTv`, OK opens
   the page), drawn as today: "RustTV <version>" and the licence line. The
   plan's "Update available" stays on the Updates row right under it, so it

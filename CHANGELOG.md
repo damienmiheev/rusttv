@@ -20,7 +20,7 @@ field in `--json` output says which contract you get, CLI.md).
   fit the tile in every language.
 - The About page and Settings' RustTV row are About's page and row faces,
   drawn from templates (`templates/about_page.json`, `about_row.json`)
-  made of page blocks (title, text, status, badge, scroll box, hint;
+  made of page blocks (title, text, badge, scroll box, hint;
   `ui/blocks.slint`). They look and work as before: OK installs or checks
   for an update, Up and Down scroll the notices, Slint's attribution stays.
 - Settings → Effects: Reduced turns the tile shadows and the backdrop glow

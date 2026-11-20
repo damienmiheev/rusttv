@@ -55,14 +55,18 @@ const RESERVED_COMPONENTS: [&str; 20] = [
     "AboutSlint",
     "TitleSize",
     "TextSize",
+    "Tone",
     "PageColumn",
     "PageSurface",
     "PageTitle",
     "PageText",
-    "PageStatus",
     "PageHint",
     "PageScrollBox",
 ];
+
+/// The template format's version: a runtime loader or an editor refuses a
+/// file it doesn't know.
+const SCHEMA: u64 = 1;
 
 /// Built-in marks a page's `badge` block may show (blocks.slint).
 const MARKS: [(&str, &str); 1] = [("slint", "PageSlintBadge")];
@@ -79,7 +83,14 @@ const SCROLL_SOURCES: [&str; 1] = ["notices"];
 pub fn convert(json: &str, badges: &[&str]) -> Result<String, String> {
     let doc = parse(json)?;
     let doc = object(&doc, "template")?;
-    only(doc, "template", &["component", "face", "props", "root"])?;
+    only(
+        doc,
+        "template",
+        &["schema", "component", "face", "props", "root"],
+    )?;
+    if field(doc, "template", "schema")?.as_u64() != Some(SCHEMA) {
+        return Err(format!("schema: this converter reads version {SCHEMA}"));
+    }
     let name = string(field(doc, "template", "component")?, "component")?;
     if !name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
         || !name.chars().all(|c| c.is_ascii_alphanumeric())
@@ -272,13 +283,13 @@ impl Cx<'_> {
         if two {
             blocks.push_str("    PageSurface {\n        u: root.u;\n");
             self.blocks(body, at, "end", true, &mut scroll, &mut blocks)?;
-            blocks.push_str("    }\n");
+            let _ = writeln!(blocks, "        fills: {scroll};\n    }}");
         }
 
         out.push_str("import { Theme } from \"theme.slint\";\n");
         out.push_str(
-            "import { PageColumn, PageSurface, PageTitle, PageText, PageStatus, PageHint, \
-             PageSlintBadge, PageScrollBox, TitleSize, TextSize } from \"blocks.slint\";\n\n",
+            "import { PageColumn, PageSurface, PageTitle, PageText, PageHint, PageSlintBadge, \
+             PageScrollBox, TitleSize, TextSize, Tone } from \"blocks.slint\";\n\n",
         );
         let _ = writeln!(out, "export component {name} inherits Rectangle {{");
         self.declare(out, scroll);
@@ -321,13 +332,13 @@ impl Cx<'_> {
             let allowed: &[&str] = match kind {
                 "title" => &["value", "size", "show"],
                 "text" => &["value", "size", "tone", "show"],
-                "status" => &["value", "attention", "show"],
-                "hint" => &["value"],
-                "badge" => &["name", "show"],
+                "hint" => &["value", "show"],
+                // Slint's attribution is never conditional.
+                "badge" => &["name"],
                 "scroll-box" => &["source"],
                 other => {
                     return Err(format!(
-                        "{at}: unknown block {other:?} (title, text, status, hint, badge, scroll-box)"
+                        "{at}: unknown block {other:?} (title, text, hint, badge, scroll-box)"
                     ));
                 }
             };
@@ -339,25 +350,23 @@ impl Cx<'_> {
             let mut fields = Vec::new();
             let component = match kind {
                 "title" => {
-                    let size = choice(block, &at, "size", &["large", "medium", "small"], None)?;
+                    let size = choice(
+                        block,
+                        &at,
+                        "size",
+                        &["large", "medium", "small"],
+                        Some("medium"),
+                    )?;
                     fields.push(format!("size: TitleSize.{size}"));
                     "PageTitle"
                 }
                 "text" => {
                     let size = choice(block, &at, "size", &["normal", "small"], Some("normal"))?;
-                    let tone = choice(block, &at, "tone", &["normal", "dim"], Some("normal"))?;
                     fields.push(format!("size: TextSize.{size}"));
-                    fields.push(format!("dim: {}", tone == "dim"));
-                    "PageText"
-                }
-                "status" => {
-                    if let Some(attention) = block.get("attention") {
-                        fields.push(format!(
-                            "attention: {}",
-                            self.flag(attention, &format!("{at}.attention"))?
-                        ));
+                    if let Some(tone) = block.get("tone") {
+                        fields.push(format!("tone: {}", self.tone(tone, &format!("{at}.tone"))?));
                     }
-                    "PageStatus"
+                    "PageText"
                 }
                 "hint" => "PageHint",
                 "badge" => {
@@ -395,7 +404,7 @@ impl Cx<'_> {
                     "PageScrollBox"
                 }
             };
-            if matches!(kind, "title" | "text" | "status" | "hint") {
+            if matches!(kind, "title" | "text" | "hint") {
                 let value = self.words(field(block, &at, "value")?, &format!("{at}.value"))?;
                 let text = if kind == "hint" { "value" } else { "text" };
                 fields.push(format!("{text}: {value}"));
@@ -597,6 +606,20 @@ impl Cx<'_> {
             ));
         }
         Ok(format!("Theme.{token}"))
+    }
+
+    /// A text's tone: `normal`, `dim` or `accent`, or a `select` of them
+    /// (else `normal`).
+    fn tone(&self, value: &Value, at: &str) -> Result<String, String> {
+        if let Some(body) = value.as_object() {
+            return self.select(body, at, |v, at| self.tone(v, at), "Tone.normal".into());
+        }
+        let tone = string(value, at)?;
+        if ["normal", "dim", "accent"].contains(&tone) {
+            Ok(format!("Tone.{tone}"))
+        } else {
+            Err(format!("{at}: {tone:?} is not normal, dim, accent"))
+        }
     }
 
     /// A condition: a property's name (true when it isn't empty) or a

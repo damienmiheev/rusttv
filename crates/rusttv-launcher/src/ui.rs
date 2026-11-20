@@ -450,8 +450,9 @@ impl Demo {
 
 /// Sets the About panel's tile and page values (src/panels.rs): window-global
 /// properties, so a status change redraws the tile without touching the
-/// tile list, and the page only while it is open. (Its row is read when
-/// Settings draws its list.)
+/// tile list; the page reads them only while it is open. (Its row is read
+/// when Settings draws its list.) A name means one value on every face, so
+/// `version` is set once.
 fn show_about_panel(window: &HomeWindow, status: &UpdateStatus) {
     let view = panels::about_view(env!("CARGO_PKG_VERSION"), status);
     let about = window.global::<AboutPanel>();
@@ -460,8 +461,6 @@ fn show_about_panel(window: &HomeWindow, status: &UpdateStatus) {
         about.set_status(tile.props.get("status").into());
     }
     if let Some(page) = view.page {
-        // The same value as the tile's (one name, one value; panels.rs tests).
-        about.set_version(page.props.get("version").into());
         about.set_update(page.props.get("update").into());
         about.set_update_detail(page.props.get("update-detail").into());
     }
@@ -951,7 +950,6 @@ impl Controller {
         window.set_quick_actions(ModelRc::from(quick_codes.clone()));
         let link_codes = Rc::new(VecModel::default());
         window.set_network_icons(ModelRc::from(link_codes.clone()));
-        window.set_version(env!("CARGO_PKG_VERSION").into());
         window.set_update_status(update_line(window, &UpdateStatus::Idle));
         show_about_panel(window, &UpdateStatus::Idle);
 
@@ -2801,9 +2799,9 @@ fn overlay_texts(window: &HomeWindow) -> crate::platform::OverlayTexts {
     }
 }
 
-/// The About page's update line for a status, in the current language
-/// (`Strings.update-line` in home.slint); says what OK does when it isn't a
-/// plain check.
+/// The updater's line for a status in Settings' Updates row, in the current
+/// language (`Strings.update-line` in home.slint; the About page says the
+/// same from its template); says what OK does when it isn't a plain check.
 fn update_line(window: &HomeWindow, status: &UpdateStatus) -> SharedString {
     let (kind, detail) = match status {
         UpdateStatus::Idle => (0, String::new()),

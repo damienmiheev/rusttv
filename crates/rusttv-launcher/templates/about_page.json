@@ -1,4 +1,5 @@
 {
+  "schema": 1,
   "component": "AboutPage",
   "face": "page",
   "props": ["version", "update", "update-detail"],
@@ -8,7 +9,7 @@
       { "title": { "value": { "tr": "RustTV" }, "size": "large" } },
       { "text": { "value": { "tr": "Version {} · MIT OR Apache-2.0", "args": ["version"] },
                   "tone": "dim" } },
-      { "status": {
+      { "text": {
           "value": { "select": "update", "cases": {
             "checking": { "tr": "Checking for updates…" },
             "up-to-date": { "tr": "Up to date" },
@@ -21,8 +22,8 @@
             "installed": { "tr": "Update installed" },
             "failed": { "tr": "Update failed: {}", "args": ["update-detail"] } },
             "else": { "tr": "Press OK to check for updates" } },
-          "attention": { "select": "update",
-                         "cases": { "available": true, "needs-permission": true } } } },
+          "tone": { "select": "update",
+                    "cases": { "available": "accent", "needs-permission": "accent" } } } },
       { "text": { "value": { "tr": "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0." },
                   "size": "small", "tone": "dim" } },
       { "text": { "value": { "tr": "Source: github.com/damienmiheev/rusttv" },

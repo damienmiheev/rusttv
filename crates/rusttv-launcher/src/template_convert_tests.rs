@@ -12,16 +12,16 @@ const BADGES: [&str; 1] = ["rusttv-logo"];
 /// A one-column page with every block a column may hold, each optional
 /// field set.
 const ONE_COLUMN: &str = r#"{
-  "component": "TestPage", "face": "page", "props": ["name", "state"],
+  "schema": 1, "component": "TestPage", "face": "page", "props": ["name", "state"],
   "root": { "page": { "layout": "one-column", "start": [
     { "title": { "value": { "tr": "Large" }, "size": "large" } },
-    { "title": { "value": { "tr": "Medium" }, "size": "medium", "show": "name" } },
+    { "title": { "value": { "tr": "Medium" }, "show": "name" } },
     { "title": { "value": { "tr": "Small" }, "size": "small" } },
     { "text": { "value": { "tr": "Hello {}", "args": ["name"] }, "size": "small",
                 "tone": "dim", "show": { "select": "state", "cases": { "on": true } } } },
-    { "status": { "value": { "tr": "State" }, "attention": "state", "show": "state" } },
-    { "badge": { "name": "slint", "show": "name" } },
-    { "hint": { "value": { "tr": "Back returns." } } }
+    { "text": { "value": { "tr": "State" } } },
+    { "badge": { "name": "slint" } },
+    { "hint": { "value": { "tr": "Back returns." }, "show": "state" } }
   ] } }
 }"#;
 
@@ -59,12 +59,13 @@ fn the_about_templates_convert() {
     assert!(page.contains("export component AboutPage inherits Rectangle {"));
     assert!(page.contains("PageColumn {\n        u: root.u;\n        wide: false;"));
     assert!(page.contains("PageSurface {"));
+    assert!(page.contains("fills: true;"));
     assert!(page.contains("PageSlintBadge {"));
     assert!(page.contains("in property <float> scroll-fraction: 1;"));
     assert!(page.contains("text: root.scroll-text;"));
     assert!(page.contains("value: @tr(\"Up and Down scroll the notices. Back returns.\");"));
     assert!(page.contains(
-        "attention: (root.update == \"available\" ? true : root.update == \"needs-permission\" ? true : false);"
+        "tone: (root.update == \"available\" ? Tone.accent : root.update == \"needs-permission\" ? Tone.accent : Tone.normal);"
     ), "{page}");
     assert!(page.contains(", root.update-detail)"));
     assert_mirrored(&page);
@@ -79,14 +80,16 @@ fn a_one_column_page_converts_every_block() {
         !page.contains("scroll-text"),
         "no scroll box, no scroll properties"
     );
+    // A title's size is medium unless it says otherwise.
     for size in ["large", "medium", "small"] {
         assert!(page.contains(&format!("size: TitleSize.{size};")), "{size}");
     }
     assert!(page.contains("if root.name != \"\": PageTitle {"));
-    assert!(page.contains("size: TextSize.small;\n            dim: true;"));
+    assert!(page.contains("size: TextSize.small;\n            tone: Tone.dim;"));
     assert!(page.contains("if (root.state == \"on\" ? true : false): PageText {"));
-    assert!(page.contains("attention: root.state != \"\";"));
-    assert!(page.contains("if root.name != \"\": PageSlintBadge {"));
+    // A text's tone is the component's default (normal) unless it says one.
+    assert!(page.contains("size: TextSize.normal;\n            text: @tr(\"State\");"));
+    assert!(page.contains("if root.state != \"\": PageHint {"));
     assert_mirrored(&page);
 }
 
@@ -157,6 +160,11 @@ fn rejects_what_the_schema_does_not_hold() {
         ),
         // Faces and their roots.
         (OK.replace("\"face\": \"tile\",", ""), "missing \"face\""),
+        (OK.replace("\"schema\": 1,", ""), "missing \"schema\""),
+        (
+            OK.replace("\"schema\": 1", "\"schema\": 2"),
+            "reads version 1",
+        ),
         (
             OK.replace("\"face\": \"tile\"", "\"face\": \"banner\""),
             "is not tile, row or page",
@@ -227,22 +235,24 @@ fn rejects_what_the_schema_does_not_hold() {
             "is not normal, dim",
         ),
         (
-            PAGE.replace("\"attention\": {", "\"color\": \"accent\", \"attention\": {"),
+            PAGE.replace("\"tone\": { \"select\"", "\"color\": \"accent\", \"tone\": { \"select\""),
             "unknown field \"color\"",
         ),
         (
-            PAGE.replace("\"needs-permission\": true", "\"needs-permission\": 1"),
-            "expected true or false",
+            PAGE.replace("\"needs-permission\": \"accent\"", "\"needs-permission\": \"red\""),
+            "is not normal, dim, accent",
         ),
         (
             PAGE.replace("\"name\": \"slint\"", "\"name\": \"rusttv-logo\""),
             "is not a built-in mark",
         ),
         (
-            PAGE.replace(
-                "\"value\": { \"tr\": \"Up and Down",
-                "\"show\": \"version\", \"value\": { \"tr\": \"Up and Down",
-            ),
+            // Slint's attribution is never conditional.
+            PAGE.replace("\"name\": \"slint\"", "\"name\": \"slint\", \"show\": \"version\""),
+            "unknown field \"show\"",
+        ),
+        (
+            PAGE.replace("\"source\": \"notices\"", "\"source\": \"notices\", \"show\": \"version\""),
             "unknown field \"show\"",
         ),
         (
