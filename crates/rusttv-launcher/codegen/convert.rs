@@ -125,11 +125,14 @@ pub fn convert(json: &str, badges: &[&str]) -> Result<String, String> {
     let name = string(field(doc, "template", "component")?, "component")?;
     if !name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
         || !name.chars().all(|c| c.is_ascii_alphanumeric())
-        || RESERVED_COMPONENTS.contains(&name)
-        || BLOCKS_SLINT.contains(&name)
     {
         return Err(format!(
             "component: {name:?} must be an UpperCamelCase name"
+        ));
+    }
+    if RESERVED_COMPONENTS.contains(&name) || BLOCKS_SLINT.contains(&name) {
+        return Err(format!(
+            "component: {name:?} is taken (Slint's, the theme's or a block's)"
         ));
     }
     let face = string(field(doc, "template", "face")?, "face")?;
@@ -599,9 +602,21 @@ impl Cx<'_> {
         // No control or bidi characters: a text can't hide or reorder words
         // (HISTORY.md § 8.5's rule for names on the TV).
         if literal.chars().any(|c| {
-            c.is_control() || matches!(c, '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+            c.is_control()
+                || matches!(
+                    c,
+                    '\u{061C}'
+                        | '\u{200E}'
+                        | '\u{200F}'
+                        | '\u{2028}'
+                        | '\u{2029}'
+                        | '\u{202A}'..='\u{202E}'
+                        | '\u{2066}'..='\u{2069}'
+                )
         }) {
-            return Err(format!("{at}.tr: control or bidi characters are not allowed"));
+            return Err(format!(
+                "{at}.tr: control or bidi characters are not allowed"
+            ));
         }
         let args = match body.get("args") {
             Some(args) => array(args, &format!("{at}.args"))?
@@ -685,6 +700,8 @@ impl Cx<'_> {
         let prop = self.prop(field(body, at, "select")?, &format!("{at}.select"))?;
         let cases = object(field(body, at, "cases")?, &format!("{at}.cases"))?;
         let mut out = String::new();
+        // serde_json's map (no `preserve_order`) yields cases sorted by name,
+        // so the generated file doesn't depend on the JSON's order.
         for (case, value) in cases {
             if !is_name(case) {
                 return Err(format!(
@@ -798,7 +815,8 @@ fn number(value: &Value, at: &str) -> Result<f64, String> {
     }
 }
 
-/// A Slint string literal.
+/// A Slint string literal. Texts and case values arrive without control
+/// characters (checked above); dropping them here is a second guard.
 fn quote(text: &str) -> String {
     let mut out = String::from("\"");
     for c in text.chars() {

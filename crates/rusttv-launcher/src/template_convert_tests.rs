@@ -20,6 +20,7 @@ const ONE_COLUMN: &str = r#"{
     { "paragraph": { "value": { "tr": "Hello {}", "args": ["name"] }, "size": "small",
                 "tone": "dim", "show": { "select": "state", "cases": { "on": true } } } },
     { "paragraph": { "value": { "tr": "State" } } },
+    { "paragraph": { "value": { "tr": "Look" }, "tone": "accent" } },
     { "mark": { "name": "slint" } },
     { "hint": { "value": { "tr": "Back returns." }, "show": "state" } }
   ] } }
@@ -90,6 +91,7 @@ fn a_one_column_page_converts_every_block() {
     // A text's tone is the component's default (normal) unless it says one.
     assert!(page.contains("size: TextSize.normal;\n            text: @tr(\"State\");"));
     assert!(page.contains("if root.state != \"\": PageHint {"));
+    assert!(page.contains("tone: Tone.accent;\n            text: @tr(\"Look\");"));
     assert_mirrored(&page);
 }
 
@@ -132,8 +134,8 @@ fn rejects_what_the_schema_does_not_hold() {
             OK.replace("\"AboutTile\"", "\"About Tile; } import\""),
             "UpperCamelCase",
         ),
-        (OK.replace("\"AboutTile\"", "\"Theme\""), "UpperCamelCase"),
-        (OK.replace("\"AboutTile\"", "\"PageText\""), "UpperCamelCase"),
+        (OK.replace("\"AboutTile\"", "\"Theme\""), "is taken"),
+        (OK.replace("\"AboutTile\"", "\"PageText\""), "is taken"),
         (
             OK.replace("[\"version\", \"status\"]", "[\"version\", \"width\"]"),
             "is taken",
@@ -334,6 +336,10 @@ fn texts_cannot_break_out_of_their_string() {
     let out = run(&PAGE.replace("Third-party notices", r#"x\"; \\(e)"#)).expect("converts");
     assert!(out.contains(r#"text: @tr("x\"; \\(e)");"#), "{out}");
     assert!(err(&PAGE.replace("Third-party notices", r"a\u2066b")).contains("control or bidi"));
+    for c in [r"\u061C", r"\u2028", r"\u2029"] {
+        let got = err(&PAGE.replace("Third-party notices", &format!("a{c}b")));
+        assert!(got.contains("control or bidi"), "{c}: {got}");
+    }
 }
 
 /// A generated page imports exactly what ui/blocks.slint exports, and no
@@ -356,6 +362,6 @@ fn pages_import_every_block_component() {
     assert_eq!(exported, listed);
     for name in BLOCKS_SLINT {
         let json = PAGE.replace("\"AboutPage\"", &format!("\"{name}\""));
-        assert!(err(&json).contains("UpperCamelCase"), "{name}");
+        assert!(err(&json).contains("is taken"), "{name}");
     }
 }

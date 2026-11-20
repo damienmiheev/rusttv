@@ -3557,8 +3557,6 @@ mod tests {
 
     /// Settings' RustTV row is About's row face (templates/about_row.json),
     /// and the page's values reach `AboutPanel` (templates/about_page.json).
-    /// That home.slint binds them into the page is seen in the desktop
-    /// snapshots, not here.
     #[test]
     fn about_row_and_page_come_from_the_about_view() {
         let screen = screen(None);
@@ -3746,12 +3744,22 @@ mod tests {
 
     const POLL: u64 = UPDATE_POLL.as_millis() as u64;
 
-    /// What the open About page draws as its updater line: the second
-    /// paragraph of templates/about_page.json, read through Slint's test
-    /// search (debug builds carry element names, build.rs).
+    /// What the open About page draws as its updater line (the paragraph of
+    /// templates/about_page.json that selects on `update`), read through
+    /// Slint's test search. Only debug builds carry the element names it
+    /// needs (build.rs), so these tests run in the debug profile.
     fn page_line(window: &HomeWindow) -> String {
+        let page: serde_json::Value =
+            serde_json::from_str(include_str!("../templates/about_page.json")).expect("JSON");
+        let index = page["root"]["page"]["start"]
+            .as_array()
+            .expect("blocks")
+            .iter()
+            .filter_map(|block| block.get("paragraph"))
+            .position(|paragraph| paragraph["value"]["select"] == "update")
+            .expect("the updater's line");
         i_slint_backend_testing::ElementHandle::find_by_element_type_name(window, "PageText")
-            .nth(1)
+            .nth(index)
             .and_then(|line| line.accessible_label())
             .expect("the About page's updater line")
             .into()

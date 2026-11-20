@@ -212,7 +212,10 @@ a status line that replaces the key hint and shows without key hints, a
 picture Home provides from a fixed list (the Remote banner, the pairing
 QR code) and an elided one-line text. History needs plural forms
 ("2 h ago": `@tr` with a count), and later an editor may want stable
-block ids and accessible labels. Badges and marks stay fixed lists:
+block ids, accessible labels, typed props (numbers formatted per
+language, numeric conditions; today every prop is a string) and a JSON
+Schema file for the schema, which lives only in `convert.rs` now.
+Badges and marks stay fixed lists:
 nothing decodes an image from a panel.
 
 Focus and keys on a page are Home's, not the panel's: Up/Down move between
@@ -281,8 +284,10 @@ Rules the schema enforces (unknown fields are errors):
     becomes a Slint global of pure functions (`title`, `detail`,
     `attention`) that Rust calls to fill the list. Each function takes the
     `props` as parameters in their order, so reordering `props` changes
-    the call (the view's order is tested against the template's); `title`,
-    `detail` and `attention` can't be a row's prop names.
+    the call; Rust passes them by name from the view today
+    (`settings_view.rs`, one prop), and a second row template should
+    pass the view's `Props` in order. `title`, `detail` and
+    `attention` can't be a row's prop names.
   - `page`: a `page` with `layout` (`one-column` or `two-columns`),
     `start` and, for two columns, `end`: arrays of the § 4 blocks. Keys:
     `title` (`value`, `size`: `large`/`medium`/`small`, default `medium`),
@@ -668,7 +673,11 @@ face is #40's `AboutRow` in Settings, fed from the same view.
   section's name and the Source row `Strings.source-code`.
 - **Kept general on purpose** (the owner asked for general blocks):
   `one-column`, `medium` titles, `show` on page blocks and a fixed
-  `accent` tone are tested but About doesn't use them.
+  `accent` tone. About doesn't use them; tests convert them and check
+  the output, and Slint compiled that output once during review (CI
+  compiles only the real templates).
+- **Measured on the TV at the end:** § 8's About page check (opening it,
+  scrolling the notices) runs in the final on-TV pass with the rest.
 - **Open:** a version inside right-to-left text isn't an isolated LTR run
   (§ 3) on the tile or the page, as before this step; the converter
   refuses bidi characters, so it needs a schema form (e.g. an `args`

@@ -23,9 +23,6 @@ const BADGES: [&str; 1] = ["rusttv-logo"];
 /// Their size.
 const BADGE_SIZE: (u32, u32) = (128, 128);
 
-/// Panel templates, each turned into `<name>.slint` in `OUT_DIR`.
-const TEMPLATES: [&str; 3] = ["about_tile", "about_row", "about_page"];
-
 #[expect(
     clippy::expect_used,
     reason = "a build script reports errors by panicking; Slint prints the diagnostics"
@@ -37,10 +34,24 @@ fn main() {
     );
 
     println!("cargo::rerun-if-changed=codegen/convert.rs");
-    for name in TEMPLATES {
-        let source = format!("templates/{name}.json");
+    // Every panel template (templates/*.json), each turned into
+    // `<name>.slint` in OUT_DIR: the same set scripts/launcher-pot.sh and
+    // the translation test read.
+    println!("cargo::rerun-if-changed=templates");
+    let mut templates: Vec<PathBuf> = std::fs::read_dir("templates")
+        .expect("templates/ should exist")
+        .map(|entry| entry.expect("templates/ should be readable").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
+        .collect();
+    templates.sort();
+    for path in templates {
+        let source = path.display().to_string();
+        let name = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .expect("a template's name should be UTF-8");
         println!("cargo::rerun-if-changed={source}");
-        let json = std::fs::read_to_string(&source).expect("panel template should exist");
+        let json = std::fs::read_to_string(&path).expect("panel template should exist");
         let slint =
             convert::convert(&json, &BADGES).unwrap_or_else(|error| panic!("{source}: {error}"));
         std::fs::write(out.join(format!("{name}.slint")), slint)

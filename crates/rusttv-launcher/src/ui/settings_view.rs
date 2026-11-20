@@ -31,7 +31,8 @@ const PANEL_ROWS: usize = 6;
 /// Review lines visible at once.
 const REVIEW_ROWS: usize = 8;
 
-/// Where RustTV's source code is (the About tab's Source row).
+/// Where RustTV's source code is (the About tab's Source row; the About
+/// page says it in its template's "Source: …" text).
 const SOURCE: &str = "github.com/damienmiheev/rusttv";
 
 /// Times before this (2024-01-01) mean the TV's clock wasn't set.
