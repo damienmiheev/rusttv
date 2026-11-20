@@ -268,6 +268,12 @@ global Theme {
     out property <color> accent: #F5A524;
 }
 
+// The mouse pointer over RustTV: hidden while the D-pad is used and after a
+// while without moving (ui.rs `pointer_moved`, `key`).
+export global Pointer {
+    in property <bool> shown: true;
+}
+
 // Mode values, kept in sync with `mode_value` in ui.rs.
 // Settings → Effects (ui.rs `apply_effects`): Reduced turns the costly
 // parts off for a weak GPU. The defaults are the normal look.
@@ -364,6 +370,12 @@ component Tile inherits Rectangle {
     in property <int> idle-phase;
     // A dot in the corner: set on the About tile while an update is available.
     in property <bool> badge;
+    // A pointer (mouse, air mouse) entered the tile; clicked it (`menu`: the
+    // secondary button, as a long OK press).
+    callback hovered();
+    callback clicked(/* menu */ bool);
+    // The wheel turned over the tile: down is positive.
+    callback scrolled(length);
 
     property <bool> browsing: mode == Mode.browse;
     property <bool> sway: focused && browsing && !pressed && idle-phase == 1;
@@ -456,6 +468,28 @@ component Tile inherits Rectangle {
             border-radius: parent.border-radius;
             border-width: 3 * u;
             border-color: Theme.accent;
+        }
+    }
+
+    // Pointer input over the tile's resting place (not its zoom, so
+    // neighbours don't fight over the overlap). Hover counts only when the
+    // pointer itself moves, so tiles scrolling under a still pointer don't
+    // take focus from the D-pad.
+    TouchArea {
+        mouse-cursor: Pointer.shown ? MouseCursor.pointer : MouseCursor.none;
+        clicked => {
+            root.clicked(false);
+        }
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.move {
+                root.hovered();
+            } else if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
+                root.clicked(true);
+            }
+        }
+        scroll-event(event) => {
+            root.scrolled(-event.delta-y);
+            accept
         }
     }
 
@@ -707,6 +741,21 @@ export component HomeWindow inherits Window {
     in property <string> fps-text;
     // Key text, pressed (false = released), repeat. Returns whether it was used.
     callback key(string, bool, bool) -> bool;
+    // Pointer input (mouse, air mouse): on tile `index` of Home (`folder`
+    // false) or of the open folder, `action` 0 hovered, 1 clicked, 2 the
+    // secondary button (its menu).
+    callback tile-pointer(/* folder */ bool, /* index */ int, /* action */ int);
+    // Pointer input on Settings: on section `index` (`panel` false) or on
+    // row `index` of its panel, `action` 0 hovered, 1 clicked.
+    callback settings-pointer(/* panel */ bool, /* index */ int, /* action */ int);
+    // Pointer input on a list (ui.rs `list_pointer`): item `index` of
+    // `list` (0 the tile menu, 1 Hidden apps, 2 RustTV Remote, 3 review),
+    // `action` 0 hovered, 1 clicked.
+    callback list-pointer(/* list */ int, /* index */ int, /* action */ int);
+    // The wheel: positive scrolls down.
+    callback scrolled(length);
+    // The pointer moved somewhere off the tiles.
+    callback pointer-moved();
 
     public function focus-rename() {
         rename-input.focus();
@@ -730,6 +779,20 @@ export component HomeWindow inherits Window {
         text: menu-items[menu-selected];
         font-size: 27px;
         font-weight: 500;
+    }
+
+    // The pointer and the wheel over empty space (tiles report their own).
+    TouchArea {
+        mouse-cursor: Pointer.shown ? MouseCursor.default : MouseCursor.none;
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.move {
+                root.pointer-moved();
+            }
+        }
+        scroll-event(event) => {
+            root.scrolled(-event.delta-y);
+            accept
+        }
     }
 
     keys := FocusScope {
@@ -786,6 +849,9 @@ export component HomeWindow inherits Window {
             badge: tile.kind == 3 && root.update-available;
             // The open folder's own tile: the panel grew out of it.
             opacity: root.folder-open && i == focused-index ? 0 : 1;
+            hovered => { root.tile-pointer(false, i, 0); }
+            clicked(menu) => { root.tile-pointer(false, i, menu ? 2 : 1); }
+            scrolled(delta) => { root.scrolled(delta); }
         }
     }
 
@@ -844,6 +910,9 @@ export component HomeWindow inherits Window {
                     mode: root.mode == Mode.folder ? Mode.browse : root.mode;
                     pressed: root.pressed;
                     idle-phase: root.idle-phase;
+                    hovered => { root.tile-pointer(true, i, 0); }
+                    clicked(menu) => { root.tile-pointer(true, i, menu ? 2 : 1); }
+                    scrolled(delta) => { root.scrolled(delta); }
                 }
             }
         }
@@ -956,6 +1025,15 @@ export component HomeWindow inherits Window {
             border-radius: 10 * u;
             background: i == menu-selected ? Theme.text : Theme.text.with-alpha(0);
             animate background { duration: 120ms; }
+            TouchArea {
+                enabled: mode == Mode.menu;
+                pointer-event(event) => {
+                    if event.kind == PointerEventKind.move {
+                        root.list-pointer(0, i, 0);
+                    }
+                }
+                clicked => { root.list-pointer(0, i, 1); }
+            }
             // A text too long for the menu (some translations) is cut with
             // "…". While its item is selected it slides to its end and back,
             // paced by ui.rs (`menu-marquee-end`), so a menu that fits adds
@@ -1055,6 +1133,12 @@ export component HomeWindow inherits Window {
                     mode: Mode.browse;
                     pressed: false;
                     idle-phase: root.idle-phase;
+                    hovered => { root.list-pointer(1, i, 0); }
+                    clicked(menu) => {
+                        if !menu {
+                            root.list-pointer(1, i, 1);
+                        }
+                    }
                 }
             }
         }
@@ -1238,6 +1322,18 @@ export component HomeWindow inherits Window {
             selected: i == settings-section && settings-row < 0;
             marked: i == settings-section && settings-row >= 0;
         }
+        for name[i] in settings-sections: TouchArea {
+            x: Dir.x(90 * u, self.width, root.width);
+            y: (260 + i * 72) * u;
+            width: 480 * u;
+            height: 64 * u;
+            pointer-event(event) => {
+                if event.kind == PointerEventKind.move {
+                    root.settings-pointer(false, i, 0);
+                }
+            }
+            clicked => { root.settings-pointer(false, i, 1); }
+        }
         Rectangle {
             x: Dir.x(720 * u, self.width, root.width);
             y: 260 * u;
@@ -1284,6 +1380,19 @@ export component HomeWindow inherits Window {
                     dim: row.dim;
                     selected: i == settings-row;
                     visible: i >= settings-first-row;
+                }
+                for row[i] in settings-rows: TouchArea {
+                    x: 24 * u;
+                    y: (i - settings-first-row) * parent.pitch;
+                    width: parent.width - 48 * u;
+                    height: parent.pitch;
+                    visible: i >= settings-first-row;
+                    pointer-event(event) => {
+                        if event.kind == PointerEventKind.move {
+                            root.settings-pointer(true, i, 0);
+                        }
+                    }
+                    clicked => { root.settings-pointer(true, i, 1); }
                 }
             }
         }
@@ -1362,6 +1471,19 @@ export component HomeWindow inherits Window {
                     selected: i == remote-row;
                     visible: i >= remote-first-row;
                 }
+                for row[i] in remote-rows: TouchArea {
+                    x: 24 * u;
+                    y: (i - remote-first-row) * 104 * u;
+                    width: parent.width - 48 * u;
+                    height: 96 * u;
+                    visible: i >= remote-first-row;
+                    pointer-event(event) => {
+                        if event.kind == PointerEventKind.move {
+                            root.list-pointer(2, i, 0);
+                        }
+                    }
+                    clicked => { root.list-pointer(2, i, 1); }
+                }
             }
         }
     }
@@ -1422,6 +1544,15 @@ export component HomeWindow inherits Window {
                     text: line.text;
                     selected: review-phase == 0 && i == review-row;
                 }
+                if !line.header: TouchArea {
+                    enabled: review-phase == 0;
+                    pointer-event(event) => {
+                        if event.kind == PointerEventKind.move {
+                            root.list-pointer(3, i, 0);
+                        }
+                    }
+                    clicked => { root.list-pointer(3, i, 1); }
+                }
             }
             MenuRow {
                 y: (review-lines.length - review-first-line) * 64 * u;
@@ -1431,6 +1562,19 @@ export component HomeWindow inherits Window {
                 text: @tr("Approve");
                 selected: review-phase == 0 && review-row == review-lines.length;
                 marked: review-phase > 0;
+            }
+            TouchArea {
+                y: (review-lines.length - review-first-line) * 64 * u;
+                width: 480 * u;
+                height: 64 * u;
+                x: Dir.x(0, self.width, parent.width);
+                enabled: review-phase == 0;
+                pointer-event(event) => {
+                    if event.kind == PointerEventKind.move {
+                        root.list-pointer(3, review-lines.length, 0);
+                    }
+                }
+                clicked => { root.list-pointer(3, review-lines.length, 1); }
             }
         }
         if review-phase >= 1: Text {

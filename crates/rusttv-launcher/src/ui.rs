@@ -44,7 +44,7 @@ use rusttv_remote::protocol::{
 mod generated {
     slint::include_modules!();
 }
-use generated::{Dir, Effects, HomeWindow, ReviewLine, SettingsRow, Strings, TileData};
+use generated::{Dir, Effects, HomeWindow, Pointer, ReviewLine, SettingsRow, Strings, TileData};
 
 mod remote_view;
 mod settings_view;
@@ -128,6 +128,15 @@ const UPDATE_POLL: Duration = Duration::from_millis(500);
 /// How long after Enter in the name field the name is read: the TV
 /// keyboard commits the word it is composing just after its Done key.
 const RENAME_SETTLE: Duration = Duration::from_millis(100);
+
+/// Scroll-wheel movement, in logical pixels, that moves one row.
+const SCROLL_STEP: f32 = 40.0;
+
+/// How long the mouse pointer stays after it last moved.
+const POINTER_REST: Duration = Duration::from_secs(4);
+
+/// Tiles per row of Hidden apps (home.slint).
+const HIDDEN_COLUMNS: usize = 6;
 
 /// Settings for [`run`].
 #[derive(Debug, Clone, Default)]
@@ -381,11 +390,45 @@ fn start(
         count_frames(&window);
     }
     let controller = Controller::new(Box::new(platform), &window, options, clock);
+    // The pointer hides once it rests, also before the mouse first moves.
+    controller.borrow_mut().pointer_moved();
 
     let weak = Rc::downgrade(&controller);
     window.on_key(move |text, pressed, repeat| {
         weak.upgrade()
             .is_some_and(|controller| controller.borrow_mut().key(&text, pressed, repeat))
+    });
+    let weak = Rc::downgrade(&controller);
+    window.on_tile_pointer(move |folder, index, action| {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow_mut().tile_pointer(folder, index, action);
+        }
+    });
+    let weak = Rc::downgrade(&controller);
+    window.on_list_pointer(move |list, index, action| {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow_mut().list_pointer(list, index, action);
+        }
+    });
+    let weak = Rc::downgrade(&controller);
+    window.on_settings_pointer(move |panel, index, action| {
+        if let Some(controller) = weak.upgrade() {
+            controller
+                .borrow_mut()
+                .settings_pointer(panel, index, action);
+        }
+    });
+    let weak = Rc::downgrade(&controller);
+    window.on_scrolled(move |delta| {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow_mut().scrolled(delta);
+        }
+    });
+    let weak = Rc::downgrade(&controller);
+    window.on_pointer_moved(move || {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow_mut().pointer_moved();
+        }
     });
     let weak = Rc::downgrade(&controller);
     window.on_rename_done(move |_| {
@@ -402,6 +445,12 @@ fn start(
         }
     });
     Ok((window, controller))
+}
+
+/// Shows or hides the mouse pointer over the whole window (home.slint
+/// `Pointer`).
+fn show_pointer(window: &HomeWindow, shown: bool) {
+    window.global::<Pointer>().set_shown(shown);
 }
 
 /// Time since the home screen started; passed in so tests can use Slint's mocked time.
@@ -448,6 +497,10 @@ struct Controller {
     renaming: Option<u32>,
     /// Confirms a rename once the keyboard's last word is in the field.
     rename_timer: Timer,
+    /// Scroll-wheel movement not yet turned into a row.
+    scroll_rest: f32,
+    /// Hides the mouse pointer once it rests.
+    pointer_timer: Timer,
     /// The long-press menu's item names; empty while it is closed.
     menu_items: Rc<VecModel<SharedString>>,
     hero: Option<TileId>,
@@ -580,6 +633,8 @@ impl Controller {
                 folder_tiles,
                 renaming: None,
                 rename_timer: Timer::default(),
+                scroll_rest: 0.0,
+                pointer_timer: Timer::default(),
                 menu_items,
                 hero: None,
                 hero_a_front: true,
@@ -797,10 +852,179 @@ impl Controller {
         let Some(input) = input_for_key(text, pressed) else {
             return false;
         };
+        // The keys took over from the mouse.
+        self.hide_pointer();
         if !(repeat && input == Input::OkPressed) {
             self.input(input);
         }
         true
+    }
+
+    /// A mouse over (`action` 0), click on (1) or right click on (2) entry
+    /// `index` of the home grid, or of the open folder.
+    fn tile_pointer(&mut self, folder: bool, index: i32, action: i32) {
+        let shown = if folder {
+            &self.folder_shown
+        } else {
+            self.home.tiles()
+        };
+        let Some(tile) = usize::try_from(index)
+            .ok()
+            .and_then(|index| shown.get(index))
+            .cloned()
+        else {
+            return;
+        };
+        // The tile takes the move from the background's TouchArea: show the
+        // pointer here too.
+        self.pointer_moved();
+        if !self.pointer_reaches(false) {
+            return;
+        }
+        let effect = match action {
+            0 => {
+                if !self.home.hover(&tile) {
+                    return;
+                }
+                None
+            }
+            _ => self.home.point(&tile, action == 2, (self.clock)()),
+        };
+        self.after_pointer(effect);
+    }
+
+    /// The pointer on item `index` of a list (home.slint `list-pointer`):
+    /// hovering walks the focus there with the D-pad's own steps, so the
+    /// pointer and the remote can't disagree; a click then presses OK.
+    fn list_pointer(&mut self, list: i32, index: i32, action: i32) {
+        self.pointer_moved();
+        if !self.pointer_reaches(list == 3) {
+            return;
+        }
+        let Ok(target) = usize::try_from(index) else {
+            return;
+        };
+        let (read, columns): (fn(&HomeWindow) -> i32, usize) = match list {
+            0 => (HomeWindow::get_menu_selected, 1),
+            1 => (HomeWindow::get_hidden_focus, HIDDEN_COLUMNS),
+            2 => (HomeWindow::get_remote_row, 1),
+            3 => (HomeWindow::get_review_row, 1),
+            _ => return,
+        };
+        self.walk_focus(target, columns, read);
+        if action == 1 {
+            self.input(Input::OkPressed);
+            self.input(Input::OkReleased);
+        }
+        self.restart_idle();
+        self.schedule_tick();
+        self.render();
+    }
+
+    /// Moves the focus of a list (or a grid of `columns`) to `target` with
+    /// arrow keys, reading where it is from the window after each step.
+    fn walk_focus(&mut self, target: usize, columns: usize, read: fn(&HomeWindow) -> i32) {
+        let focus = |this: &Self| {
+            this.window
+                .upgrade()
+                .and_then(|window| usize::try_from(read(&window)).ok())
+        };
+        // Right moves back in right-to-left layouts: learnt on the way.
+        let mut flipped = false;
+        for _ in 0..64 {
+            let Some(now) = focus(self) else {
+                return;
+            };
+            if now == target {
+                return;
+            }
+            let (row, column) = (now / columns, now % columns);
+            let (to_row, to_column) = (target / columns, target % columns);
+            let sideways = row == to_row;
+            let step = if !sideways {
+                if to_row > row { Input::Down } else { Input::Up }
+            } else if (to_column > column) != flipped {
+                Input::Right
+            } else {
+                Input::Left
+            };
+            self.input(step);
+            self.render();
+            let Some(after) = focus(self) else {
+                return;
+            };
+            if after == now {
+                return;
+            }
+            if sideways && after.abs_diff(target) > now.abs_diff(target) {
+                flipped = !flipped;
+            }
+        }
+    }
+
+    fn after_pointer(&mut self, effect: Option<Effect>) {
+        self.restart_idle();
+        self.apply(effect);
+        self.schedule_tick();
+        self.render();
+    }
+
+    /// The scroll wheel: one row per notch (a notch is about 120 px; a
+    /// touchpad's small steps add up).
+    fn scrolled(&mut self, delta: f32) {
+        self.pointer_moved();
+        // On the review screen the wheel reads its list, nothing more.
+        if !self.pointer_reaches(self.review.is_some()) {
+            return;
+        }
+        self.scroll_rest += delta;
+        while self.scroll_rest.abs() >= SCROLL_STEP {
+            let down = self.scroll_rest > 0.0;
+            self.scroll_rest -= SCROLL_STEP.copysign(self.scroll_rest);
+            self.input(if down { Input::Down } else { Input::Up });
+        }
+    }
+
+    /// Whether pointer input may act now. The pairing and trust screens take
+    /// only the remote's keys, like the phone's (trust can open over Home,
+    /// whose tiles still lie under it). The review screen takes the pointer
+    /// on its own list (`review_list`) until Approve; the code and holding
+    /// OK stay on the remote.
+    fn pointer_reaches(&self, review_list: bool) -> bool {
+        if self.pairing.is_some() {
+            return false;
+        }
+        match self.review {
+            Some(_) => {
+                review_list
+                    && self
+                        .window
+                        .upgrade()
+                        .is_some_and(|window| window.get_review_phase() == 0)
+            }
+            None => !review_list,
+        }
+    }
+
+    /// Shows the mouse pointer until it rests for [`POINTER_REST`].
+    fn pointer_moved(&mut self) {
+        if let Some(window) = self.window.upgrade() {
+            show_pointer(&window, true);
+        }
+        let me = self.me.clone();
+        self.pointer_timer
+            .start(TimerMode::SingleShot, POINTER_REST, move || {
+                if let Some(controller) = me.upgrade() {
+                    controller.borrow_mut().hide_pointer();
+                }
+            });
+    }
+
+    fn hide_pointer(&mut self) {
+        self.pointer_timer.stop();
+        if let Some(window) = self.window.upgrade() {
+            show_pointer(&window, false);
+        }
     }
 
     fn input(&mut self, input: Input) {
@@ -3202,6 +3426,74 @@ mod tests {
     }
 
     #[test]
+    fn the_mouse_focuses_and_opens_tiles_and_the_keys_hide_it() {
+        let screen = screen(None);
+        screen.window.invoke_pointer_moved();
+        assert!(screen.window.global::<Pointer>().get_shown());
+        screen.window.invoke_tile_pointer(false, 2, 0);
+        assert_eq!(screen.window.get_focused_index(), 2);
+        screen.tap(LEFT);
+        assert!(!screen.window.global::<Pointer>().get_shown());
+        // Moving over a tile brings the pointer back.
+        screen.window.invoke_tile_pointer(false, 1, 0);
+        assert!(screen.window.global::<Pointer>().get_shown());
+        screen.window.invoke_tile_pointer(false, 0, 1);
+        assert_eq!(screen.launched(), ["a/.Main"]);
+    }
+
+    #[test]
+    fn the_secondary_button_opens_the_tile_menu_and_the_pointer_picks_in_it() {
+        let screen = screen(None);
+        screen.window.invoke_tile_pointer(false, 0, 2);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Menu));
+        screen.window.invoke_list_pointer(0, 1, 0);
+        assert_eq!(screen.window.get_menu_selected(), 1, "hover focuses");
+        assert_eq!(screen.window.get_mode(), mode_value(State::Menu));
+        screen.window.invoke_list_pointer(0, 0, 1); // Move
+        assert_eq!(screen.window.get_mode(), mode_value(State::Moving));
+    }
+
+    #[test]
+    fn the_wheel_moves_one_row_per_notch() {
+        let screen = screen(None);
+        let start = screen.window.get_focused_index();
+        screen.window.invoke_scrolled(SCROLL_STEP / 2.0);
+        assert_eq!(screen.window.get_focused_index(), start, "half a notch");
+        screen.window.invoke_scrolled(SCROLL_STEP / 2.0);
+        screen.window.invoke_scrolled(-SCROLL_STEP);
+        assert_eq!(screen.window.get_focused_index(), start, "down and up");
+    }
+
+    #[test]
+    fn the_pointer_focuses_and_picks_in_settings() {
+        let (dir, _history) = history_dir();
+        let screen = screen(Some(dir.join("order.toml")));
+        // A, B, C, About, Settings.
+        screen.window.invoke_tile_pointer(false, 4, 1);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        settle(&screen);
+        // Updates, then its Off row.
+        let updates = screen
+            .window
+            .get_settings_sections()
+            .iter()
+            .position(|section| section == "Updates")
+            .unwrap();
+        let updates = i32::try_from(updates).unwrap();
+        screen.window.invoke_settings_pointer(false, updates, 0);
+        assert_eq!(screen.window.get_settings_section(), updates);
+        assert_eq!(screen.window.get_settings_row(), -1);
+        screen.window.invoke_settings_pointer(true, 1, 0);
+        assert_eq!(screen.window.get_settings_row(), 1, "hover focuses");
+        screen.window.invoke_settings_pointer(true, 1, 1);
+        assert_eq!(
+            screen.window.get_mode(),
+            7,
+            "a click is OK: the review opens"
+        );
+    }
+
+    #[test]
     fn a_reduced_effects_flag_turns_shadows_and_the_backdrop_off() {
         let (dir, _history) = history_dir();
         std::fs::write(dir.join(order_file::REDUCED_EFFECTS), b"").unwrap();
@@ -3209,6 +3501,80 @@ mod tests {
         let effects = screen.window.global::<Effects>();
         assert!(!effects.get_shadows());
         assert!(!effects.get_backdrop());
+    }
+
+    #[test]
+    fn the_pointer_and_the_wheel_stay_off_the_tiles_under_the_trust_screen() {
+        let dir =
+            std::env::temp_dir().join(format!("rusttv-ui-trust-pointer-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let screen = screen_with_remote(dir.join("order.toml"));
+        screen._controller.borrow_mut().start_remote_now(true);
+        screen
+            ._controller
+            .borrow_mut()
+            .remote_event(RemoteEvent::Input {
+                phone: rusttv_remote::PhoneId([1; 16]),
+                message: PhoneMessage::Trust,
+            });
+        assert_eq!(screen.window.get_mode(), 9, "the trust screen opens");
+        let focus = screen.window.get_focused_index();
+        screen.window.invoke_tile_pointer(false, 1, 0);
+        screen.window.invoke_tile_pointer(false, 0, 1);
+        screen.window.invoke_tile_pointer(false, 0, 2);
+        screen.window.invoke_scrolled(SCROLL_STEP * 3.0);
+        assert!(screen.launched().is_empty(), "no app opens behind it");
+        assert_eq!(screen.window.get_focused_index(), focus);
+        assert_eq!(
+            (screen.window.get_mode(), screen.window.get_pairing_phase()),
+            (9, 4)
+        );
+        screen.tap(BACK);
+        assert_ne!(screen.window.get_mode(), 9);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn past_approve_the_pointer_and_the_wheel_leave_the_code_to_the_remote() {
+        let (dir, _history) = history_dir();
+        let screen = screen(Some(dir.join("order.toml")));
+        crate::history::History::get().unwrap().launcher_edited();
+        // A, B, C, About, Settings.
+        for _ in 0..4 {
+            screen.tap(RIGHT);
+        }
+        screen.tap(OK);
+        settle(&screen);
+        screen.tap(RIGHT); // focus on Normal, the current choice
+        screen.tap(UP);
+        screen.tap(UP);
+        screen.tap(OK); // Faster
+        assert_eq!(screen.window.get_mode(), 7, "the review screen opens");
+        // The wheel reads the list; a click on Approve asks for the code.
+        let row = screen.window.get_review_row();
+        screen.window.invoke_scrolled(SCROLL_STEP);
+        assert_eq!(screen.window.get_review_row(), row + 1);
+        screen.window.invoke_list_pointer(3, 4, 1);
+        assert_eq!(screen.window.get_review_phase(), 1);
+        // Now neither the wheel (Down, a wrong first arrow), a click nor a
+        // tile under the screen counts.
+        screen.window.invoke_scrolled(SCROLL_STEP);
+        screen.window.invoke_list_pointer(3, 4, 1);
+        screen.window.invoke_tile_pointer(false, 0, 1);
+        assert_eq!(screen.window.get_review_phase(), 1);
+        // FakePlatform's code: left, up, right, down.
+        for key in [LEFT, UP, RIGHT, DOWN] {
+            screen.tap(key);
+        }
+        assert_eq!(
+            (screen.window.get_review_phase(), screen.window.get_mode()),
+            (2, 7),
+            "the code counts from its first arrow: {}",
+            screen.window.get_settings_status()
+        );
+        assert!(screen.launched().is_empty());
+        screen.tap(BACK);
     }
 
     #[test]

@@ -157,6 +157,26 @@ impl Controller {
         self.render();
     }
 
+    /// The pointer on Settings: hovering moves the focus, a click is OK.
+    pub(super) fn settings_pointer(&mut self, panel: bool, index: i32, action: i32) {
+        self.pointer_moved();
+        if self.review.is_some() || self.pairing.is_some() {
+            return;
+        }
+        let (Some(page), Ok(index)) = (&mut self.settings, usize::try_from(index)) else {
+            return;
+        };
+        if panel {
+            page.point_row(index);
+        } else {
+            page.point_section(index);
+        }
+        if action == 1 {
+            self.settings_input(Input::OkReleased);
+        }
+        self.render();
+    }
+
     /// A key while Settings (or its review screen) is open.
     pub(super) fn settings_input(&mut self, input: Input) {
         if self.pairing.is_some() {

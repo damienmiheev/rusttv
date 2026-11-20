@@ -712,6 +712,42 @@ impl Home {
         }
     }
 
+    /// A pointer (mouse, air mouse) is over tile `id`: focus follows it, as
+    /// the arrows would move it, on Home and in an open folder. Returns
+    /// whether focus moved.
+    pub fn hover(&mut self, id: &TileId) -> bool {
+        match self.mode {
+            Mode::Browse => {
+                let Some(index) = self.tiles.iter().position(|tile| tile == id) else {
+                    return false;
+                };
+                let moved = self.focus != index;
+                self.focus = index;
+                self.update_scroll();
+                self.ok_since = None;
+                moved
+            }
+            Mode::Folder(open) => {
+                let TileId::App(component) = id else {
+                    return false;
+                };
+                let Some(index) = self
+                    .folders
+                    .get(&open.id)
+                    .and_then(|folder| folder.apps.iter().position(|app| app == component))
+                else {
+                    return false;
+                };
+                self.mode = Mode::Folder(OpenFolder {
+                    focus: Some(index),
+                    ..open
+                });
+                open.focus != Some(index)
+            }
+            _ => false,
+        }
+    }
+
     /// The phone remote picked `item` in the open menu: as selecting it and
     /// pressing OK.
     pub fn menu_pick(&mut self, item: MenuItem, now: Duration) -> Option<Effect> {
