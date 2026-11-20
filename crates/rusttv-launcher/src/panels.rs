@@ -348,15 +348,25 @@ mod tests {
             );
         }
         let tile = template("remote_tile");
-        let texts = &tile["root"]["column"]["children"];
+        let texts: Vec<&serde_json::Value> = tile["root"]["column"]["children"]
+            .as_array()
+            .expect("children")
+            .iter()
+            .filter_map(|child| child.get("text"))
+            .collect();
         // No phones has its own words; any other count is the "Phones" line.
-        let value = &texts[1]["text"]["value"];
-        assert_eq!(value["select"], "phones");
+        let value = &texts
+            .iter()
+            .find(|text| text["value"]["select"] == "phones")
+            .expect("the phones line")["value"];
         let counts: Vec<&String> = value["cases"].as_object().expect("cases").keys().collect();
         assert_eq!(counts, ["0"]);
+        assert_eq!(value["else"]["tr"], "Phones: {}");
         assert_eq!(value["else"]["args"], serde_json::json!(["phones"]));
-        let caption = &texts[2]["text"];
-        assert_eq!(caption["show"], "status");
+        let caption = texts
+            .iter()
+            .find(|text| text["show"] == "status")
+            .expect("the caption");
         assert_eq!(caption["value"]["select"], "status");
         let cases: Vec<&String> = caption["value"]["cases"]
             .as_object()

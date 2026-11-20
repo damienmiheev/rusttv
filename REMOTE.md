@@ -197,12 +197,10 @@ to its home screen.
   socket that sends nothing). A phone that asks shows "Allow “name”?" and
   the code; only OK on the TV's remote allows it, Back refuses. Phone input
   never reaches this screen, and on the page a phone can only press Back.
-  With no phone left, the listener stops. Not yet: the history entry for
-  pairing and removing (needs the phones in the history snapshot, a format
-  change of its own) and an on/off switch. `rusttv-launcher-desktop
-  --demo-remote <dir>` renders the page and the pairing screen. The tile
-  is not in the history snapshot: every Home has it, and RustTV builds that
-  don't know its name must still read the history (HISTORY.md § 1).
+  With no phone left, the listener stops. Pairing and removing are
+  history entries (`phone_paired`, `phone_removed`, HISTORY.md § 1). Not
+  yet: an on/off switch. `rusttv-launcher-desktop --demo-remote <dir>`
+  renders the tile, the page and the pairing screen.
 - **Starting:** "Pair a phone" on the RustTV Remote page shows a QR code with
   `http://<ip>:8484/#p=<secret>`.
   - The secret is 32 random bytes from `SecureRandom`, valid for 2 minutes

@@ -458,6 +458,15 @@ mod tests {
         new.launcher.order = ["a.b/.A", "about", "remote"].map(String::from).to_vec();
         assert_eq!(diff(&old, &new), []);
         assert_eq!(diff(&new, &old), []);
+        // Another tile added with it is still named.
+        let mut both = new.clone();
+        both.launcher.order.push("e.f/.New".into());
+        assert_eq!(
+            diff(&old, &both),
+            vec![Change::Added {
+                tile: "e.f/.New".into()
+            }]
+        );
         let mut moved = new.clone();
         moved.launcher.order = ["remote", "a.b/.A", "about"].map(String::from).to_vec();
         assert_eq!(

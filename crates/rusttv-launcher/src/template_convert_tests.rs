@@ -7,7 +7,6 @@ use crate::template_convert::{BLOCKS_SLINT, convert};
 const OK: &str = include_str!("../templates/about_tile.json");
 const ROW: &str = include_str!("../templates/about_row.json");
 const PAGE: &str = include_str!("../templates/about_page.json");
-const BADGES: [&str; 2] = ["rusttv-logo", "rusttv-remote"];
 
 /// The test-only templates (codegen/test_templates/, compiled by build.rs
 /// into Slint the tests don't otherwise use): every path About and Remote
@@ -25,7 +24,29 @@ fn isolated(prop: &str) -> String {
 }
 
 fn run(json: &str) -> Result<String, String> {
-    convert(json, &BADGES)
+    convert(json)
+}
+
+/// The generated block `component { … }` (its first one), up to its
+/// matching brace.
+fn block<'a>(out: &'a str, component: &str) -> &'a str {
+    let start = out
+        .find(&format!("{component} {{"))
+        .unwrap_or_else(|| panic!("no {component}: {out}"));
+    let mut depth = 0;
+    for (i, c) in out[start..].char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &out[start..=start + i];
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("{component} isn't closed")
 }
 
 fn err(json: &str) -> String {
@@ -57,9 +78,19 @@ fn the_about_templates_convert() {
 
     let page = run(PAGE).expect("page converts");
     assert!(page.contains("export component AboutPage inherits Rectangle {"));
-    assert!(page.contains("PageColumn {\n        u: root.u;\n        wide: false;"));
-    assert!(page.contains("PageSurface {"));
-    assert!(page.contains("fills: true;"));
+    // No header: the column and the panel keep About's places, and the
+    // page has no status line.
+    let column = block(&page, "PageColumn");
+    assert!(
+        column.contains("wide: false;\n        header: false;"),
+        "{column}"
+    );
+    assert!(column.contains("fills: false;"));
+    assert!(!page.contains("PageHeader {"));
+    assert!(!page.contains("header-status"));
+    let surface = block(&page, "PageSurface");
+    assert!(surface.contains("header: false;"));
+    assert!(surface.contains("fills: true;"));
     assert!(page.contains("PageSlintBadge {"));
     assert!(page.contains("in property <float> scroll-fraction: 1;"));
     assert!(page.contains("text: root.scroll-text;"));
@@ -100,17 +131,23 @@ fn the_remote_page_converts() {
         "PagePicture {\n            u: root.u;\n            source: Pictures.remote-banner;"
     ));
     // Rows in the surface panel fill it and reach into its padding.
-    assert!(page.contains("fills: true;"));
-    assert!(page.contains("outset: true;"));
+    assert!(block(&page, "PageSurface").contains("fills: true;"));
+    assert!(block(&page, "PageColumn").contains("fills: false;"));
+    let rows = block(&page, "PageRows");
+    for line in [
+        "outset: true;",
+        "model: root.rows-model;",
+        "focused: root.rows-focus;",
+        "first: root.rows-first;",
+        "root.rows-pointer(index, action);",
+    ] {
+        assert!(rows.contains(line), "{line}: {rows}");
+    }
     for line in [
         "in property <[SettingsRow]> rows-model;",
         "in property <int> rows-focus;",
         "in property <int> rows-first;",
         "callback rows-pointer(int, int);",
-        "model: root.rows-model;",
-        "focused: root.rows-focus;",
-        "first: root.rows-first;",
-        "root.rows-pointer(index, action);",
     ] {
         assert!(page.contains(line), "{line}: {page}");
     }
@@ -141,6 +178,29 @@ fn a_general_tile_and_row_convert() {
     assert!(row.contains(&format!("@tr(\"Count {{}}\", {})", isolated("count"))));
 }
 
+/// A prop no text uses is accepted, and a `select` without `else` falls
+/// back to an empty text, the `text` colour, the `normal` tone, or false.
+#[test]
+fn unused_props_and_missing_else_have_defaults() {
+    let tile = run(&OK.replace(
+        "[\"version\", \"status\"]",
+        "[\"version\", \"status\", \"spare\"]",
+    ))
+    .expect("an unused prop converts");
+    assert!(tile.contains("in property <string> spare;"));
+    let tile = run(&OK.replace(", \"else\": \"text-dim\"", "")).expect("converts");
+    assert!(tile.contains("color: (root.status == \"update\" ? Theme.accent : Theme.text);"));
+    assert!(tile.contains("root.status == \"update\" ? @tr(\"Update available\") : \"\")"));
+    let page = run(&PAGE.replace(
+        "\"cases\": { \"available\": \"accent\", \"needs-permission\": \"accent\" }",
+        "\"cases\": { \"available\": \"accent\" }",
+    ))
+    .expect("converts");
+    assert!(page.contains("tone: (root.update == \"available\" ? Tone.accent : Tone.normal);"));
+    let row = run(GENERAL_ROW).expect("converts");
+    assert!(row.contains("? true : false)"));
+}
+
 #[test]
 fn a_one_column_page_converts_every_block() {
     let page = run(ONE_COLUMN).expect("converts");
@@ -155,8 +215,8 @@ fn a_one_column_page_converts_every_block() {
     assert!(page.contains("if root.version != \"\": PageText {"));
     assert!(page.contains("if root.name != \"\": PagePicture {"));
     // Rows in the start column fill it, flush with its edges.
-    assert!(page.contains("PageRows {"));
-    assert!(page.contains("outset: false;"));
+    assert!(block(&page, "PageRows").contains("outset: false;"));
+    assert!(block(&page, "PageColumn").contains("fills: true;"));
     // A title's size is medium unless it says otherwise.
     for size in ["large", "medium", "small"] {
         assert!(page.contains(&format!("size: TitleSize.{size};")), "{size}");
@@ -448,6 +508,41 @@ fn rejects_what_the_schema_does_not_hold() {
             "is taken",
         ),
         (REMOTE_PAGE.replace("\"RemotePage\"", "\"Pictures\""), "is taken"),
+        (
+            REMOTE_PAGE.replace("{ \"rows\": { \"source\": \"remote\" } }", "{ \"rows\": {} }"),
+            "missing \"source\"",
+        ),
+        (
+            REMOTE_PAGE.replace("\"name\": \"remote-banner\"", "\"name\": \"remote-banner\", \"show\": \"secret\""),
+            "\"secret\" is not in props",
+        ),
+        (
+            REMOTE_PAGE.replace(
+                "\"hint\": { \"tr\": \"Up and Down choose, OK opens. Back returns.\" }",
+                "\"hint\": \"Up\"",
+            ),
+            "expected an object",
+        ),
+        (
+            REMOTE_PAGE.replace("\"header\": {", "\"header\": { \"hint\": { \"tr\": \"x\" },"),
+            "duplicate key \"hint\"",
+        ),
+        (
+            OK.replace("\"RustTV {}\", \"args\": [{ \"ltr\": \"version\" }]", "\"RustTV {} {}\", \"args\": [{ \"ltr\": \"version\" }]"),
+            "needs one arg per {}",
+        ),
+        (
+            PAGE.replace("{ \"mark\": { \"name\": \"slint\" } },", "{ \"mark\": { \"name\": \"slint\" } }, { \"mark\": { \"name\": \"slint\" } },"),
+            "each mark once",
+        ),
+        (
+            OK.replace("[\"version\", \"status\"]", "[\"version\", \"in\"]"),
+            "is taken",
+        ),
+        (
+            OK.replace("[\"version\", \"status\"]", "[\"version\", \"property\"]"),
+            "is taken",
+        ),
     ];
     for (json, expected) in cases {
         let changed = json != OK && json != ROW && json != PAGE && json != REMOTE_PAGE;
@@ -489,12 +584,16 @@ fn pages_import_every_block_component() {
     let blocks = include_str!("../ui/blocks.slint");
     let mut exported: Vec<&str> = blocks
         .lines()
-        .filter_map(|line| {
-            let rest = line
-                .strip_prefix("export component ")
-                .or_else(|| line.strip_prefix("export enum "))
-                .or_else(|| line.strip_prefix("export { "))?;
-            rest.split_whitespace().next()
+        .filter_map(|line| line.strip_prefix("export "))
+        .flat_map(|rest| match rest.strip_prefix('{') {
+            // `export { A, B }`
+            Some(names) => names
+                .split(['}', ','])
+                .map(str::trim)
+                .filter(|name| !name.is_empty())
+                .collect::<Vec<_>>(),
+            // `export component A …`, `export enum A`, `export struct A`, …
+            None => rest.split_whitespace().nth(1).into_iter().collect(),
         })
         .collect();
     exported.sort_unstable();
@@ -508,9 +607,10 @@ fn pages_import_every_block_component() {
 }
 
 /// The test-only templates, compiled into Slint by build.rs (`TestPages`
-/// shows the one its `page` names; a row's functions are its `*-<n>`
-/// properties), so every build compiles the converter's paths the real
-/// templates don't use. Generated code, allowed like ui.rs's.
+/// shows the page or tile its `page` names; a row's functions are its
+/// `<file>-title`, `-detail` and `-attention` properties), so every build
+/// compiles the converter's paths the real templates don't use. Generated
+/// code, allowed like ui.rs's.
 #[allow(
     unsafe_code,
     missing_debug_implementations,
@@ -525,22 +625,63 @@ mod test_pages {
     include!(concat!(env!("OUT_DIR"), "/test_pages.rs"));
 }
 
-/// The compiled test templates load and draw (general_page 0, general_row
-/// 1, general_tile 2, in file-name order), and the row's functions run.
+/// The compiled test templates draw: a one-column page under a header,
+/// whose rows take the column's height left under its text blocks (which
+/// keep their own), and a tile; the row's functions run.
 #[test]
-fn the_test_templates_compile_and_show() {
+#[cfg_attr(
+    not(debug_assertions),
+    ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+)]
+fn the_test_templates_compile_and_draw() {
+    use i_slint_backend_testing::ElementHandle;
     use slint::ComponentHandle as _;
     thread_local!(static BACKEND: () = i_slint_backend_testing::init_no_event_loop());
     BACKEND.with(|_| {});
     let pages = test_pages::TestPages::new().expect("the test pages");
+    // 1920 × 1080 at `u` = 1px: sizes read in `u`.
+    pages
+        .window()
+        .set_size(slint::LogicalSize::new(1920.0, 1080.0));
     pages.show().expect("shown");
-    for page in [0, 2] {
-        pages.set_page(page);
-        pages.window().request_redraw();
+    let one = |name: &str| {
+        let found: Vec<ElementHandle> =
+            ElementHandle::find_by_element_type_name(&pages, name).collect();
+        assert_eq!(found.len(), 1, "one {name}");
+        found.into_iter().next().expect("one")
+    };
+
+    pages.set_page("general-page".into());
+    assert_eq!(one("PageHeader").size().height, 1080.0);
+    let rows = one("PageRows");
+    // The column starts at 260 u under a header and ends 90 u above the
+    // bottom; its unconditional blocks (three titles, two paragraphs, the
+    // mark) are above the rows.
+    let bottom = rows.absolute_position().y + rows.size().height;
+    assert!((bottom - 990.0).abs() < 1.0, "rows end at {bottom}");
+    assert!(rows.size().height > 100.0, "rows fill the rest");
+    for text in ElementHandle::find_by_element_type_name(&pages, "PageText") {
+        assert!(
+            text.size().height < 60.0,
+            "a one-line paragraph keeps its height"
+        );
     }
+
+    pages.set_page("general-tile".into());
+    assert!(
+        ElementHandle::find_by_element_type_name(&pages, "PageRows")
+            .next()
+            .is_none()
+    );
+    assert_eq!(
+        ElementHandle::find_by_accessible_label(&pages, "Value \u{2066}\u{2069}").count(),
+        1,
+        "the tile's value, its arg an empty isolate"
+    );
+
     // Empty properties: the count is an empty isolate, no detail, no dot.
-    assert_eq!(pages.get_title_1(), "Count \u{2066}\u{2069}");
-    assert_eq!(pages.get_detail_1(), "");
-    assert!(!pages.get_attention_1());
+    assert_eq!(pages.get_general_row_title(), "Count \u{2066}\u{2069}");
+    assert_eq!(pages.get_general_row_detail(), "");
+    assert!(!pages.get_general_row_attention());
     pages.hide().expect("hidden");
 }

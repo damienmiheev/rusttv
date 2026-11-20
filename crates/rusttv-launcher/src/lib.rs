@@ -34,6 +34,8 @@ pub use device::FakeDevice;
 pub use device::{
     Control, ControlKind, DeviceSettings, QuickPanel, Tab, Value, Volume, VolumeChange,
 };
+#[cfg(any(test, feature = "test-util"))]
+pub use i18n::is_right_to_left;
 #[cfg(all(target_os = "linux", feature = "linux"))]
 pub use linux::{
     AppEvent, AppEvents, Limits, LinuxDevice, LinuxPlatform, run_portal, start_gamepads,

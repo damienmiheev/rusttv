@@ -29,7 +29,8 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use rusttv_launcher::{
-    Bitmap, DemoStep, FakePlatform, RunOptions, UpdateStatus, run, run_demo, start_desktop_history,
+    Bitmap, DemoStep, FakePlatform, RunOptions, UpdateStatus, is_right_to_left, run, run_demo,
+    start_desktop_history,
 };
 
 /// Prints the launcher's info, warning and error messages, so the desktop dev
@@ -238,12 +239,12 @@ fn demo_script() -> Vec<DemoStep> {
 /// RustTV Remote's tile, its page (REMOTE.md § 2), then the pairing code.
 /// Its tile is the last (Sports, Weather, Settings, RustTV Remote; with
 /// `RUSTTV_NO_DEVICE=1` after About and Settings): Down to the last row,
-/// then Right to its end.
-fn remote_script() -> Vec<DemoStep> {
+/// then to its end (Left in a right-to-left language).
+fn remote_script(right_to_left: bool) -> Vec<DemoStep> {
     use DemoStep::{Snapshot, Tap};
     let mut steps = vec![ms(800)];
     steps.extend([DOWN; 4].map(Tap));
-    steps.extend([RIGHT; 6].map(Tap));
+    steps.extend([if right_to_left { LEFT } else { RIGHT }; 6].map(Tap));
     steps.extend([
         ms(600),
         Snapshot("remote-0-tile"),
@@ -299,7 +300,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         ("--demo", Some(dir)) => PathBuf::from(dir),
         ("--demo-remote", Some(dir)) => {
-            script = remote_script();
+            let language = options.language.as_deref().unwrap_or_default();
+            script = remote_script(is_right_to_left(language));
             PathBuf::from(dir)
         }
         _ => {

@@ -62,7 +62,7 @@ export global AboutPanel {
 // many phones are paired ("0", "1", …), and "pairing" while pairing is
 // open, else "". Set when the remote's events change them, never per frame.
 export global RemotePanel {
-    in property <string> phones;
+    in property <string> phones: "0";
     in property <string> status;
 }
 

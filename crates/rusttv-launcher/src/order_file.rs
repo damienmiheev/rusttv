@@ -366,6 +366,12 @@ mod tests {
         .unwrap();
         let state = launcher_state(&dir.0);
         assert_eq!(state.order, ["com.example.b/.Main", "remote", "settings"]);
+        assert!(
+            state
+                .order
+                .iter()
+                .all(|name| rusttv_history::is_tile_name(name))
+        );
         let snapshot = rusttv_history::State {
             launcher: state.clone(),
             ..rusttv_history::State::new()
@@ -390,13 +396,21 @@ mod tests {
         let old = rusttv_history::State::parse(text).unwrap();
         let dir = TempDir::new("remote-tile-old");
         write_launcher_state(&dir.0, &old.launcher).unwrap();
+        let loaded = load(&dir.file());
         assert_eq!(
-            load(&dir.file()).order,
+            loaded.order,
             Order::from_keys([
                 (TileId::App("com.example.b/.Main".to_owned()), KEY_STEP),
                 (TileId::Settings, 2 * KEY_STEP),
             ])
         );
+        let mut home = crate::model::Home::new(loaded.order, loaded.folders, loaded.hidden, false);
+        home.set_apps(&[crate::model::App {
+            id: "com.example.b/.Main".to_owned(),
+            label: "B".to_owned(),
+            category: crate::model::Category::Other,
+        }]);
+        assert_eq!(home.tiles().last(), Some(&TileId::Remote));
     }
 
     #[test]

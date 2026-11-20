@@ -530,6 +530,18 @@ mod tests {
         let mut hidden = sample();
         hidden.launcher.hidden.insert("foot.desktop".into());
         assert_eq!(hidden.needed_format(), 5);
+        // So does the RustTV Remote tile, which every Home has.
+        let mut remote = sample();
+        remote.launcher.order.push("remote".into());
+        assert_eq!(remote.needed_format(), 5);
+        let downgraded = remote
+            .to_toml()
+            .unwrap()
+            .replacen("format = 5", "format = 4", 1);
+        assert!(matches!(
+            State::parse(&downgraded),
+            Err(HistoryError::Invalid(_))
+        ));
         assert_eq!(sample().needed_format(), 1);
         assert!(sample().to_toml().unwrap().starts_with("format = 1\n"));
     }

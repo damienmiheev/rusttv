@@ -123,7 +123,9 @@ impl Controller {
                 }
             }
         };
-        if matches!(pairing.phase, Phase::Waiting) {
+        // The listener's secret is live whether or not the code could be
+        // drawn (failure 3), so the tile says "Pairing" until it closes.
+        if matches!(pairing.phase, Phase::Waiting | Phase::Failed(3)) {
             self.pairing_opened();
         }
         // The code carries a pairing secret: keep it out of screen captures.
@@ -265,7 +267,9 @@ impl Controller {
 
     /// Pairing opened (the listener has a fresh secret for
     /// [`rusttv_remote::PAIRING_TIME`]): the tile says "Pairing" until it
-    /// closes, a phone pairs, or that time is up.
+    /// closes, a phone pairs, or that time is up. It follows the secret, not
+    /// the pairing screen (which stays until Back), and its timer runs on
+    /// Home's clock, so it may end a moment after the listener's.
     pub(super) fn pairing_opened(&mut self) {
         let me = self.me.clone();
         self.pairing_timer.start(

@@ -40,10 +40,10 @@ commands.
 `state.toml`, the only file in each commit's tree:
 
 ```toml
-format = 1
+format = 5                     # the RustTV Remote tile's name needs it (below)
 
 [launcher]                     # the launcher's own state; only the TV writes it
-order = ["com.netflix.ninja/.MainActivity", "folder:1", "about", "settings"]
+order = ["com.netflix.ninja/.MainActivity", "folder:1", "about", "settings", "remote"]
 hidden = ["com.example/.Main"]
 update_check = true
 reduced_effects = true         # format 4; only when effects are reduced
@@ -72,8 +72,8 @@ takeover = "active"
   focus. Uninstalled apps' names are kept (as the order file does). The
   RustTV Remote tile (`remote`) is recorded too (*since 2026-11-20*,
   PANELS.md § 9 Q9), so undo brings back its place; since every Home has
-  it, every new snapshot is format 5 (below), which builds before format 5
-  refuse. Older snapshots don't have it: they still restore, and Home puts
+  it, every snapshot with a launcher order is format 5 (below), which
+  builds before format 5 refuse. Older snapshots don't have it: they still restore, and Home puts
   the tile at the end. A change list never names `remote` as added or
   removed (an older snapshot only lacks it), only as moved.
 - **Linux tile names** (format 5): on Linux, apps are desktop entries, named

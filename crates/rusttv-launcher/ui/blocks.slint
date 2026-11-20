@@ -13,7 +13,7 @@ export { SettingsRow }
 export enum TitleSize {
     // A page of its own (About).
     large,
-    // A list page (Settings, RustTV Remote).
+    // A list page's title (`PageHeader`), or a heading on a page of its own.
     medium,
     // A heading inside the surface panel.
     small,
@@ -39,13 +39,17 @@ export component PageColumn inherits Rectangle {
     in property <length> u;
     in property <bool> wide;
     in property <bool> header;
+    // A block (rows) fills the column's height left under the others.
+    in property <bool> fills;
     VerticalLayout {
         x: Dir.x(90 * u, self.width, root.width);
         width: (wide ? 1740 : header ? 480 : 560) * u;
         padding-top: (header ? 260 : 120) * u;
         padding-bottom: 90 * u;
         spacing: (header ? 36 : 24) * u;
-        alignment: start;
+        // Blocks keep their own height at the top; with rows, the rows
+        // (the one block that stretches) take the rest.
+        alignment: fills ? LayoutAlignment.stretch : LayoutAlignment.start;
         @children
     }
 }
@@ -81,37 +85,6 @@ export component PageSurface inherits Rectangle {
     }
 }
 
-// A list page's header, above both columns: its 57 u title, and under it
-// Home's status line (`status`: what just happened, e.g. a phone removed)
-// or, without one, the dim key hint (empty without key hints). One line,
-// elided.
-export component PageHeader inherits Rectangle {
-    in property <length> u;
-    in property <string> title;
-    in property <string> hint;
-    in property <string> status;
-    Text {
-        x: Dir.x(90 * u, self.width, parent.width);
-        y: 90 * u;
-        width: 1740 * u;
-        horizontal-alignment: Dir.start;
-        text: root.title;
-        font-size: 57 * u;
-        font-weight: 500;
-        color: Theme.text;
-    }
-    Text {
-        x: Dir.x(90 * u, self.width, parent.width);
-        y: 176 * u;
-        width: 1740 * u;
-        horizontal-alignment: Dir.start;
-        text: root.status != "" ? root.status : Hints.keys ? root.hint : "";
-        font-size: 25 * u;
-        color: root.status != "" ? Theme.text : Theme.text-dim;
-        overflow: elide;
-    }
-}
-
 export component PageTitle inherits Text {
     in property <length> u;
     in property <TitleSize> size;
@@ -126,6 +99,35 @@ export component PageTitle inherits Text {
     min-height: size == TitleSize.small ? 36 * u : 0;
     max-height: size == TitleSize.small ? 36 * u : 1000 * u;
     vertical-stretch: 0;
+}
+
+// A list page's header, above both columns: its title (a medium
+// `PageTitle`), and under it Home's status line (`status`: what just
+// happened, e.g. a phone removed) or, without one, the dim key hint (empty
+// without key hints). One line, elided.
+export component PageHeader inherits Rectangle {
+    in property <length> u;
+    in property <string> title;
+    in property <string> hint;
+    in property <string> status;
+    PageTitle {
+        x: Dir.x(90 * u, self.width, parent.width);
+        y: 90 * u;
+        width: 1740 * u;
+        u: root.u;
+        size: TitleSize.medium;
+        text: root.title;
+    }
+    Text {
+        x: Dir.x(90 * u, self.width, parent.width);
+        y: 176 * u;
+        width: 1740 * u;
+        horizontal-alignment: Dir.start;
+        text: root.status != "" ? root.status : Hints.keys ? root.hint : "";
+        font-size: 25 * u;
+        color: root.status != "" ? Theme.text : Theme.text-dim;
+        overflow: elide;
+    }
 }
 
 // One paragraph; wraps. A state line (the updater's) is a normal-size text
@@ -296,9 +298,11 @@ export component MenuRow inherits Rectangle {
 // focused row and `first` the first one shown, as Home scrolls by rows. Up
 // and Down are Home's; the pointer reports a row it moves over (0) or
 // clicks (1), and Home walks the focus there behind its `pointer_reaches`
-// guard (ui.rs). Fills the height it is given. In the surface panel
+// guard (ui.rs). Fills the height the column or panel leaves it (`fills`).
+// Rows are 104 u apart, room for a detail line. In the surface panel
 // (`outset`) the rows reach into the panel's padding, 24 u from its edges,
-// as Settings' rows do, so a focused row's pill frames the panel's text.
+// as Settings' rows do, so a focused row's pill frames the panel's text;
+// the outset is the same on both sides, so it needs no `Dir`.
 export component PageRows inherits Rectangle {
     in property <length> u;
     in property <[SettingsRow]> model;

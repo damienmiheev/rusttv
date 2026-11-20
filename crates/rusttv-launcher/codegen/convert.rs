@@ -15,11 +15,30 @@ const TOKENS: [&str; 5] = ["bg", "surface", "text", "text-dim", "accent"];
 /// function parameters). Home feeds a page's scroll box through `scroll-*`
 /// (it owns the scrolling), its rows through `rows-*` (it owns the focus)
 /// and its header's status line through `header-status`.
-const RESERVED_PROPS: [&str; 27] = [
+const RESERVED_PROPS: [&str; 46] = [
     "u",
     "if",
+    "else",
     "for",
     "return",
+    "in",
+    "out",
+    "in-out",
+    "private",
+    "public",
+    "pure",
+    "property",
+    "callback",
+    "function",
+    "changed",
+    "import",
+    "export",
+    "from",
+    "struct",
+    "enum",
+    "global",
+    "component",
+    "inherits",
     "root",
     "self",
     "parent",
@@ -47,7 +66,9 @@ const RESERVED_PROPS: [&str; 27] = [
 ];
 
 /// Families of element properties (`min-width`, `drop-shadow-blur`, …),
-/// refused by prefix so a new one in Slint is covered too.
+/// refused by prefix so a new one in Slint is covered too, and the page
+/// properties Home feeds (`scroll-*`, `rows-*`, `header-*`), refused on
+/// every face so a name means the same everywhere.
 const RESERVED_PREFIXES: [&str; 15] = [
     "min-",
     "max-",
@@ -111,6 +132,25 @@ const ROW_FUNCTIONS: [&str; 3] = ["title", "detail", "attention"];
 /// file it doesn't know.
 const SCHEMA: u64 = 1;
 
+/// Pictures a tile's `image` may show (`badge`): build.rs decodes
+/// `assets/badges/<name>.png` and generates the `Badges` global and its
+/// Rust setter from this list.
+pub const BADGES: [&str; 2] = ["rusttv-logo", "rusttv-remote"];
+
+/// A page's blocks and the fields each takes (PANELS.md § 4.1). Slint's
+/// attribution (`mark`) is never conditional, and Home's focus relies on
+/// its focus blocks (`scroll-box`, `rows`) being there, so they take no
+/// `show`.
+const PAGE_BLOCKS: [(&str, &[&str]); 7] = [
+    ("title", &["value", "size", "show"]),
+    ("paragraph", &["value", "size", "tone", "show"]),
+    ("hint", &["value", "show"]),
+    ("picture", &["name", "show"]),
+    ("mark", &["name"]),
+    ("scroll-box", &["source"]),
+    ("rows", &["source"]),
+];
+
 /// Built-in marks a page's `mark` block may show (blocks.slint).
 const MARKS: [(&str, &str); 1] = [("slint", "PageSlintBadge")];
 
@@ -128,9 +168,9 @@ pub const PICTURES: [&str; 1] = ["remote-banner"];
 /// of pure functions (its words, for Settings' list), a page a component
 /// of blocks (blocks.slint). The output imports `Theme`, `Dir`, `Badges`,
 /// `Pictures` and the blocks by name, found through the compiler's include
-/// paths, so every file shares the one `Dir.rtl`. `badges` are the names of the
-/// pictures in `Badges` (set from Rust); nothing else can be an image.
-pub fn convert(json: &str, badges: &[&str]) -> Result<String, String> {
+/// paths, so every file shares the one `Dir.rtl`. A tile's images are
+/// [`BADGES`] (set from Rust); nothing else can be an image.
+pub fn convert(json: &str) -> Result<String, String> {
     let doc = parse(json)?;
     let doc = object(&doc, "template")?;
     only(
@@ -201,7 +241,6 @@ pub fn convert(json: &str, badges: &[&str]) -> Result<String, String> {
     let scope = if face == "row" { "" } else { "root." };
     let cx = Cx {
         props: &props,
-        badges,
         scope,
     };
     match face {
@@ -212,9 +251,15 @@ pub fn convert(json: &str, badges: &[&str]) -> Result<String, String> {
     Ok(out)
 }
 
+/// What a page's blocks hold so far: its focus block and its marks.
+#[derive(Default)]
+struct Seen {
+    focus: Option<&'static str>,
+    marks: Vec<String>,
+}
+
 struct Cx<'a> {
     props: &'a [&'a str],
-    badges: &'a [&'a str],
     /// What a property is read through: `root.` in a component, nothing in
     /// a function (its parameters).
     scope: &'a str,
@@ -348,24 +393,25 @@ impl Cx<'_> {
             );
         }
         // The page's one focus block (a scroll box or rows), where Home's
-        // Up and Down go.
-        let mut focus = None;
+        // Up and Down go, and the marks it shows (each once).
+        let mut seen = Seen::default();
         let _ = writeln!(
             blocks,
             "    PageColumn {{\n        u: root.u;\n        wide: {};\n        header: {header};",
             !two
         );
-        self.blocks(body, at, "start", false, &mut focus, &mut blocks)?;
-        blocks.push_str("    }\n");
+        self.blocks(body, at, "start", false, &mut seen, &mut blocks)?;
+        // A focus block (rows) in the column takes its height.
+        let _ = writeln!(blocks, "        fills: {};\n    }}", seen.focus.is_some());
         if two {
             let _ = writeln!(
                 blocks,
                 "    PageSurface {{\n        u: root.u;\n        header: {header};"
             );
-            let before = focus;
-            self.blocks(body, at, "end", true, &mut focus, &mut blocks)?;
+            let before = seen.focus;
+            self.blocks(body, at, "end", true, &mut seen, &mut blocks)?;
             // A scroll box or rows in the panel take its height.
-            let _ = writeln!(blocks, "        fills: {};\n    }}", focus != before);
+            let _ = writeln!(blocks, "        fills: {};\n    }}", seen.focus != before);
         }
 
         out.push_str("import { Theme } from \"theme.slint\";\n");
@@ -376,7 +422,7 @@ impl Cx<'_> {
             BLOCKS_SLINT.join(", ")
         );
         let _ = writeln!(out, "export component {name} inherits Rectangle {{");
-        self.declare(out, focus);
+        self.declare(out, seen.focus);
         if header {
             out.push_str("    in property <string> header-status;\n");
         }
@@ -422,7 +468,7 @@ impl Cx<'_> {
         page: &str,
         side: &str,
         surface: bool,
-        focus: &mut Option<&'static str>,
+        seen: &mut Seen,
         out: &mut String,
     ) -> Result<(), String> {
         let at = format!("{page}.{side}");
@@ -430,21 +476,11 @@ impl Cx<'_> {
             let at = format!("{at}[{i}]");
             let (kind, block) = node(block, &at)?;
             let at = format!("{at}.{kind}");
-            let (kind, allowed): (&'static str, &[&str]) = match kind {
-                "title" => ("title", &["value", "size", "show"]),
-                "paragraph" => ("paragraph", &["value", "size", "tone", "show"]),
-                "hint" => ("hint", &["value", "show"]),
-                "picture" => ("picture", &["name", "show"]),
-                // Slint's attribution is never conditional, and Home's focus
-                // relies on the focus blocks being there.
-                "mark" => ("mark", &["name"]),
-                "scroll-box" => ("scroll-box", &["source"]),
-                "rows" => ("rows", &["source"]),
-                other => {
-                    return Err(format!(
-                        "{at}: unknown block {other:?} (title, paragraph, hint, picture, mark, scroll-box, rows)"
-                    ));
-                }
+            let Some(&(kind, allowed)) = PAGE_BLOCKS.iter().find(|(name, _)| *name == kind) else {
+                return Err(format!(
+                    "{at}: unknown block {kind:?} ({})",
+                    PAGE_BLOCKS.map(|(name, _)| name).join(", ")
+                ));
             };
             only(block, &at, allowed)?;
             let show = match block.get("show") {
@@ -473,17 +509,21 @@ impl Cx<'_> {
                     "PagePicture"
                 }
                 "mark" => {
-                    let mark = string(field(block, &at, "name")?, &format!("{at}.name"))?;
+                    let mark = listed(
+                        block,
+                        &at,
+                        "name",
+                        &MARKS.map(|(name, _)| name),
+                        "a built-in mark",
+                    )?;
+                    if seen.marks.iter().any(|seen| seen == mark) {
+                        return Err(format!("{at}: a page shows each mark once"));
+                    }
+                    seen.marks.push(mark.to_owned());
                     MARKS
                         .iter()
                         .find(|(name, _)| *name == mark)
-                        .map(|(_, component)| *component)
-                        .ok_or_else(|| {
-                            format!(
-                                "{at}.name: {mark:?} is not a built-in mark ({})",
-                                MARKS.map(|(name, _)| name).join(", ")
-                            )
-                        })?
+                        .map_or("", |(_, component)| *component)
                 }
                 "scroll-box" => {
                     listed(block, &at, "source", &SCROLL_SOURCES, "a text Home loads")?;
@@ -506,7 +546,7 @@ impl Cx<'_> {
                     "PageRows"
                 }
             };
-            if matches!(kind, "scroll-box" | "rows") && focus.replace(kind).is_some() {
+            if matches!(kind, "scroll-box" | "rows") && seen.focus.replace(kind).is_some() {
                 return Err(format!(
                     "{at}: a page has at most one focus block (scroll-box or rows)"
                 ));
@@ -652,7 +692,7 @@ impl Cx<'_> {
         only(body, at, &["badge", "height"])?;
         let pad = "    ".repeat(depth);
         let badge = string(field(body, at, "badge")?, &format!("{at}.badge"))?;
-        if !self.badges.contains(&badge) {
+        if !BADGES.contains(&badge) {
             return Err(format!("{at}.badge: {badge:?} is not a built-in badge"));
         }
         let _ = writeln!(out, "{pad}Image {{");

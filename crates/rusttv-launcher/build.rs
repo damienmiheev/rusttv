@@ -17,10 +17,7 @@ const TILES: [&str; 4] = ["about", "settings", "hidden", "remote"];
 /// Their size: an Android TV banner (xhdpi), like the apps' banners.
 const TILE_SIZE: (u32, u32) = (320, 180);
 
-/// Pictures a panel tile template may name (the generated `Badges`).
-const BADGES: [&str; 2] = ["rusttv-logo", "rusttv-remote"];
-
-/// Their size.
+/// The size of the badges (`convert::BADGES`).
 const BADGE_SIZE: (u32, u32) = (128, 128);
 
 #[expect(
@@ -56,45 +53,7 @@ fn main() {
         // they read what a page draws: with debug assertions (the tests'
         // `cfg_attr`), never in a release build.
         .with_debug_info(std::env::var_os("CARGO_CFG_DEBUG_ASSERTIONS").is_some());
-    // Test-only templates (codegen/test_templates/*.json) use the
-    // converter's paths the real ones don't (one column, conditional
-    // blocks, rows, …). They are compiled here into `test_pages.rs`, which
-    // only the tests include, so every build checks their Slint.
-    println!("cargo::rerun-if-changed=codegen/test_templates");
-    let test_out = out.join("test_templates");
-    std::fs::create_dir_all(&test_out).expect("OUT_DIR should be writable");
-    let tests = convert_templates("codegen/test_templates", &test_out);
-    let mut root = String::new();
-    let mut body = String::new();
-    for (i, (file, template)) in tests.iter().enumerate() {
-        let component = template["component"].as_str().expect("a component's name");
-        root.push_str(&format!(
-            "import {{ {component} }} from \"{file}.slint\";\n"
-        ));
-        if template["face"] == "row" {
-            // A row is a global of functions: call them, so they compile.
-            let props = template["props"].as_array().map_or(0, Vec::len);
-            let args = vec!["\"\""; props].join(", ");
-            body.push_str(&format!(
-                "    out property <string> title-{i}: {component}.title({args});\n    \
-                 out property <string> detail-{i}: {component}.detail({args});\n    \
-                 out property <bool> attention-{i}: {component}.attention({args});\n"
-            ));
-        } else {
-            body.push_str(&format!("    if page == {i}: {component} {{ u: 1px; }}\n"));
-        }
-    }
-    root.push_str(&format!(
-        "\nexport component TestPages inherits Window {{\n    in property <int> page;\n{body}}}\n"
-    ));
-    let root_file = test_out.join("test_pages.slint");
-    std::fs::write(&root_file, root).expect("OUT_DIR should be writable");
-    let test_config =
-        config
-            .clone()
-            .with_include_paths(vec![test_out, out.clone(), manifest.join("ui")]);
-    slint_build::compile_with_output_path(&root_file, out.join("test_pages.rs"), test_config)
-        .expect("the test templates should compile");
+    write_test_pages(&out, &manifest);
 
     slint_build::compile_with_config("ui/home.slint", config)
         .expect("ui/home.slint should compile");
@@ -105,7 +64,7 @@ fn main() {
         let rgba = decode(Path::new(&source), TILE_SIZE);
         std::fs::write(out.join(format!("{name}.rgba")), rgba).expect("OUT_DIR should be writable");
     }
-    for name in BADGES {
+    for name in convert::BADGES {
         let source = format!("assets/badges/{name}.png");
         println!("cargo::rerun-if-changed={source}");
         let rgba = decode(Path::new(&source), BADGE_SIZE);
@@ -114,8 +73,79 @@ fn main() {
     }
 }
 
+/// Test-only templates (codegen/test_templates/*.json) use the converter's
+/// paths the real ones don't (one column, a header without a hint,
+/// conditional blocks, rows in a column, a nested tile column, a row's
+/// attention). They are compiled into `test_pages.rs`, which only the
+/// tests include; on purpose in every build (a second or so), so no build
+/// can carry a converter that writes Slint its compiler refuses.
+/// `TestPages` shows the page or tile its `page` names (the file's name);
+/// a row's functions are its `<file>-title`, `-detail` and `-attention`.
+#[expect(
+    clippy::expect_used,
+    reason = "a build script reports errors by panicking; Slint prints the diagnostics"
+)]
+fn write_test_pages(out: &Path, manifest: &Path) {
+    println!("cargo::rerun-if-changed=codegen/test_templates");
+    let test_out = out.join("test_templates");
+    std::fs::create_dir_all(&test_out).expect("OUT_DIR should be writable");
+    let mut imports = String::new();
+    let mut body = String::new();
+    for (file, template) in convert_templates("codegen/test_templates", &test_out) {
+        // convert() accepted the file, so these fields are there.
+        let component = template["component"].as_str().unwrap_or_default();
+        let name = file.replace('_', "-");
+        imports.push_str(&format!(
+            "import {{ {component} }} from \"{file}.slint\";\n"
+        ));
+        if template["face"] == "row" {
+            // A row is a global of functions: call them, so they compile.
+            let props = template["props"].as_array().map_or(0, Vec::len);
+            let args = vec!["\"\""; props].join(", ");
+            body.push_str(&format!(
+                "    out property <string> {name}-title: {component}.title({args});\n    \
+                 out property <string> {name}-detail: {component}.detail({args});\n    \
+                 out property <bool> {name}-attention: {component}.attention({args});\n"
+            ));
+        } else {
+            body.push_str(&format!(
+                "    if page == \"{name}\": {component} {{ u: 1px; }}\n"
+            ));
+        }
+    }
+    let root_file = test_out.join("test_pages.slint");
+    std::fs::write(
+        &root_file,
+        format!(
+            "{imports}\nexport component TestPages inherits Window {{\n    \
+             in property <string> page;\n{body}}}\n"
+        ),
+    )
+    .expect("OUT_DIR should be writable");
+    // No bundled translations: the tests read the English texts.
+    let config = CompilerConfiguration::new()
+        .with_include_paths(vec![test_out, out.to_path_buf(), manifest.join("ui")])
+        .with_default_translation_context(DefaultTranslationContext::None)
+        .with_debug_info(std::env::var_os("CARGO_CFG_DEBUG_ASSERTIONS").is_some());
+    slint_build::compile_with_output_path(&root_file, out.join("test_pages.rs"), config)
+        .expect("the test templates should compile");
+}
+
+/// File names a template can't take: they would replace a file the
+/// generated Slint imports by name from OUT_DIR or ui/.
+const TAKEN_FILES: [&str; 7] = [
+    "badges",
+    "pictures",
+    "theme",
+    "blocks",
+    "home",
+    "quick",
+    "test_pages",
+];
+
 /// Turns every `<dir>/*.json` panel template into `<out>/<name>.slint`;
-/// returns each file's name and template, in name order.
+/// returns each file's name and template, in name order. Two templates
+/// can't share a component, and none can take a name in [`TAKEN_FILES`].
 #[expect(
     clippy::expect_used,
     reason = "a build script reports errors by panicking"
@@ -139,20 +169,34 @@ fn convert_templates(dir: &str, out: &Path) -> Vec<(String, serde_json::Value)> 
             .and_then(|stem| stem.to_str())
             .expect("a template's name should be UTF-8");
         println!("cargo::rerun-if-changed={source}");
+        assert!(
+            !TAKEN_FILES.contains(&name),
+            "{source}: a template can't be named {name}"
+        );
         let json = std::fs::read_to_string(&path).expect("panel template should exist");
-        let slint =
-            convert::convert(&json, &BADGES).unwrap_or_else(|error| panic!("{source}: {error}"));
+        let slint = convert::convert(&json).unwrap_or_else(|error| panic!("{source}: {error}"));
         std::fs::write(out.join(format!("{name}.slint")), slint)
             .expect("OUT_DIR should be writable");
-        let template = serde_json::from_str(&json).expect("a converted template is JSON");
+        // Read again (cheaply) for its component and face; convert()
+        // accepted it, so it is JSON.
+        let template: serde_json::Value =
+            serde_json::from_str(&json).expect("a converted template is JSON");
+        let component = &template["component"];
+        assert!(
+            converted
+                .iter()
+                .all(|(_, other): &(String, serde_json::Value)| other["component"] != *component),
+            "{source}: another template is already {component}"
+        );
         converted.push((name.to_owned(), template));
     }
     converted
 }
 
-/// Writes the `Pictures` global (`pictures.slint`) from
-/// [`convert::PICTURES`]: pictures Home provides for pages' `picture`
-/// blocks, set from Rust.
+/// Writes the `Pictures` global (`pictures.slint`) and its Rust setter
+/// (`pictures.rs`, included by ui.rs) from [`convert::PICTURES`]: pictures
+/// Home provides for pages' `picture` blocks, so the list lives in one
+/// place.
 #[expect(
     clippy::expect_used,
     reason = "a build script reports errors by panicking"
@@ -162,15 +206,27 @@ fn write_pictures(out: &Path) {
         "// Generated by build.rs from convert.rs PICTURES: pictures Home provides\n\
          // for panel pages, set from Rust (ui.rs).\nexport global Pictures {\n",
     );
+    let mut rust = String::from(
+        "/// Generated by build.rs from `PICTURES`: sets every picture panel pages may\n\
+         /// show, each from `picture(name)`.\n\
+         fn set_pictures(window: &HomeWindow, picture: impl Fn(&str) -> slint::Image) {\n    \
+         let pictures = window.global::<Pictures>();\n",
+    );
     for name in convert::PICTURES {
         slint.push_str(&format!("    in property <image> {name};\n"));
+        rust.push_str(&format!(
+            "    pictures.set_{}(picture(\"{name}\"));\n",
+            name.replace('-', "_")
+        ));
     }
     slint.push_str("}\n");
+    rust.push_str("}\n");
     std::fs::write(out.join("pictures.slint"), slint).expect("OUT_DIR should be writable");
+    std::fs::write(out.join("pictures.rs"), rust).expect("OUT_DIR should be writable");
 }
 
 /// Writes the `Badges` global (`badges.slint`) and its Rust setter
-/// (`badges.rs`, included by ui.rs) from [`BADGES`], so the list lives in
+/// (`badges.rs`, included by ui.rs) from [`convert::BADGES`], so the list lives in
 /// one place.
 #[expect(
     clippy::expect_used,
@@ -185,7 +241,7 @@ fn write_badges(out: &Path) {
         "/// Generated by build.rs from `BADGES`: sets every picture panel templates may show.\n\
          fn set_badges(window: &HomeWindow) {\n    let badges = window.global::<Badges>();\n",
     );
-    for name in BADGES {
+    for name in convert::BADGES {
         slint.push_str(&format!("    in property <image> {name};\n"));
         rust.push_str(&format!(
             "    badges.set_{setter}(slint::Image::from_rgba8(SharedPixelBuffer::clone_from_slice(\n        \

@@ -37,8 +37,8 @@ field in `--json` output says which contract you get, CLI.md).
   "Pointer in other apps" is now dim where there is no pointer service,
   and shows the accent dot while it is on.
 - A version inside right-to-left text (Arabic, Hebrew) is an isolated
-  left-to-right run: on the About tile and page, Settings' RustTV row and
-  its Updates line (templates: `{"ltr": prop}`).
+  left-to-right run: on the About tile and page, and Settings' RustTV and
+  Updates rows (templates: `{"ltr": prop}`).
 - History records where the RustTV Remote tile is, so undo brings it back
   (HISTORY.md § 1). New snapshots are therefore state format 5 on Android
   too, which released builds (0.3.2 and older) can't read. Older

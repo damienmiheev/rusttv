@@ -467,6 +467,7 @@ fn show_about_panel(window: &HomeWindow, status: &UpdateStatus) {
 }
 
 include!(concat!(env!("OUT_DIR"), "/badges.rs"));
+include!(concat!(env!("OUT_DIR"), "/pictures.rs"));
 
 /// Sets the effects: `reduced` (Settings → Effects) turns shadows and the
 /// backdrop glow off, for a weak GPU.
@@ -988,9 +989,7 @@ impl Controller {
         let right_to_left = options.right_to_left;
         let baked = platform.top_right_menu();
         let builtins = Builtins::new(baked, right_to_left);
-        window
-            .global::<Pictures>()
-            .set_remote_banner(builtins.remote.image.clone());
+        set_pictures(window, |name| builtins.page_picture(name));
         let controller = Rc::new_cyclic(|me| {
             RefCell::new(Self {
                 home,
@@ -2708,6 +2707,15 @@ impl Builtins {
             TileId::App(_) | TileId::Folder(_) => None,
         }
     }
+
+    /// A picture panel pages may show (convert.rs `PICTURES`), by name; an
+    /// empty one for a name Home doesn't have (a test checks every name).
+    fn page_picture(&self, name: &str) -> slint::Image {
+        match name {
+            "remote-banner" => self.remote.image.clone(),
+            _ => slint::Image::default(),
+        }
+    }
 }
 
 /// The licence notices and how far they are scrolled.
@@ -3544,6 +3552,12 @@ mod tests {
         assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
     }
 
+    /// A version as templates show it inside text: a left-to-right isolate
+    /// (U+2066 … U+2069, convert.rs `{"ltr": prop}`).
+    fn ltr(text: &str) -> String {
+        format!("\u{2066}{text}\u{2069}")
+    }
+
     /// Opens Settings with a click on its entry in the top-right menu.
     fn click_settings(window: &HomeWindow) {
         let index = window
@@ -3584,7 +3598,7 @@ mod tests {
             .expect("the RustTV row");
         assert_eq!(
             first.title,
-            format!("RustTV \u{2066}{}\u{2069}", env!("CARGO_PKG_VERSION")).as_str()
+            format!("RustTV {}", ltr(env!("CARGO_PKG_VERSION"))).as_str()
         );
         assert_eq!(
             first.detail,
@@ -3829,7 +3843,7 @@ mod tests {
         open_about(&screen);
         assert_eq!(
             page_line(&screen.window),
-            "Version \u{2066}0.2.0\u{2069} available — press OK to install"
+            format!("Version {} available — press OK to install", ltr("0.2.0"))
         );
         screen.tap(OK);
         assert_eq!(screen.update_calls(), (0, 1));
@@ -3861,7 +3875,10 @@ mod tests {
         open_about(&screen);
         assert_eq!(
             page_line(&screen.window),
-            "Allow RustTV to install apps, then press OK to install \u{2066}0.2.0\u{2069}"
+            format!(
+                "Allow RustTV to install apps, then press OK to install {}",
+                ltr("0.2.0")
+            )
         );
         assert!(screen.window.get_update_available());
         screen.tap(OK);
@@ -3920,6 +3937,17 @@ mod tests {
         assert_eq!(screen.artwork_calls(), artwork);
     }
 
+    /// Every picture a page template may name (convert.rs `PICTURES`, the
+    /// generated `Pictures` global) is one Home has.
+    #[test]
+    fn every_page_picture_is_one_home_has() {
+        let builtins = Builtins::new(false, false);
+        for name in crate::template_convert::PICTURES {
+            assert!(builtins.page_picture(name).size().width > 0, "{name}");
+        }
+        assert_eq!(builtins.page_picture("nope").size().width, 0);
+    }
+
     /// The RustTV Remote page (templates/remote_page.json) takes the
     /// pointer on its rows, as before it was a template: hovering a row
     /// focuses it, a click presses OK there; nothing reaches it behind the
@@ -3928,7 +3956,20 @@ mod tests {
     fn the_remote_page_rows_take_the_pointer() {
         let home = include_str!("../ui/home.slint");
         let start = home.find("RemotePage {").expect("the Remote page");
-        let block = &home[start..start + home[start..].find("    }\n").expect("its end")];
+        let mut depth = 0;
+        let end = home[start..]
+            .char_indices()
+            .find(|&(_, c)| {
+                depth += match c {
+                    '{' => 1,
+                    '}' => -1,
+                    _ => 0,
+                };
+                c == '}' && depth == 0
+            })
+            .map(|(i, _)| start + i)
+            .expect("its end");
+        let block = &home[start..end];
         for bound in [
             "header-status: settings-status;",
             "rows-model: remote-rows;",
@@ -3948,21 +3989,54 @@ mod tests {
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::Remote));
         assert_eq!(screen.window.get_remote_row(), 0);
-        // The window is 1920 u wide; row 1 ("Pointer in other apps") sits
-        // 24 u into the surface panel (720 u, 260 u), 104 u below row 0.
-        let u = screen.window.window().size().width as f32
-            / screen.window.window().scale_factor()
-            / 1920.0;
-        let row_one = slint::LogicalPosition::new(900.0 * u, (260.0 + 24.0 + 104.0 + 48.0) * u);
-        screen
-            .window
-            .window()
-            .dispatch_event(WindowEvent::PointerMoved { position: row_one });
-        assert_eq!(screen.window.get_remote_row(), 1, "hover focuses the row");
         let rows = screen.window.get_remote_rows();
         assert_eq!(rows.row_count(), 2, "Pair a phone, Pointer in other apps");
         // The pointer row is dim where there is no pointer service.
         assert!(rows.row_data(1).expect("the pointer row").dim);
+
+        // Where a row's middle is (blocks.slint): the surface panel starts
+        // at 720 u, 260 u under a header; rows start 24 u into it, 104 u
+        // apart, 96 u tall. The window is 1920 u wide.
+        let u = screen.window.window().size().width as f32
+            / screen.window.window().scale_factor()
+            / 1920.0;
+        let row = |index: f32| {
+            slint::LogicalPosition::new(
+                (720.0 + 200.0) * u,
+                (260.0 + 24.0 + 104.0 * index + 48.0) * u,
+            )
+        };
+        let hover = |position| {
+            screen
+                .window
+                .window()
+                .dispatch_event(WindowEvent::PointerMoved { position });
+        };
+        hover(row(1.0));
+        assert_eq!(screen.window.get_remote_row(), 1, "hover focuses the row");
+        // A click on "Pair a phone" presses OK there: the pairing screen.
+        hover(row(0.0));
+        let button = slint::platform::PointerEventButton::Left;
+        screen
+            .window
+            .window()
+            .dispatch_event(WindowEvent::PointerPressed {
+                position: row(0.0),
+                button,
+            });
+        screen
+            .window
+            .window()
+            .dispatch_event(WindowEvent::PointerReleased {
+                position: row(0.0),
+                button,
+            });
+        assert_eq!(screen.window.get_mode(), 9, "the pairing screen opens");
+        // Behind it, the rows take no pointer.
+        hover(row(1.0));
+        assert_eq!(screen.window.get_remote_row(), 0);
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Remote));
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -3972,16 +4046,27 @@ mod tests {
     #[test]
     fn the_remote_tile_follows_pairing_without_redrawing_home() {
         let dir = temp_dir("remote-tile");
+        // One phone paired before Home starts (its keys made up).
+        let phone = rusttv_remote::PhoneId([1; 16]);
+        std::fs::create_dir_all(dir.join("remote")).unwrap();
+        std::fs::write(
+            dir.join("remote/phones.toml"),
+            format!(
+                "format = 1\n\n[[phone]]\nid = \"{phone}\"\nname = \"Pixel\"\nauth = \"{}\"\nkey = \"{}\"\npaired_at = 0\n",
+                "02".repeat(32),
+                "03".repeat(32)
+            ),
+        )
+        .unwrap();
         let screen = screen_with_remote(dir.join("order.toml"));
         let remote = screen.window.global::<RemotePanel>();
-        assert_eq!(remote.get_phones(), "0");
+        assert_eq!(remote.get_phones(), "1");
         assert_eq!(remote.get_status(), "");
         let before: Vec<TileData> = screen.window.get_tiles().iter().collect();
         let artwork = screen.artwork_calls();
 
         let opened = || {
             let mut controller = screen._controller.borrow_mut();
-            controller.start_remote_now(true);
             controller.pairing_opened();
             controller.show_remote_panel();
         };
@@ -3998,7 +4083,7 @@ mod tests {
         screen
             ._controller
             .borrow_mut()
-            .remote_event(RemoteEvent::Paired(rusttv_remote::PhoneId([1; 16])));
+            .remote_event(RemoteEvent::Paired(rusttv_remote::PhoneId([2; 16])));
         assert_eq!(remote.get_status(), "");
         // Nothing happened: the secret runs out.
         opened();
@@ -4006,11 +4091,15 @@ mod tests {
         assert_eq!(remote.get_status(), "pairing");
         screen.wait(2);
         assert_eq!(remote.get_status(), "");
+        // The phone removed (OK twice on its row): none left.
+        assert_eq!(remote.get_phones(), "1");
+        screen._controller.borrow_mut().remove_phone(phone);
         assert_eq!(remote.get_phones(), "0");
 
         let after: Vec<TileData> = screen.window.get_tiles().iter().collect();
         assert_eq!(before, after);
         assert_eq!(screen.artwork_calls(), artwork);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -4464,8 +4553,10 @@ mod tests {
             "kept out of captures"
         );
         if screen.window.get_pairing_phase() == 3 {
-            // A machine without a network route: nothing else to check.
+            // A machine without a network route: no secret, so the tile
+            // doesn't say "Pairing"; nothing else to check.
             assert_eq!(screen.window.get_pairing_failure(), 2, "no network address");
+            assert_eq!(screen.window.global::<RemotePanel>().get_status(), "");
             return;
         }
         assert_eq!(screen.window.get_pairing_phase(), 0);
@@ -4491,7 +4582,15 @@ mod tests {
         screen.wait(2100);
         assert_eq!(screen.window.get_mode(), mode_value(State::Remote));
         assert!(!screen.shared.platform.borrow().secure());
+        // The screen closed itself (the phone is listed); a real listener
+        // would also have sent `Paired`.
         assert_eq!(remote.get_status(), "", "pairing closed");
+        // Opened again and left with Back: the tile stops saying "Pairing".
+        screen.tap(OK);
+        assert_eq!(remote.get_status(), "pairing");
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Remote));
+        assert_eq!(remote.get_status(), "");
         event(phone_key(PhoneKey::Back));
         assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
         let _ = std::fs::remove_dir_all(dir);
