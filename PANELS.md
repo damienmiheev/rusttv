@@ -554,8 +554,8 @@ its own.
     offers Hide for them (`menu { choice: hide }`), and a tap on the hidden
     apps page puts one back. The phone asks the picture of `panel:history`
     like the other built-in tiles. On a built-in page (About, RustTV
-    Remote, Settings, Settings opened on History) `focused` names that
-    page's tile, wherever it was opened from (`Home::page`; REMOTE.md
+    Remote, Settings, Settings opened on History) `focused` names the
+    tile that opened that page, wherever it was (`Home::page`; REMOTE.md
     § 4).
   - The Hidden apps page keeps its name and its hint ("OK puts the app
     back on Home"): built-in tiles are listed there as app-like tiles, so
@@ -978,8 +978,8 @@ the existing look (2026-11-21).
 - **One panel open at a time:** another entry (the power key too) closes
   the RustTV panel before opening its own; Home, the pointer's click
   beside it (`quick_dismissed`) and Back close it. Its rows follow the
-  update, pairing and History's age while it is open (History's age is
-  read again when it opens).
+  update and pairing while it is open; History's age is read when it
+  opens.
 - **Keys and pointer:** Up and Down pick a row, OK (on release, as in the
   other quick panels) opens its page (`Home::open_panel_row`: About's
   page, the RustTV Remote page, Settings on History), Back closes the

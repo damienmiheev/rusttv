@@ -404,9 +404,9 @@ echoed.
     formatted when Home reads it (resume, focus changes), never on a
     timer;
   - the open folder and its page;
-  - the focused tile (on a built-in page, that page's tile, wherever it
-    was opened from: `about`, `remote`, `settings`, or `panel:history` for
-    Settings opened on History);
+  - the focused tile (on a built-in page, the tile that opened it,
+    wherever it was: `about`, `remote`, `settings`, or `panel:history` for
+    Settings opened on History, also while another section is shown);
   - the mode: browse, menu, moving, hidden list, settings, review, or text
     with its label;
   - the open long-press menu (its items and the selected one), and on the

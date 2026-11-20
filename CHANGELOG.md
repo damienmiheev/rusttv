@@ -129,8 +129,8 @@ field in `--json` output says which contract you get, CLI.md).
   apps page, with their pictures and captions; its menu offers Hide for
   them, and a tap on the hidden apps page puts one back (REMOTE.md § 4).
   On a built-in page (About, RustTV Remote, Settings, or Settings opened
-  on History), `focused` names that page's tile, wherever it was opened
-  from.
+  on History), `focused` names the tile that opened it, wherever it
+  was.
 
 ### CLI
 

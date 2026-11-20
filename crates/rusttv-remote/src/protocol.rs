@@ -258,7 +258,7 @@ pub struct HomeView {
     /// Visible tiles in order. Tiles inside folders (apps and built-in
     /// tiles) are listed too, with their folder; hidden tiles never are.
     /// In [`HomeMode::Settings`] (a built-in page), [`HomeView::focused`]
-    /// names that page's tile: `about`, `remote`, `settings`, or
+    /// names the tile that opened it: `about`, `remote`, `settings`, or
     /// `panel:history` for Settings opened on History.
     pub tiles: Vec<TileView>,
     /// The focused tile.

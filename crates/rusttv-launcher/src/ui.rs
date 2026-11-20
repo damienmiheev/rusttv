@@ -5225,7 +5225,10 @@ mod tests {
             (rows[1].detail.as_str(), rows[1].current),
             ("Pairing", true)
         );
-        screen._controller.borrow_mut().pairing_closed();
+        // The pairing secret's time runs out: the row follows by itself.
+        screen.wait(u64::try_from(rusttv_remote::PAIRING_TIME.as_millis()).unwrap() + 1);
+        let row = screen.window.get_quick_rows().row_data(1).unwrap();
+        assert_eq!((row.detail.as_str(), row.current), ("No phones", false));
 
         // Down and OK: RustTV Remote's page; Back is Home.
         screen.tap(DOWN);
