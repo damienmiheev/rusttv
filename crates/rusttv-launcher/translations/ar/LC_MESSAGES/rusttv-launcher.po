@@ -441,9 +441,6 @@ msgstr "إغلاق التطبيق"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "Licences and third-party notices"
-msgstr "التراخيص وإشعارات الأطراف الثالثة"
-
 msgid "Loading…"
 msgstr "جارٍ التحميل…"
 
@@ -465,6 +462,9 @@ msgstr "الطاقة"
 msgid "RustTV {}"
 msgstr "RustTV {}"
 
+msgid "RustTV"
+msgstr "RustTV"
+
 msgid "Search"
 msgstr "بحث"
 
@@ -473,9 +473,6 @@ msgstr "الحجم"
 
 msgid "Size: {} %"
 msgstr "الحجم: {} %"
-
-msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
-msgstr "Slint (Royalty-free License 2.0)، وSkia، ومكتبات Rust"
 
 msgid "Source code"
 msgstr "الشيفرة المصدرية"

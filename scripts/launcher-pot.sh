@@ -1,7 +1,8 @@
 #!/bin/sh
 # Regenerates the launcher's translation template from every @tr(...): the
-# hand-written UI (ui/home.slint, ui/quick.slint) and the Slint that build.rs
-# generates from the panel templates (templates/*.json, PANELS.md § 4.1).
+# hand-written UI (ui/home.slint, ui/quick.slint, ui/blocks.slint) and the
+# Slint that build.rs generates from the panel templates (templates/*.json,
+# PANELS.md § 4.1).
 # Needs slint-tr-extractor (`cargo install slint-tr-extractor`) and python3.
 set -eu
 cd "$(dirname "$0")/../crates/rusttv-launcher"
@@ -15,7 +16,7 @@ for line in sys.stdin:
         print(msg["out_dir"])
 ')
 test -n "$out" || { echo "no OUT_DIR from cargo" >&2; exit 1; }
-set -- ui/home.slint ui/quick.slint
+set -- ui/home.slint ui/quick.slint ui/blocks.slint
 for template in templates/*.json; do
     set -- "$@" "$out/$(basename "$template" .json).slint"
 done
@@ -28,5 +29,8 @@ out = re.escape(sys.argv[1].rstrip("/"))
 path = "translations/rusttv-launcher.pot"
 text = open(path, encoding="utf-8").read()
 text = re.sub(out + r"/([a-z_]+)\.slint:\d+", r"templates/\1.json", text)
+# For a text used in two files the extractor writes the first file's
+# reference twice and loses the second; keep one copy.
+text = re.sub(r"^(#: [^\n]*\n)\1+", r"\1", text, flags=re.M)
 open(path, "w", encoding="utf-8").write(text)
 PY

@@ -423,7 +423,7 @@ pub(crate) fn qr_pixels(text: &str, scale: usize) -> Option<(u32, Vec<u8>)> {
 /// (`panels::about_view`), the same value the TV's tile draws.
 pub(crate) fn about_caption(update: &UpdateStatus) -> Option<Caption> {
     let tile = crate::panels::about_view(env!("CARGO_PKG_VERSION"), update).tile?;
-    match tile.get("status") {
+    match tile.props.get("status") {
         "update" => Some(Caption::Update),
         "downloading" => Some(Caption::Downloading),
         "installing" => Some(Caption::Installing),

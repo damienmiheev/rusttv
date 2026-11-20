@@ -441,9 +441,6 @@ msgstr "Uygulamayı kapat"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "Licences and third-party notices"
-msgstr "Lisanslar ve üçüncü taraf bildirimleri"
-
 msgid "Loading…"
 msgstr "Yükleniyor…"
 
@@ -465,6 +462,9 @@ msgstr "Güç"
 msgid "RustTV {}"
 msgstr "RustTV {}"
 
+msgid "RustTV"
+msgstr "RustTV"
+
 msgid "Search"
 msgstr "Ara"
 
@@ -473,9 +473,6 @@ msgstr "Boyut"
 
 msgid "Size: {} %"
 msgstr "Boyut: %{}"
-
-msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
-msgstr "Slint (Royalty-free License 2.0), Skia, Rust kitaplıkları"
 
 msgid "Source code"
 msgstr "Kaynak kodu"

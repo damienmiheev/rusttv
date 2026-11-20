@@ -13,10 +13,11 @@ use rusttv_history::tv::{ApplyOutcome, Refused};
 use rusttv_history::{Author, Change, PackageState, SETTING_KEYS, State, diff};
 use slint::{ComponentHandle, Model, SharedString, Timer, TimerMode};
 
-use super::{Controller, HomeWindow, ReviewLine, SettingsRow, Strings};
+use super::{AboutListRow, Controller, HomeWindow, ReviewLine, SettingsRow, Strings};
 use crate::history::History;
 use crate::model::Input;
 use crate::order_file;
+use crate::panels;
 use crate::review::{Arrow, Outcome, Phase, Review};
 use crate::settings::{AboutRow, Action, Draft, EntryView, Overview, Section, SettingsPage};
 
@@ -29,6 +30,10 @@ const PANEL_ROWS: usize = 6;
 
 /// Review lines visible at once.
 const REVIEW_ROWS: usize = 8;
+
+/// Where RustTV's source code is (the About tab's Source row; the About
+/// page says it in its template's "Source: …" text).
+const SOURCE: &str = "github.com/damienmiheev/rusttv";
 
 /// Times before this (2024-01-01) mean the TV's clock wasn't set.
 const CLOCK_SET_AFTER: i64 = 1_704_067_200;
@@ -707,23 +712,32 @@ impl Controller {
         }
     }
 
-    /// A row of the About tab: RustTV, the updater, the host's facts.
+    /// A row of the About tab: RustTV (About's row face, PANELS.md § 4),
+    /// the updater, the source, the host's facts.
     fn about_row(&self, window: &HomeWindow, page: &SettingsPage, about: AboutRow) -> SettingsRow {
         let strings = window.global::<Strings>();
-        let fixed = |kind: i32| SettingsRow {
-            title: strings.invoke_about_row(kind, env!("CARGO_PKG_VERSION").into()),
-            detail: strings.invoke_about_detail(kind),
-            ..SettingsRow::default()
-        };
         match about {
-            AboutRow::RustTv => fixed(0),
+            AboutRow::RustTv => {
+                let face = window.global::<AboutListRow>();
+                let Some(view) = panels::about_view(env!("CARGO_PKG_VERSION"), &self.update).row
+                else {
+                    return SettingsRow::default();
+                };
+                let version: SharedString = view.props.get("version").into();
+                SettingsRow {
+                    title: face.invoke_title(version.clone()),
+                    detail: face.invoke_detail(version.clone()),
+                    current: face.invoke_attention(version),
+                    ..SettingsRow::default()
+                }
+            }
             AboutRow::Update => SettingsRow {
-                title: strings.invoke_about_row(1, "".into()),
-                detail: window.get_update_status(),
+                title: strings.invoke_section_name(section_value(Section::Updates)),
+                detail: super::update_line(window, &self.update),
                 current: self.update.is_available(),
                 ..SettingsRow::default()
             },
-            AboutRow::Source => fixed(2),
+            AboutRow::Source => row(strings.invoke_source_code(), SOURCE),
             AboutRow::Host(index) => {
                 let (label, value) = page.host().get(index).cloned().unwrap_or_default();
                 row(label.into(), &value)

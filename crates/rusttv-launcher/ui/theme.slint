@@ -24,3 +24,9 @@ export global Theme {
     out property <color> text-dim: #A4A9B4;
     out property <color> accent: #F5A524;
 }
+
+// Hints that only say which keys move around (Back returns, Up and Down
+// choose). Off for a pointer-driven home screen (RunOptions::no_key_hints).
+export global Hints {
+    in property <bool> keys: true;
+}

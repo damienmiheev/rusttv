@@ -46,8 +46,8 @@ mod generated {
     slint::include_modules!();
 }
 use generated::{
-    AboutPanel, Badges, Dir, Effects, Hints, HomeWindow, Pointer, ReviewLine, SettingsRow, Strings,
-    TileData,
+    AboutListRow, AboutPanel, Badges, Dir, Effects, Hints, HomeWindow, Pointer, ReviewLine,
+    SettingsRow, Strings, TileData,
 };
 
 mod device_view;
@@ -448,16 +448,22 @@ impl Demo {
     }
 }
 
-/// Sets the About panel's values (src/panels.rs): two window-global
+/// Sets the About panel's tile and page values (src/panels.rs): window-global
 /// properties, so a status change redraws the tile without touching the
-/// tile list.
+/// tile list; the page reads them only while it is open. (Its row is read
+/// when Settings draws its list.) A name means one value on every face
+/// (panels.rs tests), so `version` is set once.
 fn show_about_panel(window: &HomeWindow, status: &UpdateStatus) {
-    let Some(tile) = panels::about_view(env!("CARGO_PKG_VERSION"), status).tile else {
-        return;
-    };
+    let view = panels::about_view(env!("CARGO_PKG_VERSION"), status);
     let about = window.global::<AboutPanel>();
-    about.set_version(tile.get("version").into());
-    about.set_status(tile.get("status").into());
+    if let Some(tile) = view.tile {
+        about.set_version(tile.props.get("version").into());
+        about.set_status(tile.props.get("status").into());
+    }
+    if let Some(page) = view.page {
+        about.set_update(page.props.get("update").into());
+        about.set_update_detail(page.props.get("update-detail").into());
+    }
 }
 
 include!(concat!(env!("OUT_DIR"), "/badges.rs"));
@@ -944,8 +950,6 @@ impl Controller {
         window.set_quick_actions(ModelRc::from(quick_codes.clone()));
         let link_codes = Rc::new(VecModel::default());
         window.set_network_icons(ModelRc::from(link_codes.clone()));
-        window.set_version(env!("CARGO_PKG_VERSION").into());
-        window.set_update_status(update_line(window, &UpdateStatus::Idle));
         show_about_panel(window, &UpdateStatus::Idle);
 
         let (order, folders, hidden, saved_focus) =
@@ -1646,7 +1650,6 @@ impl Controller {
             return;
         }
         if let Some(window) = self.window.upgrade() {
-            window.set_update_status(update_line(&window, &status));
             window.set_update_available(status.is_available());
             show_about_panel(&window, &status);
         }
@@ -2794,9 +2797,10 @@ fn overlay_texts(window: &HomeWindow) -> crate::platform::OverlayTexts {
     }
 }
 
-/// The About page's update line for a status, in the current language
-/// (`Strings.update-line` in home.slint); says what OK does when it isn't a
-/// plain check.
+/// The updater's line for a status in Settings' Updates row, in the current
+/// language (`Strings.update-line` in home.slint; the About page says the
+/// same from its template, a test checks); says what OK does when it isn't
+/// a plain check.
 fn update_line(window: &HomeWindow, status: &UpdateStatus) -> SharedString {
     let (kind, detail) = match status {
         UpdateStatus::Idle => (0, String::new()),
@@ -3551,6 +3555,60 @@ mod tests {
         assert_eq!(screen.window.get_mode(), mode_value(State::About));
     }
 
+    /// Settings' RustTV row is About's row face (templates/about_row.json),
+    /// and the page's values reach `AboutPanel` (templates/about_page.json).
+    #[test]
+    fn about_row_and_page_come_from_the_about_view() {
+        let screen = screen(None);
+        click_settings(&screen.window);
+        for _ in 0..10 {
+            screen.tap(DOWN);
+        }
+        let first = screen
+            .window
+            .get_settings_rows()
+            .row_data(0)
+            .expect("the RustTV row");
+        assert_eq!(
+            first.title,
+            format!("RustTV {}", env!("CARGO_PKG_VERSION")).as_str()
+        );
+        assert_eq!(
+            first.detail,
+            "MIT OR Apache-2.0 · licences and third-party notices"
+        );
+        assert!(!first.current);
+
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::About));
+        let about = screen.window.global::<AboutPanel>();
+        assert_eq!(about.get_version(), env!("CARGO_PKG_VERSION"));
+        assert_eq!(about.get_update(), "idle");
+        assert_eq!(about.get_update_detail(), "");
+    }
+
+    /// home.slint gives the About page every property its template declares,
+    /// from `AboutPanel`, and its scroll box's.
+    #[test]
+    fn home_binds_every_about_page_property() {
+        let page: serde_json::Value =
+            serde_json::from_str(include_str!("../templates/about_page.json")).expect("JSON");
+        let home = include_str!("../ui/home.slint");
+        let start = home.find("AboutPage {").expect("the About page");
+        let block = &home[start..start + home[start..].find('}').expect("its end")];
+        for prop in page["props"].as_array().expect("props") {
+            let prop = prop.as_str().expect("a name");
+            assert!(
+                block.contains(&format!("{prop}: AboutPanel.{prop};")),
+                "{prop} isn't bound"
+            );
+        }
+        for prop in ["scroll-text", "scroll-position", "scroll-fraction"] {
+            assert!(block.contains(&format!("{prop}: ")), "{prop} isn't bound");
+        }
+    }
+
     #[test]
     fn about_reads_the_notices_only_when_it_opens() {
         let screen = screen(None);
@@ -3686,23 +3744,69 @@ mod tests {
 
     const POLL: u64 = UPDATE_POLL.as_millis() as u64;
 
+    /// What the open About page draws as its updater line (the paragraph of
+    /// templates/about_page.json that selects on `update`), read through
+    /// Slint's test search. Only builds with debug assertions carry the
+    /// element names it needs (build.rs); its tests are ignored elsewhere.
+    fn page_line(window: &HomeWindow) -> String {
+        let page: serde_json::Value =
+            serde_json::from_str(include_str!("../templates/about_page.json")).expect("JSON");
+        let index = panels::updater_line_index(&page);
+        i_slint_backend_testing::ElementHandle::find_by_element_type_name(window, "PageText")
+            .nth(index)
+            .and_then(|line| line.accessible_label())
+            .expect("the About page's updater line")
+            .into()
+    }
+
+    /// The About page and Settings' Updates row say the same for every
+    /// status, each from its own words.
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
+    fn the_about_page_and_settings_word_every_status_alike() {
+        let screen = screen(None);
+        open_about(&screen);
+        for status in &panels::UPDATE_STATUSES {
+            let status = match status {
+                UpdateStatus::Available(_) => UpdateStatus::Available("0.2.0".into()),
+                UpdateStatus::NeedsPermission(_) => UpdateStatus::NeedsPermission("0.2.0".into()),
+                UpdateStatus::Failed(_) => UpdateStatus::Failed("no network".into()),
+                other => other.clone(),
+            };
+            show_about_panel(&screen.window, &status);
+            assert_eq!(
+                page_line(&screen.window),
+                update_line(&screen.window, &status).as_str(),
+                "{status:?}"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn ok_on_about_checks_for_updates_when_none_is_known() {
         let screen = screen(None);
         open_about(&screen);
-        assert_eq!(
-            screen.window.get_update_status(),
-            "Press OK to check for updates"
-        );
+        assert_eq!(page_line(&screen.window), "Press OK to check for updates");
 
         screen.tap(OK);
         assert_eq!(screen.update_calls(), (1, 0));
-        assert_eq!(screen.window.get_update_status(), "Up to date");
+        assert_eq!(page_line(&screen.window), "Up to date");
         assert!(!screen.window.get_update_available());
         assert_eq!(screen.window.get_mode(), mode_value(State::About));
     }
 
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn an_available_update_shows_a_dot_and_ok_on_about_installs_it() {
         let mut platform = abc();
         platform.set_update_status(UpdateStatus::Available("0.2.0".into()));
@@ -3711,12 +3815,12 @@ mod tests {
 
         open_about(&screen);
         assert_eq!(
-            screen.window.get_update_status(),
+            page_line(&screen.window),
             "Version 0.2.0 available — press OK to install"
         );
         screen.tap(OK);
         assert_eq!(screen.update_calls(), (0, 1));
-        assert_eq!(screen.window.get_update_status(), "Installing…");
+        assert_eq!(page_line(&screen.window), "Installing…");
         assert!(!screen.window.get_update_available());
 
         // OK while it runs does nothing.
@@ -3727,19 +3831,23 @@ mod tests {
         screen.set_update(UpdateStatus::Failed("Android refused it".into()));
         screen.wait(POLL + 1);
         assert_eq!(
-            screen.window.get_update_status(),
+            page_line(&screen.window),
             "Update failed: Android refused it"
         );
     }
 
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn without_install_permission_ok_asks_again_after_it_is_granted() {
         let mut platform = abc();
         platform.set_update_status(UpdateStatus::NeedsPermission("0.2.0".into()));
         let screen = screen_with(platform, None);
         open_about(&screen);
         assert_eq!(
-            screen.window.get_update_status(),
+            page_line(&screen.window),
             "Allow RustTV to install apps, then press OK to install 0.2.0"
         );
         assert!(screen.window.get_update_available());
@@ -3855,12 +3963,16 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn about_shows_download_progress_as_it_comes() {
         let screen = screen(None);
         open_about(&screen);
         screen.set_update(UpdateStatus::Downloading(40));
         screen.wait(POLL + 1);
-        assert_eq!(screen.window.get_update_status(), "Downloading 40%");
+        assert_eq!(page_line(&screen.window), "Downloading 40%");
 
         // Closed while it runs: still followed, so the dot is right when it ends.
         screen.tap(BACK);
@@ -3872,23 +3984,28 @@ mod tests {
     // --- languages ---
 
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn a_device_language_with_a_translation_shows_it() {
         let screen = screen_in(abc(), None, Some("uk-UA"));
         open_about(&screen);
-        let line = screen.window.get_update_status();
+        let line = page_line(&screen.window);
         assert!(!line.is_empty());
         assert_ne!(line, "Press OK to check for updates");
         assert!(!screen.window.global::<Dir>().get_rtl());
     }
 
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn a_language_without_a_translation_falls_back_to_english() {
         let screen = screen_in(abc(), None, Some("sv-SE"));
         open_about(&screen);
-        assert_eq!(
-            screen.window.get_update_status(),
-            "Press OK to check for updates"
-        );
+        assert_eq!(page_line(&screen.window), "Press OK to check for updates");
     }
 
     #[test]

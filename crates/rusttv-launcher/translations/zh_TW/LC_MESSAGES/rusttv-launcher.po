@@ -441,9 +441,6 @@ msgstr "關閉應用程式"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "Licences and third-party notices"
-msgstr "授權條款與第三方聲明"
-
 msgid "Loading…"
 msgstr "正在載入…"
 
@@ -465,6 +462,9 @@ msgstr "電源"
 msgid "RustTV {}"
 msgstr "RustTV {}"
 
+msgid "RustTV"
+msgstr "RustTV"
+
 msgid "Search"
 msgstr "搜尋"
 
@@ -473,9 +473,6 @@ msgstr "大小"
 
 msgid "Size: {} %"
 msgstr "大小：{} %"
-
-msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
-msgstr "Slint（Royalty-free License 2.0）、Skia、Rust 程式庫"
 
 msgid "Source code"
 msgstr "原始碼"
