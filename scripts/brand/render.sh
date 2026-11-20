@@ -24,8 +24,9 @@ shot icon-foreground.html 432 432 "$OUT/fg.png"
 shot banner.html 960 540 "$OUT/banner.png"
 shot remote-icon.html 512 512 "$OUT/remote-icon.png"
 shot "remote-icon.html?badge" 512 512 "$OUT/remote-badge.png"
+shot history-badge.html 512 512 "$OUT/history-badge.png"
 shot logo.html 1280 640 "$OUT/logo.png"
-for tile in about settings hidden remote; do
+for tile in about settings hidden remote history; do
     shot "tile.html?$tile" 960 540 "$OUT/tile-$tile.png"
 done
 
@@ -44,11 +45,11 @@ Image.open(out / "logo.png").convert("RGB").save(docs / "logo-1280x640.png", opt
 (res / "drawable-xhdpi").mkdir(parents=True, exist_ok=True)
 Image.open(out / "banner.png").convert("RGB").resize((320, 180), Image.LANCZOS).save(
     res / "drawable-xhdpi/banner.png", optimize=True)
-# The launcher's own tiles (About, Settings, Hidden apps, RustTV Remote): 320x180 like the
+# The launcher's own tiles (About, Settings, Hidden apps, RustTV Remote, History): 320x180 like the
 # app banners; build.rs decodes them into the library.
 tiles = root / "crates/rusttv-launcher/assets/tiles"
 tiles.mkdir(parents=True, exist_ok=True)
-for name in ["about", "settings", "hidden", "remote"]:
+for name in ["about", "settings", "hidden", "remote", "history"]:
     Image.open(out / f"tile-{name}.png").convert("RGB").resize((320, 180), Image.LANCZOS).save(
         tiles / f"{name}.png", optimize=True)
 # Adaptive icon layers per density (108dp canvas).
@@ -65,5 +66,8 @@ Image.open(out / "remote-icon.png").convert("RGB").resize((180, 180), Image.LANC
 # The launcher's Remote tile badge (build.rs BADGES), rounded like the icon.
 Image.open(out / "remote-badge.png").convert("RGBA").resize((128, 128), Image.LANCZOS).save(
     root / "crates/rusttv-launcher/assets/badges/rusttv-remote.png", optimize=True)
-print("wrote docs/brand/{icon-1024,icon-512,logo-1280x640}.png, banner, tile banners, adaptive icon layers, remote icon and badge")
+# The launcher's History tile badge (build.rs BADGES), the icon with History's symbol.
+Image.open(out / "history-badge.png").convert("RGBA").resize((128, 128), Image.LANCZOS).save(
+    root / "crates/rusttv-launcher/assets/badges/rusttv-history.png", optimize=True)
+print("wrote docs/brand/{icon-1024,icon-512,logo-1280x640}.png, banner, tile banners, adaptive icon layers, remote icon, Remote and History badges")
 PY

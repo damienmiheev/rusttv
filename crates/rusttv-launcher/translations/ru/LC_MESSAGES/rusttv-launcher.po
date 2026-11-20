@@ -509,3 +509,36 @@ msgstr "Телефоны: {}"
 #: templates/remote_tile.json
 msgid "Pairing"
 msgstr "Подключение"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "Изменено"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Waiting"
+msgstr "Ожидает"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Just now"
+msgstr "Только что"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "{n} минуту назад"
+msgstr[1] "{n} минуты назад"
+msgstr[2] "{n} минут назад"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "{n} час назад"
+msgstr[1] "{n} часа назад"
+msgstr[2] "{n} часов назад"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "{n} день назад"
+msgstr[1] "{n} дня назад"
+msgstr[2] "{n} дней назад"

@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::model::{Folder, KEY_STEP, Order, TileId};
+use crate::model::{Folder, KEY_STEP, Order, PanelId, TileId};
 
 /// Name used for the About tile in the file. Component names always contain
 /// a `/`, so this cannot clash with an app.
@@ -28,6 +28,11 @@ const REMOTE: &str = "remote";
 
 /// Folders are named `folder:<number>` in the file (and in the history).
 const FOLDER: &str = "folder:";
+
+/// Panel tiles are named `panel:<id>` in the file (and in the history,
+/// format 6; PANELS.md § 6). Ids have no `/`, so they can't clash with an
+/// app.
+const PANEL: &str = "panel:";
 
 /// File contents. Fields added later are optional, so older files still load.
 #[derive(Debug, Deserialize)]
@@ -106,18 +111,26 @@ pub(crate) fn load(path: &Path) -> Loaded {
 /// The tile a name in the file stands for. [`TileId::Hidden`] in `keys` is
 /// dropped when the order meets the app list, and so is a folder without
 /// a `[folders]` entry; so are About and Settings where a top-right menu
-/// has Settings.
+/// has Settings. A panel this build doesn't know reads as an app, which
+/// is dropped as not installed, as builds before panel tiles do.
 pub(crate) fn tile_for_name(name: String) -> TileId {
     match name.as_str() {
         ABOUT => TileId::About,
         SETTINGS => TileId::Settings,
         REMOTE => TileId::Remote,
         HIDDEN => TileId::Hidden,
-        _ => match folder_number(&name) {
-            Some(number) => TileId::Folder(number),
-            None => TileId::App(name),
+        _ => match (folder_number(&name), panel(&name)) {
+            (Some(number), _) => TileId::Folder(number),
+            (None, Some(panel)) => TileId::Panel(panel),
+            (None, None) => TileId::App(name),
         },
     }
+}
+
+/// The panel named `panel:<id>`, if this build has it.
+fn panel(name: &str) -> Option<PanelId> {
+    let id = name.strip_prefix(PANEL)?;
+    PanelId::ALL.into_iter().find(|panel| panel.id() == id)
 }
 
 /// The number in `folder:<number>`. Component names always contain a `/`,
@@ -134,6 +147,7 @@ pub(crate) fn name_of(id: &TileId) -> String {
         TileId::Remote => REMOTE.to_owned(),
         TileId::Hidden => HIDDEN.to_owned(),
         TileId::Folder(number) => format!("{FOLDER}{number}"),
+        TileId::Panel(panel) => format!("{PANEL}{}", panel.id()),
     }
 }
 
@@ -237,9 +251,10 @@ pub(crate) const REDUCED_EFFECTS: &str = "effects-reduced";
 pub(crate) fn launcher_state(dir: &Path) -> rusttv_history::Launcher {
     let loaded = load(&dir.join("order.toml"));
     rusttv_history::Launcher {
-        // The RustTV Remote tile too (`remote`, PANELS.md § 9 Q9), so its
-        // place comes back on undo; such a snapshot needs format 5. An older
-        // snapshot without it, written back, gets it at the order's end.
+        // The RustTV Remote tile too (`remote`, PANELS.md § 9 Q9) and
+        // History's (`panel:history`, § 6), so their places come back on
+        // undo; such a snapshot needs format 6. An older snapshot without
+        // them, written back, gets them at the order's end.
         order: loaded
             .order
             .keys()
@@ -410,7 +425,110 @@ mod tests {
             label: "B".to_owned(),
             category: crate::model::Category::Other,
         }]);
-        assert_eq!(home.tiles().last(), Some(&TileId::Remote));
+        assert_eq!(
+            home.tiles()[1..],
+            [TileId::Remote, TileId::Panel(PanelId::History)]
+        );
+    }
+
+    /// History records History's panel tile (`panel:history`, PANELS.md
+    /// § 6): a snapshot then needs format 6, which builds before it refuse
+    /// instead of reading the name as an app, and the place comes back on
+    /// undo.
+    #[test]
+    fn history_records_the_history_tile_as_a_panel() {
+        let dir = TempDir::new("history-tile");
+        let order = Order::from_keys([
+            (TileId::Panel(PanelId::History), 500),
+            (TileId::App("com.example.b/.Main".to_owned()), 1000),
+            (TileId::Remote, 1500),
+        ]);
+        save(
+            &dir.file(),
+            &order,
+            &BTreeMap::new(),
+            &BTreeSet::new(),
+            Some(&TileId::Panel(PanelId::History)),
+        )
+        .unwrap();
+        let loaded = load(&dir.file());
+        assert_eq!(loaded.order, order);
+        assert_eq!(
+            loaded.order.keys()[0],
+            (TileId::Panel(PanelId::History), 500),
+            "its key is kept"
+        );
+        assert_eq!(loaded.focus, Some(TileId::Panel(PanelId::History)));
+        let state = launcher_state(&dir.0);
+        assert_eq!(
+            state.order,
+            ["panel:history", "com.example.b/.Main", "remote"]
+        );
+        let snapshot = rusttv_history::State {
+            launcher: state.clone(),
+            ..rusttv_history::State::new()
+        };
+        assert_eq!(snapshot.needed_format(), 6);
+        let back = TempDir::new("history-tile-back");
+        write_launcher_state(&back.0, &state).unwrap();
+        assert_eq!(
+            load(&back.file()).order.keys()[0].0,
+            TileId::Panel(PanelId::History)
+        );
+    }
+
+    /// A format 5 snapshot (no `panel:history`) still restores; Home then
+    /// adds History's tile at the end. A panel this build doesn't know is
+    /// dropped like an app that isn't installed.
+    #[test]
+    fn an_older_snapshot_without_the_history_tile_still_restores() {
+        let text = "format = 5\n\n[launcher]\norder = [\"com.example.b/.Main\", \"remote\"]\nhidden = []\nupdate_check = true\n";
+        let old = rusttv_history::State::parse(text).unwrap();
+        let dir = TempDir::new("history-tile-old");
+        write_launcher_state(&dir.0, &old.launcher).unwrap();
+        let loaded = load(&dir.file());
+        let mut home = crate::model::Home::new(loaded.order, loaded.folders, loaded.hidden, false);
+        home.set_apps(&[crate::model::App {
+            id: "com.example.b/.Main".to_owned(),
+            label: "B".to_owned(),
+            category: crate::model::Category::Other,
+        }]);
+        assert_eq!(
+            home.tiles(),
+            [
+                TileId::App("com.example.b/.Main".to_owned()),
+                TileId::Remote,
+                TileId::Panel(PanelId::History)
+            ]
+        );
+        assert_eq!(
+            tile_for_name("panel:clock".to_owned()),
+            TileId::App("panel:clock".to_owned())
+        );
+        // A newer build's panel in the order file: Home drops it like an
+        // app that isn't installed.
+        std::fs::write(
+            dir.file(),
+            "keys = { \"panel:clock\" = 500, \"com.example.b/.Main\" = 1000 }\n",
+        )
+        .unwrap();
+        let loaded = load(&dir.file());
+        assert!(loaded.warning.is_none());
+        let mut home = crate::model::Home::new(loaded.order, loaded.folders, loaded.hidden, false);
+        home.set_apps(&[crate::model::App {
+            id: "com.example.b/.Main".to_owned(),
+            label: "B".to_owned(),
+            category: crate::model::Category::Other,
+        }]);
+        assert!(
+            !home
+                .tiles()
+                .contains(&TileId::App("panel:clock".to_owned()))
+        );
+        // B, RustTV Remote and History (without Settings tiles, About and
+        // Settings aren't on Home).
+        assert_eq!(home.tiles().len(), 3);
+        assert_eq!(name_of(&TileId::Panel(PanelId::History)), "panel:history");
     }
 
     #[test]

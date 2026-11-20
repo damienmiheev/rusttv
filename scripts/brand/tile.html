@@ -4,7 +4,7 @@
 <style>
 /* The banners of the launcher's own tiles (direction B on the brand canvas):
    the whole banner is the amber tile, with the dark screen and its stand.
-   tile.html?about, ?settings or ?hidden picks the symbol; ?remote shows
+   tile.html?about, ?settings, ?hidden or ?history picks the symbol; ?remote shows
    RustTV Remote's remote with its ring D-pad (remote-icon.html) instead of
    the screen. 3× of 320×180. */
 body { width: 960px; height: 540px; overflow: hidden; }
@@ -56,6 +56,14 @@ body.remote-tile .remote { display: flex; }
     <line x1="-34" y1="-34" x2="34" y2="34" stroke="#000" stroke-width="17" stroke-linecap="round"/></mask>
   <path d="M -46 0 C -30 -30, 30 -30, 46 0 C 30 30, -30 30, -46 0 Z" fill="#fff" mask="url(#eye-cut)"/>
   <line x1="-34" y1="-34" x2="34" y2="34" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
+</svg>
+<!-- History: a clock whose rim turns back, ending in an arrowhead. -->
+<svg class="symbol" id="history" width="205" height="205" viewBox="-50 -50 100 100" aria-hidden="true">
+  <g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M -36 0 A 36 36 0 1 1 -25.5 25.5"/>
+    <path d="M 0 -19 V 0 L 13 9"/>
+  </g>
+  <path d="M -48 -7 L -36 11 L -24 -7 Z" fill="#fff" stroke="#fff" stroke-width="3" stroke-linejoin="round"/>
 </svg>
 </div>
 <div class="stand"></div>

@@ -53,8 +53,10 @@ pub use ui::{DemoStep, run_demo};
 pub use ui::{Lifecycle, RunOptions, run};
 
 /// Starts the history thread for the desktop dev mode over `dir`, the
-/// directory of the order file (HISTORY.md).
+/// directory of the order file (HISTORY.md). Without `grant`, as on a TV
+/// without `WRITE_SECURE_SETTINGS`, an approved settings change waits for
+/// the computer (HISTORY.md § 6.3), which shows History's waiting approval.
 #[cfg(not(target_os = "android"))]
-pub fn start_desktop_history(dir: std::path::PathBuf) {
-    history::desktop::start(dir);
+pub fn start_desktop_history(dir: std::path::PathBuf, grant: bool) {
+    history::desktop::start(dir, grant);
 }

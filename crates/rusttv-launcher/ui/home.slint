@@ -14,6 +14,8 @@ import { AboutListRow } from "about_row.slint";
 import { AboutPage } from "about_page.slint";
 import { RemoteTile } from "remote_tile.slint";
 import { RemotePage } from "remote_page.slint";
+import { HistoryTile } from "history_tile.slint";
+import { HistoryListRow } from "history_row.slint";
 import { MenuRow } from "blocks.slint";
 import { SettingsRow, ControlRow, QuickBar, QuickPanel, PowerMenu, TextPromptView, VolumeOsd } from "quick.slint";
 
@@ -35,7 +37,7 @@ export struct TileData {
     image: image,
     // 0 banner, 1 icon only, 2 no artwork, 3 the built-in About tile, 4 loading,
     // 5 the Hidden apps tile, 6 the Settings tile, 7 a folder, 8 the RustTV
-    // Remote tile.
+    // Remote tile, 9 History's tile.
     kind: int,
     // A folder's first four apps (banners or icons), drawn small on its tile.
     minis: [image],
@@ -43,7 +45,7 @@ export struct TileData {
 
 // One row of a Settings panel: `SettingsRow` in quick.slint.
 export { SettingsRow }
-export { Dir, Badges, Pictures, Hints, AboutListRow }
+export { Dir, Badges, Pictures, Hints, AboutListRow, HistoryListRow }
 
 // The About panel's values (src/panels.rs `about_view`), one source for
 // every face that shows them: the tile, its hero copy and the page. A name
@@ -64,6 +66,16 @@ export global AboutPanel {
 export global RemotePanel {
     in property <string> phones: "0";
     in property <string> status;
+}
+
+// History's tile and row values (src/panels.rs `history_view`): "waiting"
+// while an approval waits for the computer, else the last change's age as
+// "now", "minutes", "hours" or "days" with that number in `count`; ""
+// until the history thread has read the history. Set on resume, focus
+// changes and the history's answers, never per frame or by a timer.
+export global HistoryPanel {
+    in property <string> status;
+    in property <string> count: "0";
 }
 
 // One line of the review screen; `header` lines name a group.
@@ -339,8 +351,8 @@ component Artwork inherits Rectangle {
 
     // Pictures fade in: on a TV they arrive after the first frame (kind 4,
     // loading, is an empty card until then). The built-in tiles (5, 6) have
-    // banners too; About (3) and RustTV Remote (8) are panels, drawn from
-    // their templates below.
+    // banners too; About (3), RustTV Remote (8) and History (9) are panels,
+    // drawn from their templates below.
     Image {
         width: parent.width;
         height: parent.height;
@@ -374,6 +386,13 @@ component Artwork inherits Rectangle {
         height: parent.height;
         phones: RemotePanel.phones;
         status: RemotePanel.status;
+    }
+    // History's tile face, the same way.
+    if data.kind == 9: HistoryTile {
+        u: parent.width / 250;
+        height: parent.height;
+        status: HistoryPanel.status;
+        count: HistoryPanel.count;
     }
     // A folder: its first four apps in a 2 × 2 grid on the card, like a
     // small Home.
@@ -554,7 +573,7 @@ component Tile inherits Rectangle {
         x: 0;
         y: parent.height + 24 * u + 2 * u;
         width: parent.width;
-        text: data.kind == 3 ? @tr("About") : data.kind == 5 ? @tr("Hidden apps") : data.kind == 6 ? @tr("Settings") : data.kind == 8 ? @tr("RustTV Remote") : data.label;
+        text: data.kind == 3 ? @tr("About") : data.kind == 5 ? @tr("Hidden apps") : data.kind == 6 ? @tr("Settings") : data.kind == 8 ? @tr("RustTV Remote") : data.kind == 9 ? @tr("History") : data.label;
         font-size: 25 * u;
         font-weight: 500;
         color: #00000066;
@@ -666,7 +685,7 @@ component HeroLayer inherits Rectangle {
         y: 640 * u;
         width: 1740 * u;
         horizontal-alignment: Dir.start;
-        text: data.kind == 3 ? "RustTV" : data.kind == 5 ? @tr("Hidden apps") : data.kind == 6 ? @tr("Settings") : data.kind == 8 ? @tr("RustTV Remote") : data.label;
+        text: data.kind == 3 ? "RustTV" : data.kind == 5 ? @tr("Hidden apps") : data.kind == 6 ? @tr("Settings") : data.kind == 8 ? @tr("RustTV Remote") : data.kind == 9 ? @tr("History") : data.label;
         font-size: 57 * u;
         font-weight: 500;
         color: Theme.text;
@@ -714,7 +733,10 @@ export component HomeWindow inherits Window {
     // The Settings page (ui.rs `render_settings`): sections on the left, the
     // selected one's panel on the right. `settings-row` is the focused panel
     // row, -1 while the section list has focus.
-    in property <[string]> settings-sections;
+    // The sections, in Settings' row look: History's has the last change's
+    // age as its detail and the accent dot while an approval waits (its row
+    // face, templates/history_row.json).
+    in property <[SettingsRow]> settings-sections;
     in property <int> settings-section;
     in property <int> settings-row: -1;
     in property <string> settings-panel-title;
@@ -1395,26 +1417,36 @@ export component HomeWindow inherits Window {
             font-size: 28 * u;
             color: Theme.text-dim;
         }
-        for name[i] in settings-sections: MenuRow {
+        // 8 u apart; a row with a detail is taller (MenuRow), so the rows
+        // stack.
+        VerticalLayout {
             x: Dir.x(90 * u, self.width, root.width);
-            y: (260 + i * 72) * u;
+            y: 260 * u;
             width: 480 * u;
-            u: root.u;
-            text: name;
-            selected: i == settings-section && settings-row < 0;
-            marked: i == settings-section && settings-row >= 0;
-        }
-        for name[i] in settings-sections: TouchArea {
-            x: Dir.x(90 * u, self.width, root.width);
-            y: (260 + i * 72) * u;
-            width: 480 * u;
-            height: 64 * u;
-            pointer-event(event) => {
-                if event.kind == PointerEventKind.move {
-                    root.settings-pointer(false, i, 0);
+            height: 760 * u;
+            spacing: 8 * u;
+            alignment: start;
+            for section[i] in settings-sections: Rectangle {
+                height: section-row.height;
+                section-row := MenuRow {
+                    width: parent.width;
+                    u: root.u;
+                    text: section.title;
+                    detail: section.detail;
+                    tall: section.tall;
+                    current: section.current;
+                    selected: i == settings-section && settings-row < 0;
+                    marked: i == settings-section && settings-row >= 0;
+                }
+                TouchArea {
+                    pointer-event(event) => {
+                        if event.kind == PointerEventKind.move {
+                            root.settings-pointer(false, i, 0);
+                        }
+                    }
+                    clicked => { root.settings-pointer(false, i, 1); }
                 }
             }
-            clicked => { root.settings-pointer(false, i, 1); }
         }
         Rectangle {
             x: Dir.x(720 * u, self.width, root.width);

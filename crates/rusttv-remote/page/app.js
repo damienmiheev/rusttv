@@ -611,29 +611,42 @@
   // apps and folders by their name.
   function nameOf(tile) {
     if (tile.id === "remote") return "RustTV Remote";
-    const key = { about: "tile_about", settings: "tile_settings", "hidden-apps": "hidden_title" }[tile.id];
+    const key = {
+      about: "tile_about", settings: "tile_settings", "hidden-apps": "hidden_title", "panel:history": "tile_history",
+    }[tile.id];
     return key ? t(key) : tile.label;
   }
 
   // A tile's caption (REMOTE.md § 4), from a fixed list: About's update
-  // state. Anything else shows none.
+  // state, History's waiting approval or the last change's age (with its
+  // `count`, in the phone's language and plural forms). Anything else
+  // shows none.
   const CAPTIONS = new Map([
     ["update", "caption_update"], ["downloading", "caption_downloading"], ["installing", "caption_installing"],
+    ["waiting", "caption_waiting"], ["just_now", "caption_just_now"],
   ]);
+  const AGES = new Map([["minutes", "minute"], ["hours", "hour"], ["days", "day"]]);
+  let ages = null;
   function captionOf(tile) {
     const key = CAPTIONS.get(tile.caption);
-    return key ? t(key) : "";
+    if (key) return t(key);
+    const unit = AGES.get(tile.caption);
+    if (!unit || !Number.isInteger(tile.count) || tile.count < 0 || !window.Intl?.RelativeTimeFormat) return "";
+    // Western digits, as the TV shows them.
+    ages ??= new Intl.RelativeTimeFormat(window.RustTVText.lang.replace("_", "-"), { numeric: "always", numberingSystem: "latn" });
+    return ages.format(-tile.count, unit);
   }
 
-  // On the picture's bottom start corner, as on the TV: "update" in the
-  // accent, the others dim.
+  // On the picture's bottom start corner, as on the TV: "update" and
+  // "waiting" in the accent, the others dim.
   function addCaption(box, tile) {
     const text = captionOf(tile);
     if (!text) return;
     const caption = document.createElement("small");
-    caption.className = "caption" + (tile.caption === "update" ? " update" : "");
+    const accent = tile.caption === "update" || tile.caption === "waiting";
+    caption.className = "caption" + (accent ? " accent" : "");
     caption.textContent = text;
-    box.dataset.caption = tile.caption;
+    box.dataset.caption = text;
     box.append(caption);
   }
 

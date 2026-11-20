@@ -9,13 +9,16 @@ const ROW: &str = include_str!("../templates/about_row.json");
 const PAGE: &str = include_str!("../templates/about_page.json");
 
 /// The test-only templates (codegen/test_templates/, compiled by build.rs
-/// into Slint the tests don't otherwise use): every path About and Remote
-/// leave out. A one-column page under a header with every block a column
-/// may hold, each optional field set; a tile with a nested column; a row
-/// with every function.
+/// into Slint the tests don't otherwise use): every path About, Remote and
+/// History leave out. A one-column page under a header with every block a
+/// column may hold, each optional field set; a tile with a nested column; a
+/// row with every function; a tile with plural texts (one with an arg, one
+/// in a `select`).
 const ONE_COLUMN: &str = include_str!("../codegen/test_templates/general_page.json");
 const GENERAL_TILE: &str = include_str!("../codegen/test_templates/general_tile.json");
 const GENERAL_ROW: &str = include_str!("../codegen/test_templates/general_row.json");
+const GENERAL_PLURAL: &str = include_str!("../codegen/test_templates/general_plural.json");
+const HISTORY_ROW: &str = include_str!("../templates/history_row.json");
 const REMOTE_PAGE: &str = include_str!("../templates/remote_page.json");
 
 /// A Slint string argument as a left-to-right isolate (convert.rs `arg`).
@@ -176,6 +179,152 @@ fn a_general_tile_and_row_convert() {
     assert!(row.contains("public pure function detail(count: string, state: string) -> string {\n        return (state == \"on\" ? @tr(\"On\") : \"\");"));
     assert!(row.contains("-> bool {\n        return (state == \"on\" ? true : false);"));
     assert!(row.contains(&format!("@tr(\"Count {{}}\", {})", isolated("count"))));
+}
+
+/// A text with plural forms becomes Slint's `@tr("…" | "…" % n)`, its
+/// count read as a number, with other args after it; in a `select` too,
+/// on a tile, a row and a page block.
+#[test]
+fn plural_texts_convert_with_their_count() {
+    let tile = run(GENERAL_PLURAL).expect("converts");
+    assert!(
+        tile.contains(&format!(
+            "@tr(\"{{n}} file in {{}}\" | \"{{n}} files in {{}}\" % root.count.to-float(), {})",
+            isolated("root.unit")
+        )),
+        "{tile}"
+    );
+    assert!(tile.contains(
+        "(root.unit == \"0\" ? @tr(\"None\") : @tr(\"One day\" | \"{n} days\" % root.count.to-float()))"
+    ));
+    let row = run(HISTORY_ROW).expect("converts");
+    assert!(row.contains(
+        "status == \"hours\" ? @tr(\"{n} hour ago\" | \"{n} hours ago\" % count.to-float())"
+    ));
+    let page = run(&PAGE.replace(
+        "{ \"tr\": \"Third-party notices\" }",
+        "{ \"tr\": \"{n} notice\", \"plural\": \"{n} notices\", \"count\": \"version\" }",
+    ))
+    .expect("converts");
+    assert!(page.contains("@tr(\"{n} notice\" | \"{n} notices\" % root.version.to-float())"));
+    // A list page's header title and hint, a title, a paragraph and a hint.
+    let page = run(&ONE_COLUMN
+        .replace(
+            "\"header\": { \"title\": { \"tr\": \"Test {}\", \"args\": [\"name\"] } }",
+            "\"header\": { \"title\": { \"tr\": \"{n} test {}\", \"plural\": \"{n} tests {}\", \"count\": \"state\", \"args\": [\"name\"] }, \
+             \"hint\": { \"tr\": \"{n} hint\", \"plural\": \"{n} hints\", \"count\": \"state\" } }",
+        )
+        .replace(
+            "{ \"tr\": \"Large\" }",
+            "{ \"tr\": \"{n} large\", \"plural\": \"{n} larges\", \"count\": \"name\" }",
+        )
+        .replace(
+            "{ \"tr\": \"State\" }",
+            "{ \"tr\": \"{n} state\", \"plural\": \"{n} states\", \"count\": \"state\" }",
+        )
+        .replace(
+            "{ \"tr\": \"Back returns.\" }",
+            "{ \"tr\": \"{n} back\", \"plural\": \"{n} backs\", \"count\": \"version\" }",
+        ))
+    .expect("converts");
+    for out in [
+        "@tr(\"{n} test {}\" | \"{n} tests {}\" % root.state.to-float(), root.name)",
+        "@tr(\"{n} hint\" | \"{n} hints\" % root.state.to-float())",
+        "@tr(\"{n} large\" | \"{n} larges\" % root.name.to-float())",
+        "@tr(\"{n} state\" | \"{n} states\" % root.state.to-float())",
+        "@tr(\"{n} back\" | \"{n} backs\" % root.version.to-float())",
+    ] {
+        assert!(page.contains(out), "{out}: {page}");
+    }
+}
+
+/// What a plural text can't hold: one of `plural` and `count` without the
+/// other, a count that isn't a prop, `{n}` without plural forms, forms
+/// with different `{}`, other braces, control or bidi characters.
+#[test]
+fn rejects_plural_texts_outside_the_schema() {
+    let one = "{ \"tr\": \"{n} hour ago\", \"plural\": \"{n} hours ago\", \"count\": \"count\" }";
+    assert!(HISTORY_ROW.contains(one));
+    let cases = [
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour ago\", \"plural\": \"{n} hours ago\" }"),
+            "\"plural\" and \"count\" go together",
+        ),
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"An hour ago\", \"count\": \"count\" }"),
+            "\"plural\" and \"count\" go together",
+        ),
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour ago\", \"plural\": \"{n} hours ago\", \"count\": \"hours\" }"),
+            "\"hours\" is not in props",
+        ),
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour ago\" }"),
+            "may hold braces only as {}",
+        ),
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour ago\", \"plural\": \"{n} hours ago {}\", \"count\": \"count\", \"args\": [] }"),
+            "plural: \"{n} hours ago {}\" needs one arg per {}",
+        ),
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour {}\", \"plural\": \"{n} hours ago\", \"count\": \"count\", \"args\": [\"status\"] }"),
+            "plural: \"{n} hours ago\" needs one arg per {}",
+        ),
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour ago\", \"plural\": \"{0} hours ago\", \"count\": \"count\" }"),
+            "may hold braces only as {} and {n}",
+        ),
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour ago\", \"plural\": \"{n} hours\\u202E ago\", \"count\": \"count\" }"),
+            "plural: control or bidi characters are not allowed",
+        ),
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour ago\", \"plural\": 2, \"count\": \"count\" }"),
+            "plural: expected a string",
+        ),
+        // A bad singular next to a good plural.
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{0} hour ago\", \"plural\": \"{n} hours ago\", \"count\": \"count\" }"),
+            "tr: \"{0} hour ago\" may hold braces only as {} and {n}",
+        ),
+        // Braces that collapse into `{n}` once `{}` is taken out: Slint
+        // would read `{{` as an escape.
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{{}n} hour ago\", \"plural\": \"{n} hours ago\", \"count\": \"count\" }"),
+            "may hold braces only as {} and {n}",
+        ),
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour ago\", \"plural\": \"{n{}} hours ago\", \"count\": \"count\" }"),
+            "may hold braces only as {} and {n}",
+        ),
+        // The count is a prop's name, never a number or an isolate.
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour ago\", \"plural\": \"{n} hours ago\", \"count\": 3 }"),
+            "count: expected a string",
+        ),
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour ago\", \"plural\": \"{n} hours ago\", \"count\": { \"ltr\": \"count\" } }"),
+            "count: expected a string",
+        ),
+        (
+            HISTORY_ROW.replace(one, "{ \"tr\": \"{n} hour ago\", \"plural\": \"{n} hours ago\", \"count\": \"count\", \"many\": \"x\" }"),
+            "unknown field \"many\"",
+        ),
+    ];
+    for (json, expected) in cases {
+        assert_ne!(
+            json, HISTORY_ROW,
+            "the case must change the template ({expected})"
+        );
+        let got = err(&json);
+        assert!(got.contains(expected), "expected {expected:?}, got {got:?}");
+    }
+    // A quote in a plural form stays text.
+    let out = run(&HISTORY_ROW.replace("{n} hours ago", r#"{n} x\"); \\(e)"#)).expect("converts");
+    assert!(
+        out.contains(r#"| "{n} x\"); \\(e)" % count.to-float()"#),
+        "{out}"
+    );
 }
 
 /// A prop no text uses is accepted, and a `select` without `else` falls
@@ -691,6 +840,22 @@ fn the_test_templates_compile_and_draw() {
     pages.set_value("".into());
     assert_eq!(label("Value \u{2066}\u{2069}"), 1);
     assert_eq!(label("On"), 0);
+
+    // Plural texts pick their form by the count (English's rule without
+    // bundled translations): every prop is `value` here, so the unit is the
+    // count too; an empty or non-numeric count reads as 0.
+    pages.set_page("general-plural".into());
+    for (value, file, days) in [
+        ("1", "1 file in \u{2066}1\u{2069}", "One day"),
+        ("2", "2 files in \u{2066}2\u{2069}", "2 days"),
+        ("", "0 files in \u{2066}\u{2069}", "0 days"),
+        ("abc", "0 files in \u{2066}abc\u{2069}", "0 days"),
+        ("0", "0 files in \u{2066}0\u{2069}", "None"),
+    ] {
+        pages.set_value(value.into());
+        assert_eq!(label(file), 1, "{value:?}: {file}");
+        assert_eq!(label(days), 1, "{value:?}: {days}");
+    }
 
     // Empty properties: the count is an empty isolate, no detail, no dot.
     assert_eq!(pages.get_general_row_title(), "Count \u{2066}\u{2069}");

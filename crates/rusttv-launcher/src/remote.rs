@@ -23,7 +23,8 @@ use rusttv_remote::{Event, Options, Outlet, PAGE, PhoneId, Phones, Remote, Remot
 use crate::platform::{Pictures, UpdateStatus};
 use crate::remote_page::PhoneRow;
 
-use crate::model::{FOLDER_PAGE_SIZE, Home, MenuItem, State, TileId};
+use crate::history::Summary;
+use crate::model::{FOLDER_PAGE_SIZE, Home, MenuItem, PanelId, State, TileId};
 use crate::order_file::name_of;
 
 /// Where the paired phones are kept, under the launcher's files directory.
@@ -62,7 +63,7 @@ fn random(bytes: &mut [u8]) {
     getrandom::fill(bytes).expect("the OS has a secure random source");
 }
 
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |since| since.as_secs())
@@ -431,30 +432,59 @@ pub(crate) fn about_caption(update: &UpdateStatus) -> Option<Caption> {
     }
 }
 
+/// History's caption on the phone and the number it names: the tile's
+/// `status` and `count` from its panel view (`panels::history_view`), the
+/// same values the TV's tile draws.
+pub(crate) fn history_caption(
+    summary: Option<&Summary>,
+    now_unix: i64,
+) -> (Option<Caption>, Option<u32>) {
+    let Some(tile) = crate::panels::history_view(summary, now_unix).tile else {
+        return (None, None);
+    };
+    let count = tile.props.get("count").parse().ok();
+    match tile.props.get("status") {
+        "waiting" => (Some(Caption::Waiting), None),
+        "now" => (Some(Caption::JustNow), None),
+        "minutes" => (Some(Caption::Minutes), count),
+        "hours" => (Some(Caption::Hours), count),
+        "days" => (Some(Caption::Days), count),
+        _ => (None, None),
+    }
+}
+
 /// What Home looks like, for the phones (REMOTE.md § 4).
 ///
 /// `label` names a tile as the TV shows it; `review` is the approval screen
 /// (phones get nothing from it and their input is dropped); `rename` is the
 /// folder name being typed; `update` is the updater's state, which About's
-/// tile shows as its caption.
+/// tile shows as its caption; `history` is History's tile caption and its
+/// number ([`history_caption`]).
 pub(crate) fn home_view(
     home: &Home,
     label: &dyn Fn(&TileId) -> String,
     review: bool,
     rename: Option<String>,
     update: &UpdateStatus,
+    history: (Option<Caption>, Option<u32>),
 ) -> HomeView {
     let mut tiles: Vec<TileView> = home
         .tiles()
         .iter()
-        .map(|id| TileView {
-            id: name_of(id),
-            label: label(id),
-            banner: None,
-            folder: None,
-            caption: (*id == TileId::About)
-                .then(|| about_caption(update))
-                .flatten(),
+        .map(|id| {
+            let (caption, count) = match id {
+                TileId::About => (about_caption(update), None),
+                TileId::Panel(PanelId::History) => history,
+                _ => (None, None),
+            };
+            TileView {
+                id: name_of(id),
+                label: label(id),
+                banner: None,
+                folder: None,
+                caption,
+                count,
+            }
         })
         .collect();
     for (number, folder) in home.folders() {
@@ -467,6 +497,7 @@ pub(crate) fn home_view(
                 banner: None,
                 folder: Some(folder_name.clone()),
                 caption: None,
+                count: None,
             });
         }
     }
@@ -529,6 +560,7 @@ pub(crate) fn home_view(
                     banner: None,
                     folder: None,
                     caption: None,
+                    count: None,
                 }
             })
             .collect();
@@ -575,6 +607,9 @@ mod tests {
         home
     }
 
+    /// History's caption before the history thread has read the history.
+    const NO_HISTORY: (Option<Caption>, Option<u32>) = (None, None);
+
     fn label(id: &TileId) -> String {
         match id {
             TileId::App(component) => component.clone(),
@@ -586,7 +621,7 @@ mod tests {
     #[test]
     fn the_view_lists_tiles_in_order_with_focus() {
         let home = home();
-        let view = home_view(&home, &label, false, None, &UpdateStatus::Idle);
+        let view = home_view(&home, &label, false, None, &UpdateStatus::Idle, NO_HISTORY);
         assert_eq!(view.tiles[0].id, "com.example.a00/.Main");
         assert_eq!(view.focused.as_deref(), Some("com.example.a00/.Main"));
         assert!(view.tiles.iter().any(|tile| tile.id == "remote"));
@@ -599,7 +634,7 @@ mod tests {
         let mut home = home();
         // As on Android: About is a tile.
         home.set_settings_tiles(true);
-        let tiles = home_view(&home, &label, false, None, &UpdateStatus::Idle).tiles;
+        let tiles = home_view(&home, &label, false, None, &UpdateStatus::Idle, NO_HISTORY).tiles;
         assert!(tiles.iter().any(|tile| tile.id == "about"), "{tiles:?}");
         let cases = [
             (UpdateStatus::Idle, None),
@@ -620,7 +655,7 @@ mod tests {
             (UpdateStatus::Failed("no network".into()), None),
         ];
         for (status, expected) in cases {
-            let view = home_view(&home, &label, false, None, &status);
+            let view = home_view(&home, &label, false, None, &status, NO_HISTORY);
             for tile in &view.tiles {
                 let want = if tile.id == "about" { expected } else { None };
                 assert_eq!(tile.caption, want, "{status:?} {}", tile.id);
@@ -628,16 +663,86 @@ mod tests {
         }
         // The download's progress doesn't change the view, so it isn't resent.
         assert_eq!(
-            home_view(&home, &label, false, None, &UpdateStatus::Downloading(10)),
-            home_view(&home, &label, false, None, &UpdateStatus::Downloading(90))
+            home_view(
+                &home,
+                &label,
+                false,
+                None,
+                &UpdateStatus::Downloading(10),
+                NO_HISTORY
+            ),
+            home_view(
+                &home,
+                &label,
+                false,
+                None,
+                &UpdateStatus::Downloading(90),
+                NO_HISTORY
+            )
         );
+    }
+
+    /// History's tile carries its caption and number, as the TV's tile
+    /// shows them; no other tile does.
+    #[test]
+    fn history_carries_its_caption_and_no_other_tile_does() {
+        let home = home();
+        const NOW: i64 = 1_790_000_000;
+        let summary = |seconds_ago: i64, pending| Summary {
+            last_unix: Some(NOW - seconds_ago),
+            pending,
+        };
+        let cases = [
+            (None, (None, None)),
+            (Some(Summary::default()), (None, None)),
+            (Some(summary(5, 0)), (Some(Caption::JustNow), None)),
+            (Some(summary(300, 0)), (Some(Caption::Minutes), Some(5))),
+            (Some(summary(7_300, 0)), (Some(Caption::Hours), Some(2))),
+            (Some(summary(3 * 86_400, 0)), (Some(Caption::Days), Some(3))),
+            (Some(summary(7_300, 1)), (Some(Caption::Waiting), None)),
+        ];
+        for (summary, want) in cases {
+            let caption = history_caption(summary.as_ref(), NOW);
+            assert_eq!(caption, want, "{summary:?}");
+            let view = home_view(&home, &label, false, None, &UpdateStatus::Idle, caption);
+            let mut found = false;
+            for tile in &view.tiles {
+                if tile.id == "panel:history" {
+                    found = true;
+                    assert_eq!((tile.caption, tile.count), want);
+                } else {
+                    assert_eq!((tile.caption, tile.count), (None, None), "{}", tile.id);
+                }
+            }
+            assert!(found, "{view:?}");
+        }
+    }
+
+    /// Every panel tile's name (`panel:<id>`) is one the phone may tap,
+    /// drag and ask the picture of, and one a history snapshot holds.
+    #[test]
+    fn every_panel_tile_is_a_phone_tile_and_a_history_name() {
+        for panel in PanelId::ALL {
+            let name = name_of(&TileId::Panel(panel));
+            for message in [
+                format!(r#"{{"type":"tile","id":"{name}","gesture":"tap"}}"#),
+                format!(r#"{{"type":"banner","id":"{name}"}}"#),
+            ] {
+                assert!(
+                    rusttv_remote::protocol::parse_phone(message.as_bytes()).is_ok(),
+                    "{message}"
+                );
+            }
+            assert!(rusttv_history::is_tile_name(&name), "{name}");
+            assert!(crate::ui::builtin_banner(&name).is_some(), "{name}");
+        }
     }
 
     #[test]
     fn review_and_renaming_show_as_their_modes() {
         let home = home();
         assert_eq!(
-            home_view(&home, &label, true, None, &UpdateStatus::Idle).mode,
+            home_view(&home, &label, true, None, &UpdateStatus::Idle, NO_HISTORY).mode,
             HomeMode::Review
         );
         let renaming = home_view(
@@ -646,6 +751,7 @@ mod tests {
             false,
             Some("Stream".into()),
             &UpdateStatus::Idle,
+            NO_HISTORY,
         );
         assert_eq!(renaming.mode, HomeMode::Text);
         assert_eq!(renaming.text.unwrap().value, "Stream");
@@ -662,7 +768,7 @@ mod tests {
         home.handle(Input::Tick, ms(1700));
         home.handle(Input::OkPressed, ms(1800));
         home.handle(Input::OkReleased, ms(1810));
-        let view = home_view(&home, &label, false, None, &UpdateStatus::Idle);
+        let view = home_view(&home, &label, false, None, &UpdateStatus::Idle, NO_HISTORY);
         let inside: Vec<&str> = view
             .tiles
             .iter()

@@ -1496,8 +1496,8 @@ mod tests {
         );
         home.set_apps(&apps);
 
-        // 14 apps + RustTV Remote: three rows, the last one short.
-        assert_eq!(home.tiles().len(), 15);
+        // 14 apps, RustTV Remote and History: three rows, the last one short.
+        assert_eq!(home.tiles().len(), 16);
         for entry in &entries {
             assert!(home.tiles().contains(&TileId::App(entry.app.id.clone())));
             platform.launch(&entry.app.id).unwrap();

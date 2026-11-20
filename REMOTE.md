@@ -94,8 +94,8 @@ to its home screen.
   first of `navigator.languages` among the launcher's 20, else English;
   right to left for Arabic and Hebrew), from `page/i18n.js`, checked by
   `page/i18n.test.mjs` in CI. Tiles show the apps' own banners (or icons),
-  see Storage; the built-in tiles (About, Settings, RustTV Remote, Hidden
-  apps) show their banners too. Not yet: renaming a folder from the phone
+  see Storage; the built-in tiles (About, Settings, RustTV Remote, History,
+  Hidden apps) show their banners too. Not yet: renaming a folder from the phone
   (typing works).
 - **Look:** the launcher's colours, Inter, the RustTV icon and the built-in
   tile images.
@@ -389,12 +389,19 @@ echoed.
 - **`HomeView`:**
   - the tiles in order: id, label, banner version, folder membership, and
     an optional `caption` (`update`, `downloading` or `installing`: About's
-    update state, from `panels::about_view` like the TV's tile, PANELS.md).
-    It is left out when there is none, and a page that doesn't know a
-    value shows nothing. The phone draws it on the tile's picture at the
-    start side, `update` in the accent and the others dim, in the phone's
-    language. A change of the update state resends the view only when the
-    caption changes (the download's percent never does);
+    update state, from `panels::about_view` like the TV's tile, PANELS.md;
+    History's tile `panel:history`: `waiting` while an approval waits for
+    the computer, else the last change's age, `just_now`, `minutes`,
+    `hours` or `days`, from `panels::history_view`) with an optional
+    `count` (the age's number). Each is left out when there is none, and a
+    page that doesn't know a value shows nothing. The phone draws it on
+    the tile's picture at the start side, `update` and `waiting` in the
+    accent and the others dim, in the phone's language (an age through
+    the browser's `Intl.RelativeTimeFormat`, with its plural forms). A
+    change of the update state resends the view only when the caption
+    changes (the download's percent never does); History's age is
+    formatted when Home reads it (resume, focus changes), never on a
+    timer;
   - the open folder and its page;
   - the focused tile;
   - the mode: browse, menu, moving, hidden list, settings, review, or text

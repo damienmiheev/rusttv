@@ -16,8 +16,16 @@
 //! `RUSTTV_REMOTE_PAIR=1` starts RustTV Remote with pairing open and prints
 //! the pairing link; every phone that asks is allowed (REMOTE.md).
 //!
+//! `RUSTTV_HISTORY_PENDING=1` runs as a TV without the settings grant, in
+//! any mode: an approved Animations change then waits for the computer, so
+//! History's tile shows its waiting approval (HISTORY.md § 6.3).
+//!
 //! `--demo-remote <dir>` does the same for RustTV Remote's tile, page and
 //! pairing screen.
+//!
+//! `--demo-history <dir>` does the same for History's tile: its plain
+//! state, Settings opened on History, an approved change, then the tile
+//! with the change's age (or, with `RUSTTV_HISTORY_PENDING=1`, waiting).
 //!
 //! `--demo <dir>` instead plays a fixed key script and writes a BMP snapshot
 //! after each step into `<dir>`, then quits. Needs no screen-capture permission.
@@ -237,14 +245,21 @@ fn demo_script() -> Vec<DemoStep> {
 }
 
 /// RustTV Remote's tile, its page (REMOTE.md § 2), then the pairing code.
-/// Its tile is the last (Sports, Weather, Settings, RustTV Remote; with
-/// `RUSTTV_NO_DEVICE=1` after About and Settings): Down to the last row,
-/// then to its end (Left in a right-to-left language).
+/// Its tile is the last but one, before History (Sports, Weather, Settings,
+/// RustTV Remote, History; with `RUSTTV_NO_DEVICE=1` after About and
+/// Settings): Down to the last row, to its end (Left in a right-to-left
+/// language), then one back.
 fn remote_script(right_to_left: bool) -> Vec<DemoStep> {
     use DemoStep::{Snapshot, Tap};
+    let (forward, back) = if right_to_left {
+        (LEFT, RIGHT)
+    } else {
+        (RIGHT, LEFT)
+    };
     let mut steps = vec![ms(800)];
     steps.extend([DOWN; 4].map(Tap));
-    steps.extend([if right_to_left { LEFT } else { RIGHT }; 6].map(Tap));
+    steps.extend([forward; 7].map(Tap));
+    steps.push(Tap(back));
     steps.extend([
         ms(600),
         Snapshot("remote-0-tile"),
@@ -257,6 +272,75 @@ fn remote_script(right_to_left: bool) -> Vec<DemoStep> {
         Tap(BACK),
     ]);
     steps
+}
+
+/// History's tile (PANELS.md § 4): the last tile. Its plain state (the
+/// history isn't read at start), OK opens Settings on History, an
+/// Animations change approved with FakePlatform's code, then Home with the
+/// tile's age, or its waiting approval with `RUSTTV_HISTORY_PENDING=1`.
+fn history_script(right_to_left: bool) -> Vec<DemoStep> {
+    use DemoStep::{Press, Release, Snapshot, Tap};
+    let (forward, back) = if right_to_left {
+        (LEFT, RIGHT)
+    } else {
+        (RIGHT, LEFT)
+    };
+    let mut steps = vec![ms(800)];
+    steps.extend([DOWN; 4].map(Tap));
+    steps.extend([forward; 8].map(Tap));
+    steps.extend([
+        ms(600),
+        Snapshot("history-0-tile-plain"),
+        Tap(OK),
+        ms(600),
+        Snapshot("history-1-settings"),
+        // Up to Animations (History is the fourth section), into its
+        // rows, Off, then review it.
+        Tap(UP),
+        Tap(UP),
+        Tap(UP),
+        Tap(forward),
+        Tap(UP),
+        Tap(UP),
+        Tap(UP),
+        Tap(UP),
+        Tap(OK),
+        ms(400),
+    ]);
+    // The review's list, its Approve row, then the code and the hold.
+    steps.extend([DOWN; 4].map(Tap));
+    steps.extend([
+        Tap(OK),
+        ms(300),
+        // FakePlatform's code: left, up, right, down.
+        Tap(LEFT),
+        Tap(UP),
+        Tap(RIGHT),
+        Tap(DOWN),
+        ms(1200),
+        Press(OK),
+        ms(2400),
+        Release(OK),
+        ms(800),
+        Snapshot("history-2-applied"),
+        Tap(back),
+        ms(300),
+        Snapshot("history-3-settings-row"),
+        Tap(BACK),
+        ms(300),
+        // A focus change formats the tile's age again.
+        Tap(back),
+        Tap(forward),
+        ms(600),
+        Snapshot("history-4-tile"),
+    ]);
+    steps
+}
+
+/// Whether the made-up TV may write settings itself: not with
+/// `RUSTTV_HISTORY_PENDING=1`.
+fn grant() -> bool {
+    std::env::var("RUSTTV_HISTORY_PENDING").as_deref() != Ok("1")
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -282,7 +366,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let dir = std::env::temp_dir().join(format!("rusttv-desktop-{}", std::process::id()));
         std::fs::create_dir_all(&dir)?;
         options.order_file = Some(dir.join("order.toml"));
-        start_desktop_history(dir);
+        start_desktop_history(dir, grant());
         return Ok(run(sample_platform(), options)?);
     };
     let dir = match (flag.as_str(), args.next()) {
@@ -290,11 +374,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             let file = PathBuf::from(file);
             // History next to the order file, like the launcher's files dir.
             let parent = file.parent().map_or_else(PathBuf::new, Path::to_path_buf);
-            start_desktop_history(if parent.as_os_str().is_empty() {
-                ".".into()
-            } else {
-                parent
-            });
+            start_desktop_history(
+                if parent.as_os_str().is_empty() {
+                    ".".into()
+                } else {
+                    parent
+                },
+                grant(),
+            );
             options.order_file = Some(file);
             return Ok(run(sample_platform(), options)?);
         }
@@ -304,9 +391,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             script = remote_script(is_right_to_left(language));
             PathBuf::from(dir)
         }
+        ("--demo-history", Some(dir)) => {
+            let language = options.language.as_deref().unwrap_or_default();
+            script = history_script(is_right_to_left(language));
+            PathBuf::from(dir)
+        }
         _ => {
             return Err(
-                "usage: rusttv-launcher-desktop [--order <file> | --demo <dir> | --demo-remote <dir>]"
+                "usage: rusttv-launcher-desktop [--order <file> | --demo <dir> | --demo-remote <dir> | --demo-history <dir>]"
                     .into(),
             );
         }
@@ -317,7 +409,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let _ = std::fs::remove_dir_all(&state);
     std::fs::create_dir_all(&state)?;
     options.order_file = Some(state.join("order.toml"));
-    start_desktop_history(state);
+    start_desktop_history(state, grant());
 
     let mut platform = sample_platform();
     platform.fail_launches_of(FAILING_APP);

@@ -253,13 +253,16 @@ export component MenuRow inherits Rectangle {
     in property <bool> marked;
     in property <bool> current;
     in property <bool> dim;
-    height: (detail == "" ? 64 : 96) * u;
+    // Two lines tall even without a detail (`SettingsRow.tall`).
+    in property <bool> tall;
+    property <bool> two-lines: detail != "" || tall;
+    height: (two-lines ? 96 : 64) * u;
     border-radius: 10 * u;
     background: selected ? Theme.text : marked ? Theme.surface : Theme.text.with-alpha(0);
     animate background { duration: 120ms; }
     if current: Rectangle {
         x: Dir.x(18 * u, self.width, parent.width);
-        y: (detail == "" ? (parent.height - self.height) / 2 : 28 * u);
+        y: (two-lines ? 28 * u : (parent.height - self.height) / 2);
         width: 10 * u;
         height: 10 * u;
         border-radius: self.width / 2;
@@ -267,9 +270,9 @@ export component MenuRow inherits Rectangle {
     }
     Text {
         x: Dir.x(44 * u, self.width, parent.width);
-        y: detail == "" ? 0 : 12 * u;
+        y: two-lines ? 12 * u : 0;
         width: parent.width - 68 * u;
-        height: detail == "" ? parent.height : 34 * u;
+        height: two-lines ? 34 * u : parent.height;
         text: root.text;
         font-size: 27 * u;
         font-weight: 500;
@@ -325,6 +328,7 @@ export component PageRows inherits Rectangle {
             u: root.u;
             text: row.title;
             detail: row.detail;
+            tall: row.tall;
             current: row.current;
             dim: row.dim;
             selected: i == root.focused;

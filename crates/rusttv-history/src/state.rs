@@ -11,11 +11,11 @@ use crate::HistoryError;
 ///
 /// 2 added `[launcher.folders]`, 3 `[launcher.phones]`, 4
 /// `reduced_effects`, 5 tile names of Linux desktop entries
-/// (`org.kde.dolphin.desktop`) and `remote`. A snapshot is written in the
-/// oldest format that holds it (no folders, no phones, full effects, only
-/// Android names: format 1), so older readers keep reading it until it
-/// needs more.
-pub const STATE_FORMAT: u32 = 5;
+/// (`org.kde.dolphin.desktop`) and `remote`, 6 panel tiles' names
+/// (`panel:history`, PANELS.md § 6). A snapshot is written in the oldest
+/// format that holds it (no folders, no phones, full effects, only Android
+/// names: format 1), so older readers keep reading it until it needs more.
+pub const STATE_FORMAT: u32 = 6;
 
 /// The longest folder name, in characters (the launcher's limit).
 const FOLDER_NAME_MAX: usize = 40;
@@ -59,7 +59,8 @@ pub struct State {
 #[serde(deny_unknown_fields)]
 pub struct Launcher {
     /// Tile names in order ([`is_tile_name`]): apps, built-in tiles
-    /// (`about`, `settings`, `hidden-apps`, `remote`), `folder:<number>`.
+    /// (`about`, `settings`, `hidden-apps`, `remote`), panel tiles
+    /// (`panel:<id>`), `folder:<number>`.
     #[serde(default)]
     pub order: Vec<String>,
     /// Folders by tile name (`folder:<number>`).
@@ -211,7 +212,9 @@ impl State {
 
     /// The oldest format that can hold this snapshot.
     pub fn needed_format(&self) -> u32 {
-        if self.launcher.tile_names().any(needs_format_five) {
+        if self.launcher.tile_names().any(|name| is_panel_name(name)) {
+            6
+        } else if self.launcher.tile_names().any(needs_format_five) {
             5
         } else if self.launcher.reduced_effects {
             4
@@ -361,8 +364,25 @@ fn needs_format_five(name: &String) -> bool {
     !name.contains('/') && (name == "remote" || name.ends_with(".desktop"))
 }
 
+/// Whether a tile name is a panel tile's, `panel:<id>` (format 6; builds
+/// before it would read it as an app and drop it). The id is 1 to 40
+/// lowercase letters, digits and single '-' between them, so it never
+/// holds a `/` and can't clash with an app.
+fn is_panel_name(name: &str) -> bool {
+    name.strip_prefix("panel:").is_some_and(|id| {
+        (1..=40).contains(&id.len())
+            && id.starts_with(|c: char| c.is_ascii_lowercase())
+            && !id.ends_with('-')
+            && !id.contains("--")
+            && id
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    })
+}
+
 /// A tile name: `about`, `settings`, `hidden-apps`, `remote`,
-/// `folder:<number>`, a Linux desktop entry's id (`<id>.desktop`, format 5)
+/// `panel:<id>` (format 6, [`is_panel_name`]), `folder:<number>`, a Linux
+/// desktop entry's id (`<id>.desktop`, format 5)
 /// or a component `<package>/<class>`. Tile names are only shown, never run, so
 /// the package part is checked by its characters (not
 /// [`is_package_name`]'s stricter shape): one bad name must not stop the
@@ -371,6 +391,7 @@ pub fn is_tile_name(name: &str) -> bool {
     match name.split_once('/') {
         None => {
             matches!(name, "about" | "settings" | "hidden-apps" | "remote")
+                || is_panel_name(name)
                 || name
                     .strip_prefix("folder:")
                     .is_some_and(|number| number.parse::<u32>().is_ok() && !number.starts_with('+'))
@@ -460,8 +481,8 @@ mod tests {
     #[test]
     fn a_newer_format_says_so() {
         assert!(matches!(
-            State::parse("format = 6\nsomething_new = true\n"),
-            Err(HistoryError::FormatNewer(6))
+            State::parse("format = 7\nsomething_new = true\n"),
+            Err(HistoryError::FormatNewer(7))
         ));
     }
 
@@ -544,6 +565,56 @@ mod tests {
         ));
         assert_eq!(sample().needed_format(), 1);
         assert!(sample().to_toml().unwrap().starts_with("format = 1\n"));
+    }
+
+    #[test]
+    fn panel_tiles_need_format_six() {
+        let mut history = sample();
+        history.launcher.order.push("panel:history".into());
+        let text = history.to_toml().unwrap();
+        assert!(text.starts_with("format = 6\n"), "{text}");
+        assert_eq!(State::parse(&text).unwrap().launcher, history.launcher);
+        // A build that reads up to format 5 must refuse it, not read the
+        // panel as an app it then drops.
+        let downgraded = text.replacen("format = 6", "format = 5", 1);
+        assert!(matches!(
+            State::parse(&downgraded),
+            Err(HistoryError::Invalid(_))
+        ));
+        // Wherever a tile name is: hidden, or in a folder.
+        let mut hidden = sample();
+        hidden.launcher.hidden.insert("panel:history".into());
+        assert_eq!(hidden.needed_format(), 6);
+        let mut in_folder = sample();
+        in_folder.launcher.folders.insert(
+            "folder:1".into(),
+            Folder {
+                name: "A".into(),
+                apps: vec!["panel:history".into()],
+            },
+        );
+        assert_eq!(in_folder.needed_format(), 6);
+        // Also with every older format's contents.
+        let mut all = history.clone();
+        all.launcher.order.push("remote".into());
+        all.launcher.reduced_effects = true;
+        assert_eq!(all.needed_format(), 6);
+        assert!(is_tile_name("panel:history"));
+        assert!(is_tile_name("panel:a1-b"));
+        for bad in [
+            "panel:",
+            "panel:History",
+            "panel:-a",
+            "panel:a-",
+            "panel:a--b",
+            "panel:1a",
+            "panel:a/b",
+            "panel:a b",
+        ] {
+            assert!(!is_tile_name(bad), "{bad}");
+        }
+        assert!(is_tile_name(&format!("panel:{}", "a".repeat(40))));
+        assert!(!is_tile_name(&format!("panel:{}", "a".repeat(41))));
     }
 
     #[test]

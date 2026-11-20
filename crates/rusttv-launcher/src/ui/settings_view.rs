@@ -13,11 +13,14 @@ use rusttv_history::tv::{ApplyOutcome, Refused};
 use rusttv_history::{Author, Change, PackageState, SETTING_KEYS, State, diff};
 use slint::{ComponentHandle, Model, SharedString, Timer, TimerMode};
 
-use super::{AboutListRow, Controller, HomeWindow, ReviewLine, SettingsRow, Strings};
+use super::{
+    AboutListRow, Controller, HistoryListRow, HistoryPanel, HomeWindow, ReviewLine, SettingsRow,
+    Strings,
+};
 use crate::history::History;
 use crate::model::Input;
 use crate::order_file;
-use crate::panels;
+use crate::panels::{self, CLOCK_SET_AFTER};
 use crate::review::{Arrow, Outcome, Phase, Review};
 use crate::settings::{AboutRow, Action, Draft, EntryView, Overview, Section, SettingsPage};
 
@@ -34,9 +37,6 @@ const REVIEW_ROWS: usize = 8;
 /// Where RustTV's source code is (the About tab's Source row; the About
 /// page says it in its template's "Source: …" text).
 const SOURCE: &str = "github.com/damienmiheev/rusttv";
-
-/// Times before this (2024-01-01) mean the TV's clock wasn't set.
-const CLOCK_SET_AFTER: i64 = 1_704_067_200;
 
 thread_local! {
     /// The controller, for results that arrive from other threads.
@@ -175,7 +175,28 @@ impl Controller {
             super::apply_effects(&window, overview.launcher.reduced_effects);
         }
         page.refresh(overview);
+        // The history thread read the summary with the page's data.
+        self.show_history_panel();
         self.render();
+    }
+
+    /// History's tile and Settings row (PANELS.md § 4): the history
+    /// thread's last summary (a copy, no history I/O, HISTORY.md § 9) with
+    /// its age formatted for the clock now. Sets History's two properties,
+    /// never the tile list; until the thread has read the history (the
+    /// first Settings page or change), the tile shows its plain state.
+    pub(super) fn show_history_panel(&mut self) {
+        // The TV's clock (Unix seconds), as RustTV Remote reads it.
+        let now = i64::try_from(crate::remote::now()).unwrap_or(i64::MAX);
+        self.history = (History::get().and_then(History::summary), now);
+        let Some(window) = self.window.upgrade() else {
+            return;
+        };
+        if let Some(tile) = panels::history_view(self.history.0.as_ref(), self.history.1).tile {
+            let panel = window.global::<HistoryPanel>();
+            panel.set_status(tile.props.get("status").into());
+            panel.set_count(tile.props.get("count").into());
+        }
     }
 
     /// A key while Settings (or its review screen) is open.
@@ -185,7 +206,8 @@ impl Controller {
             return;
         }
         self.pointer_moved();
-        if self.review.is_some() || self.pairing.is_some() || self.prompt.is_some() {
+        // Nothing behind the review screen, pairing or a prompt.
+        if !self.pointer_reaches(false) || self.prompt.is_some() {
             return;
         }
         let (Some(page), Ok(index)) = (&mut self.settings, usize::try_from(index)) else {
@@ -371,6 +393,8 @@ impl Controller {
         if History::get().is_some_and(History::take_launcher_changed) {
             self.reload_launcher_state();
         }
+        // The thread read the summary before it answered.
+        self.show_history_panel();
         self.refresh_settings_data();
         self.render();
     }
@@ -554,20 +578,25 @@ impl Controller {
             window.set_settings_row(-1);
             return;
         }
-        let names: Vec<SharedString> = page
+        let sections: Vec<SettingsRow> = page
             .sections()
             .iter()
             .map(|section| match section {
-                Section::Tab(index) => page
-                    .tabs()
-                    .get(*index)
-                    .map(|tab| tab.title.as_str().into())
-                    .unwrap_or_default(),
-                _ => strings.invoke_section_name(section_value(*section)),
+                Section::Tab(index) => row(
+                    page.tabs()
+                        .get(*index)
+                        .map(|tab| tab.title.as_str().into())
+                        .unwrap_or_default(),
+                    "",
+                ),
+                // History's row face (templates/history_row.json): the last
+                // change's age, or the accent dot while an approval waits.
+                Section::History => self.history_row(window),
+                _ => row(strings.invoke_section_name(section_value(*section)), ""),
             })
             .collect();
-        if !self.settings_sections.iter().eq(names.iter().cloned()) {
-            self.settings_sections.set_vec(names);
+        if !self.settings_sections.iter().eq(sections.iter().cloned()) {
+            self.settings_sections.set_vec(sections);
         }
         window.set_settings_section(to_i32(page.section_index()));
         let overview = page.overview();
@@ -742,6 +771,26 @@ impl Controller {
                 let (label, value) = page.host().get(index).cloned().unwrap_or_default();
                 row(label.into(), &value)
             }
+        }
+    }
+
+    /// History's row in Settings' list (its row face, PANELS.md § 4), from
+    /// the same view as its tile.
+    fn history_row(&self, window: &HomeWindow) -> SettingsRow {
+        let face = window.global::<HistoryListRow>();
+        let Some(view) = panels::history_view(self.history.0.as_ref(), self.history.1).row else {
+            return SettingsRow::default();
+        };
+        let status: SharedString = view.props.get("status").into();
+        let count: SharedString = view.props.get("count").into();
+        SettingsRow {
+            title: face.invoke_title(status.clone(), count.clone()),
+            detail: face.invoke_detail(status.clone(), count.clone()),
+            current: face.invoke_attention(status, count),
+            // The age arrives with the history's first answer: room for
+            // it from the start, so the sections under it stay put.
+            tall: true,
+            ..SettingsRow::default()
         }
     }
 

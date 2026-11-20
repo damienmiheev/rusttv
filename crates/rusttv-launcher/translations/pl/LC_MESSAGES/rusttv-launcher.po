@@ -509,3 +509,36 @@ msgstr "Telefony: {}"
 #: templates/remote_tile.json
 msgid "Pairing"
 msgstr "Parowanie"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "Zmieniono"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Waiting"
+msgstr "Oczekuje"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Just now"
+msgstr "Przed chwilą"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "{n} minutę temu"
+msgstr[1] "{n} minuty temu"
+msgstr[2] "{n} minut temu"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "{n} godzinę temu"
+msgstr[1] "{n} godziny temu"
+msgstr[2] "{n} godzin temu"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "{n} dzień temu"
+msgstr[1] "{n} dni temu"
+msgstr[2] "{n} dni temu"

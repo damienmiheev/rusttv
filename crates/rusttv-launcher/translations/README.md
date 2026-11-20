@@ -24,6 +24,11 @@ Ukrainian is reviewed by the owner first.
 - Keep "OK" (printed on remotes), "RustTV", "Slint", "Skia", "Rust", the
   licence names and the URL as they are.
 - Keep texts about as long as the English: TV space is limited.
+- A text with `{n}` (a number: "{n} hours ago") has plural forms: one
+  `msgstr[i]` for each form your `Plural-Forms` header names, in its
+  order. Keep `{n}` in each form that shows the number; a form may say it
+  in words instead (Arabic "قبل ساعة", one hour ago), but one form at
+  least must show `{n}`.
 - Never leave a `msgstr` empty and never mark an entry `fuzzy`: such
   entries are not used.
 

@@ -295,7 +295,7 @@ pub enum MenuChoice {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TileView {
     /// Tile name: a component, `folder:<n>`, `about`, `settings`,
-    /// `remote` or `hidden-apps`.
+    /// `remote`, `hidden-apps` or `panel:history`.
     pub id: String,
     pub label: String,
     /// The banner's version (changes when the app updates), if it has one.
@@ -303,10 +303,15 @@ pub struct TileView {
     /// The folder the tile is in.
     pub folder: Option<String>,
     /// A short line the tile shows on its picture, as the TV's tile does
-    /// (About: the updater's state). Left out of the JSON when there is
-    /// none; pages that don't know it ignore it.
+    /// (About: the updater's state; History: the last change's age or an
+    /// approval waiting). Left out of the JSON when there is none; pages
+    /// that don't know it ignore it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub caption: Option<Caption>,
+    /// The number an age caption names ([`Caption::Minutes`],
+    /// [`Caption::Hours`], [`Caption::Days`]); left out otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub count: Option<u32>,
 }
 
 /// A tile's caption ([`TileView::caption`]): a kind from a fixed list, never
@@ -321,6 +326,16 @@ pub enum Caption {
     Downloading,
     /// The update is installing.
     Installing,
+    /// History: an approval waits for the computer (the TV's accent colour).
+    Waiting,
+    /// History: the last change was less than a minute ago.
+    JustNow,
+    /// History: the last change was [`TileView::count`] minutes ago.
+    Minutes,
+    /// History: the last change was [`TileView::count`] hours ago.
+    Hours,
+    /// History: the last change was [`TileView::count`] days ago.
+    Days,
 }
 
 /// The open folder.
@@ -485,12 +500,15 @@ fn is_component(name: &str) -> bool {
     })
 }
 
-/// One of the launcher's own tiles.
+/// One of the launcher's own tiles, panel tiles included (`panel:<id>`).
 fn is_builtin(id: &str) -> bool {
-    matches!(id, "about" | "settings" | "remote" | "hidden-apps")
+    matches!(
+        id,
+        "about" | "settings" | "remote" | "hidden-apps" | "panel:history"
+    )
 }
 
-/// A tile id: a built-in tile, `folder:<number>` or a component.
+/// A tile id: a built-in or panel tile, `folder:<number>` or a component.
 fn is_tile_id(id: &str) -> bool {
     is_builtin(id)
         || id
@@ -639,6 +657,7 @@ mod tests {
                 banner: Some(1),
                 folder: None,
                 caption: None,
+                count: None,
             }],
             focused: Some("about".into()),
             ..HomeView::default()
@@ -660,6 +679,7 @@ mod tests {
             banner: None,
             folder: None,
             caption,
+            count: None,
         };
         let json = |tile: &TileView| serde_json::to_string(tile).unwrap();
         // No caption: the tile's JSON is what it was before captions.
@@ -682,6 +702,62 @@ mod tests {
         );
     }
 
+    /// History's captions: the waiting approval, or the age with its count
+    /// (sent only with one).
+    #[test]
+    fn history_captions_carry_their_count() {
+        let history = |caption, count| TileView {
+            id: "panel:history".into(),
+            label: "History".into(),
+            banner: None,
+            folder: None,
+            caption: Some(caption),
+            count,
+        };
+        let json = |tile: &TileView| serde_json::to_string(tile).unwrap();
+        for (caption, count, end) in [
+            (Caption::Waiting, None, r#""caption":"waiting"}"#),
+            (Caption::JustNow, None, r#""caption":"just_now"}"#),
+            (
+                Caption::Minutes,
+                Some(5),
+                r#""caption":"minutes","count":5}"#,
+            ),
+            (Caption::Hours, Some(2), r#""caption":"hours","count":2}"#),
+            (Caption::Days, Some(31), r#""caption":"days","count":31}"#),
+        ] {
+            let tile = history(caption, count);
+            assert!(json(&tile).ends_with(end), "{}", json(&tile));
+            let back: TileView = serde_json::from_str(&json(&tile)).unwrap();
+            assert_eq!(back, tile, "round trip");
+        }
+    }
+
+    /// History's panel tile is a tile the phone may tap, drag or ask the
+    /// picture of; another `panel:` id isn't.
+    #[test]
+    fn the_history_tile_is_a_tile_id() {
+        let ok = |message: &str| parse_phone(message.as_bytes()).is_ok();
+        assert!(ok(
+            r#"{"type":"tile","id":"panel:history","gesture":"tap"}"#
+        ));
+        assert!(ok(r#"{"type":"banner","id":"panel:history"}"#));
+        assert!(ok(
+            r#"{"type":"drag","id":"panel:history","over":"remote","phase":"move","on":false}"#
+        ));
+        assert!(ok(
+            r#"{"type":"drag","id":"remote","over":"panel:history","phase":"move","on":false}"#
+        ));
+        assert!(ok(
+            r#"{"type":"tile","id":"panel:history","gesture":"long_press"}"#
+        ));
+        assert!(!ok(
+            r#"{"type":"drag","id":"remote","over":"panel:clock","phase":"move","on":false}"#
+        ));
+        assert!(!ok(r#"{"type":"tile","id":"panel:clock","gesture":"tap"}"#));
+        assert!(!ok(r#"{"type":"banner","id":"panel:clock"}"#));
+    }
+
     #[test]
     fn refuses_oversized_tv_messages() {
         let tile = TileView {
@@ -690,6 +766,7 @@ mod tests {
             banner: None,
             folder: None,
             caption: None,
+            count: None,
         };
         let home = TvMessage::Home(HomeView {
             tiles: vec![tile; 80],

@@ -509,3 +509,30 @@ msgstr "スマホ: {}"
 #: templates/remote_tile.json
 msgid "Pairing"
 msgstr "ペアリング中"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "最終変更"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Waiting"
+msgstr "パソコン待ち"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Just now"
+msgstr "たった今"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "{n}分前"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "{n}時間前"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "{n}日前"
