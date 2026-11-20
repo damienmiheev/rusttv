@@ -4574,6 +4574,17 @@ mod tests {
     }
 
     #[test]
+    fn the_wheel_moves_one_row_per_notch() {
+        let screen = screen_with(abc().without_menu(), None);
+        let start = screen.window.get_focused_index();
+        screen.window.invoke_scrolled(SCROLL_STEP / 2.0);
+        assert_eq!(screen.window.get_focused_index(), start, "half a notch");
+        screen.window.invoke_scrolled(SCROLL_STEP / 2.0);
+        screen.window.invoke_scrolled(-SCROLL_STEP);
+        assert_eq!(screen.window.get_focused_index(), start, "down and up");
+    }
+
+    #[test]
     fn the_mouse_focuses_and_opens_tiles_and_the_keys_hide_it() {
         let screen = screen(None);
         screen.window.invoke_pointer_moved();

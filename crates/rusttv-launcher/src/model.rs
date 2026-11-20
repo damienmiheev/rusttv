@@ -2427,6 +2427,30 @@ mod tests {
     }
 
     #[test]
+    fn new_apps_go_before_about_when_it_is_last() {
+        // Without a top-right menu (Android), as on main.
+        let mut order = Order::from_keys([(id("a"), 1000), (TileId::About, 2000)]);
+        assert!(order.reconcile(
+            &[app("a", "A"), app("c", "C"), app("b", "B")],
+            &BTreeSet::new(),
+            true
+        ));
+        assert_eq!(
+            order.ids(),
+            [
+                id("a"),
+                id("b"),
+                id("c"),
+                TileId::About,
+                TileId::Settings,
+                TileId::Remote
+            ]
+        );
+        let keys: Vec<i64> = order.keys().iter().map(|&(_, key)| key).collect();
+        assert!(keys.windows(2).all(|pair| pair[0] < pair[1]));
+    }
+
+    #[test]
     fn new_apps_go_last_and_a_settings_tile_from_an_older_version_goes() {
         let mut order = Order::from_keys([(id("a"), 1000), (TileId::Settings, 2000)]);
         assert!(order.reconcile(
