@@ -302,6 +302,25 @@ pub struct TileView {
     pub banner: Option<u32>,
     /// The folder the tile is in.
     pub folder: Option<String>,
+    /// A short line the tile shows on its picture, as the TV's tile does
+    /// (About: the updater's state). Left out of the JSON when there is
+    /// none; pages that don't know it ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caption: Option<Caption>,
+}
+
+/// A tile's caption ([`TileView::caption`]): a kind from a fixed list, never
+/// words; the phone shows it in its own language.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum Caption {
+    /// An update is ready to install (the TV's accent colour).
+    Update,
+    /// The update is downloading.
+    Downloading,
+    /// The update is installing.
+    Installing,
 }
 
 /// The open folder.
@@ -619,6 +638,7 @@ mod tests {
                 label: "About".into(),
                 banner: Some(1),
                 folder: None,
+                caption: None,
             }],
             focused: Some("about".into()),
             ..HomeView::default()
@@ -633,12 +653,43 @@ mod tests {
     }
 
     #[test]
+    fn a_tile_caption_is_sent_only_when_there_is_one() {
+        let about = |caption| TileView {
+            id: "about".into(),
+            label: "About".into(),
+            banner: None,
+            folder: None,
+            caption,
+        };
+        let json = |tile: &TileView| serde_json::to_string(tile).unwrap();
+        // No caption: the tile's JSON is what it was before captions.
+        let before = r#"{"id":"about","label":"About","banner":null,"folder":null}"#;
+        assert_eq!(json(&about(None)), before);
+        for (caption, name) in [
+            (Caption::Update, "update"),
+            (Caption::Downloading, "downloading"),
+            (Caption::Installing, "installing"),
+        ] {
+            let tile = about(Some(caption));
+            assert!(json(&tile).ends_with(&format!(r#","caption":"{name}"}}"#)));
+            let back: TileView = serde_json::from_str(&json(&tile)).unwrap();
+            assert_eq!(back, tile, "round trip");
+        }
+        // A tile from before captions still reads, with none.
+        assert_eq!(
+            serde_json::from_str::<TileView>(before).unwrap(),
+            about(None)
+        );
+    }
+
+    #[test]
     fn refuses_oversized_tv_messages() {
         let tile = TileView {
             id: "about".into(),
             label: "x".repeat(1000),
             banner: None,
             folder: None,
+            caption: None,
         };
         let home = TvMessage::Home(HomeView {
             tiles: vec![tile; 80],

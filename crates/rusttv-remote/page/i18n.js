@@ -15,7 +15,8 @@
     "flash_click", "up", "down", "left", "right", "install_title", "install_ios", "install_android", "not_now", "got_it",
     "menu_move", "menu_hide", "hidden_title", "tile_settings", "tile_about", "hidden_hint", "screen_hint",
     "trust_title", "trust_intro", "trust_start", "trust_download", "trust_ios", "trust_android", "trust_waiting",
-    "trust_in_safari", "home_unpaired", "mode_switch", "search_app",
+    "trust_in_safari", "home_unpaired", "mode_switch", "search_app", "caption_update", "caption_downloading",
+    "caption_installing",
   ];
 
   const T = {
@@ -50,6 +51,7 @@
       "This Home Screen icon isn't paired with the TV. Delete it, open RustTV Remote in your browser, and add it to the Home Screen again from there.",
       "Switch between pointer and arrows",
       "Search in {}",
+      "Update available", "Downloading", "Installing",
     ],
     uk: [
       "На телевізорі відкрийте плитку RustTV Remote на головному екрані, виберіть «Під'єднати телефон» і відскануйте код камерою цього телефона.",
@@ -82,6 +84,7 @@
       "Ця іконка на початковому екрані не під'єднана до телевізора. Видаліть її, відкрийте RustTV Remote у браузері й додайте на початковий екран знову звідти.",
       "Перемкнути між вказівником і стрілками",
       "Пошук у {}",
+      "Є оновлення", "Завантаження", "Встановлення",
     ],
     ru: [
       "На телевизоре откройте плитку RustTV Remote на главном экране, выберите «Подключить телефон» и отсканируйте код камерой этого телефона.",
@@ -114,6 +117,7 @@
       "Этот значок на экране «Домой» не подключён к телевизору. Удалите его, откройте RustTV Remote в браузере и снова добавьте на экран «Домой» оттуда.",
       "Переключить между указателем и стрелками",
       "Поиск в {}",
+      "Есть обновление", "Загрузка", "Установка",
     ],
     de: [
       "Öffne auf dem Fernseher die Kachel RustTV Remote auf dem Startbildschirm, wähle „Handy koppeln“ und scanne den Code mit der Kamera dieses Handys.",
@@ -146,6 +150,7 @@
       "Dieses Symbol auf dem Home-Bildschirm ist nicht mit dem Fernseher gekoppelt. Lösche es, öffne RustTV Remote im Browser und füge es von dort erneut zum Home-Bildschirm hinzu.",
       "Zwischen Zeiger und Pfeilen wechseln",
       "In {} suchen",
+      "Update verfügbar", "Wird geladen", "Wird installiert",
     ],
     es: [
       "En el televisor, abre el mosaico RustTV Remote en Inicio, elige Vincular un teléfono y escanea el código con la cámara de este teléfono.",
@@ -178,6 +183,7 @@
       "Este icono de la pantalla de inicio no está vinculado al televisor. Bórralo, abre RustTV Remote en el navegador y vuelve a añadirlo a la pantalla de inicio desde allí.",
       "Cambiar entre puntero y flechas",
       "Buscar en {}",
+      "Nueva versión", "Descargando", "Instalando",
     ],
     fr: [
       "Sur le téléviseur, ouvrez la tuile RustTV Remote sur l'écran d'accueil, choisissez Associer un téléphone puis scannez le code avec l'appareil photo de ce téléphone.",
@@ -210,6 +216,7 @@
       "Cette icône de l'écran d'accueil n'est pas associée au téléviseur. Supprimez-la, ouvrez RustTV Remote dans votre navigateur et ajoutez-la de nouveau à l'écran d'accueil depuis celui-ci.",
       "Basculer entre pointeur et flèches",
       "Rechercher dans {}",
+      "Nouvelle version", "Téléchargement", "Installation",
     ],
     it: [
       "Sulla TV apri il riquadro RustTV Remote nella Home, scegli Associa un telefono e inquadra il codice con la fotocamera di questo telefono.",
@@ -242,6 +249,7 @@
       "Questa icona della schermata Home non è associata alla TV. Eliminala, apri RustTV Remote nel browser e aggiungila di nuovo alla schermata Home da lì.",
       "Passa tra puntatore e frecce",
       "Cerca in {}",
+      "Nuova versione", "Download in corso", "Installazione",
     ],
     pt_BR: [
       "Na TV, abra o bloco RustTV Remote na tela inicial, escolha Parear um celular e leia o código com a câmera deste celular.",
@@ -274,6 +282,7 @@
       "Este ícone da Tela de Início não está pareado com a TV. Apague-o, abra o RustTV Remote no navegador e adicione-o de novo à Tela de Início a partir dele.",
       "Alternar entre ponteiro e setas",
       "Pesquisar no {}",
+      "Nova versão", "Baixando", "Instalando",
     ],
     nl: [
       "Open op de tv de tegel RustTV Remote op het startscherm, kies Telefoon koppelen en scan de code met de camera van deze telefoon.",
@@ -306,6 +315,7 @@
       "Dit pictogram op het beginscherm is niet gekoppeld met de tv. Verwijder het, open RustTV Remote in je browser en zet het van daaruit opnieuw op het beginscherm.",
       "Wisselen tussen aanwijzer en pijlen",
       "Zoeken in {}",
+      "Nieuwe versie", "Downloaden", "Installeren",
     ],
     pl: [
       "Na telewizorze otwórz kafelek RustTV Remote na ekranie głównym, wybierz Sparuj telefon i zeskanuj kod aparatem tego telefonu.",
@@ -338,6 +348,7 @@
       "Ta ikona na ekranie początkowym nie jest sparowana z telewizorem. Usuń ją, otwórz RustTV Remote w przeglądarce i stamtąd dodaj ją ponownie do ekranu początkowego.",
       "Przełącz między wskaźnikiem a strzałkami",
       "Szukaj w {}",
+      "Nowa wersja", "Pobieranie", "Instalowanie",
     ],
     tr: [
       "TV'de ana ekrandaki RustTV Remote kutucuğunu açın, Telefon eşle'yi seçin ve kodu bu telefonun kamerasıyla okutun.",
@@ -370,6 +381,7 @@
       "Bu ana ekran simgesi TV ile eşlenmemiş. Silin, RustTV Remote'u tarayıcınızda açın ve oradan yeniden ana ekrana ekleyin.",
       "İşaretçi ile oklar arasında geçiş yap",
       "{} içinde ara",
+      "Güncelleme var", "İndiriliyor", "Yükleniyor",
     ],
     ar: [
       "على التلفزيون، افتح مربع RustTV Remote في الشاشة الرئيسية واختر «إقران هاتف»، ثم امسح الرمز بكاميرا هذا الهاتف.",
@@ -402,6 +414,7 @@
       "رمز الشاشة الرئيسية هذا غير مقترن بالتلفزيون. احذفه، وافتح RustTV Remote في المتصفح، وأضفه إلى الشاشة الرئيسية مجددًا من هناك.",
       "التبديل بين المؤشر والأسهم",
       "البحث في {}",
+      "تحديث متاح", "جارٍ التنزيل", "جارٍ التثبيت",
     ],
     he: [
       "בטלוויזיה, פתחו את האריח RustTV Remote במסך הבית, בחרו צימוד טלפון וסרקו את הקוד במצלמת הטלפון הזה.",
@@ -434,6 +447,7 @@
       "הסמל הזה במסך הבית לא מצומד לטלוויזיה. מחקו אותו, פתחו את RustTV Remote בדפדפן והוסיפו אותו שוב למסך הבית משם.",
       "מעבר בין סמן לחצים",
       "חיפוש ב-{}",
+      "יש עדכון", "ההורדה מתבצעת", "ההתקנה מתבצעת",
     ],
     hi: [
       "टीवी पर होम स्क्रीन पर RustTV Remote टाइल खोलें, 'फ़ोन जोड़ें' चुनें, फिर इस फ़ोन के कैमरे से कोड स्कैन करें।",
@@ -466,6 +480,7 @@
       "होम स्क्रीन का यह आइकन टीवी से जुड़ा नहीं है। इसे हटाएँ, ब्राउज़र में RustTV Remote खोलें और वहीं से इसे फिर से होम स्क्रीन में जोड़ें।",
       "पॉइंटर और तीरों के बीच बदलें",
       "{} में खोजें",
+      "अपडेट उपलब्ध", "डाउनलोड जारी", "इंस्टॉल जारी",
     ],
     id: [
       "Di TV, buka ubin RustTV Remote di layar utama, pilih Pasangkan ponsel, lalu pindai kodenya dengan kamera ponsel ini.",
@@ -498,6 +513,7 @@
       "Ikon Layar Utama ini belum dipasangkan dengan TV. Hapus ikon ini, buka RustTV Remote di browser, lalu tambahkan lagi ke Layar Utama dari sana.",
       "Beralih antara penunjuk dan panah",
       "Cari di {}",
+      "Ada pembaruan", "Mendownload", "Menginstal",
     ],
     ja: [
       "テレビのホームで RustTV Remote のタイルを開き、「スマホをペアリング」を選んで、このスマホのカメラでコードを読み取ってください。",
@@ -530,6 +546,7 @@
       "このホーム画面のアイコンはテレビとペアリングされていません。アイコンを削除し、ブラウザで RustTV Remote を開いて、そこからもう一度ホーム画面に追加してください。",
       "ポインタと矢印を切り替え",
       "{} で検索",
+      "アップデートがあります", "ダウンロード中", "インストール中",
     ],
     ko: [
       "TV 홈 화면에서 RustTV Remote 타일을 열고 휴대폰 연결을 선택한 뒤, 이 휴대폰 카메라로 코드를 스캔하세요.",
@@ -562,6 +579,7 @@
       "이 홈 화면 아이콘은 TV와 연결되어 있지 않습니다. 아이콘을 삭제하고 브라우저에서 RustTV Remote를 연 다음, 거기에서 다시 홈 화면에 추가하세요.",
       "포인터와 화살표 전환",
       "{}에서 검색",
+      "업데이트 있음", "다운로드 중", "설치 중",
     ],
     th: [
       "บนทีวี เปิดไทล์ RustTV Remote ในหน้าหลัก เลือก จับคู่โทรศัพท์ แล้วสแกนโค้ดด้วยกล้องของโทรศัพท์เครื่องนี้",
@@ -594,6 +612,7 @@
       "ไอคอนบนหน้าจอโฮมนี้ยังไม่ได้จับคู่กับทีวี ลบไอคอน แล้วเปิด RustTV Remote ในเบราว์เซอร์ และเพิ่มไปยังหน้าจอโฮมอีกครั้งจากที่นั่น",
       "สลับระหว่างตัวชี้กับลูกศร",
       "ค้นหาใน {}",
+      "มีอัปเดต", "กำลังโหลด", "กำลังติดตั้ง",
     ],
     vi: [
       "Trên TV, mở ô RustTV Remote trên màn hình chính, chọn Ghép nối điện thoại rồi quét mã bằng camera của điện thoại này.",
@@ -626,6 +645,7 @@
       "Biểu tượng trên MH chính này chưa ghép nối với TV. Hãy xóa nó, mở RustTV Remote trong trình duyệt rồi thêm lại vào MH chính từ đó.",
       "Chuyển giữa con trỏ và mũi tên",
       "Tìm trong {}",
+      "Có bản cập nhật", "Đang tải xuống", "Đang cài đặt",
     ],
     zh_CN: [
       "在电视主屏幕上打开 RustTV Remote 磁贴，选择“配对手机”，然后用这部手机的相机扫描二维码。",
@@ -658,6 +678,7 @@
       "这个主屏幕图标尚未与电视配对。请删除它，在浏览器中打开 RustTV Remote，然后从那里重新添加到主屏幕。",
       "在指针和方向键之间切换",
       "在 {} 中搜索",
+      "有可用更新", "正在下载", "正在安装",
     ],
     zh_TW: [
       "在電視主畫面上開啟 RustTV Remote 方塊，選擇「配對手機」，然後用這支手機的相機掃描 QR 碼。",
@@ -690,6 +711,7 @@
       "這個主畫面圖示尚未與電視配對。請刪除它，在瀏覽器中開啟 RustTV Remote，然後從那裡重新加入主畫面。",
       "在指標和方向鍵之間切換",
       "在 {} 中搜尋",
+      "有可用更新", "正在下載", "正在安裝",
     ],
   };
 

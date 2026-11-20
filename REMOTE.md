@@ -386,7 +386,14 @@ echoed.
   - `banner { id, kind: banner | icon, webp }`, to the phone that asked,
     in order (views are coalesced, pictures are not).
 - **`HomeView`:**
-  - the tiles in order: id, label, banner version, folder membership;
+  - the tiles in order: id, label, banner version, folder membership, and
+    an optional `caption` (`update`, `downloading` or `installing`: About's
+    update state, from `panels::about_view` like the TV's tile, PANELS.md).
+    It is left out when there is none, and a page that doesn't know a
+    value shows nothing. The phone draws it on the tile's picture at the
+    start side, `update` in the accent and the others dim, in the phone's
+    language. A change of the update state resends the view only when the
+    caption changes (the download's percent never does);
   - the open folder and its page;
   - the focused tile;
   - the mode: browse, menu, moving, hidden list, settings, review, or text

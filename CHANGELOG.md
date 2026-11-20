@@ -48,6 +48,14 @@ field in `--json` output says which contract you get, CLI.md).
   when memory runs low (`~/.config/rusttv/linux.toml`). Stopping background
   apps (`freeze_background`) is off unless the config turns it on.
 
+### RustTV Remote
+
+- The phone's Home mirror shows About's caption too: "Update available"
+  (in the accent), "Downloading" or "Installing" on the tile's picture, in
+  the phone's language. The TV sends it as the tile's optional `caption`
+  (REMOTE.md § 4), from the same panel view as the TV's tile, only when
+  the update state changes it. Older pages ignore it.
+
 ### CLI
 
 - Schema `rusttv.v11`: history changes have the new kind `effects`, and

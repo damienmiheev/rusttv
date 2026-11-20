@@ -1080,8 +1080,10 @@ impl Controller {
         // pointer never shows over RustTV.
         self.platform.pointer_stop();
         self.platform.hide_tv_keyboard(false);
-        self.push_remote_view();
+        // The update status first, so the phones get one view with the
+        // current caption.
         self.refresh_update();
+        self.push_remote_view();
         self.pack_timer.stop();
         if let Some(history) = History::get() {
             history.resumed();
@@ -1637,7 +1639,8 @@ impl Controller {
     }
 
     /// Pushes a changed update status to the About page's line, the About
-    /// tile's caption and Settings' dot; an unchanged one costs nothing.
+    /// tile's caption (on the TV and the phones) and Settings' dot; an
+    /// unchanged one costs nothing.
     fn show_update(&mut self, status: UpdateStatus) {
         if status == self.update {
             return;
@@ -1647,10 +1650,17 @@ impl Controller {
             window.set_update_available(status.is_available());
             show_about_panel(&window, &status);
         }
+        // The phones' Home mirror shows only the caption (not the percent),
+        // and only while RustTV is in front.
+        let caption_changed =
+            crate::remote::about_caption(&status) != crate::remote::about_caption(&self.update);
         self.update = status;
-        // Settings' About tab shows the status in a row.
+        // Settings' About tab shows the status in a row; rendering also
+        // updates the phones.
         if self.settings.is_some() {
             self.render();
+        } else if caption_changed && !self.away {
+            self.push_remote_view();
         }
     }
 
@@ -2092,6 +2102,7 @@ impl Controller {
                 &|id| self.remote_label(id),
                 self.review.is_some(),
                 rename,
+                &self.update,
             );
             TvMessage::Home(view)
         };
@@ -2860,7 +2871,7 @@ fn image(bitmap: &Bitmap) -> slint::Image {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusttv_remote::protocol::PointerAction;
+    use rusttv_remote::protocol::{Caption, PointerAction};
 
     #[test]
     fn remote_and_keyboard_keys_map_to_inputs() {
@@ -3057,10 +3068,15 @@ mod tests {
 
     /// A screen whose phone remote listens on any free port.
     fn screen_with_remote(order_file: PathBuf) -> Screen {
+        screen_with_remote_on(abc(), order_file)
+    }
+
+    /// [`screen_with_remote`] on `platform`.
+    fn screen_with_remote_on(platform: FakePlatform, order_file: PathBuf) -> Screen {
         thread_local!(static BACKEND: () = i_slint_backend_testing::init_no_event_loop());
         BACKEND.with(|_| {});
         let shared = Shared {
-            platform: Rc::new(RefCell::new(abc())),
+            platform: Rc::new(RefCell::new(platform)),
             ..Shared::default()
         };
         let lifecycle = Lifecycle::default();
@@ -3781,6 +3797,61 @@ mod tests {
         let after: Vec<TileData> = screen.window.get_tiles().iter().collect();
         assert_eq!(before, after);
         assert_eq!(screen.artwork_calls(), artwork);
+    }
+
+    #[test]
+    fn the_phones_see_the_about_caption_as_the_update_changes() {
+        let dir = temp_dir("remote-caption");
+        // Without a top-right menu (Android), About is a tile on Home.
+        let screen = screen_with_remote_on(abc().without_menu(), dir.join("order.toml"));
+        screen._controller.borrow_mut().start_remote_now(true);
+        let caption = || {
+            let controller = screen._controller.borrow();
+            let link = controller.remote.as_ref().expect("the listener runs");
+            match link.last() {
+                Some(TvMessage::Home(view)) => {
+                    view.tiles
+                        .iter()
+                        .find(|tile| tile.id == "about")
+                        .expect("About is on Home")
+                        .caption
+                }
+                other => panic!("no Home view sent: {other:?}"),
+            }
+        };
+        screen.come_back();
+        assert_eq!(caption(), None);
+
+        // Resuming reads the status, as on the TV.
+        screen.set_update(UpdateStatus::Available("0.2.0".into()));
+        screen.come_back();
+        assert_eq!(caption(), Some(Caption::Update));
+        screen.set_update(UpdateStatus::Downloading(30));
+        screen.come_back();
+        assert_eq!(caption(), Some(Caption::Downloading));
+        // While another app is in front the phones show that app; coming
+        // back to RustTV sends Home with the current caption.
+        screen.lifecycle.paused();
+        screen.wait(1);
+        screen.set_update(UpdateStatus::Installing);
+        screen.wait(POLL + 1);
+        {
+            let controller = screen._controller.borrow();
+            let link = controller.remote.as_ref().expect("the listener runs");
+            assert!(
+                matches!(link.last(), Some(TvMessage::App(_))),
+                "{:?}",
+                link.last()
+            );
+        }
+        screen.come_back();
+        assert_eq!(caption(), Some(Caption::Installing));
+        // In front, the poll that follows a running step pushes a change
+        // at once.
+        screen.set_update(UpdateStatus::Failed("no network".into()));
+        screen.wait(POLL + 1);
+        assert_eq!(caption(), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
