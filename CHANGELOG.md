@@ -29,7 +29,7 @@ field in `--json` output says which contract you get, CLI.md).
   "Phones: 2"), and "Pairing" in the accent while pairing is open. It
   changes only when pairing opens or closes or a phone is paired or
   removed; Home's tile list isn't redrawn. Three new texts in all 20
-  languages, measured to fit the tile.
+  translations, measured to fit the tile.
 - The RustTV Remote page is drawn from a template
   (`templates/remote_page.json`) with new general blocks: a list page's
   header (title and status line), a picture and a focusable list of rows

@@ -28,6 +28,10 @@ const QR_SCALE: usize = 8;
 /// Phone rows the page shows at once; focus scrolls past them.
 const PAGE_ROWS: usize = 6;
 
+/// `Strings.pairing-failure` 3: the QR code couldn't be drawn (after the
+/// listener opened pairing).
+const NO_CODE: i32 = 3;
+
 /// The pairing screen's state.
 pub(super) struct Pairing {
     phase: Phase,
@@ -119,13 +123,13 @@ impl Controller {
                         )),
                         address: format!("http://{address}:{}", link.remote().address().port()),
                     },
-                    None => failed(3),
+                    None => failed(NO_CODE),
                 }
             }
         };
         // The listener's secret is live whether or not the code could be
         // drawn (failure 3), so the tile says "Pairing" until it closes.
-        if matches!(pairing.phase, Phase::Waiting | Phase::Failed(3)) {
+        if matches!(pairing.phase, Phase::Waiting | Phase::Failed(NO_CODE)) {
             self.pairing_opened();
         }
         // The code carries a pairing secret: keep it out of screen captures.

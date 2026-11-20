@@ -73,9 +73,10 @@ takeover = "active"
   RustTV Remote tile (`remote`) is recorded too (*since 2026-11-20*,
   PANELS.md § 9 Q9), so undo brings back its place; since every Home has
   it, every snapshot with a launcher order is format 5 (below), which
-  builds before format 5 refuse. Older snapshots don't have it: they still restore, and Home puts
-  the tile at the end. A change list never names `remote` as added or
-  removed (an older snapshot only lacks it), only as moved.
+  builds before format 5 refuse. Older snapshots don't have it: they
+  still restore, and Home puts the tile at the end. A change list never
+  names `remote` as added or removed (an older snapshot only lacks it),
+  only as moved.
 - **Linux tile names** (format 5): on Linux, apps are desktop entries, named
   by their id (`org.kde.dolphin.desktop`). A snapshot holding one, in the
   order, hidden or in a folder, is written as format 5, which older builds

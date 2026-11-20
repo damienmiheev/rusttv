@@ -639,10 +639,11 @@ fn the_test_templates_compile_and_draw() {
     thread_local!(static BACKEND: () = i_slint_backend_testing::init_no_event_loop());
     BACKEND.with(|_| {});
     let pages = test_pages::TestPages::new().expect("the test pages");
-    // 1920 × 1080 at `u` = 1px: sizes read in `u`.
+    // 1920 u wide at `u` = 1px, so sizes read in `u`; tall enough for every
+    // block of the test page at once.
     pages
         .window()
-        .set_size(slint::LogicalSize::new(1920.0, 1080.0));
+        .set_size(slint::LogicalSize::new(1920.0, 1800.0));
     pages.show().expect("shown");
     let one = |name: &str| {
         let found: Vec<ElementHandle> =
@@ -652,19 +653,29 @@ fn the_test_templates_compile_and_draw() {
     };
 
     pages.set_page("general-page".into());
-    assert_eq!(one("PageHeader").size().height, 1080.0);
-    let rows = one("PageRows");
-    // The column starts at 260 u under a header and ends 90 u above the
-    // bottom; its unconditional blocks (three titles, two paragraphs, the
-    // mark) are above the rows.
-    let bottom = rows.absolute_position().y + rows.size().height;
-    assert!((bottom - 990.0).abs() < 1.0, "rows end at {bottom}");
-    assert!(rows.size().height > 100.0, "rows fill the rest");
-    for text in ElementHandle::find_by_element_type_name(&pages, "PageText") {
+    assert_eq!(one("PageHeader").size().height, 1800.0);
+    // Its props empty, then all set (every conditional block shown): the
+    // rows take what the column (260 u under a header, to 90 u above the
+    // bottom) leaves, and every other block keeps its own height.
+    for (value, shown) in [("", 2), ("on", 4)] {
+        pages.set_value(value.into());
+        let rows = one("PageRows");
+        let bottom = rows.absolute_position().y + rows.size().height;
         assert!(
-            text.size().height < 60.0,
-            "a one-line paragraph keeps its height"
+            (bottom - 1710.0).abs() < 1.0,
+            "{value:?}: rows end at {bottom}"
         );
+        assert!(rows.size().height > 100.0, "{value:?}: rows fill the rest");
+        let texts: Vec<ElementHandle> =
+            ElementHandle::find_by_element_type_name(&pages, "PageText").collect();
+        assert_eq!(texts.len(), shown, "{value:?}: paragraphs shown");
+        for text in texts {
+            assert!(text.size().height < 60.0, "{value:?}: a one-line paragraph");
+        }
+        if value == "on" {
+            assert_eq!(one("PagePicture").size().height, 270.0);
+            assert!(one("PageHint").size().height < 60.0);
+        }
     }
 
     pages.set_page("general-tile".into());
@@ -673,11 +684,13 @@ fn the_test_templates_compile_and_draw() {
             .next()
             .is_none()
     );
-    assert_eq!(
-        ElementHandle::find_by_accessible_label(&pages, "Value \u{2066}\u{2069}").count(),
-        1,
-        "the tile's value, its arg an empty isolate"
-    );
+    // Its value an isolate; its caption shown while `state` is "on".
+    let label = |text: &str| ElementHandle::find_by_accessible_label(&pages, text).count();
+    assert_eq!(label("Value \u{2066}on\u{2069}"), 1);
+    assert_eq!(label("On"), 1);
+    pages.set_value("".into());
+    assert_eq!(label("Value \u{2066}\u{2069}"), 1);
+    assert_eq!(label("On"), 0);
 
     // Empty properties: the count is an empty isolate, no detail, no dot.
     assert_eq!(pages.get_general_row_title(), "Count \u{2066}\u{2069}");

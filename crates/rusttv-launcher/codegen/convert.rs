@@ -509,21 +509,22 @@ impl Cx<'_> {
                     "PagePicture"
                 }
                 "mark" => {
-                    let mark = listed(
-                        block,
-                        &at,
-                        "name",
-                        &MARKS.map(|(name, _)| name),
-                        "a built-in mark",
-                    )?;
-                    if seen.marks.iter().any(|seen| seen == mark) {
+                    let mark = string(field(block, &at, "name")?, &format!("{at}.name"))?;
+                    let &(_, component) =
+                        MARKS
+                            .iter()
+                            .find(|(name, _)| *name == mark)
+                            .ok_or_else(|| {
+                                format!(
+                                    "{at}.name: {mark:?} is not a built-in mark ({})",
+                                    MARKS.map(|(name, _)| name).join(", ")
+                                )
+                            })?;
+                    if seen.marks.iter().any(|shown| shown == mark) {
                         return Err(format!("{at}: a page shows each mark once"));
                     }
                     seen.marks.push(mark.to_owned());
-                    MARKS
-                        .iter()
-                        .find(|(name, _)| *name == mark)
-                        .map_or("", |(_, component)| *component)
+                    component
                 }
                 "scroll-box" => {
                     listed(block, &at, "source", &SCROLL_SOURCES, "a text Home loads")?;

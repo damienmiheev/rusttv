@@ -355,9 +355,9 @@ Rules the schema enforces (unknown fields are errors):
   choice between such strings by a property's value. An argument is a
   property's name, or `{"ltr": name}`: that value as a left-to-right
   isolate (U+2066 … U+2069), so a version inside Arabic or Hebrew text
-  keeps its order. The literal itself never holds bidi characters. So every string stays
-  translatable: `slint-tr-extractor` runs on the generated files, and the
-  phone page's i18n uses the same message ids.
+  keeps its order. The literal itself never holds bidi characters. So
+  every string stays translatable: `slint-tr-extractor` runs on the
+  generated files, and the phone page's i18n uses the same message ids.
 - **Direction:** text aligns to `Dir.start`, images to the start side;
   mirrored in RTL on both surfaces. No `left`/`right` in templates.
 - **Properties** are strings declared in `props`; values come from the
@@ -476,9 +476,10 @@ its own.
 - **The Remote tile is in History** (since step 3, § 9 Q9):
   `launcher_state` (`order_file.rs`) records `remote` like any tile, so
   every new snapshot is format 5, which released builds (0.3.2 and older)
-  and builds before #40 can't read. A snapshot from before (no `remote`) still restores; Home then
-  puts the tile at the end. History's changes never call `remote` added or
-  removed (an older snapshot only lacks it), only moved.
+  and builds before #40 can't read. A snapshot from before (no
+  `remote`) still restores; Home then puts the tile at the end. History's
+  changes never call `remote` added or removed (an older snapshot only
+  lacks it), only moved.
 - **About and Settings tiles after #40:** where a top-right menu has
   Settings (Linux), `reconcile` drops the About and Settings tiles
   (`settings_tiles`), and Settings gains an About section (`Section::About`,
@@ -780,7 +781,7 @@ because the phone list needs it. Its place is recorded in History (§ 9 Q9):
   rows take the column's height, text blocks keep theirs.
 - **Checked:** the desktop demo (`--demo-remote`, which now also shows the
   tile) with `RUSTTV_NO_DEVICE=1`, `RUSTTV_REMOTE_PAIR=1` and
-  `RUSTTV_LANG=uk`/`ar`; three new texts in all 20 languages, measured at
+  `RUSTTV_LANG=uk`/`ar`; three new texts in all 20 translations, measured at
   the tile's sizes (27u and 23u in a 218u line, two-digit counts) by
   hand. Vietnamese "No phones" is "Chưa ghép nối" ("not paired yet"):
   "Chưa có điện thoại" doesn't fit. Tests: the view, the tile's globals

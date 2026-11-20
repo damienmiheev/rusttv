@@ -79,8 +79,9 @@ fn main() {
 /// attention). They are compiled into `test_pages.rs`, which only the
 /// tests include; on purpose in every build (a second or so), so no build
 /// can carry a converter that writes Slint its compiler refuses.
-/// `TestPages` shows the page or tile its `page` names (the file's name);
-/// a row's functions are its `<file>-title`, `-detail` and `-attention`.
+/// `TestPages` shows the page or tile its `page` names (the file's name),
+/// with `value` in every prop; a row's functions are its `<file>-title`,
+/// `-detail` and `-attention` (with empty props).
 #[expect(
     clippy::expect_used,
     reason = "a build script reports errors by panicking; Slint prints the diagnostics"
@@ -108,8 +109,16 @@ fn write_test_pages(out: &Path, manifest: &Path) {
                  out property <bool> {name}-attention: {component}.attention({args});\n"
             ));
         } else {
+            // Every prop gets `value`, so a test can show conditional blocks.
+            let props: String = template["props"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|prop| prop.as_str())
+                .map(|prop| format!(" {prop}: root.value;"))
+                .collect();
             body.push_str(&format!(
-                "    if page == \"{name}\": {component} {{ u: 1px; }}\n"
+                "    if page == \"{name}\": {component} {{ u: 1px;{props} }}\n"
             ));
         }
     }
@@ -118,7 +127,7 @@ fn write_test_pages(out: &Path, manifest: &Path) {
         &root_file,
         format!(
             "{imports}\nexport component TestPages inherits Window {{\n    \
-             in property <string> page;\n{body}}}\n"
+             in property <string> page;\n    in property <string> value;\n{body}}}\n"
         ),
     )
     .expect("OUT_DIR should be writable");
@@ -131,21 +140,34 @@ fn write_test_pages(out: &Path, manifest: &Path) {
         .expect("the test templates should compile");
 }
 
-/// File names a template can't take: they would replace a file the
-/// generated Slint imports by name from OUT_DIR or ui/.
-const TAKEN_FILES: [&str; 7] = [
-    "badges",
-    "pictures",
-    "theme",
-    "blocks",
-    "home",
-    "quick",
-    "test_pages",
-];
+/// Files build.rs generates in OUT_DIR, which generated Slint imports by
+/// name: no template may take their names (nor a `ui/*.slint` file's).
+const GENERATED_FILES: [&str; 3] = ["badges", "pictures", "test_pages"];
+
+/// The names a template in any folder can't take: [`GENERATED_FILES`] and
+/// every `ui/*.slint`, since the include paths find files by name.
+#[expect(
+    clippy::expect_used,
+    reason = "a build script reports errors by panicking"
+)]
+fn taken_files() -> Vec<String> {
+    let ui = std::fs::read_dir("ui")
+        .expect("ui/ should exist")
+        .map(|entry| entry.expect("ui/ should be readable").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "slint"))
+        .filter_map(|path| Some(path.file_stem()?.to_str()?.to_owned()));
+    GENERATED_FILES
+        .map(str::to_owned)
+        .into_iter()
+        .chain(ui)
+        .collect()
+}
 
 /// Turns every `<dir>/*.json` panel template into `<out>/<name>.slint`;
-/// returns each file's name and template, in name order. Two templates
-/// can't share a component, and none can take a name in [`TAKEN_FILES`].
+/// returns each file's name and template, in name order. Two templates in
+/// one folder can't share a component, and none can take a name in
+/// [`taken_files`]. (The test templates are compiled apart from the real
+/// ones, so a name there only shadows within that compile.)
 #[expect(
     clippy::expect_used,
     reason = "a build script reports errors by panicking"
@@ -161,6 +183,7 @@ fn convert_templates(dir: &str, out: &Path) -> Vec<(String, serde_json::Value)> 
         .filter(|path| path.extension().is_some_and(|ext| ext == "json"))
         .collect();
     templates.sort();
+    let taken = taken_files();
     let mut converted = Vec::new();
     for path in templates {
         let source = path.display().to_string();
@@ -170,7 +193,7 @@ fn convert_templates(dir: &str, out: &Path) -> Vec<(String, serde_json::Value)> 
             .expect("a template's name should be UTF-8");
         println!("cargo::rerun-if-changed={source}");
         assert!(
-            !TAKEN_FILES.contains(&name),
+            !taken.iter().any(|taken| taken == name),
             "{source}: a template can't be named {name}"
         );
         let json = std::fs::read_to_string(&path).expect("panel template should exist");
