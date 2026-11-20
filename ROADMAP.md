@@ -379,3 +379,4 @@ Decided "not for now"; raise again when the core launcher is done.
   - **First step when picked up:** write the contract for the built-in
     panels only (page, tile, row), move History/Settings onto it, and
     measure that Home's start, resume and frame times don't change.
+
