@@ -10,9 +10,15 @@ use std::fmt::Write as _;
 /// Colour tokens: `Theme.<token>` in Slint, a CSS variable on the phone.
 const TOKENS: [&str; 5] = ["bg", "surface", "text", "text-dim", "accent"];
 
-/// Names the generated component's own properties already use.
-const RESERVED_PROPS: [&str; 16] = [
+/// Names the generated component's own properties already use; a page's
+/// scroll box is fed through the `scroll-*` ones (Home owns the scrolling).
+const RESERVED_PROPS: [&str; 24] = [
     "u",
+    "root",
+    "self",
+    "parent",
+    "true",
+    "false",
     "width",
     "height",
     "x",
@@ -28,38 +34,63 @@ const RESERVED_PROPS: [&str; 16] = [
     "cache-rendering-hint",
     "absolute-position",
     "accessible-role",
+    "scroll-text",
+    "scroll-position",
+    "scroll-fraction",
 ];
 
-/// Names a component must not shadow.
-const RESERVED_COMPONENTS: [&str; 8] = [
+/// Names a component must not shadow: Slint's own, theme.slint's,
+/// badges.slint's and blocks.slint's.
+const RESERVED_COMPONENTS: [&str; 20] = [
     "Theme",
     "Dir",
+    "Hints",
+    "Badges",
     "Text",
     "Image",
     "Rectangle",
     "Window",
     "VerticalLayout",
     "HorizontalLayout",
+    "AboutSlint",
+    "TitleSize",
+    "TextSize",
+    "PageColumn",
+    "PageSurface",
+    "PageTitle",
+    "PageText",
+    "PageStatus",
+    "PageHint",
+    "PageScrollBox",
 ];
 
-/// Converts `json` into Slint source. The output imports `Theme` and `Dir`
-/// from "theme.slint" and `Badges` from "badges.slint" by name, found through
-/// the compiler's include paths, so every file shares the one `Dir.rtl`.
-/// `badges` are the names of the pictures in `Badges` (set from Rust);
-/// nothing else can be an image.
+/// Built-in marks a page's `badge` block may show (blocks.slint).
+const MARKS: [(&str, &str); 1] = [("slint", "PageSlintBadge")];
+
+/// Long texts Home loads for a page's `scroll-box` (ui.rs).
+const SCROLL_SOURCES: [&str; 1] = ["notices"];
+
+/// Converts `json` into Slint source: a tile is a component, a row a global
+/// of pure functions (its words, for Settings' list), a page a component
+/// of blocks (blocks.slint). The output imports `Theme`, `Dir`, `Badges`
+/// and the blocks by name, found through the compiler's include paths, so
+/// every file shares the one `Dir.rtl`. `badges` are the names of the
+/// pictures in `Badges` (set from Rust); nothing else can be an image.
 pub fn convert(json: &str, badges: &[&str]) -> Result<String, String> {
     let doc = parse(json)?;
     let doc = object(&doc, "template")?;
-    only(doc, "template", &["component", "props", "root"])?;
+    only(doc, "template", &["component", "face", "props", "root"])?;
     let name = string(field(doc, "template", "component")?, "component")?;
     if !name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
         || !name.chars().all(|c| c.is_ascii_alphanumeric())
         || RESERVED_COMPONENTS.contains(&name)
+        || MARKS.iter().any(|(_, mark)| *mark == name)
     {
         return Err(format!(
             "component: {name:?} must be an UpperCamelCase name"
         ));
     }
+    let face = string(field(doc, "template", "face")?, "face")?;
     let mut props = Vec::new();
     for (i, prop) in array(field(doc, "template", "props")?, "props")?
         .iter()
@@ -77,68 +108,307 @@ pub fn convert(json: &str, badges: &[&str]) -> Result<String, String> {
         }
         if RESERVED_PROPS.contains(&prop) || props.contains(&prop) {
             return Err(format!(
-                "props[{i}]: {prop:?} is taken (a Rectangle property, `u`, or a duplicate)"
+                "props[{i}]: {prop:?} is taken (a Slint word, a Rectangle property, `u`, `scroll-*`, or a duplicate)"
             ));
         }
         props.push(prop);
     }
+
+    let (kind, body) = node(field(doc, "template", "root")?, "root")?;
+    let root = match face {
+        "tile" => "column",
+        "row" => "list-row",
+        "page" => "page",
+        other => return Err(format!("face: {other:?} is not tile, row or page")),
+    };
+    if kind != root {
+        return Err(format!("root: a {face}'s root must be a {root}"));
+    }
+    let at = format!("root.{root}");
+    let mut out = String::from("// Generated from a panel template by build.rs. Do not edit.\n");
+    // A row's words are functions of its properties; elsewhere they are
+    // the component's own.
+    let scope = if face == "row" { "" } else { "root." };
     let cx = Cx {
         props: &props,
         badges,
+        scope,
     };
-
-    let root = field(doc, "template", "root")?;
-    let (kind, body) = node(root, "root")?;
-    if kind != "column" {
-        return Err("root: must be a column".into());
+    match face {
+        "tile" => cx.tile(name, body, &at, &mut out)?,
+        "row" => cx.row(name, body, &at, &mut out)?,
+        _ => cx.page(name, body, &at, &mut out)?,
     }
-    let mut out = String::from("// Generated from a panel template by build.rs. Do not edit.\n");
-    out.push_str("import { Theme, Dir } from \"theme.slint\";\n");
-    out.push_str("import { Badges } from \"badges.slint\";\n\n");
-    let _ = writeln!(out, "export component {name} inherits Rectangle {{");
-    out.push_str("    in property <length> u;\n");
-    for prop in &props {
-        let _ = writeln!(out, "    in property <string> {prop};");
-    }
-    let _ = writeln!(
-        out,
-        "    width: {} * u;",
-        number(field(body, "root.column", "width")?, "root.column.width")?
-    );
-    let _ = writeln!(
-        out,
-        "    height: {} * u;",
-        number(field(body, "root.column", "height")?, "root.column.height")?
-    );
-    if let Some(radius) = body.get("radius") {
-        let _ = writeln!(
-            out,
-            "    border-radius: {} * u;",
-            number(radius, "root.column.radius")?
-        );
-    }
-    if let Some(background) = body.get("background") {
-        let _ = writeln!(
-            out,
-            "    background: {};",
-            cx.color(background, "root.column.background")?
-        );
-    }
-    out.push_str("    clip: true;\n");
-    // Drawn once into a cached layer (where the renderer supports it), so a
-    // swaying tile moves a picture instead of laying out text every frame.
-    out.push_str("    cache-rendering-hint: true;\n\n");
-    cx.column(body, "root.column", 1, &mut out, true)?;
-    out.push_str("}\n");
     Ok(out)
 }
 
 struct Cx<'a> {
     props: &'a [&'a str],
     badges: &'a [&'a str],
+    /// What a property is read through: `root.` in a component, nothing in
+    /// a function (its parameters).
+    scope: &'a str,
 }
 
 impl Cx<'_> {
+    /// A tile: one sized, rounded column of text and pictures.
+    fn tile(
+        &self,
+        name: &str,
+        body: &Map<String, Value>,
+        at: &str,
+        out: &mut String,
+    ) -> Result<(), String> {
+        out.push_str("import { Theme, Dir } from \"theme.slint\";\n");
+        out.push_str("import { Badges } from \"badges.slint\";\n\n");
+        let _ = writeln!(out, "export component {name} inherits Rectangle {{");
+        self.declare(out, false);
+        let _ = writeln!(
+            out,
+            "    width: {} * u;",
+            number(field(body, at, "width")?, &format!("{at}.width"))?
+        );
+        let _ = writeln!(
+            out,
+            "    height: {} * u;",
+            number(field(body, at, "height")?, &format!("{at}.height"))?
+        );
+        if let Some(radius) = body.get("radius") {
+            let _ = writeln!(
+                out,
+                "    border-radius: {} * u;",
+                number(radius, &format!("{at}.radius"))?
+            );
+        }
+        if let Some(background) = body.get("background") {
+            let _ = writeln!(
+                out,
+                "    background: {};",
+                self.color(background, &format!("{at}.background"))?
+            );
+        }
+        out.push_str("    clip: true;\n");
+        // Drawn once into a cached layer (where the renderer supports it), so a
+        // swaying tile moves a picture instead of laying out text every frame.
+        out.push_str("    cache-rendering-hint: true;\n\n");
+        self.column(body, at, 1, out, true)?;
+        out.push_str("}\n");
+        Ok(())
+    }
+
+    /// A row: its title, dim detail and attention (Settings' accent dot),
+    /// as functions of the properties, since Settings draws every row of
+    /// its list with one component (quick.slint `ControlRow`).
+    fn row(
+        &self,
+        name: &str,
+        body: &Map<String, Value>,
+        at: &str,
+        out: &mut String,
+    ) -> Result<(), String> {
+        only(body, at, &["title", "detail", "attention"])?;
+        let params = self
+            .props
+            .iter()
+            .map(|prop| format!("{prop}: string"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let title = self.words(field(body, at, "title")?, &format!("{at}.title"))?;
+        let detail = match body.get("detail") {
+            Some(detail) => self.words(detail, &format!("{at}.detail"))?,
+            None => "\"\"".into(),
+        };
+        let attention = match body.get("attention") {
+            Some(attention) => self.flag(attention, &format!("{at}.attention"))?,
+            None => "false".into(),
+        };
+        let _ = writeln!(out, "\nexport global {name} {{");
+        for (function, kind, value) in [
+            ("title", "string", title),
+            ("detail", "string", detail),
+            ("attention", "bool", attention),
+        ] {
+            let _ = writeln!(
+                out,
+                "    public pure function {function}({params}) -> {kind} {{\n        return {value};\n    }}"
+            );
+        }
+        out.push_str("}\n");
+        Ok(())
+    }
+
+    /// A page: blocks in one column, or in a narrow column and the surface
+    /// panel beside it (`start` and `end`, mirrored in right-to-left).
+    fn page(
+        &self,
+        name: &str,
+        body: &Map<String, Value>,
+        at: &str,
+        out: &mut String,
+    ) -> Result<(), String> {
+        only(body, at, &["layout", "start", "end"])?;
+        let layout = string(field(body, at, "layout")?, &format!("{at}.layout"))?;
+        let two = match layout {
+            "one-column" => false,
+            "two-columns" => true,
+            other => {
+                return Err(format!(
+                    "{at}.layout: {other:?} is not one-column or two-columns"
+                ));
+            }
+        };
+        if !two && body.contains_key("end") {
+            return Err(format!("{at}.end: a one-column page has only a start"));
+        }
+        let mut blocks = String::new();
+        let mut scroll = false;
+        let _ = writeln!(
+            blocks,
+            "    PageColumn {{\n        u: root.u;\n        wide: {};",
+            !two
+        );
+        self.blocks(body, at, "start", false, &mut scroll, &mut blocks)?;
+        blocks.push_str("    }\n");
+        if two {
+            blocks.push_str("    PageSurface {\n        u: root.u;\n");
+            self.blocks(body, at, "end", true, &mut scroll, &mut blocks)?;
+            blocks.push_str("    }\n");
+        }
+
+        out.push_str("import { Theme } from \"theme.slint\";\n");
+        out.push_str(
+            "import { PageColumn, PageSurface, PageTitle, PageText, PageStatus, PageHint, \
+             PageSlintBadge, PageScrollBox, TitleSize, TextSize } from \"blocks.slint\";\n\n",
+        );
+        let _ = writeln!(out, "export component {name} inherits Rectangle {{");
+        self.declare(out, scroll);
+        out.push_str("    background: Theme.bg;\n\n");
+        out.push_str(&blocks);
+        out.push_str("}\n");
+        Ok(())
+    }
+
+    /// `in` properties: `u`, the template's own, and the scroll box's.
+    fn declare(&self, out: &mut String, scroll: bool) {
+        out.push_str("    in property <length> u;\n");
+        for prop in self.props {
+            let _ = writeln!(out, "    in property <string> {prop};");
+        }
+        if scroll {
+            out.push_str("    in property <string> scroll-text;\n");
+            out.push_str("    in property <float> scroll-position;\n");
+            out.push_str("    in property <float> scroll-fraction: 1;\n");
+        }
+    }
+
+    /// The blocks of a page's `side` (`start` or `end`). A scroll box fills
+    /// the surface panel's height, so it lives there, once per page: Up and
+    /// Down scroll it (Home's keys, PANELS.md § 4).
+    fn blocks(
+        &self,
+        body: &Map<String, Value>,
+        page: &str,
+        side: &str,
+        surface: bool,
+        scroll: &mut bool,
+        out: &mut String,
+    ) -> Result<(), String> {
+        let at = format!("{page}.{side}");
+        for (i, block) in array(field(body, page, side)?, &at)?.iter().enumerate() {
+            let at = format!("{at}[{i}]");
+            let (kind, block) = node(block, &at)?;
+            let at = format!("{at}.{kind}");
+            let allowed: &[&str] = match kind {
+                "title" => &["value", "size", "show"],
+                "text" => &["value", "size", "tone", "show"],
+                "status" => &["value", "attention", "show"],
+                "hint" => &["value"],
+                "badge" => &["name", "show"],
+                "scroll-box" => &["source"],
+                other => {
+                    return Err(format!(
+                        "{at}: unknown block {other:?} (title, text, status, hint, badge, scroll-box)"
+                    ));
+                }
+            };
+            only(block, &at, allowed)?;
+            let show = match block.get("show") {
+                Some(show) => format!("if {}: ", self.flag(show, &format!("{at}.show"))?),
+                None => String::new(),
+            };
+            let mut fields = Vec::new();
+            let component = match kind {
+                "title" => {
+                    let size = choice(block, &at, "size", &["large", "medium", "small"], None)?;
+                    fields.push(format!("size: TitleSize.{size}"));
+                    "PageTitle"
+                }
+                "text" => {
+                    let size = choice(block, &at, "size", &["normal", "small"], Some("normal"))?;
+                    let tone = choice(block, &at, "tone", &["normal", "dim"], Some("normal"))?;
+                    fields.push(format!("size: TextSize.{size}"));
+                    fields.push(format!("dim: {}", tone == "dim"));
+                    "PageText"
+                }
+                "status" => {
+                    if let Some(attention) = block.get("attention") {
+                        fields.push(format!(
+                            "attention: {}",
+                            self.flag(attention, &format!("{at}.attention"))?
+                        ));
+                    }
+                    "PageStatus"
+                }
+                "hint" => "PageHint",
+                "badge" => {
+                    let mark = string(field(block, &at, "name")?, &format!("{at}.name"))?;
+                    MARKS
+                        .iter()
+                        .find(|(name, _)| *name == mark)
+                        .map(|(_, component)| *component)
+                        .ok_or_else(|| {
+                            format!(
+                                "{at}.name: {mark:?} is not a built-in mark ({})",
+                                MARKS.map(|(name, _)| name).join(", ")
+                            )
+                        })?
+                }
+                _ => {
+                    let source = string(field(block, &at, "source")?, &format!("{at}.source"))?;
+                    if !SCROLL_SOURCES.contains(&source) {
+                        return Err(format!(
+                            "{at}.source: {source:?} is not a text Home loads ({})",
+                            SCROLL_SOURCES.join(", ")
+                        ));
+                    }
+                    if !surface {
+                        return Err(format!(
+                            "{at}: a scroll-box goes in a two-column page's end (the surface panel)"
+                        ));
+                    }
+                    if std::mem::replace(scroll, true) {
+                        return Err(format!("{at}: a page has at most one scroll-box"));
+                    }
+                    fields.push("text: root.scroll-text".into());
+                    fields.push("position: root.scroll-position".into());
+                    fields.push("fraction: root.scroll-fraction".into());
+                    "PageScrollBox"
+                }
+            };
+            if matches!(kind, "title" | "text" | "status" | "hint") {
+                let value = self.words(field(block, &at, "value")?, &format!("{at}.value"))?;
+                let text = if kind == "hint" { "value" } else { "text" };
+                fields.push(format!("{text}: {value}"));
+            }
+            let _ = writeln!(out, "        {show}{component} {{\n            u: root.u;");
+            for field in fields {
+                let _ = writeln!(out, "            {field};");
+            }
+            out.push_str("        }\n");
+        }
+        Ok(())
+    }
+
     fn column(
         &self,
         body: &Map<String, Value>,
@@ -218,10 +488,7 @@ impl Cx<'_> {
         only(body, at, &["value", "size", "weight", "color", "show"])?;
         let pad = "    ".repeat(depth);
         let show = match body.get("show") {
-            Some(show) => {
-                let prop = self.prop(show, &format!("{at}.show"))?;
-                format!("if root.{prop} != \"\": ")
-            }
+            Some(show) => format!("if {}: ", self.flag(show, &format!("{at}.show"))?),
             None => String::new(),
         };
         let _ = writeln!(out, "{pad}{show}Text {{");
@@ -310,7 +577,10 @@ impl Cx<'_> {
         if literal.matches("{}").count() != args.len() {
             return Err(format!("{at}: {literal:?} needs one arg per {{}}"));
         }
-        let args: String = args.iter().map(|p| format!(", root.{p}")).collect();
+        let args: String = args
+            .iter()
+            .map(|p| format!(", {}{p}", self.scope))
+            .collect();
         Ok(format!("@tr({}{args})", quote(literal)))
     }
 
@@ -329,6 +599,25 @@ impl Cx<'_> {
         Ok(format!("Theme.{token}"))
     }
 
+    /// A condition: a property's name (true when it isn't empty) or a
+    /// `select` of `true` and `false` (else `false`).
+    fn flag(&self, value: &Value, at: &str) -> Result<String, String> {
+        if let Some(body) = value.as_object() {
+            return self.select(
+                body,
+                at,
+                |v, at| {
+                    v.as_bool()
+                        .map(|b| b.to_string())
+                        .ok_or_else(|| format!("{at}: expected true or false"))
+                },
+                "false".into(),
+            );
+        }
+        let prop = self.prop(value, at)?;
+        Ok(format!("{}{prop} != \"\"", self.scope))
+    }
+
     /// `{"select": prop, "cases": {value: x}, "else": x}` as nested `?:`.
     fn select(
         &self,
@@ -344,7 +633,8 @@ impl Cx<'_> {
         for (case, value) in cases {
             let _ = write!(
                 out,
-                "root.{prop} == {} ? {} : ",
+                "{}{prop} == {} ? {} : ",
+                self.scope,
                 quote(case),
                 each(value, &format!("{at}.cases.{case}"))?
             );
@@ -363,6 +653,29 @@ impl Cx<'_> {
         } else {
             Err(format!("{at}: {prop:?} is not in props"))
         }
+    }
+}
+
+/// The optional `key` of `map`: one of `options`, else `default`.
+fn choice<'v>(
+    map: &'v Map<String, Value>,
+    at: &str,
+    key: &str,
+    options: &[&str],
+    default: Option<&'v str>,
+) -> Result<&'v str, String> {
+    let value = match (map.get(key), default) {
+        (Some(value), _) => string(value, &format!("{at}.{key}"))?,
+        (None, Some(default)) => default,
+        (None, None) => return Err(format!("{at}: missing {key:?}")),
+    };
+    if options.contains(&value) {
+        Ok(value)
+    } else {
+        Err(format!(
+            "{at}.{key}: {value:?} is not {}",
+            options.join(", ")
+        ))
     }
 }
 

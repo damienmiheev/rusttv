@@ -1,5 +1,6 @@
 {
   "component": "AboutTile",
+  "face": "tile",
   "props": ["version", "status"],
   "root": { "column": {
     "width": 250, "height": 141, "radius": 12, "background": "surface",

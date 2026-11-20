@@ -1,0 +1,8 @@
+{
+  "component": "AboutListRow",
+  "face": "row",
+  "props": ["version"],
+  "root": { "list-row": {
+    "title": { "tr": "RustTV {}", "args": ["version"] },
+    "detail": { "tr": "MIT OR Apache-2.0 · licences and third-party notices" } } }
+}

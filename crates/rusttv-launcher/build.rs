@@ -24,7 +24,7 @@ const BADGES: [&str; 1] = ["rusttv-logo"];
 const BADGE_SIZE: (u32, u32) = (128, 128);
 
 /// Panel templates, each turned into `<name>.slint` in `OUT_DIR`.
-const TEMPLATES: [&str; 1] = ["about_tile"];
+const TEMPLATES: [&str; 3] = ["about_tile", "about_row", "about_page"];
 
 #[expect(
     clippy::expect_used,

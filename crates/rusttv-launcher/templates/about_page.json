@@ -1,0 +1,37 @@
+{
+  "component": "AboutPage",
+  "face": "page",
+  "props": ["version", "update", "update-detail"],
+  "root": { "page": {
+    "layout": "two-columns",
+    "start": [
+      { "title": { "value": { "tr": "RustTV" }, "size": "large" } },
+      { "text": { "value": { "tr": "Version {} · MIT OR Apache-2.0", "args": ["version"] },
+                  "tone": "dim" } },
+      { "status": {
+          "value": { "select": "update", "cases": {
+            "checking": { "tr": "Checking for updates…" },
+            "up-to-date": { "tr": "Up to date" },
+            "available": { "tr": "Version {} available — press OK to install",
+                           "args": ["update-detail"] },
+            "needs-permission": { "tr": "Allow RustTV to install apps, then press OK to install {}",
+                                  "args": ["update-detail"] },
+            "downloading": { "tr": "Downloading {}%", "args": ["update-detail"] },
+            "installing": { "tr": "Installing…" },
+            "installed": { "tr": "Update installed" },
+            "failed": { "tr": "Update failed: {}", "args": ["update-detail"] } },
+            "else": { "tr": "Press OK to check for updates" } },
+          "attention": { "select": "update",
+                         "cases": { "available": true, "needs-permission": true } } } },
+      { "text": { "value": { "tr": "Built with Slint under the Slint Royalty-free License 2.0. Also includes Skia (BSD-3-Clause) and Rust libraries under MIT or Apache-2.0." },
+                  "size": "small", "tone": "dim" } },
+      { "text": { "value": { "tr": "Source: github.com/damienmiheev/rusttv" },
+                  "size": "small", "tone": "dim" } },
+      { "badge": { "name": "slint" } },
+      { "hint": { "value": { "tr": "Up and Down scroll the notices. Back returns." } } }
+    ],
+    "end": [
+      { "title": { "value": { "tr": "Third-party notices" }, "size": "small" } },
+      { "scroll-box": { "source": "notices" } }
+    ] } }
+}

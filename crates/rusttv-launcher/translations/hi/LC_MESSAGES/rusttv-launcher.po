@@ -441,9 +441,6 @@ msgstr "ऐप बंद करें"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "Licences and third-party notices"
-msgstr "लाइसेंस और तृतीय-पक्ष सूचनाएँ"
-
 msgid "Loading…"
 msgstr "लोड हो रहा है…"
 
@@ -465,6 +462,9 @@ msgstr "पावर"
 msgid "RustTV {}"
 msgstr "RustTV {}"
 
+msgid "RustTV"
+msgstr "RustTV"
+
 msgid "Search"
 msgstr "खोजें"
 
@@ -473,9 +473,6 @@ msgstr "आकार"
 
 msgid "Size: {} %"
 msgstr "आकार: {} %"
-
-msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
-msgstr "Slint (Royalty-free License 2.0), Skia, Rust लाइब्रेरी"
 
 msgid "Source code"
 msgstr "सोर्स कोड"

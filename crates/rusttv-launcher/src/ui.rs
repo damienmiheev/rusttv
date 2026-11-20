@@ -46,8 +46,8 @@ mod generated {
     slint::include_modules!();
 }
 use generated::{
-    AboutPanel, Badges, Dir, Effects, Hints, HomeWindow, Pointer, ReviewLine, SettingsRow, Strings,
-    TileData,
+    AboutListRow, AboutPanel, Badges, Dir, Effects, Hints, HomeWindow, Pointer, ReviewLine,
+    SettingsRow, Strings, TileData,
 };
 
 mod device_view;
@@ -448,16 +448,23 @@ impl Demo {
     }
 }
 
-/// Sets the About panel's values (src/panels.rs): two window-global
+/// Sets the About panel's tile and page values (src/panels.rs): window-global
 /// properties, so a status change redraws the tile without touching the
-/// tile list.
+/// tile list, and the page only while it is open. (Its row is read when
+/// Settings draws its list.)
 fn show_about_panel(window: &HomeWindow, status: &UpdateStatus) {
-    let Some(tile) = panels::about_view(env!("CARGO_PKG_VERSION"), status).tile else {
-        return;
-    };
+    let view = panels::about_view(env!("CARGO_PKG_VERSION"), status);
     let about = window.global::<AboutPanel>();
-    about.set_version(tile.get("version").into());
-    about.set_status(tile.get("status").into());
+    if let Some(tile) = view.tile {
+        about.set_version(tile.props.get("version").into());
+        about.set_status(tile.props.get("status").into());
+    }
+    if let Some(page) = view.page {
+        // The same value as the tile's (one name, one value; panels.rs tests).
+        about.set_version(page.props.get("version").into());
+        about.set_update(page.props.get("update").into());
+        about.set_update_detail(page.props.get("update-detail").into());
+    }
 }
 
 include!(concat!(env!("OUT_DIR"), "/badges.rs"));
@@ -3549,6 +3556,39 @@ mod tests {
         screen.tap(RIGHT);
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::About));
+    }
+
+    /// Settings' RustTV row is About's row face (templates/about_row.json),
+    /// and the page gets the view's values (templates/about_page.json).
+    #[test]
+    fn about_row_and_page_come_from_the_about_view() {
+        let screen = screen(None);
+        click_settings(&screen.window);
+        for _ in 0..10 {
+            screen.tap(DOWN);
+        }
+        let first = screen
+            .window
+            .get_settings_rows()
+            .row_data(0)
+            .expect("the RustTV row");
+        assert_eq!(
+            first.title,
+            format!("RustTV {}", env!("CARGO_PKG_VERSION")).as_str()
+        );
+        assert_eq!(
+            first.detail,
+            "MIT OR Apache-2.0 · licences and third-party notices"
+        );
+        assert!(!first.current);
+
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::About));
+        let about = screen.window.global::<AboutPanel>();
+        assert_eq!(about.get_version(), env!("CARGO_PKG_VERSION"));
+        assert_eq!(about.get_update(), "idle");
+        assert_eq!(about.get_update_detail(), "");
     }
 
     #[test]

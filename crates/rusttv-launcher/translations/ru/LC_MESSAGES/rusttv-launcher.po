@@ -441,9 +441,6 @@ msgstr "Закрыть приложение"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "Licences and third-party notices"
-msgstr "Лицензии и уведомления третьих сторон"
-
 msgid "Loading…"
 msgstr "Загрузка…"
 
@@ -465,6 +462,9 @@ msgstr "Питание"
 msgid "RustTV {}"
 msgstr "RustTV {}"
 
+msgid "RustTV"
+msgstr "RustTV"
+
 msgid "Search"
 msgstr "Поиск"
 
@@ -473,9 +473,6 @@ msgstr "Размер"
 
 msgid "Size: {} %"
 msgstr "Размер: {} %"
-
-msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
-msgstr "Slint (Royalty-free License 2.0), Skia, библиотеки Rust"
 
 msgid "Source code"
 msgstr "Исходный код"

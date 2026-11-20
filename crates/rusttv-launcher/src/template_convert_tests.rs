@@ -5,7 +5,25 @@
 use crate::template_convert::convert;
 
 const OK: &str = include_str!("../templates/about_tile.json");
+const ROW: &str = include_str!("../templates/about_row.json");
+const PAGE: &str = include_str!("../templates/about_page.json");
 const BADGES: [&str; 1] = ["rusttv-logo"];
+
+/// A one-column page with every block a column may hold, each optional
+/// field set.
+const ONE_COLUMN: &str = r#"{
+  "component": "TestPage", "face": "page", "props": ["name", "state"],
+  "root": { "page": { "layout": "one-column", "start": [
+    { "title": { "value": { "tr": "Large" }, "size": "large" } },
+    { "title": { "value": { "tr": "Medium" }, "size": "medium", "show": "name" } },
+    { "title": { "value": { "tr": "Small" }, "size": "small" } },
+    { "text": { "value": { "tr": "Hello {}", "args": ["name"] }, "size": "small",
+                "tone": "dim", "show": { "select": "state", "cases": { "on": true } } } },
+    { "status": { "value": { "tr": "State" }, "attention": "state", "show": "state" } },
+    { "badge": { "name": "slint", "show": "name" } },
+    { "hint": { "value": { "tr": "Back returns." } } }
+  ] } }
+}"#;
 
 fn run(json: &str) -> Result<String, String> {
     convert(json, &BADGES)
@@ -15,15 +33,61 @@ fn err(json: &str) -> String {
     run(json).expect_err("should fail")
 }
 
-#[test]
-fn the_about_template_converts() {
-    let out = run(OK).expect("converts");
-    assert!(out.contains("@tr(\"Update available\")"));
-    assert!(out.contains("source: Badges.rusttv-logo;"));
+/// No fixed sides: everything goes through `Dir` (blocks.slint, theme.slint).
+fn assert_mirrored(out: &str) {
     assert!(
         !out.contains("left") && !out.contains("right"),
-        "no fixed sides"
+        "no fixed sides: {out}"
     );
+}
+
+#[test]
+fn the_about_templates_convert() {
+    let tile = run(OK).expect("tile converts");
+    assert!(tile.contains("@tr(\"Update available\")"));
+    assert!(tile.contains("source: Badges.rusttv-logo;"));
+    assert_mirrored(&tile);
+
+    let row = run(ROW).expect("row converts");
+    assert!(row.contains("export global AboutListRow {"));
+    assert!(row.contains(
+        "public pure function title(version: string) -> string {\n        return @tr(\"RustTV {}\", version);"
+    ));
+    assert!(row.contains("-> bool {\n        return false;"), "{row}");
+
+    let page = run(PAGE).expect("page converts");
+    assert!(page.contains("export component AboutPage inherits Rectangle {"));
+    assert!(page.contains("PageColumn {\n        u: root.u;\n        wide: false;"));
+    assert!(page.contains("PageSurface {"));
+    assert!(page.contains("PageSlintBadge {"));
+    assert!(page.contains("in property <float> scroll-fraction: 1;"));
+    assert!(page.contains("text: root.scroll-text;"));
+    assert!(page.contains("value: @tr(\"Up and Down scroll the notices. Back returns.\");"));
+    assert!(page.contains(
+        "attention: (root.update == \"available\" ? true : root.update == \"needs-permission\" ? true : false);"
+    ), "{page}");
+    assert!(page.contains(", root.update-detail)"));
+    assert_mirrored(&page);
+}
+
+#[test]
+fn a_one_column_page_converts_every_block() {
+    let page = run(ONE_COLUMN).expect("converts");
+    assert!(page.contains("wide: true;"));
+    assert!(!page.contains("PageSurface {"));
+    assert!(
+        !page.contains("scroll-text"),
+        "no scroll box, no scroll properties"
+    );
+    for size in ["large", "medium", "small"] {
+        assert!(page.contains(&format!("size: TitleSize.{size};")), "{size}");
+    }
+    assert!(page.contains("if root.name != \"\": PageTitle {"));
+    assert!(page.contains("size: TextSize.small;\n            dim: true;"));
+    assert!(page.contains("if (root.state == \"on\" ? true : false): PageText {"));
+    assert!(page.contains("attention: root.state != \"\";"));
+    assert!(page.contains("if root.name != \"\": PageSlintBadge {"));
+    assert_mirrored(&page);
 }
 
 #[test]
@@ -66,8 +130,17 @@ fn rejects_what_the_schema_does_not_hold() {
             "UpperCamelCase",
         ),
         (OK.replace("\"AboutTile\"", "\"Theme\""), "UpperCamelCase"),
+        (OK.replace("\"AboutTile\"", "\"PageText\""), "UpperCamelCase"),
         (
             OK.replace("[\"version\", \"status\"]", "[\"version\", \"width\"]"),
+            "is taken",
+        ),
+        (
+            OK.replace("[\"version\", \"status\"]", "[\"version\", \"scroll-text\"]"),
+            "is taken",
+        ),
+        (
+            OK.replace("[\"version\", \"status\"]", "[\"version\", \"root\"]"),
             "is taken",
         ),
         (
@@ -82,9 +155,130 @@ fn rejects_what_the_schema_does_not_hold() {
             OK.replace("\"gap\": 4", "\"gap\": 4, \"gap\": 9"),
             "duplicate key \"gap\"",
         ),
+        // Faces and their roots.
+        (OK.replace("\"face\": \"tile\",", ""), "missing \"face\""),
+        (
+            OK.replace("\"face\": \"tile\"", "\"face\": \"banner\""),
+            "is not tile, row or page",
+        ),
+        (
+            OK.replace("\"face\": \"tile\"", "\"face\": \"page\""),
+            "a page's root must be a page",
+        ),
+        (
+            ROW.replace("\"face\": \"row\"", "\"face\": \"tile\""),
+            "a tile's root must be a column",
+        ),
+        // A row.
+        (
+            ROW.replace("\"title\"", "\"heading\""),
+            "unknown field \"heading\"",
+        ),
+        (
+            ROW.replace("\"detail\"", "\"attention\": \"secret\", \"detail\""),
+            "\"secret\" is not in props",
+        ),
+        (
+            ROW.replace(
+                "\"detail\"",
+                "\"attention\": { \"select\": \"version\", \"cases\": { \"1\": \"yes\" } }, \"detail\"",
+            ),
+            "expected true or false",
+        ),
+        (
+            ROW.replace("\"title\": { \"tr\": \"RustTV {}\", \"args\": [\"version\"] },", ""),
+            "missing \"title\"",
+        ),
+        // A page.
+        (
+            PAGE.replace("\"two-columns\"", "\"three-columns\""),
+            "is not one-column or two-columns",
+        ),
+        (
+            PAGE.replace("\"two-columns\"", "\"one-column\""),
+            "a one-column page has only a start",
+        ),
+        (
+            PAGE.replace("\"layout\"", "\"width\": 9, \"layout\""),
+            "unknown field \"width\"",
+        ),
+        (
+            PAGE.replace("{ \"hint\":", "{ \"video\":"),
+            "unknown block \"video\"",
+        ),
+        (
+            PAGE.replace("\"size\": \"large\"", "\"size\": 76"),
+            "expected a string",
+        ),
+        (
+            PAGE.replace("\"size\": \"large\"", "\"size\": \"huge\""),
+            "is not large, medium, small",
+        ),
+        (
+            PAGE.replace("\"size\": \"large\"", "\"size\": \"large\", \"tone\": \"dim\""),
+            "unknown field \"tone\"",
+        ),
+        (
+            PAGE.replace("\"size\": \"small\", \"tone\": \"dim\"", "\"size\": \"tiny\""),
+            "is not normal, small",
+        ),
+        (
+            PAGE.replace("\"tone\": \"dim\" } },", "\"tone\": \"red\" } },"),
+            "is not normal, dim",
+        ),
+        (
+            PAGE.replace("\"attention\": {", "\"color\": \"accent\", \"attention\": {"),
+            "unknown field \"color\"",
+        ),
+        (
+            PAGE.replace("\"needs-permission\": true", "\"needs-permission\": 1"),
+            "expected true or false",
+        ),
+        (
+            PAGE.replace("\"name\": \"slint\"", "\"name\": \"rusttv-logo\""),
+            "is not a built-in mark",
+        ),
+        (
+            PAGE.replace(
+                "\"value\": { \"tr\": \"Up and Down",
+                "\"show\": \"version\", \"value\": { \"tr\": \"Up and Down",
+            ),
+            "unknown field \"show\"",
+        ),
+        (
+            PAGE.replace("\"source\": \"notices\"", "\"source\": \"/etc/passwd\""),
+            "is not a text Home loads",
+        ),
+        (
+            PAGE.replace(
+                "{ \"badge\": { \"name\": \"slint\" } },",
+                "{ \"scroll-box\": { \"source\": \"notices\" } },",
+            ),
+            "goes in a two-column page's end",
+        ),
+        (
+            PAGE.replace(
+                "{ \"scroll-box\": { \"source\": \"notices\" } }",
+                "{ \"scroll-box\": { \"source\": \"notices\" } }, { \"scroll-box\": { \"source\": \"notices\" } }",
+            ),
+            "at most one scroll-box",
+        ),
+        (
+            PAGE.replace("\"source\": \"notices\"", "\"source\": \"notices\", \"height\": 9"),
+            "unknown field \"height\"",
+        ),
+        (
+            PAGE.replace("{ \"title\": { \"value\": { \"tr\": \"Third-party notices\" }, \"size\": \"small\" } },", "{ \"title\": { \"size\": \"small\" } },"),
+            "missing \"value\"",
+        ),
+        (
+            PAGE.replace("\"end\": [", "\"end\": [ { \"text\": {}, \"hint\": {} },"),
+            "a node has exactly one key",
+        ),
     ];
     for (json, expected) in cases {
-        assert_ne!(json, OK, "the case must change the template ({expected})");
+        let changed = json != OK && json != ROW && json != PAGE;
+        assert!(changed, "the case must change the template ({expected})");
         let got = err(&json);
         assert!(got.contains(expected), "expected {expected:?}, got {got:?}");
     }
@@ -100,4 +294,10 @@ fn texts_cannot_break_out_of_their_string() {
     // Control and bidi characters are refused (JSON escapes \n and \u202E).
     assert!(err(&OK.replace("Update available", r"a\nb")).contains("control or bidi"));
     assert!(err(&OK.replace("Update available", r"a\u202Eb")).contains("control or bidi"));
+    // The same in a row's function and a page's block.
+    let out = run(&ROW.replace("RustTV {}", r#"x\"); {}"#)).expect("converts");
+    assert!(out.contains(r#"@tr("x\"); {}", version)"#), "{out}");
+    let out = run(&PAGE.replace("Third-party notices", r#"x\"; \\(e)"#)).expect("converts");
+    assert!(out.contains(r#"text: @tr("x\"; \\(e)");"#), "{out}");
+    assert!(err(&PAGE.replace("Third-party notices", r"a\u2066b")).contains("control or bidi"));
 }

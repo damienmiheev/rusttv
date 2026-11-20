@@ -1,7 +1,8 @@
 # Panels — design
 
-Status (2026-11-20): **planned**, nothing built. Written from the owner's
-answers on 2026-10-25 (§ Owner decisions), checked against the code by an
+Status (2026-11-20): **being built** on the `panels` branch: steps 1
+and 1b (About's tile, its phone caption) and 2 (About's page and row) are
+done (§ 10). Written from the owner's answers on 2026-10-25 (§ Owner decisions), checked against the code by an
 independent review (§ Review log), and re-checked against main on 2026-11-20
 (§ 10 has the build plan). Replaces ROADMAP.md § Parked
 ideas → "Panels: add-ons with several faces". The theme builder gets its own
@@ -183,16 +184,22 @@ component and, later, one web component for the phone face.
 | `PanelRow` | row | label, value |
 | `PanelPage` | page | a `Layout` (one column, or two: a narrow left and the 1110u surface panel on the right, as About and Settings are today; mirrored in RTL) filled with blocks |
 
-**Page blocks (v1, what About needs):**
+**Page blocks (v1, what About needs):** one Slint component each in
+`ui/blocks.slint` (`PageTitle`, `PageText`, …), which holds their sizes;
+colours come from `Theme`. The JSON key and fields are in § 4.1.
 
 | Block | Draws | Focus |
 |---|---|---|
-| `Title` | page title (76u on About, 57u on list pages) | no |
-| `Text` | one paragraph; dim or normal; wraps | no |
-| `Status` | one line; accent for `Attention` (the updater's line) | no |
-| `Badge` | a built-in mark from a fixed list (`AboutSlint` first) | no |
-| `ScrollBox` | long text in the surface panel; Up/Down scroll (the licence notices) | yes |
-| `Hint` | the dim key hint at the bottom ("Up and Down scroll the notices. Back returns.") | no |
+| `Title` | a title: `large` 76u (a page of its own, About), `medium` 57u (list pages), `small` 29u (a heading in the surface panel) | no |
+| `Text` | one paragraph; normal (29u) or small (25u); dim or normal; wraps | no |
+| `Status` | one line; accent for `Attention` (the updater's line); wraps | no |
+| `Badge` | a built-in mark from a fixed list (`slint`: Slint's `AboutSlint`, at a fixed 240u so the attribution can't be shrunk) | no |
+| `ScrollBox` | long text Home loads (a fixed list: `notices`) filling the surface panel's height; Up/Down scroll; at most one per page | yes |
+| `Hint` | the dim key hint ("Up and Down scroll the notices. Back returns."); empty when `Hints.keys` is off | no |
+
+Layouts: `one-column` (blocks in one 1740u column) or `two-columns` (a
+560u start column and the 1110u surface panel at the end side, as About is
+today); both mirrored in RTL.
 
 Later blocks, when a panel needs them: `Rows` (a focusable list, for
 Settings and History), toggle and chevron rows. Badges stay a fixed list:
@@ -252,8 +259,27 @@ small JS renderer. One source, two surfaces, nothing to keep in sync by hand.
 ```
 
 Rules the schema enforces (unknown fields are errors):
-- **Nodes:** `column` (later `row`), `text`, `image`, and the page blocks of
-  § 4. Only the root sets size, radius and background.
+- **Faces:** `"face"` is `tile`, `row` or `page` and fixes the root:
+  - `tile`: a `column` (above), drawn as a component.
+  - `row`: a `list-row` with `title`, optional `detail` (texts) and
+    optional `attention` (a condition: the accent dot). Settings draws
+    every row of its list with one component (`ControlRow`), so a row
+    becomes a Slint global of pure functions (`title`, `detail`,
+    `attention`, each taking the `props` in order) that Rust calls to fill
+    the list.
+  - `page`: a `page` with `layout` (`one-column` or `two-columns`),
+    `start` and, for two columns, `end`: arrays of the § 4 blocks. Keys:
+    `title` (`value`, `size`: `large`/`medium`/`small`), `text` (`value`,
+    `size`: `normal`/`small`, `tone`: `normal`/`dim`), `status` (`value`,
+    `attention`), `hint` (`value`), `badge` (`name`), `scroll-box`
+    (`source`). `title`, `text`, `status` and `badge` take an optional
+    `show`. A `scroll-box` goes in `end` only, once; its page gets
+    `scroll-text`, `scroll-position` and `scroll-fraction` properties that
+    Home fills (it owns the scrolling), so those names are reserved.
+- **Conditions** (`show`, `attention`): a property's name (true when not
+  empty) or a `select` of `true`/`false` (else `false`).
+- **Nodes:** `column` (later `row`), `text`, `image` in a tile. Only the
+  root sets size, radius and background.
 - **Sizes** are numbers in `u` (the launcher's unit). The converter writes
   `N * u`; the phone page uses the same scale.
 - **Colours** are `Theme` token names only (`bg`, `surface`, `text`,
@@ -267,8 +293,8 @@ Rules the schema enforces (unknown fields are errors):
 - **Direction:** text aligns to `Dir.start`, images to the start side;
   mirrored in RTL on both surfaces. No `left`/`right` in templates.
 - **Properties** are strings declared in `props`; values come from the
-  panel's view (§ 3). Templates have no expressions beyond `show` and
-  `select`.
+  panel's view (§ 3). Templates have no expressions beyond `show`,
+  `attention` and `select`.
 
 **Pass bar for the spike** (owner, 2026-10-25), all four must hold:
 1. The generated tile looks identical to a hand-written Slint tile:
@@ -571,6 +597,42 @@ decision log, CHANGELOG.
 today (compared by eye against a screenshot of the desktop build); OK still
 runs Update RustTV; pointer and reduced effects behave as today. The row
 face is #40's `AboutRow` in Settings, fed from the same view.
+
+*Built 2026-11-20, with these differences from the plan above:*
+- **Templates hold the layout and blocks; views hold values.** `PanelPage`
+  and `PanelRow` carry property values (`Props`) like `PanelTile`, not the
+  § 3 sketch's `Layout` and `Vec<Vec<Block>>`: the page's layout is in
+  `templates/about_page.json`, so a second copy in Rust would only drift
+  (ARCHITECTURE.md D29). `about_view` fills all three faces; a name means
+  the same value on every face (`AboutPanel` global).
+- **Blocks are components with fixed variants** (`ui/blocks.slint`):
+  templates choose `large`/`medium`/`small`, `normal`/`small`, `dim`, never
+  sizes in `u`, so a later theme changes every page. `Hints` moved to
+  `ui/theme.slint` so generated pages can read it.
+- **The updater's line is words in the template**: the view names the
+  state (`update`: `idle`, `checking`, …, `failed`) and its detail, and the
+  page's `status` selects the text (the msgids of `Strings.update-line`,
+  which Settings' Updates row still uses).
+- **The row face is Settings' RustTV row** (`AboutRow::RustTv`, OK opens
+  the page), drawn as today: "RustTV <version>" and the licence line. The
+  plan's "Update available" stays on the Updates row right under it, so it
+  isn't shown twice. The row template becomes the `AboutListRow` global's
+  functions. Settings' unused "Licences and third-party notices" texts
+  went with the old `Strings.about-row` cases.
+- **No page action in the view yet:** OK on About stays the model's
+  (`Effect::Update`); `PanelAction` comes with a second page that has one.
+- **One new text:** the title "RustTV", kept as "RustTV" in every language
+  (it was a literal before), so nothing new needs measuring for fit.
+- **Look:** compared pixel by pixel with desktop snapshots of the Android
+  layout before and after (`RUSTTV_NO_DEVICE=1`; About page and scrolled
+  notices; English, Ukrainian while downloading, Arabic idle and with an
+  update available). The surface panel is identical; in English and
+  Arabic the blocks under the licence paragraph sit 1.5u lower (2 px at
+  2560 × 1440), Ukrainian is identical but for a few pixels. A small
+  heading keeps a 36u line box (`PageTitle`), so the notices start where
+  they did whatever the font. Settings' RustTV row is checked by a test
+  (`about_row_and_page_come_from_the_about_view`): the desktop demo
+  doesn't reach Settings' About section.
 
 **Step 3 — Remote as a panel** (decision 23). The § 3 sketch grows here:
 `PanelId::Remote`, `Line` kinds for the phone count and "Pairing", and a
