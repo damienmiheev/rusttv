@@ -123,6 +123,8 @@ pub(crate) enum ChangeView {
     PhoneRemoved { phone: String, name: String },
     /// The launcher's update switch.
     UpdateCheck { on: bool },
+    /// The launcher's effects switch: fewer effects for a weak GPU.
+    Effects { reduced: bool },
     /// A global setting; null = unset.
     Setting {
         key: String,
@@ -190,6 +192,7 @@ impl ChangeView {
                 name: name.clone(),
             },
             Change::UpdateCheck { on } => Self::UpdateCheck { on: *on },
+            Change::Effects { reduced } => Self::Effects { reduced: *reduced },
             Change::Setting { key, old, new } => Self::Setting {
                 key: key.clone(),
                 old: old.clone(),
@@ -253,6 +256,9 @@ pub(crate) fn change(change: &Change) -> String {
             "Check for updates automatically: {}",
             if *on { "on" } else { "off" }
         ),
+        Change::Effects { reduced } => {
+            format!("Effects: {}", if *reduced { "reduced" } else { "full" })
+        }
         Change::Setting { key, old, new } => {
             format!("{}: {} → {}", setting_name(key), setting(old), setting(new))
         }

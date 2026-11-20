@@ -413,3 +413,21 @@ msgstr "Ponsel {} dipasangkan"
 
 msgid "Removed the phone {}"
 msgstr "Ponsel {} dihapus"
+
+msgid "Effects"
+msgstr "Efek"
+
+msgid "Effects: {}"
+msgstr "Efek: {}"
+
+msgid "Full"
+msgstr "Penuh"
+
+msgid "Reduced"
+msgstr "Dikurangi"
+
+msgid "Shadows and backdrop"
+msgstr "Bayangan dan latar"
+
+msgid "No shadows or backdrop: smoother on a slow graphics chip"
+msgstr "Tanpa bayangan atau latar: lebih mulus di chip grafis lambat"

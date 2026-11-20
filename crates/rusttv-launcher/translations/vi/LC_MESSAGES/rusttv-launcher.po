@@ -413,3 +413,21 @@ msgstr "Đã ghép nối điện thoại {}"
 
 msgid "Removed the phone {}"
 msgstr "Đã xóa điện thoại {}"
+
+msgid "Effects"
+msgstr "Hiệu ứng"
+
+msgid "Effects: {}"
+msgstr "Hiệu ứng: {}"
+
+msgid "Full"
+msgstr "Đầy đủ"
+
+msgid "Reduced"
+msgstr "Giảm bớt"
+
+msgid "Shadows and backdrop"
+msgstr "Bóng đổ và nền"
+
+msgid "No shadows or backdrop: smoother on a slow graphics chip"
+msgstr "Không bóng đổ hay nền: mượt hơn trên chip đồ họa chậm"

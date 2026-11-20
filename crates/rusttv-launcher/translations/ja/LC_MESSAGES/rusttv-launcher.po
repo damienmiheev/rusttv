@@ -413,3 +413,21 @@ msgstr "スマホ {} をペア設定"
 
 msgid "Removed the phone {}"
 msgstr "スマホ {} を削除"
+
+msgid "Effects"
+msgstr "エフェクト"
+
+msgid "Effects: {}"
+msgstr "エフェクト: {}"
+
+msgid "Full"
+msgstr "フル"
+
+msgid "Reduced"
+msgstr "控えめ"
+
+msgid "Shadows and backdrop"
+msgstr "影と背景"
+
+msgid "No shadows or backdrop: smoother on a slow graphics chip"
+msgstr "影と背景なし: 遅いグラフィックチップでもなめらか"
