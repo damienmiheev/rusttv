@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel template preview</title>
+<style>
+/* The phone page's tokens and font (crates/rusttv-remote/page/index.html). */
+:root { --bg: #0E1014; --surface: #1C1F26; --text: #F2F3F5; --dim: #A4A9B4; --accent: #F5A524; }
+body { margin: 0; padding: 16px; background: var(--bg); color: var(--text);
+  font-family: Inter, -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+h2 { font-size: 13px; font-weight: 500; color: var(--dim); margin: 18px 0 8px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.cell { min-width: 0; }
+.cell p { font-size: 11px; color: var(--dim); margin: 4px 0 0; }
+.slint { width: 100%; border-radius: 12px; display: block; }
+#error { color: #ff6b6b; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div id="error"></div>
+<div id="out"></div>
+<script type="module">
+import { render } from "./render.js";
+
+const template = await (await fetch("../templates/about_tile.json")).json();
+// The launcher's own .po is the phone's dictionary: same message ids.
+const po = await (await fetch("../translations/uk/LC_MESSAGES/panel-templates-spike.po")).text();
+const uk = new Map([...po.matchAll(/msgid "(.*)"\nmsgstr "(.*)"/g)].map((m) => [m[1], m[2]]));
+const dictionaries = { en: new Map(), uk };
+
+const out = document.getElementById("out");
+try {
+  for (const lang of ["en", "uk"]) {
+    for (const rtl of [false, true]) {
+      for (const status of ["", "update", "downloading", "installing"]) {
+        const name = `${lang}-${rtl ? "rtl" : "ltr"}-${status || "none"}`;
+        const h = document.createElement("h2");
+        h.textContent = name;
+        const row = document.createElement("div");
+        row.className = "row";
+        const phone = document.createElement("div");
+        phone.className = "cell";
+        const tile = render(template, {
+          values: { version: "0.4.0", status },
+          tr: (id) => dictionaries[lang].get(id) || id,
+          badges: { "rusttv-logo": "../assets/rusttv-logo.png" },
+          rtl,
+        });
+        phone.append(tile);
+        phone.insertAdjacentHTML("beforeend", "<p>phone (render.js)</p>");
+        const tv = document.createElement("div");
+        tv.className = "cell";
+        tv.innerHTML = `<img class="slint" src="../target/pixels/${name}-gen.png"><p>TV (generated Slint)</p>`;
+        row.append(phone, tv);
+        out.append(h, row);
+        // u = the tile's width / 250, as on the TV.
+        tile.style.setProperty("--u", `${phone.clientWidth / 250}px`);
+      }
+    }
+  }
+} catch (error) {
+  document.getElementById("error").textContent = String(error);
+}
+</script>
+</body>
+</html>

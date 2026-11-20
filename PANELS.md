@@ -282,6 +282,36 @@ Rules the schema enforces (unknown fields are errors):
 If the spike fails, templates are hand-written in Slint and in the phone
 page's JS, kept in sync by screenshot tests.
 
+**Spike result (2026-11-20): passed, keep JSON.** Evidence and the full
+findings are in `spikes/panel-templates/README.md`:
+
+1. 16 of 16 software-renderer pictures are byte-identical to a
+   hand-written tile: every update state, LTR and RTL, English and
+   Ukrainian.
+2. The phone page matches by eye.
+3. `@tr` and `Theme` work through the converter.
+4. The converter is 428 lines, with errors that name the JSON path.
+
+What step 1 must add because of it:
+- **Theme:** `Theme` (exported) and `Dir` (with an `image-start`) move to
+  their own `theme.slint`. `home.slint`, `quick.slint` (its `Colours` and
+  `start`) and generated files import it.
+- **Messages:**
+  - Template msgids must reach the `.pot`. Generated files sit in
+    `OUT_DIR`, where `slint-tr-extractor` doesn't look.
+  - Keep `DefaultTranslationContext::None`.
+- **Phone i18n:** `page/i18n.js` uses its own keys, not msgids, so the
+  phone needs a msgid → text table built from the launcher's `.po` files.
+  Placeholders other than `{}` are refused there, or supported on both
+  sides.
+- **One set of bad-template tests** for `convert.rs` and the JS renderer.
+  Duplicate JSON keys are refused.
+- **Tokens and elision:** the phone's `text-dim` is `--dim`, mapped by the
+  renderer. On both surfaces, text aligns to the UI's start side, and the
+  text's own script decides where "…" goes.
+- **Fit:** the Ukrainian "Update available" doesn't fit the caption at 23u,
+  so the design pass checks every language.
+
 **About's faces (v1):**
 - **Tile:** the RustTV logo and "RustTV <version>". The caption follows the
   updater's state (`UpdateStatus`, `ui.rs`):
@@ -483,7 +513,8 @@ or shows another way, with no second copy of the colours. Done when the
 four pass-bar points in § 4.1 are answered with evidence (pixel diffs LTR
 and RTL for every `UpdateStatus`, a phone screenshot, converter line count).
 Result: keep JSON, or fall back to hand-written templates. Nothing from the
-spike merges as is.
+spike merges as is. **Done 2026-11-20: passed, keep JSON** (§ 4.1 "Spike
+result"; code in `spikes/panel-templates/`, outside the workspace).
 
 **Step 1 — About's tile on the contract** (after #40 is merged). The
 contract and its first caller land together, so no dead code meets

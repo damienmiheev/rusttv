@@ -1,0 +1,17 @@
+// Answers PANELS.md § 10 step 0's "how do generated files reach Theme":
+// Theme and Dir move to their own exported file, which home.slint and every
+// generated template import. One copy of the colours.
+
+export global Dir {
+    in property <bool> rtl;
+    out property <TextHorizontalAlignment> start: rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+    out property <ImageHorizontalAlignment> image-start: rtl ? ImageHorizontalAlignment.right : ImageHorizontalAlignment.left;
+}
+
+export global Theme {
+    out property <color> bg: #0E1014;
+    out property <color> surface: #1C1F26;
+    out property <color> text: #F2F3F5;
+    out property <color> text-dim: #A4A9B4;
+    out property <color> accent: #F5A524;
+}

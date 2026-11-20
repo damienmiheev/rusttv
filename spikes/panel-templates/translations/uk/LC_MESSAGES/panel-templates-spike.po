@@ -1,0 +1,16 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: uk\n"
+
+msgid "RustTV {}"
+msgstr "RustTV {}"
+
+msgid "Update available"
+msgstr "Доступне оновлення"
+
+msgid "Downloading"
+msgstr "Завантаження"
+
+msgid "Installing"
+msgstr "Встановлення"
