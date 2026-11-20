@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use slint_build::{CompilerConfiguration, DefaultTranslationContext};
 
 /// The banners of the launcher's own tiles, rendered by scripts/brand/render.sh.
-const TILES: [&str; 4] = ["about", "settings", "hidden", "remote"];
+const TILES: [&str; 5] = ["about", "settings", "hidden", "remote", "history"];
 
 /// Their size: an Android TV banner (xhdpi), like the apps' banners.
 const TILE_SIZE: (u32, u32) = (320, 180);

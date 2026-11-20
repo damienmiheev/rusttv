@@ -16,7 +16,7 @@
     "menu_move", "menu_hide", "hidden_title", "tile_settings", "tile_about", "hidden_hint", "screen_hint",
     "trust_title", "trust_intro", "trust_start", "trust_download", "trust_ios", "trust_android", "trust_waiting",
     "trust_in_safari", "home_unpaired", "mode_switch", "search_app", "caption_update", "caption_downloading",
-    "caption_installing",
+    "caption_installing", "tile_history", "caption_waiting", "caption_just_now",
   ];
 
   const T = {
@@ -52,6 +52,7 @@
       "Switch between pointer and arrows",
       "Search in {}",
       "Update available", "Downloading", "Installing",
+      "History", "Waiting", "Just now",
     ],
     uk: [
       "На телевізорі відкрийте плитку RustTV Remote на головному екрані, виберіть «Під'єднати телефон» і відскануйте код камерою цього телефона.",
@@ -85,6 +86,7 @@
       "Перемкнути між вказівником і стрілками",
       "Пошук у {}",
       "Є оновлення", "Завантаження", "Встановлення",
+      "Історія", "Очікує", "Щойно",
     ],
     ru: [
       "На телевизоре откройте плитку RustTV Remote на главном экране, выберите «Подключить телефон» и отсканируйте код камерой этого телефона.",
@@ -118,6 +120,7 @@
       "Переключить между указателем и стрелками",
       "Поиск в {}",
       "Есть обновление", "Загрузка", "Установка",
+      "История", "Ожидает", "Только что",
     ],
     de: [
       "Öffne auf dem Fernseher die Kachel RustTV Remote auf dem Startbildschirm, wähle „Handy koppeln“ und scanne den Code mit der Kamera dieses Handys.",
@@ -151,6 +154,7 @@
       "Zwischen Zeiger und Pfeilen wechseln",
       "In {} suchen",
       "Update verfügbar", "Wird geladen", "Wird installiert",
+      "Verlauf", "Wartet", "Gerade eben",
     ],
     es: [
       "En el televisor, abre el mosaico RustTV Remote en Inicio, elige Vincular un teléfono y escanea el código con la cámara de este teléfono.",
@@ -184,6 +188,7 @@
       "Cambiar entre puntero y flechas",
       "Buscar en {}",
       "Nueva versión", "Descargando", "Instalando",
+      "Historial", "En espera", "Ahora mismo",
     ],
     fr: [
       "Sur le téléviseur, ouvrez la tuile RustTV Remote sur l'écran d'accueil, choisissez Associer un téléphone puis scannez le code avec l'appareil photo de ce téléphone.",
@@ -217,6 +222,7 @@
       "Basculer entre pointeur et flèches",
       "Rechercher dans {}",
       "Nouvelle version", "Téléchargement", "Installation",
+      "Historique", "En attente", "À l’instant",
     ],
     it: [
       "Sulla TV apri il riquadro RustTV Remote nella Home, scegli Associa un telefono e inquadra il codice con la fotocamera di questo telefono.",
@@ -250,6 +256,7 @@
       "Passa tra puntatore e frecce",
       "Cerca in {}",
       "Nuova versione", "Download in corso", "Installazione",
+      "Cronologia", "In attesa", "Proprio ora",
     ],
     pt_BR: [
       "Na TV, abra o bloco RustTV Remote na tela inicial, escolha Parear um celular e leia o código com a câmera deste celular.",
@@ -283,6 +290,7 @@
       "Alternar entre ponteiro e setas",
       "Pesquisar no {}",
       "Nova versão", "Baixando", "Instalando",
+      "Histórico", "Aguardando", "Agora mesmo",
     ],
     nl: [
       "Open op de tv de tegel RustTV Remote op het startscherm, kies Telefoon koppelen en scan de code met de camera van deze telefoon.",
@@ -316,6 +324,7 @@
       "Wisselen tussen aanwijzer en pijlen",
       "Zoeken in {}",
       "Nieuwe versie", "Downloaden", "Installeren",
+      "Geschiedenis", "Wacht", "Zojuist",
     ],
     pl: [
       "Na telewizorze otwórz kafelek RustTV Remote na ekranie głównym, wybierz Sparuj telefon i zeskanuj kod aparatem tego telefonu.",
@@ -349,6 +358,7 @@
       "Przełącz między wskaźnikiem a strzałkami",
       "Szukaj w {}",
       "Nowa wersja", "Pobieranie", "Instalowanie",
+      "Historia", "Oczekuje", "Przed chwilą",
     ],
     tr: [
       "TV'de ana ekrandaki RustTV Remote kutucuğunu açın, Telefon eşle'yi seçin ve kodu bu telefonun kamerasıyla okutun.",
@@ -382,6 +392,7 @@
       "İşaretçi ile oklar arasında geçiş yap",
       "{} içinde ara",
       "Güncelleme var", "İndiriliyor", "Yükleniyor",
+      "Geçmiş", "Bekliyor", "Az önce",
     ],
     ar: [
       "على التلفزيون، افتح مربع RustTV Remote في الشاشة الرئيسية واختر «إقران هاتف»، ثم امسح الرمز بكاميرا هذا الهاتف.",
@@ -415,6 +426,7 @@
       "التبديل بين المؤشر والأسهم",
       "البحث في {}",
       "تحديث متاح", "جارٍ التنزيل", "جارٍ التثبيت",
+      "السجل", "قيد الانتظار", "الآن",
     ],
     he: [
       "בטלוויזיה, פתחו את האריח RustTV Remote במסך הבית, בחרו צימוד טלפון וסרקו את הקוד במצלמת הטלפון הזה.",
@@ -448,6 +460,7 @@
       "מעבר בין סמן לחצים",
       "חיפוש ב-{}",
       "יש עדכון", "ההורדה מתבצעת", "ההתקנה מתבצעת",
+      "היסטוריה", "ממתין", "הרגע",
     ],
     hi: [
       "टीवी पर होम स्क्रीन पर RustTV Remote टाइल खोलें, 'फ़ोन जोड़ें' चुनें, फिर इस फ़ोन के कैमरे से कोड स्कैन करें।",
@@ -481,6 +494,7 @@
       "पॉइंटर और तीरों के बीच बदलें",
       "{} में खोजें",
       "अपडेट उपलब्ध", "डाउनलोड जारी", "इंस्टॉल जारी",
+      "इतिहास", "इंतज़ार में", "अभी-अभी",
     ],
     id: [
       "Di TV, buka ubin RustTV Remote di layar utama, pilih Pasangkan ponsel, lalu pindai kodenya dengan kamera ponsel ini.",
@@ -514,6 +528,7 @@
       "Beralih antara penunjuk dan panah",
       "Cari di {}",
       "Ada pembaruan", "Mendownload", "Menginstal",
+      "Riwayat", "Menunggu", "Baru saja",
     ],
     ja: [
       "テレビのホームで RustTV Remote のタイルを開き、「スマホをペアリング」を選んで、このスマホのカメラでコードを読み取ってください。",
@@ -547,6 +562,7 @@
       "ポインタと矢印を切り替え",
       "{} で検索",
       "アップデートがあります", "ダウンロード中", "インストール中",
+      "履歴", "パソコン待ち", "たった今",
     ],
     ko: [
       "TV 홈 화면에서 RustTV Remote 타일을 열고 휴대폰 연결을 선택한 뒤, 이 휴대폰 카메라로 코드를 스캔하세요.",
@@ -580,6 +596,7 @@
       "포인터와 화살표 전환",
       "{}에서 검색",
       "업데이트 있음", "다운로드 중", "설치 중",
+      "기록", "컴퓨터 대기", "방금",
     ],
     th: [
       "บนทีวี เปิดไทล์ RustTV Remote ในหน้าหลัก เลือก จับคู่โทรศัพท์ แล้วสแกนโค้ดด้วยกล้องของโทรศัพท์เครื่องนี้",
@@ -613,6 +630,7 @@
       "สลับระหว่างตัวชี้กับลูกศร",
       "ค้นหาใน {}",
       "มีอัปเดต", "กำลังโหลด", "กำลังติดตั้ง",
+      "ประวัติ", "รอคอมพิวเตอร์", "เมื่อสักครู่",
     ],
     vi: [
       "Trên TV, mở ô RustTV Remote trên màn hình chính, chọn Ghép nối điện thoại rồi quét mã bằng camera của điện thoại này.",
@@ -646,6 +664,7 @@
       "Chuyển giữa con trỏ và mũi tên",
       "Tìm trong {}",
       "Có bản cập nhật", "Đang tải xuống", "Đang cài đặt",
+      "Lịch sử", "Đang chờ", "Vừa xong",
     ],
     zh_CN: [
       "在电视主屏幕上打开 RustTV Remote 磁贴，选择“配对手机”，然后用这部手机的相机扫描二维码。",
@@ -679,6 +698,7 @@
       "在指针和方向键之间切换",
       "在 {} 中搜索",
       "有可用更新", "正在下载", "正在安装",
+      "历史记录", "等待电脑", "刚刚",
     ],
     zh_TW: [
       "在電視主畫面上開啟 RustTV Remote 方塊，選擇「配對手機」，然後用這支手機的相機掃描 QR 碼。",
@@ -712,6 +732,7 @@
       "在指標和方向鍵之間切換",
       "在 {} 中搜尋",
       "有可用更新", "正在下載", "正在安裝",
+      "記錄", "等待電腦", "剛剛",
     ],
   };
 

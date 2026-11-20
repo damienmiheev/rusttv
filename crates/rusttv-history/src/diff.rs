@@ -5,6 +5,10 @@ use std::collections::BTreeSet;
 
 use crate::state::{Launcher, PackageState, SETTING_KEYS, State};
 
+/// Built-in tiles every Home has (RustTV Remote; History's panel tile,
+/// PANELS.md § 6), which a change list names only as moved.
+const EVERY_HOME: [&str; 2] = ["remote", "panel:history"];
+
 /// One difference between two snapshots.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -150,9 +154,10 @@ pub fn diff(old: &State, new: &State) -> Vec<Change> {
             .collect()
     };
     let (before, after) = (on_home(was), on_home(now));
-    // Every Home has the RustTV Remote tile; snapshots before format 5 left
-    // it out, so it only seems to come or go (only its moves count).
-    let shown = |tile: &&String| tile.as_str() != "remote";
+    // Every Home has these tiles; snapshots before they were recorded
+    // (format 5, format 6) left them out, so they only seem to come or go
+    // (only their moves count).
+    let shown = |tile: &&String| !EVERY_HOME.contains(&tile.as_str());
     for tile in after
         .iter()
         .filter(shown)
@@ -473,6 +478,30 @@ mod tests {
             diff(&new, &moved),
             vec![Change::Reordered {
                 moved: vec!["remote".into(), "a.b/.A".into(), "about".into()]
+            }]
+        );
+    }
+
+    /// The same for History's panel tile, which snapshots before format 6
+    /// leave out.
+    #[test]
+    fn the_history_tile_is_never_added_or_removed_only_moved() {
+        let mut old = State::new();
+        old.launcher.order = ["a.b/.A", "remote"].map(String::from).to_vec();
+        let mut new = State::new();
+        new.launcher.order = ["a.b/.A", "remote", "panel:history"]
+            .map(String::from)
+            .to_vec();
+        assert_eq!(diff(&old, &new), []);
+        assert_eq!(diff(&new, &old), []);
+        let mut moved = new.clone();
+        moved.launcher.order = ["panel:history", "a.b/.A", "remote"]
+            .map(String::from)
+            .to_vec();
+        assert_eq!(
+            diff(&new, &moved),
+            vec![Change::Reordered {
+                moved: vec!["panel:history".into(), "a.b/.A".into(), "remote".into()]
             }]
         );
     }

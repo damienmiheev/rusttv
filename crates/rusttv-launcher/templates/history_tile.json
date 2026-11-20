@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "component": "HistoryTile",
+  "face": "tile",
+  "props": ["status", "count"],
+  "root": { "column": {
+    "width": 250, "height": 141, "radius": 12, "background": "surface",
+    "padding": 16, "gap": 4, "align": "end",
+    "children": [
+      { "image": { "badge": "rusttv-history", "height": 44 } },
+      { "text": { "value": { "select": "status", "cases": {
+                    "now": { "tr": "Last change" },
+                    "minutes": { "tr": "Last change" },
+                    "hours": { "tr": "Last change" },
+                    "days": { "tr": "Last change" } },
+                    "else": { "tr": "History" } },
+                  "size": 27, "weight": 500, "color": "text" } },
+      { "text": { "show": "status",
+                  "value": { "select": "status", "cases": {
+                    "waiting": { "tr": "Waiting" },
+                    "now": { "tr": "Just now" },
+                    "minutes": { "tr": "{n} minute ago", "plural": "{n} minutes ago", "count": "count" },
+                    "hours": { "tr": "{n} hour ago", "plural": "{n} hours ago", "count": "count" },
+                    "days": { "tr": "{n} day ago", "plural": "{n} days ago", "count": "count" } } },
+                  "size": 23,
+                  "color": { "select": "status", "cases": { "waiting": "accent" }, "else": "text-dim" } } }
+    ] } }
+}

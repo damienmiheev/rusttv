@@ -509,3 +509,33 @@ msgstr "טלפונים: {}"
 #: templates/remote_tile.json
 msgid "Pairing"
 msgstr "צימוד פתוח"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "שינוי אחרון"
+
+#: templates/history_tile.json
+msgid "Waiting"
+msgstr "ממתין"
+
+#: templates/history_row.json
+msgid "Just now"
+msgstr "הרגע"
+
+#: templates/history_row.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "לפני דקה"
+msgstr[1] "לפני {n} דקות"
+
+#: templates/history_row.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "לפני שעה"
+msgstr[1] "לפני {n} שעות"
+
+#: templates/history_row.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "לפני יום"
+msgstr[1] "לפני {n} ימים"

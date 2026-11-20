@@ -509,3 +509,30 @@ msgstr "โทรศัพท์: {}"
 #: templates/remote_tile.json
 msgid "Pairing"
 msgstr "กำลังจับคู่"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "เปลี่ยนล่าสุด"
+
+#: templates/history_tile.json
+msgid "Waiting"
+msgstr "รอคอมพิวเตอร์"
+
+#: templates/history_row.json
+msgid "Just now"
+msgstr "เมื่อสักครู่"
+
+#: templates/history_row.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "{n} นาทีที่แล้ว"
+
+#: templates/history_row.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "{n} ชั่วโมงที่แล้ว"
+
+#: templates/history_row.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "{n} วันที่แล้ว"

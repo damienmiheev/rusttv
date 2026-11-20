@@ -40,10 +40,10 @@ commands.
 `state.toml`, the only file in each commit's tree:
 
 ```toml
-format = 5                     # the RustTV Remote tile's name needs it (below)
+format = 6                     # History's panel tile's name needs it (below)
 
 [launcher]                     # the launcher's own state; only the TV writes it
-order = ["com.netflix.ninja/.MainActivity", "folder:1", "about", "settings", "remote"]
+order = ["com.netflix.ninja/.MainActivity", "folder:1", "about", "settings", "remote", "panel:history"]
 hidden = ["com.example/.Main"]
 update_check = true
 reduced_effects = true         # format 4; only when effects are reduced
@@ -72,16 +72,25 @@ takeover = "active"
   focus. Uninstalled apps' names are kept (as the order file does). The
   RustTV Remote tile (`remote`) is recorded too (*since 2026-11-20*,
   PANELS.md § 9 Q9), so undo brings back its place; since every Home has
-  it, every snapshot with a launcher order is format 5 (below), which
-  builds before format 5 refuse. Older snapshots don't have it: they
+  it, every snapshot with a launcher order is at least format 5 (below;
+  format 6 since History's tile is recorded too), which builds before
+  format 5 refuse. Older snapshots don't have it: they
   still restore, and Home puts the tile at the end. A change list never
   names `remote` as added or removed (an older snapshot only lacks it),
   only as moved.
+- **Panel tiles** (format 6, *since 2026-11-20*, PANELS.md § 6): a
+  panel's own tile is `panel:<id>` (History's: `panel:history`), recorded
+  like `remote`. Every Home has History's tile, so every new snapshot is
+  format 6, which builds before it refuse (an older build would read the
+  name as an app and drop it). Older snapshots don't have it: they still
+  restore, and Home puts the tile at the end. A change list never names
+  it added or removed, only moved.
 - **Linux tile names** (format 5): on Linux, apps are desktop entries, named
   by their id (`org.kde.dolphin.desktop`). A snapshot holding one, in the
   order, hidden or in a folder, is written as format 5, which older builds
   refuse. So is every snapshot with the RustTV Remote tile in its order
-  (above): on Android too, new snapshots are format 5.
+  (above): on Android too, new snapshots are at least format 5 (6 with
+  History's tile, above).
 - **Folders** (*added 2026-10-25*): a folder is the tile `folder:<number>`
   in `order`, and `[launcher.folders."folder:<number>"]` holds its name (1–40
   characters, no control characters; shown only, never run) and its apps in
@@ -438,10 +447,18 @@ answers).
 ### 8.1 Entry
 A **Settings** tile next to About, in About's quiet style. *As built:* after
 About; the two stay together at the end, and new apps go before them.
+*Since 2026-11-20* History also has its own tile (a panel, PANELS.md § 4):
+the last change's age, or "Waiting" in the accent while an approval waits
+for the computer; OK opens Settings on its History section. Its data is a
+summary the history thread keeps after its own work (newest entry's time,
+approvals waiting); Home only copies it (§ 9), so the tile shows its plain
+state until the history has been read once since start.
 
 ### 8.2 Page
 Hidden-apps header: "Settings" (57u) at 90u/90u, one dim hint line. Below,
-two columns: left, the sections as menu rows — **Animations, Updates,
+two columns: left, the sections as menu rows (*since 2026-11-20*,
+History's with the last change's age under it, or the accent dot while an
+approval waits) — **Animations, Updates,
 History, Waiting for your computer** (only when something waits); right, the
 surface panel showing the selected section. Up/Down move; Right or OK enter
 the panel; Left or Back return; Back on the list leaves Settings.

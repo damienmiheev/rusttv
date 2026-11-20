@@ -219,6 +219,19 @@ impl SettingsPage {
         true
     }
 
+    /// Selects the History section, with focus on the section list (its
+    /// entries arrive later): History's tile opens Settings here.
+    pub fn show_history(&mut self) {
+        if let Some(section) = self
+            .sections()
+            .iter()
+            .position(|section| *section == Section::History)
+        {
+            self.section = section;
+            self.focus = Focus::List;
+        }
+    }
+
     /// Replaces the data (after a change or a refresh), keeping focus where
     /// it still fits.
     pub fn refresh(&mut self, overview: Overview) {

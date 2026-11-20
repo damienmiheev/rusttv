@@ -34,6 +34,7 @@ fn tile(id: &str, label: &str, folder: Option<&str>) -> TileView {
         banner: None,
         folder: folder.map(Into::into),
         caption: None,
+        count: None,
     }
 }
 
@@ -82,6 +83,12 @@ fn main() {
                 // As when an update is available.
                 caption: Some(Caption::Update),
                 ..tile("about", "About", None)
+            },
+            TileView {
+                // The last change two hours ago.
+                caption: Some(Caption::Hours),
+                count: Some(2),
+                ..tile("panel:history", "History", None)
             },
         ],
         focused: Some("com.google.youtube/.Main".into()),

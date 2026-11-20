@@ -509,3 +509,45 @@ msgstr "الهواتف: {}"
 #: templates/remote_tile.json
 msgid "Pairing"
 msgstr "جارٍ الإقران"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "آخر تغيير"
+
+#: templates/history_tile.json
+msgid "Waiting"
+msgstr "قيد الانتظار"
+
+#: templates/history_row.json
+msgid "Just now"
+msgstr "الآن"
+
+#: templates/history_row.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "قبل {n} دقيقة"
+msgstr[1] "قبل دقيقة"
+msgstr[2] "قبل دقيقتين"
+msgstr[3] "قبل {n} دقائق"
+msgstr[4] "قبل {n} دقيقة"
+msgstr[5] "قبل {n} دقيقة"
+
+#: templates/history_row.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "قبل {n} ساعة"
+msgstr[1] "قبل ساعة"
+msgstr[2] "قبل ساعتين"
+msgstr[3] "قبل {n} ساعات"
+msgstr[4] "قبل {n} ساعة"
+msgstr[5] "قبل {n} ساعة"
+
+#: templates/history_row.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "قبل {n} يوم"
+msgstr[1] "قبل يوم"
+msgstr[2] "قبل يومين"
+msgstr[3] "قبل {n} أيام"
+msgstr[4] "قبل {n} يومًا"
+msgstr[5] "قبل {n} يوم"

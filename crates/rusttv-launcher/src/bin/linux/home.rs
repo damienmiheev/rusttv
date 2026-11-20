@@ -251,7 +251,7 @@ pub(crate) fn main() -> Result<(), Box<dyn Error>> {
     }
     let dir = state_dir()?;
     std::fs::create_dir_all(&dir)?;
-    start_desktop_history(dir.clone());
+    start_desktop_history(dir.clone(), true);
 
     let lifecycle = Lifecycle::default();
     LIFECYCLE.with(|slot| *slot.borrow_mut() = Some(lifecycle.clone()));

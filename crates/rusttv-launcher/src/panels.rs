@@ -5,10 +5,15 @@
 //! (`templates/*.json` `props`); RustTV's generated templates draw them,
 //! and a page's layout and blocks live in its template, not here.
 //! Views carry kinds and values, never translated words: the template
-//! translates (`@tr`). No trait: About's and Remote's views take different
-//! data and share only [`PanelView`] (PANELS.md § 3).
+//! translates (`@tr`). No trait: About's, Remote's and History's views take
+//! different data and share only [`PanelView`] (PANELS.md § 3).
 
+use crate::history::Summary;
 use crate::platform::UpdateStatus;
+
+/// Times before this (2024-01-01, Unix seconds) mean the TV's clock wasn't
+/// set: no age is shown for them.
+pub(crate) const CLOCK_SET_AFTER: i64 = 1_704_067_200;
 
 /// One value per template property, in the template's `props` order.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,7 +51,7 @@ pub(crate) struct PanelPage {
 /// Which faces a panel has: `None` for a face the panel doesn't have. About
 /// has all three, and Home relies on it (tests check it): the About page and
 /// Settings' RustTV row are always there. RustTV Remote has a tile and a
-/// page.
+/// page; History a tile and a row (its page is Settings' History section).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PanelView {
     pub tile: Option<PanelTile>,
@@ -117,6 +122,45 @@ pub(crate) fn remote_view(phones: usize, pairing: bool) -> PanelView {
         page: Some(PanelPage {
             props: Props(Vec::new()),
         }),
+    }
+}
+
+/// History (templates/history_*.json). `status` is "waiting" while an
+/// approval waits for the computer (the tile's caption and the row's dot
+/// in the accent), else the last change's age: "now" (under a minute),
+/// "minutes", "hours" or "days", with that number as `count`; "" (the
+/// tile's plain state) before the history thread has read the history
+/// ([`Summary`], `None`), for an empty history, or when the TV's clock
+/// isn't set or is behind the entry. `now_unix` is the TV's clock: Home
+/// formats the age when it reads the summary (resume, focus changes),
+/// never on a timer (PANELS.md § 4).
+pub(crate) fn history_view(summary: Option<&Summary>, now_unix: i64) -> PanelView {
+    let (status, count) = match summary {
+        Some(summary) if summary.pending > 0 => ("waiting", 0),
+        Some(Summary {
+            last_unix: Some(last),
+            ..
+        }) if *last >= CLOCK_SET_AFTER && now_unix >= *last => {
+            let seconds = now_unix - last;
+            match seconds {
+                0..60 => ("now", 0),
+                60..3_600 => ("minutes", seconds / 60),
+                3_600..86_400 => ("hours", seconds / 3_600),
+                _ => ("days", seconds / 86_400),
+            }
+        }
+        _ => ("", 0),
+    };
+    let props = || {
+        Props(vec![
+            ("status", status.to_owned()),
+            ("count", count.to_string()),
+        ])
+    };
+    PanelView {
+        tile: Some(PanelTile { props: props() }),
+        row: Some(PanelRow { props: props() }),
+        page: None,
     }
 }
 
@@ -376,6 +420,119 @@ mod tests {
         assert_eq!(cases, ["pairing"]);
     }
 
+    const NOW: i64 = 1_790_000_000;
+
+    fn history(summary: Option<Summary>, now: i64) -> (String, String) {
+        let view = history_view(summary.as_ref(), now);
+        let tile = view.tile.expect("History has a tile").props;
+        let row = view.row.expect("History has a row").props;
+        assert_eq!(tile, row, "a name means the same on every face");
+        assert!(view.page.is_none(), "its page is Settings' History section");
+        (tile.get("status").to_owned(), tile.get("count").to_owned())
+    }
+
+    fn last(seconds_ago: i64) -> Option<Summary> {
+        Some(Summary {
+            last_unix: Some(NOW - seconds_ago),
+            pending: 0,
+        })
+    }
+
+    /// The age's unit and number at every boundary; the plain state before
+    /// the summary arrives, for an empty history and a clock that isn't
+    /// set; "waiting" over any age while an approval waits.
+    #[test]
+    fn history_tile_shows_the_age_or_an_approval_waiting() {
+        let cases = [
+            (None, NOW, "", "0"),
+            (Some(Summary::default()), NOW, "", "0"),
+            (last(0), NOW, "now", "0"),
+            (last(59), NOW, "now", "0"),
+            (last(60), NOW, "minutes", "1"),
+            (last(3_599), NOW, "minutes", "59"),
+            (last(3_600), NOW, "hours", "1"),
+            (last(7_300), NOW, "hours", "2"),
+            (last(86_399), NOW, "hours", "23"),
+            (last(86_400), NOW, "days", "1"),
+            (last(40 * 86_400), NOW, "days", "40"),
+            // The TV's clock behind the entry, or not set at all.
+            (last(-5), NOW, "", "0"),
+            (last(10), CLOCK_SET_AFTER - 1 + 10, "", "0"),
+            (
+                Some(Summary {
+                    last_unix: Some(NOW - 7_300),
+                    pending: 2,
+                }),
+                NOW,
+                "waiting",
+                "0",
+            ),
+            (
+                Some(Summary {
+                    last_unix: None,
+                    pending: 1,
+                }),
+                NOW,
+                "waiting",
+                "0",
+            ),
+        ];
+        for (summary, now, status, count) in cases {
+            assert_eq!(
+                history(summary, now),
+                (status.to_owned(), count.to_owned()),
+                "{summary:?} at {now}"
+            );
+        }
+    }
+
+    /// History's view sets exactly the properties its templates declare,
+    /// and its tile, row and the phone (remote.rs) have words for every
+    /// status the view names and no others.
+    #[test]
+    fn history_view_matches_its_templates() {
+        let declared = |name: &str| -> Vec<String> {
+            template(name)["props"]
+                .as_array()
+                .expect("props")
+                .iter()
+                .map(|prop| prop.as_str().expect("string").to_owned())
+                .collect()
+        };
+        let view = history_view(last(10).as_ref(), NOW);
+        assert_eq!(
+            names(&view.tile.expect("tile").props),
+            declared("history_tile")
+        );
+        assert_eq!(
+            names(&view.row.expect("row").props),
+            declared("history_row")
+        );
+        let mut named = vec!["days", "hours", "minutes", "now", "waiting"];
+        named.sort_unstable();
+        let cases = |value: &serde_json::Value| -> Vec<String> {
+            let mut cases: Vec<String> = value["cases"]
+                .as_object()
+                .expect("cases")
+                .keys()
+                .cloned()
+                .collect();
+            cases.sort_unstable();
+            cases
+        };
+        let tile = template("history_tile");
+        let caption = tile["root"]["column"]["children"]
+            .as_array()
+            .expect("children")
+            .iter()
+            .filter_map(|child| child.get("text"))
+            .find(|text| text["show"] == "status")
+            .expect("the caption");
+        assert_eq!(cases(&caption["value"]), named);
+        let row = template("history_row");
+        assert_eq!(cases(&row["root"]["list-row"]["detail"]), named);
+    }
+
     /// [`UPDATE_STATUSES`] holds each variant once: a new variant fails to
     /// compile here until it is given a place, and then the list must hold it.
     #[test]
@@ -412,12 +569,17 @@ mod tests {
         );
     }
 
-    /// Every text a template shows, as `@tr` message ids.
-    fn texts(value: &serde_json::Value, out: &mut Vec<String>) {
+    /// Every text a template shows, as `@tr` message ids, with its English
+    /// plural for a text with plural forms.
+    fn texts(value: &serde_json::Value, out: &mut Vec<(String, Option<String>)>) {
         match value {
             serde_json::Value::Object(map) => {
                 if let Some(serde_json::Value::String(text)) = map.get("tr") {
-                    out.push(text.clone());
+                    let plural = map
+                        .get("plural")
+                        .and_then(|p| p.as_str())
+                        .map(str::to_owned);
+                    out.push((text.clone(), plural));
                 }
                 map.values().for_each(|v| texts(v, out));
             }
@@ -426,44 +588,102 @@ mod tests {
         }
     }
 
-    /// A gettext file's entries as (msgid, msgstr), still escaped, with
-    /// wrapped lines (`msgid ""` then `"…"` lines) joined.
-    fn entries(file: &str) -> Vec<(String, String)> {
-        let mut out: Vec<(String, String)> = Vec::new();
+    /// One gettext entry, still escaped: its msgid, its msgid_plural (if
+    /// any) and its msgstr, or each msgstr[n] in order.
+    #[derive(Debug, Default)]
+    struct Entry {
+        id: String,
+        plural: Option<String>,
+        strs: Vec<String>,
+    }
+
+    /// Which string a `"…"` continuation line extends.
+    #[derive(Clone, Copy)]
+    enum Field {
+        Id,
+        Plural,
+        Str(usize),
+    }
+
+    /// A gettext file's entries, with wrapped lines (`msgid ""` then `"…"`
+    /// lines) joined.
+    fn entries(file: &str) -> Vec<Entry> {
+        let mut out: Vec<Entry> = Vec::new();
         let mut last = None;
         for line in file.lines() {
-            let (key, rest) = if let Some(rest) = line.strip_prefix("msgid ") {
-                out.push((String::new(), String::new()));
-                (Some(0), rest)
+            let (field, rest) = if let Some(rest) = line.strip_prefix("msgid ") {
+                out.push(Entry::default());
+                (Some(Field::Id), rest)
+            } else if let Some(rest) = line.strip_prefix("msgid_plural ") {
+                (Some(Field::Plural), rest)
             } else if let Some(rest) = line.strip_prefix("msgstr ") {
-                (Some(1), rest)
+                (Some(Field::Str(0)), rest)
+            } else if let Some((index, rest)) = line
+                .strip_prefix("msgstr[")
+                .and_then(|rest| rest.split_once("] "))
+            {
+                (index.parse().ok().map(Field::Str), rest)
             } else if line.starts_with('"') {
                 (last, line)
             } else {
                 last = None;
                 continue;
             };
-            last = key;
+            last = field;
             let text = rest
                 .trim()
                 .strip_prefix('"')
                 .and_then(|text| text.strip_suffix('"'))
                 .unwrap_or_default();
-            if let (Some(field), Some(entry)) = (key, out.last_mut()) {
-                if field == 0 {
-                    &mut entry.0
-                } else {
-                    &mut entry.1
+            let (Some(field), Some(entry)) = (field, out.last_mut()) else {
+                continue;
+            };
+            match field {
+                Field::Id => entry.id.push_str(text),
+                Field::Plural => entry.plural.get_or_insert_default().push_str(text),
+                Field::Str(index) => {
+                    if entry.strs.len() <= index {
+                        entry.strs.resize(index + 1, String::new());
+                    }
+                    entry.strs[index].push_str(text);
                 }
-                .push_str(text);
             }
         }
         out
     }
 
+    /// The number of plural forms a `.po` file's header names.
+    fn plural_forms(entries: &[Entry]) -> usize {
+        let header = &entries.first().expect("a header").strs[0];
+        let forms = header
+            .split("nplurals=")
+            .nth(1)
+            .expect("Plural-Forms names nplurals");
+        forms
+            .split(';')
+            .next()
+            .and_then(|n| n.trim().parse().ok())
+            .expect("a number of forms")
+    }
+
+    #[test]
+    fn po_entries_read_plural_forms() {
+        let po = "msgid \"\"\nmsgstr \"\"\n\"Plural-Forms: nplurals=3; plural=0;\\n\"\n\n\
+                  msgid \"{n} day\"\nmsgid_plural \"{n} days\"\nmsgstr[0] \"a\"\nmsgstr[1] \"\"\n\"b\"\nmsgstr[2] \"c\"\n\n\
+                  msgid \"One\"\nmsgstr \"Uno\"\n";
+        let entries = entries(po);
+        assert_eq!(plural_forms(&entries), 3);
+        assert_eq!(entries[1].id, "{n} day");
+        assert_eq!(entries[1].plural.as_deref(), Some("{n} days"));
+        assert_eq!(entries[1].strs, ["a", "b", "c"]);
+        assert_eq!(entries[2].plural, None);
+        assert_eq!(entries[2].strs, ["Uno"]);
+    }
+
     /// Template texts reach translators (scripts/launcher-pot.sh) and every
     /// language translates them: generated Slint lives in OUT_DIR, where a
-    /// plain extractor run over ui/ would miss it.
+    /// plain extractor run over ui/ would miss it. A text with plural forms
+    /// has every form its language's header names, none empty.
     #[test]
     fn template_texts_are_translated_everywhere() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -474,29 +694,40 @@ mod tests {
             texts(&serde_json::from_str(&json).expect("JSON"), &mut ids);
         }
         assert!(!ids.is_empty());
+        assert!(ids.iter().any(|(_, plural)| plural.is_some()));
         // Template texts hold no quotes or backslashes (convert.rs would
         // escape them), so their escaped form is the text itself.
-        assert!(ids.iter().all(|id| !id.contains(['"', '\\'])));
+        assert!(ids.iter().all(|(id, plural)| {
+            !id.contains(['"', '\\']) && !plural.as_deref().unwrap_or("").contains(['"', '\\'])
+        }));
         let pot =
             std::fs::read_to_string(dir.join("translations/rusttv-launcher.pot")).expect("pot");
         let pot = entries(&pot);
-        for id in &ids {
-            assert!(
-                pot.iter().any(|(msgid, _)| msgid == id),
-                "{id:?} missing from the .pot"
-            );
+        for (id, plural) in &ids {
+            let entry = pot
+                .iter()
+                .find(|entry| entry.id == *id)
+                .unwrap_or_else(|| panic!("{id:?} missing from the .pot"));
+            assert_eq!(entry.plural, *plural, "{id:?}'s plural in the .pot");
         }
         for language in crate::i18n::LANGUAGES {
             let po = dir.join(format!(
                 "translations/{language}/LC_MESSAGES/rusttv-launcher.po"
             ));
             let po = entries(&std::fs::read_to_string(po).expect("po"));
-            for id in &ids {
-                let (_, msgstr) = po
+            let forms = plural_forms(&po);
+            for (id, plural) in &ids {
+                let entry = po
                     .iter()
-                    .find(|(msgid, _)| msgid == id)
+                    .find(|entry| entry.id == *id)
                     .unwrap_or_else(|| panic!("{language}: {id:?} missing"));
-                assert!(!msgstr.is_empty(), "{language}: {id:?} is not translated");
+                assert_eq!(entry.plural, *plural, "{language}: {id:?}'s plural");
+                let want = if plural.is_some() { forms } else { 1 };
+                assert_eq!(entry.strs.len(), want, "{language}: {id:?}'s forms");
+                assert!(
+                    entry.strs.iter().all(|text| !text.is_empty()),
+                    "{language}: {id:?} is not translated"
+                );
             }
         }
     }

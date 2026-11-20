@@ -16,7 +16,7 @@ use crate::history::History;
 use crate::i18n;
 use crate::model::{
     App, Category, Effect, FolderNames, Home, Input, LONG_PRESS, MOVE_IDLE_TIMEOUT, MenuItem,
-    Scroll, State, TileId,
+    PanelId, Scroll, State, TileId,
 };
 use crate::order_file;
 use crate::panels;
@@ -46,8 +46,8 @@ mod generated {
     slint::include_modules!();
 }
 use generated::{
-    AboutListRow, AboutPanel, Badges, Dir, Effects, Hints, HomeWindow, Pictures, Pointer,
-    RemotePanel, ReviewLine, SettingsRow, Strings, TileData,
+    AboutListRow, AboutPanel, Badges, Dir, Effects, Hints, HistoryListRow, HistoryPanel,
+    HomeWindow, Pictures, Pointer, RemotePanel, ReviewLine, SettingsRow, Strings, TileData,
 };
 
 mod device_view;
@@ -91,6 +91,7 @@ const ABOUT_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/about.rgba
 const SETTINGS_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/settings.rgba"));
 const HIDDEN_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/hidden.rgba"));
 const REMOTE_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/remote.rgba"));
+const HISTORY_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/history.rgba"));
 
 /// A built-in tile's banner, by tile name, as RGBA ([`BUILTIN_BANNER_SIZE`]):
 /// for the phones' pictures.
@@ -100,6 +101,7 @@ pub(crate) fn builtin_banner(name: &str) -> Option<(u32, u32, &'static [u8])> {
         "settings" => SETTINGS_BANNER,
         "hidden-apps" => HIDDEN_BANNER,
         "remote" => REMOTE_BANNER,
+        "panel:history" => HISTORY_BANNER,
         _ => return None,
     };
     Some((BUILTIN_BANNER_SIZE.0, BUILTIN_BANNER_SIZE.1, rgba))
@@ -464,6 +466,15 @@ fn show_about_panel(window: &HomeWindow, status: &UpdateStatus) {
         about.set_update(page.props.get("update").into());
         about.set_update_detail(page.props.get("update-detail").into());
     }
+}
+
+/// The TV's clock, Unix seconds (0 if it is before 1970).
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |since| {
+            i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
+        })
 }
 
 include!(concat!(env!("OUT_DIR"), "/badges.rs"));
@@ -846,7 +857,7 @@ struct Controller {
     swallow_ok_release: bool,
     /// Packs the history a few seconds after the launcher left the screen.
     pack_timer: Timer,
-    settings_sections: Rc<VecModel<SharedString>>,
+    settings_sections: Rc<VecModel<SettingsRow>>,
     settings_rows: Rc<VecModel<SettingsRow>>,
     review_lines: Rc<VecModel<ReviewLine>>,
     review_code: Rc<VecModel<i32>>,
@@ -912,6 +923,12 @@ struct Controller {
     volume_timer: Timer,
     /// The platform tab Settings opens on once its tabs are read.
     settings_tab: Option<&'static str>,
+    /// History's tile data as last read from the history thread, and the
+    /// TV's clock then (Unix seconds): its age is formatted on resume and
+    /// focus changes, never by a timer (PANELS.md § 4).
+    history: (Option<crate::history::Summary>, i64),
+    /// The focused tile when History's data was last read.
+    history_focus: Option<TileId>,
     /// The network interfaces on the Network entry, as quick.slint codes.
     link_codes: Rc<VecModel<i32>>,
     /// Reads the network interfaces again every [`device_view::LINKS_EVERY`].
@@ -1060,6 +1077,8 @@ impl Controller {
                 quick_codes,
                 volume_timer: Timer::default(),
                 settings_tab: None,
+                history: (None, 0),
+                history_focus: None,
                 link_codes,
                 links_timer: Timer::default(),
                 scroll_rest: 0.0,
@@ -1092,9 +1111,10 @@ impl Controller {
         // pointer never shows over RustTV.
         self.platform.pointer_stop();
         self.platform.hide_tv_keyboard(false);
-        // The update status first, so the phones get one view with the
-        // current caption.
+        // The update status and History's age first, so the phones get one
+        // view with the current captions.
         self.refresh_update();
+        self.show_history_panel();
         self.push_remote_view();
         self.pack_timer.stop();
         if let Some(history) = History::get() {
@@ -1343,6 +1363,12 @@ impl Controller {
             Some(Effect::OpenSettingsTab(tab)) => {
                 self.settings_tab = Some(tab);
                 self.open_settings();
+            }
+            Some(Effect::OpenHistory) => {
+                self.open_settings();
+                if let Some(page) = &mut self.settings {
+                    page.show_history();
+                }
             }
             Some(Effect::Settings(input)) => self.settings_input(input),
             Some(Effect::OpenRemote) => self.open_remote_page(),
@@ -2017,6 +2043,11 @@ impl Controller {
             window.set_notices_fraction(notices.fraction());
         }
 
+        // History's age, formatted again when the focus moves.
+        if self.home.focused() != self.history_focus.as_ref() {
+            self.history_focus = self.home.focused().cloned();
+            self.show_history_panel();
+        }
         if self.home.focused() != self.hero.as_ref() {
             let me = self.me.clone();
             self.hero_timer
@@ -2116,6 +2147,7 @@ impl Controller {
                 self.review.is_some(),
                 rename,
                 &self.update,
+                crate::remote::history_caption(self.history.0.as_ref(), self.history.1),
             );
             TvMessage::Home(view)
         };
@@ -2140,6 +2172,7 @@ impl Controller {
             TileId::About => "About".to_owned(),
             TileId::Settings => "Settings".to_owned(),
             TileId::Remote => "RustTV Remote".to_owned(),
+            TileId::Panel(PanelId::History) => "History".to_owned(),
             TileId::Hidden => "Hidden apps".to_owned(),
         }
     }
@@ -2587,6 +2620,13 @@ impl Controller {
                     ..TileData::default()
                 };
             }
+            TileId::Panel(PanelId::History) => {
+                return TileData {
+                    image: self.builtins.history.image.clone(),
+                    kind: 9,
+                    ..TileData::default()
+                };
+            }
         };
         let Some(app) = self.apps.get(component) else {
             return TileData {
@@ -2678,12 +2718,13 @@ impl BuiltinView {
     }
 }
 
-/// The Settings, RustTV Remote and Hidden apps tiles' banners and glows,
-/// made once.
+/// The About, Settings, RustTV Remote, History and Hidden apps tiles'
+/// banners and glows, made once.
 struct Builtins {
     about: BuiltinView,
     settings: BuiltinView,
     remote: BuiltinView,
+    history: BuiltinView,
     hidden: BuiltinView,
 }
 
@@ -2693,6 +2734,7 @@ impl Builtins {
             about: BuiltinView::new(ABOUT_BANNER, baked, right_to_left),
             settings: BuiltinView::new(SETTINGS_BANNER, baked, right_to_left),
             remote: BuiltinView::new(REMOTE_BANNER, baked, right_to_left),
+            history: BuiltinView::new(HISTORY_BANNER, baked, right_to_left),
             hidden: BuiltinView::new(HIDDEN_BANNER, baked, right_to_left),
         }
     }
@@ -2703,6 +2745,7 @@ impl Builtins {
             TileId::About => Some(&self.about),
             TileId::Settings => Some(&self.settings),
             TileId::Remote => Some(&self.remote),
+            TileId::Panel(PanelId::History) => Some(&self.history),
             TileId::Hidden => Some(&self.hidden),
             TileId::App(_) | TileId::Folder(_) => None,
         }
@@ -3271,8 +3314,8 @@ mod tests {
             .collect();
         assert_eq!(
             kinds[3..],
-            [3, 6, 8],
-            "A, B, C, About, Settings, RustTV Remote"
+            [3, 6, 8, 9],
+            "A, B, C, About, Settings, RustTV Remote, History"
         );
         for tile in screen
             .window
@@ -3307,7 +3350,7 @@ mod tests {
             .window
             .get_settings_sections()
             .iter()
-            .map(|section| section.to_string())
+            .map(|section| section.title.to_string())
             .collect();
         assert!(
             !sections.iter().any(|section| section == "About"),
@@ -3411,7 +3454,16 @@ mod tests {
             .map(|(id, _)| id.clone())
             .collect();
         let app = |name: &str| TileId::App(format!("{name}/.Main"));
-        assert_eq!(saved, [app("b"), app("a"), app("c"), TileId::Remote]);
+        assert_eq!(
+            saved,
+            [
+                app("b"),
+                app("a"),
+                app("c"),
+                TileId::Remote,
+                TileId::Panel(PanelId::History)
+            ]
+        );
     }
 
     #[test]
@@ -3458,15 +3510,15 @@ mod tests {
         }
         screen.lifecycle.resumed();
         screen.wait(1);
-        // A, B, C loading; RustTV Remote.
-        assert_eq!(screen.kinds(), [4, 4, 4, 8]);
+        // A, B, C loading; RustTV Remote, History.
+        assert_eq!(screen.kinds(), [4, 4, 4, 8, 9]);
         assert_eq!(screen.artwork_calls(), 0);
 
         assert_eq!(screen.shared.platform.borrow().artwork_loaded_calls(), 0);
 
         screen.wait(20);
         screen.wait(20);
-        assert_eq!(screen.kinds(), [0, 0, 0, 8]);
+        assert_eq!(screen.kinds(), [0, 0, 0, 8, 9]);
         assert_eq!(screen.artwork_calls(), 3);
         // Told once, after the last picture, so it can free what it decoded.
         assert_eq!(screen.shared.platform.borrow().artwork_loaded_calls(), 1);
@@ -3485,8 +3537,8 @@ mod tests {
             screen.tap(DOWN);
             screen.tap(OK); // Hide from Home
             assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
-            // A, C, RustTV Remote, Hidden apps; focus on C, where B was.
-            assert_eq!(screen.kinds(), [0, 0, 8, 5]);
+            // A, C, RustTV Remote, History, Hidden apps; focus on C, where B was.
+            assert_eq!(screen.kinds(), [0, 0, 8, 9, 5]);
             assert_eq!(screen.window.get_focused_index(), 1);
             assert!(screen.launched().is_empty());
         }
@@ -3494,10 +3546,10 @@ mod tests {
 
         // Started again, with artwork loaded later as on Android: B's is not read.
         let screen = screen_with(abc().with_lazy_artwork(), Some(file.clone()));
-        assert_eq!(screen.kinds(), [4, 4, 8, 5]);
+        assert_eq!(screen.kinds(), [4, 4, 8, 9, 5]);
         screen.wait(20);
         screen.wait(20);
-        assert_eq!(screen.kinds(), [0, 0, 8, 5]);
+        assert_eq!(screen.kinds(), [0, 0, 8, 9, 5]);
         assert_eq!(screen.artwork_calls(), 2);
 
         // Its page reads it.
@@ -3524,7 +3576,7 @@ mod tests {
         // on it.
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
-        assert_eq!(screen.kinds(), [0, 0, 0, 8]);
+        assert_eq!(screen.kinds(), [0, 0, 0, 8, 9]);
         assert_eq!(screen.window.get_focused_index(), 2);
         assert_eq!(screen.window.get_tiles().row_data(2).unwrap().label, "B");
         assert!(order_file::load(&file).hidden.is_empty());
@@ -3982,8 +4034,8 @@ mod tests {
 
         let dir = temp_dir("remote-pointer");
         let screen = screen_with_remote(dir.join("order.toml"));
-        // A, B, C, RustTV Remote: its own page.
-        for _ in 0..5 {
+        // A, B, C, RustTV Remote (its own page), History.
+        for _ in 0..3 {
             screen.tap(RIGHT);
         }
         screen.tap(OK);
@@ -4203,6 +4255,66 @@ mod tests {
         assert_eq!(page_line(&screen.window), "Press OK to check for updates");
     }
 
+    /// History's ages take each language's plural forms (gettext's, through
+    /// the templates' `plural`), here through its row face's functions:
+    /// English's two, Ukrainian's three, Arabic's six.
+    #[test]
+    fn history_ages_take_each_languages_plural_forms() {
+        /// A language and its (status, count, words) cases.
+        type Ages<'a> = (Option<&'a str>, &'a [(&'a str, &'a str, &'a str)]);
+        let cases: [Ages<'_>; 3] = [
+            (
+                None,
+                &[
+                    ("hours", "1", "1 hour ago"),
+                    ("hours", "2", "2 hours ago"),
+                    ("minutes", "1", "1 minute ago"),
+                    ("days", "12", "12 days ago"),
+                    ("now", "0", "Just now"),
+                ],
+            ),
+            (
+                Some("uk-UA"),
+                &[
+                    ("hours", "1", "1 годину тому"),
+                    ("hours", "3", "3 години тому"),
+                    ("hours", "5", "5 годин тому"),
+                    ("hours", "11", "11 годин тому"),
+                    ("hours", "21", "21 годину тому"),
+                    ("days", "22", "22 дні тому"),
+                ],
+            ),
+            (
+                Some("ar-EG"),
+                &[
+                    ("hours", "1", "قبل ساعة"),
+                    ("hours", "2", "قبل ساعتين"),
+                    ("hours", "3", "قبل 3 ساعات"),
+                    ("hours", "11", "قبل 11 ساعة"),
+                    ("days", "100", "قبل 100 يوم"),
+                ],
+            ),
+        ];
+        for (language, ages) in cases {
+            let screen = screen_in(abc(), None, language);
+            let row = screen.window.global::<HistoryListRow>();
+            for (status, count, want) in ages {
+                assert_eq!(
+                    row.invoke_detail((*status).into(), (*count).into()),
+                    *want,
+                    "{language:?} {status} {count}"
+                );
+            }
+            // Its title is the History section's name, in every language.
+            assert_eq!(
+                row.invoke_title("hours".into(), "2".into()),
+                screen.window.global::<Strings>().invoke_section_name(2)
+            );
+            assert!(row.invoke_attention("waiting".into(), "0".into()));
+            assert!(!row.invoke_attention("hours".into(), "2".into()));
+        }
+    }
+
     #[test]
     fn arabic_and_hebrew_mirror_the_layout_and_the_arrows() {
         for language in ["ar-EG", "he-IL"] {
@@ -4267,7 +4379,7 @@ mod tests {
                 std::env::temp_dir().join(format!("rusttv-ui-history-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
-            crate::history::desktop::start(dir.clone());
+            crate::history::desktop::start(dir.clone(), true);
             dir
         });
         (dir.clone(), guard)
@@ -4528,8 +4640,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let screen = screen_with_remote(dir.join("order.toml"));
-        // A, B, C, RustTV Remote: its own page.
-        for _ in 0..5 {
+        // A, B, C, RustTV Remote (its own page), History.
+        for _ in 0..3 {
             screen.tap(RIGHT);
         }
         screen.tap(OK);
@@ -4757,6 +4869,56 @@ mod tests {
         let newest = &overview.entries[0];
         assert_eq!(newest.author, rusttv_history::Author::Tv);
         assert_eq!(newest.changes.len(), 3);
+    }
+
+    /// History's tile: once the history thread has read the history, a
+    /// focus change formats its age (two globals, never the tile list);
+    /// OK on it opens Settings on its History section, whose row shows the
+    /// same age.
+    #[test]
+    fn the_history_tile_shows_the_age_and_opens_settings_on_history() {
+        let (dir, _history) = history_dir();
+        let screen = screen(Some(dir.join("order.toml")));
+        let history = crate::history::History::get().unwrap();
+        history.launcher_edited();
+        // Answered after the edit: the summary is there by then.
+        let _ = history.overview();
+        let tiles: Vec<TileData> = screen.window.get_tiles().iter().collect();
+        let artwork = screen.artwork_calls();
+        let panel = screen.window.global::<HistoryPanel>();
+        // A, B, C, RustTV Remote, History: to the last tile.
+        for _ in 0..10 {
+            screen.tap(RIGHT);
+        }
+        assert_eq!(
+            screen._controller.borrow().home.focused().cloned(),
+            Some(TileId::Panel(PanelId::History))
+        );
+        assert_eq!(
+            (panel.get_status().as_str(), panel.get_count().as_str()),
+            ("now", "0")
+        );
+        let after: Vec<TileData> = screen.window.get_tiles().iter().collect();
+        assert_eq!(tiles, after, "only the globals changed");
+        assert_eq!(screen.artwork_calls(), artwork);
+
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        settle(&screen);
+        // Animations, Effects, Updates, History, About: on History.
+        assert_eq!(screen.window.get_settings_section(), 3);
+        assert_eq!(screen.window.get_settings_row(), -1);
+        let row = screen.window.get_settings_sections().row_data(3).unwrap();
+        assert_eq!(
+            (row.title.as_str(), row.detail.as_str(), row.current),
+            ("History", "Just now", false)
+        );
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert_eq!(
+            screen._controller.borrow().home.focused().cloned(),
+            Some(TileId::Panel(PanelId::History))
+        );
     }
 
     #[test]
@@ -5055,7 +5217,7 @@ mod tests {
             .window
             .get_settings_sections()
             .iter()
-            .position(|section| section == "Display")
+            .position(|section| section.title == "Display")
             .unwrap();
         for _ in 0..display {
             screen.tap(DOWN);
@@ -5135,7 +5297,7 @@ mod tests {
             .window
             .get_settings_sections()
             .iter()
-            .position(|section| section == "Display")
+            .position(|section| section.title == "Display")
             .unwrap();
         let display = i32::try_from(display).unwrap();
         screen.window.invoke_settings_pointer(false, display, 0);
@@ -5175,7 +5337,12 @@ mod tests {
         let screen = screen_with(abc().with_device(), None);
         click_settings(&screen.window);
         settle(&screen);
-        let sections: Vec<SharedString> = screen.window.get_settings_sections().iter().collect();
+        let sections: Vec<SharedString> = screen
+            .window
+            .get_settings_sections()
+            .iter()
+            .map(|section| section.title)
+            .collect();
         assert_eq!(
             sections[sections.len() - 2..],
             [SharedString::from("Display"), SharedString::from("About")]

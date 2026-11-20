@@ -135,7 +135,7 @@ const SCHEMA: u64 = 1;
 /// Pictures a tile's `image` may show (`badge`): build.rs decodes
 /// `assets/badges/<name>.png` and generates the `Badges` global and its
 /// Rust setter from this list.
-pub const BADGES: [&str; 2] = ["rusttv-logo", "rusttv-remote"];
+pub const BADGES: [&str; 3] = ["rusttv-logo", "rusttv-remote", "rusttv-history"];
 
 /// A page's blocks and the fields each takes (PANELS.md § 4.1). Slint's
 /// attribution (`mark`) is never conditional, and Home's focus relies on
@@ -711,33 +711,27 @@ impl Cx<'_> {
 
     /// Text: `{"tr": "literal {}", "args": [props]}` or a `select` of those.
     /// An arg `{"ltr": prop}` is a left-to-right run isolated from the text
-    /// around it, so a version inside Arabic text keeps its order.
+    /// around it, so a version inside Arabic text keeps its order. A text
+    /// with a number in it takes gettext plural forms: `"plural"` is the
+    /// English plural and `"count"` the property holding the number (a
+    /// whole number as text), which both forms may show as `{n}`; each
+    /// language then has its own forms ("1 hour" / "2 hours", Slavic
+    /// forms), as Slint's `@tr("…" | "…" % n)`.
     fn words(&self, value: &Value, at: &str) -> Result<String, String> {
         let body = object(value, at)?;
         if body.contains_key("select") {
             return self.select(body, at, |v, at| self.words(v, at), "\"\"".into());
         }
-        only(body, at, &["tr", "args"])?;
-        let literal = string(field(body, at, "tr")?, &format!("{at}.tr"))?;
-        // No control or bidi characters: a text can't hide or reorder words
-        // (HISTORY.md § 8.5's rule for names on the TV).
-        if literal.chars().any(|c| {
-            c.is_control()
-                || matches!(
-                    c,
-                    '\u{061C}'
-                        | '\u{200E}'
-                        | '\u{200F}'
-                        | '\u{2028}'
-                        | '\u{2029}'
-                        | '\u{202A}'..='\u{202E}'
-                        | '\u{2066}'..='\u{2069}'
-                )
-        }) {
-            return Err(format!(
-                "{at}.tr: control or bidi characters are not allowed"
-            ));
-        }
+        only(body, at, &["tr", "args", "plural", "count"])?;
+        let text = literal(field(body, at, "tr")?, &format!("{at}.tr"))?;
+        let plural = match (body.get("plural"), body.get("count")) {
+            (Some(plural), Some(count)) => Some((
+                literal(plural, &format!("{at}.plural"))?,
+                self.prop(count, &format!("{at}.count"))?,
+            )),
+            (None, None) => None,
+            _ => return Err(format!("{at}: \"plural\" and \"count\" go together")),
+        };
         let args = match body.get("args") {
             Some(args) => array(args, &format!("{at}.args"))?
                 .iter()
@@ -746,12 +740,23 @@ impl Cx<'_> {
                 .collect::<Result<Vec<_>, String>>()?,
             None => Vec::new(),
         };
-        // `{}` is a placeholder; any other brace would be one too in `@tr`.
-        if literal.replace("{}", "").contains(['{', '}']) {
-            return Err(format!("{at}.tr: {literal:?} may hold braces only as {{}}"));
-        }
-        if literal.matches("{}").count() != args.len() {
-            return Err(format!("{at}: {literal:?} needs one arg per {{}}"));
+        // `{}` is a placeholder, and `{n}` the count in a plural text; any
+        // other brace would be one too in `@tr`.
+        let allowed = if plural.is_some() { "{} and {n}" } else { "{}" };
+        let forms = std::iter::once(("tr", text)).chain(plural.map(|(form, _)| ("plural", form)));
+        for (key, form) in forms {
+            let mut rest = form.replace("{}", "");
+            if plural.is_some() {
+                rest = rest.replace("{n}", "");
+            }
+            if rest.contains(['{', '}']) {
+                return Err(format!(
+                    "{at}.{key}: {form:?} may hold braces only as {allowed}"
+                ));
+            }
+            if form.matches("{}").count() != args.len() {
+                return Err(format!("{at}.{key}: {form:?} needs one arg per {{}}"));
+            }
         }
         let args: String = args
             .iter()
@@ -766,7 +771,12 @@ impl Cx<'_> {
                 }
             })
             .collect();
-        Ok(format!("@tr({}{args})", quote(literal)))
+        let plural = match plural {
+            // Slint converts the count to a whole number (`int`).
+            Some((form, count)) => format!(" | {} % {}{count}.to-float()", quote(form), self.scope),
+            None => String::new(),
+        };
+        Ok(format!("@tr({}{plural}{args})", quote(text)))
     }
 
     /// A text's argument: a property's name, or `{"ltr": name}` (that
@@ -874,6 +884,29 @@ impl Cx<'_> {
             Err(format!("{at}: {prop:?} is not in props"))
         }
     }
+}
+
+/// A text's literal: a string without control or bidi characters, so a text
+/// can't hide or reorder words (HISTORY.md § 8.5's rule for names on the
+/// TV).
+fn literal<'v>(value: &'v Value, at: &str) -> Result<&'v str, String> {
+    let text = string(value, at)?;
+    if text.chars().any(|c| {
+        c.is_control()
+            || matches!(
+                c,
+                '\u{061C}'
+                    | '\u{200E}'
+                    | '\u{200F}'
+                    | '\u{2028}'
+                    | '\u{2029}'
+                    | '\u{202A}'..='\u{202E}'
+                    | '\u{2066}'..='\u{2069}'
+            )
+    }) {
+        return Err(format!("{at}: control or bidi characters are not allowed"));
+    }
+    Ok(text)
 }
 
 /// The optional `key` of `map`: one of `options`, `default` when absent.

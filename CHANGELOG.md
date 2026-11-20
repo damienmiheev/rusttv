@@ -43,6 +43,24 @@ field in `--json` output says which contract you get, CLI.md).
   (HISTORY.md § 1). New snapshots are therefore state format 5 on Android
   too, which released builds (0.3.2 and older) can't read. Older
   snapshots still restore, with the tile at the end.
+- History has its own tile, a panel (`templates/history_tile.json`, the
+  first `panel:<id>` tile, `panel:history`): the History badge, "Last
+  change" and its age ("Just now", "2 hours ago"), or "Waiting" in the
+  accent while an approval waits for the computer. OK opens Settings on
+  its History section, whose entry in the section list now shows the same
+  age, or the accent dot. The age comes from a summary the history thread
+  keeps after its own work and is formatted on resume and focus changes,
+  never by a timer; until the history has been read once since start the
+  tile shows just "History". A first run puts it last, after RustTV
+  Remote; it moves like the other built-in tiles. Its place is in the
+  history, so new snapshots are state format 6; older snapshots still
+  restore, with the tile at the end.
+- Panel templates take plural forms for any text with a number
+  (`"plural"` and `"count"`), so each language has its own forms ("1
+  hour", "2 hours", Ukrainian's three, Arabic's six). New texts in all 20
+  translations, measured to fit the tile. The desktop build takes
+  `--demo-history <dir>` and `RUSTTV_HISTORY_PENDING=1` (a TV without the
+  settings grant, so an approved change waits for the computer).
 - Settings → Effects: Reduced turns the tile shadows and the backdrop glow
   off, for a weak GPU. The choice is in the TV's history and kept as the
   `effects-reduced` flag file next to `order.toml`, so an image can preset
@@ -80,11 +98,19 @@ field in `--json` output says which contract you get, CLI.md).
   the phone's language. The TV sends it as the tile's optional `caption`
   (REMOTE.md § 4), from the same panel view as the TV's tile, only when
   the update state changes it. Older pages ignore it.
+- History's tile shows its age or "Waiting" (in the accent) on the phone
+  too: new `caption` values (`waiting`, `just_now`, `minutes`, `hours`,
+  `days`) with an optional `count`, the age in the phone's language and
+  plural forms (REMOTE.md § 4). The phone may tap, drag or ask the
+  picture of `panel:history`.
 
 ### CLI
 
 - Schema `rusttv.v11`: history changes have the new kind `effects`, and
   `history show` may include `launcher.reduced_effects` (CLI.md).
+- TV history snapshots in state format 6 hold History's tile,
+  `panel:history`, in `launcher.order`; `moved` may name it, never `added`
+  or `removed` (CLI.md). The schema stays `rusttv.v11`.
 
 ## 0.3.2 (2026-11-02)
 

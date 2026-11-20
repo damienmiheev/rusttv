@@ -509,3 +509,33 @@ msgstr "फ़ोन: {}"
 #: templates/remote_tile.json
 msgid "Pairing"
 msgstr "जोड़ा जा रहा है"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "पिछला बदलाव"
+
+#: templates/history_tile.json
+msgid "Waiting"
+msgstr "इंतज़ार में"
+
+#: templates/history_row.json
+msgid "Just now"
+msgstr "अभी-अभी"
+
+#: templates/history_row.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "{n} मिनट पहले"
+msgstr[1] "{n} मिनट पहले"
+
+#: templates/history_row.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "{n} घंटा पहले"
+msgstr[1] "{n} घंटे पहले"
+
+#: templates/history_row.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "{n} दिन पहले"
+msgstr[1] "{n} दिन पहले"
