@@ -12,10 +12,11 @@ use crate::HistoryError;
 /// 2 added `[launcher.folders]`, 3 `[launcher.phones]`, 4
 /// `reduced_effects`, 5 tile names of Linux desktop entries
 /// (`org.kde.dolphin.desktop`) and `remote`, 6 panel tiles' names
-/// (`panel:history`, PANELS.md § 6). A snapshot is written in the oldest
+/// (`panel:history`, PANELS.md § 6), 7 built-in and panel tiles hidden or
+/// in a folder (`hidden = ["about"]`). A snapshot is written in the oldest
 /// format that holds it (no folders, no phones, full effects, only Android
 /// names: format 1), so older readers keep reading it until it needs more.
-pub const STATE_FORMAT: u32 = 6;
+pub const STATE_FORMAT: u32 = 7;
 
 /// The longest folder name, in characters (the launcher's limit).
 const FOLDER_NAME_MAX: usize = 40;
@@ -59,14 +60,15 @@ pub struct State {
 #[serde(deny_unknown_fields)]
 pub struct Launcher {
     /// Tile names in order ([`is_tile_name`]): apps, built-in tiles
-    /// (`about`, `settings`, `hidden-apps`, `remote`), panel tiles
-    /// (`panel:<id>`), `folder:<number>`.
+    /// (`about`, `settings`, `remote`), panel tiles (`panel:<id>`),
+    /// `folder:<number>`.
     #[serde(default)]
     pub order: Vec<String>,
     /// Folders by tile name (`folder:<number>`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub folders: BTreeMap<String, Folder>,
-    /// Component names of apps kept off Home.
+    /// Names of tiles kept off Home: apps' components, and built-in and
+    /// panel tiles' names (format 7).
     #[serde(default)]
     pub hidden: BTreeSet<String>,
     /// Phones paired with RustTV Remote: id (32 hex digits) → name. Never
@@ -113,7 +115,8 @@ impl Default for Launcher {
 pub struct Folder {
     /// Its name, as the person sees it.
     pub name: String,
-    /// Component names of its apps, in order.
+    /// Its tiles' names, in order: apps' components, and built-in and
+    /// panel tiles' names (format 7).
     pub apps: Vec<String>,
 }
 
@@ -212,7 +215,14 @@ impl State {
 
     /// The oldest format that can hold this snapshot.
     pub fn needed_format(&self) -> u32 {
-        if self.launcher.tile_names().any(|name| is_panel_name(name)) {
+        let launcher = &self.launcher;
+        let off_home = launcher
+            .hidden
+            .iter()
+            .chain(launcher.folders.values().flat_map(|folder| &folder.apps));
+        if off_home.into_iter().any(|name| is_builtin_name(name)) {
+            7
+        } else if launcher.tile_names().any(|name| is_panel_name(name)) {
             6
         } else if self.launcher.tile_names().any(needs_format_five) {
             5
@@ -364,6 +374,14 @@ fn needs_format_five(name: &String) -> bool {
     !name.contains('/') && (name == "remote" || name.ends_with(".desktop"))
 }
 
+/// Whether a tile name is a built-in or panel tile's. Hidden or in a
+/// folder, it needs format 7: builds before it accept the name there
+/// ([`is_tile_name`]) but would show the tile anyway and drop it from
+/// its folder.
+fn is_builtin_name(name: &str) -> bool {
+    matches!(name, "about" | "settings" | "hidden-apps" | "remote") || is_panel_name(name)
+}
+
 /// Whether a tile name is a panel tile's, `panel:<id>` (format 6; builds
 /// before it would read it as an app and drop it). The id is 1 to 40
 /// lowercase letters, digits and single '-' between them, so it never
@@ -481,8 +499,8 @@ mod tests {
     #[test]
     fn a_newer_format_says_so() {
         assert!(matches!(
-            State::parse("format = 7\nsomething_new = true\n"),
-            Err(HistoryError::FormatNewer(7))
+            State::parse("format = 8\nsomething_new = true\n"),
+            Err(HistoryError::FormatNewer(8))
         ));
     }
 
@@ -581,19 +599,6 @@ mod tests {
             State::parse(&downgraded),
             Err(HistoryError::Invalid(_))
         ));
-        // Wherever a tile name is: hidden, or in a folder.
-        let mut hidden = sample();
-        hidden.launcher.hidden.insert("panel:history".into());
-        assert_eq!(hidden.needed_format(), 6);
-        let mut in_folder = sample();
-        in_folder.launcher.folders.insert(
-            "folder:1".into(),
-            Folder {
-                name: "A".into(),
-                apps: vec!["panel:history".into()],
-            },
-        );
-        assert_eq!(in_folder.needed_format(), 6);
         // Also with every older format's contents.
         let mut all = history.clone();
         all.launcher.order.push("remote".into());
@@ -615,6 +620,43 @@ mod tests {
         }
         assert!(is_tile_name(&format!("panel:{}", "a".repeat(40))));
         assert!(!is_tile_name(&format!("panel:{}", "a".repeat(41))));
+    }
+
+    /// A built-in or panel tile hidden or in a folder needs format 7:
+    /// builds that read up to 6 would take the name there and still show
+    /// the tile on Home (and drop it from the folder), so they must refuse.
+    #[test]
+    fn built_in_tiles_hidden_or_in_folders_need_format_seven() {
+        for name in ["about", "settings", "remote", "panel:history"] {
+            let mut hidden = sample();
+            hidden.launcher.order.push("panel:history".into());
+            hidden.launcher.hidden.insert(name.into());
+            let mut in_folder = sample();
+            in_folder.launcher.order.push("folder:1".into());
+            in_folder.launcher.folders.insert(
+                "folder:1".into(),
+                Folder {
+                    name: "RustTV".into(),
+                    apps: vec![name.into(), "com.example.a/.Main".into()],
+                },
+            );
+            for state in [hidden, in_folder] {
+                assert_eq!(state.needed_format(), 7, "{name}");
+                let text = state.to_toml().unwrap();
+                assert!(text.starts_with("format = 7\n"), "{text}");
+                assert_eq!(State::parse(&text).unwrap().launcher, state.launcher);
+                let downgraded = text.replacen("format = 7", "format = 6", 1);
+                assert!(
+                    matches!(State::parse(&downgraded), Err(HistoryError::Invalid(_))),
+                    "{name}"
+                );
+            }
+        }
+        // In the order (`about` is in the sample's) they stay older
+        // formats, and so do hidden apps.
+        assert!(sample().launcher.order.contains(&"about".to_owned()));
+        assert!(!sample().launcher.hidden.is_empty());
+        assert_eq!(sample().needed_format(), 1);
     }
 
     #[test]

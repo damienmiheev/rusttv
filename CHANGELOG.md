@@ -62,6 +62,26 @@ field in `--json` output says which contract you get, CLI.md).
   translations, measured to fit the tile. The desktop build takes
   `--demo-history <dir>` and `RUSTTV_HISTORY_PENDING=1` (a TV without the
   settings grant, so an approved change waits for the computer).
+- The About, Settings, RustTV Remote and History tiles can be hidden and
+  put in folders like apps (PANELS.md § 6): their menu is Move and Hide,
+  and holding a moving tile over another makes a folder of them. A folder
+  shows their banners small; the open folder draws them as their tiles and
+  OK opens their page. Hidden ones are listed on the Hidden apps page
+  (after the apps), whose tile is always on Home while something is
+  hidden, so a hidden Settings is two presses away. While About is hidden,
+  Settings gains its About section, so the licence notices and Slint's
+  attribution stay reachable. The history records them, so a snapshot
+  with a built-in tile hidden or in a folder is state format 7, which
+  builds before it refuse; older snapshots still restore. A change list
+  names hiding a tile only as hidden, no longer also as removed.
+- The top-right menu (Linux) has a RustTV entry: a quick panel with the
+  panels' rows, "RustTV <version>" (with "Update available",
+  "Downloading" or "Installing" while there is an update, else the
+  licence line), RustTV Remote (the paired phones, or "Pairing") and
+  History (the last change's age, or "Waiting"), each from the same view
+  as its tile; OK or a click opens its page. Settings' RustTV row shows
+  the update caption the same way. No new texts. The desktop build takes
+  `--demo-panels <dir>`.
 - Settings → Effects: Reduced turns the tile shadows and the backdrop glow
   off, for a weak GPU. The choice is in the TV's history and kept as the
   `effects-reduced` flag file next to `order.toml`, so an image can preset
@@ -104,6 +124,10 @@ field in `--json` output says which contract you get, CLI.md).
   `days`) with an optional `count`, the age in the phone's language and
   plural forms (REMOTE.md § 4). The phone may tap, drag or ask the
   picture of `panel:history`.
+- The phone's mirror shows built-in tiles in folders and on the hidden
+  apps page, with their pictures and captions; its menu offers Hide for
+  them, and a tap on the hidden apps page puts one back (REMOTE.md § 4).
+  On the About or RustTV Remote page, `focused` names that page's tile.
 
 ### CLI
 
@@ -112,6 +136,12 @@ field in `--json` output says which contract you get, CLI.md).
 - TV history snapshots in state format 6 hold History's tile,
   `panel:history`, in `launcher.order`; `moved` may name it, never `added`
   or `removed` (CLI.md). The schema stays `rusttv.v11`.
+- TV history snapshots in state format 7 may hold built-in and panel
+  tiles (`about`, `settings`, `remote`, `panel:history`) in
+  `launcher.hidden` and in folders' `apps`; `hidden` and `in_folder` may
+  name them, and hiding a tile (or showing it again) is reported only as
+  `hidden`, no longer also as `removed` (or `added`). The schema stays
+  `rusttv.v11` (CLI.md).
 
 ## 0.3.2 (2026-11-02)
 

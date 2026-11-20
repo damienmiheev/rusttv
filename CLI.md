@@ -254,8 +254,12 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
     `launcher.order` (every snapshot with a launcher order since it is
     recorded; panel tiles are `panel:<id>`, an id of 1–40 lowercase letters,
     digits and single `-`, starting with a letter and not ending with `-`);
-    `moved` may name it, never `added` or `removed`. Everything else is
-    unchanged.
+    `moved` may name it, never `added` or `removed`. Snapshots in format
+    7 may hold built-in and panel tiles (`about`, `settings`, `remote`,
+    `panel:<id>`) in `launcher.hidden` and in `launcher.folders`' `apps`
+    (PANELS.md § 6); `hidden` and `in_folder` may name them, and a tile
+    hidden or shown again is only `hidden`, never also `removed` or
+    `added`. Everything else is unchanged.
   - `rusttv.v10`: [HistoryChange](#historychange) has new kinds for phones
     paired with RustTV Remote (`phone_paired`, `phone_removed`, each with
     `phone`, the phone's id, and `name`), and `history show`'s `state` may
@@ -573,10 +577,11 @@ folder), `added` / `removed` (`tile`; never `remote`, the RustTV Remote
 tile, or `panel:history`, History's tile, which older snapshots leave
 out), `folder_added` / `folder_removed`
 (`folder`: `folder:<number>`, `name`), `folder_renamed` (`folder`, `old`,
-`new`), `in_folder` (`tile`, `folder`, `name`, `inside`: the app went into
-the folder, or out of it), `phone_paired` / `phone_removed` (`phone`: the
-phone's id, 32 hex digits; `name`), `hidden` (`tile`,
-`hidden`), `update_check` (`on`), `effects` (`reduced`), `setting` (`key`, `old`, `new`; null =
+`new`), `in_folder` (`tile`, `folder`, `name`, `inside`: the app or
+built-in tile went into the folder, or out of it), `phone_paired` / `phone_removed` (`phone`: the
+phone's id, 32 hex digits; `name`), `hidden` (`tile`: an app or a
+built-in tile, `hidden`; a tile hidden or shown again is not also
+`removed` or `added`), `update_check` (`on`), `effects` (`reduced`), `setting` (`key`, `old`, `new`; null =
 unset), `package` (`package`, `old`, `new`: `enabled` \| `disabled`, null =
 not observed), `firmware` (`old`, `new`), `takeover` (`active`).
 

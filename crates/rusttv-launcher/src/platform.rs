@@ -177,7 +177,7 @@ pub trait Platform {
     }
 
     /// The entries of the top-right menu this platform can do, besides
-    /// Modify and Settings (always there): Search and KDE Connect when
+    /// Modify, RustTV and Settings (always there): Search and KDE Connect when
     /// [`Platform::quick_action_app`] names an app for them, Audio, Network
     /// and Power when [`Platform::device_settings`] has their quick panel.
     /// Called once at start; should be cheap.

@@ -47,7 +47,8 @@ mod generated {
 }
 use generated::{
     AboutListRow, AboutPanel, Badges, Dir, Effects, Hints, HistoryListRow, HistoryPanel,
-    HomeWindow, Pictures, Pointer, RemotePanel, ReviewLine, SettingsRow, Strings, TileData,
+    HomeWindow, Pictures, Pointer, RemoteListRow, RemotePanel, ReviewLine, SettingsRow, Strings,
+    TileData,
 };
 
 mod device_view;
@@ -906,6 +907,9 @@ struct Controller {
     /// The quick panel while it is open, and its status line ("…" while
     /// reading, or why a change failed).
     quick: Option<crate::device::PanelPage>,
+    /// The RustTV quick panel's focused row, while it is open (its rows are
+    /// the panels', [`crate::model::QUICK_PANELS`]).
+    panels_row: Option<usize>,
     quick_status: String,
     quick_rows: Rc<VecModel<SettingsRow>>,
     /// The top-right menu's entries, as quick.slint codes.
@@ -1063,6 +1067,7 @@ impl Controller {
                 device,
                 device_pending: 0,
                 quick: None,
+                panels_row: None,
                 quick_status: String::new(),
                 quick_rows,
                 quick_codes,
@@ -1967,7 +1972,7 @@ impl Controller {
                 .hidden_apps()
                 .iter()
                 .cloned()
-                .map(TileId::App)
+                .map(order_file::tile_for_name)
                 .collect(),
             None => Vec::new(),
         };
@@ -2484,7 +2489,12 @@ impl Controller {
         };
         window.set_folder_name(folder.name.as_str().into());
         window.set_folder_focus(open.focus.map_or(-1, to_i32));
-        let tiles: Vec<TileId> = folder.apps.iter().cloned().map(TileId::App).collect();
+        let tiles: Vec<TileId> = folder
+            .apps
+            .iter()
+            .cloned()
+            .map(order_file::tile_for_name)
+            .collect();
         if tiles != self.folder_shown {
             self.folder_shown = tiles;
             let rows: Vec<TileData> = self
@@ -2570,7 +2580,14 @@ impl Controller {
                     .into_iter()
                     .flat_map(|folder| &folder.apps)
                     .take(4)
-                    .filter_map(|app| self.apps.get(app).map(|view| view.image.clone()))
+                    .filter_map(|name| match self.apps.get(name) {
+                        Some(view) => Some(view.image.clone()),
+                        // A built-in tile shows its banner (PANELS.md § 6).
+                        None => self
+                            .builtins
+                            .view(&order_file::tile_for_name(name.clone()))
+                            .map(|view| view.image.clone()),
+                    })
                     .collect();
                 return TileData {
                     label: folder
@@ -5052,17 +5069,17 @@ mod tests {
     }
 
     #[test]
-    fn the_menu_shows_modify_and_settings_and_what_the_platform_offers() {
+    fn the_menu_shows_modify_rusttv_and_settings_and_what_the_platform_offers() {
         let screen = screen(None);
-        assert_eq!(quick_codes(&screen), [1, 5], "Modify and Settings");
+        assert_eq!(quick_codes(&screen), [1, 7, 5], "Modify, RustTV, Settings");
         let screen = screen_with(abc().with_device(), None);
-        assert_eq!(quick_codes(&screen), [1, 2, 3, 4, 5, 6]);
+        assert_eq!(quick_codes(&screen), [1, 2, 3, 4, 7, 5, 6]);
         assert_eq!(screen.window.get_quick_selected(), -1);
         screen.tap(UP);
         assert_eq!(screen.window.get_mode(), mode_value(State::Bar));
         assert_eq!(screen.window.get_quick_selected(), 0);
-        // Settings, the fifth entry, opens the Settings page.
-        for _ in 0..4 {
+        // Settings, the sixth entry, opens the Settings page.
+        for _ in 0..5 {
             screen.tap(RIGHT);
         }
         screen.tap(OK);
@@ -5134,6 +5151,280 @@ mod tests {
         assert!(screen.window.get_quick_power());
         screen.window.invoke_quick_dismissed();
         assert_ne!(screen.window.get_mode(), mode_value(State::Quick));
+    }
+
+    /// The RustTV entry of the top-right menu opens the panels' rows (About,
+    /// RustTV Remote, History), each its row face from the same view as its
+    /// tile; OK, a click or the pointer opens the row's page, and Back
+    /// closes the panel.
+    #[test]
+    fn the_rusttv_panel_shows_the_panels_rows_and_opens_their_pages() {
+        let screen = screen(None);
+        let open_panel = |screen: &Screen| {
+            let index = quick_codes(screen)
+                .iter()
+                .position(|code| *code == 7)
+                .unwrap();
+            screen
+                .window
+                .invoke_quick_clicked(i32::try_from(index).unwrap());
+            assert_eq!(screen.window.get_mode(), mode_value(State::Quick));
+        };
+        open_panel(&screen);
+        assert_eq!(screen.window.get_quick_title(), "RustTV");
+        assert!(!screen.window.get_quick_power());
+        let rows: Vec<SettingsRow> = screen.window.get_quick_rows().iter().collect();
+        let texts: Vec<(&str, &str, bool)> = rows
+            .iter()
+            .map(|row| (row.title.as_str(), row.detail.as_str(), row.current))
+            .collect();
+        let version = format!("RustTV {}", ltr(env!("CARGO_PKG_VERSION")));
+        assert_eq!(
+            texts[..2],
+            [
+                (
+                    version.as_str(),
+                    "MIT OR Apache-2.0 · licences and third-party notices",
+                    false
+                ),
+                ("RustTV Remote", "No phones", false),
+            ]
+        );
+        // History's row: its age once the history has been read (another
+        // test's history thread may have been), two lines from the start.
+        assert_eq!(texts[2].0, "History");
+        assert!(rows[2].tall);
+        assert_eq!(texts.len(), 3);
+        assert_eq!(screen.window.get_quick_row(), 0);
+
+        // An update and pairing show on the rows as on the tiles.
+        {
+            let mut controller = screen._controller.borrow_mut();
+            controller.update = UpdateStatus::Available("9.9.9".into());
+            controller.pairing_opened();
+            controller.render();
+        }
+        let rows: Vec<SettingsRow> = screen.window.get_quick_rows().iter().collect();
+        assert_eq!(
+            (rows[0].detail.as_str(), rows[0].current),
+            ("Update available", true)
+        );
+        assert_eq!(
+            (rows[1].detail.as_str(), rows[1].current),
+            ("Pairing", true)
+        );
+        screen._controller.borrow_mut().pairing_closed();
+
+        // Down and OK: RustTV Remote's page; Back is Home.
+        screen.tap(DOWN);
+        assert_eq!(screen.window.get_quick_row(), 1);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Remote));
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+
+        // A click on a row: About's page.
+        open_panel(&screen);
+        screen.window.invoke_quick_row_clicked(0);
+        assert_eq!(screen.window.get_mode(), mode_value(State::About));
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+
+        // The pointer walks to History's row and clicks: Settings on History.
+        open_panel(&screen);
+        screen.window.invoke_list_pointer(3, 2, 0);
+        assert_eq!(screen.window.get_quick_row(), 2, "hover focuses");
+        screen.window.invoke_list_pointer(3, 2, 1);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        screen._controller.borrow_mut().home.close_settings();
+
+        // Back closes the panel, focus back on its entry.
+        open_panel(&screen);
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Bar));
+        let selected = usize::try_from(screen.window.get_quick_selected()).unwrap();
+        assert_eq!(quick_codes(&screen)[selected], 7);
+    }
+
+    /// Every built-in tile hides like an app (PANELS.md § 6). The Hidden
+    /// apps tile comes and lists them after the apps, so Settings is never
+    /// out of reach; while About is hidden, Settings has its About section,
+    /// so the licence notices and Slint's attribution stay reachable. OK
+    /// puts a tile back, and the order file keeps them.
+    #[test]
+    fn built_in_tiles_hide_and_settings_and_the_notices_stay_reachable() {
+        let dir = temp_dir("hide-built-ins");
+        let file = dir.join("order.toml");
+        let sections = |screen: &Screen| -> Vec<String> {
+            screen
+                .window
+                .get_settings_sections()
+                .iter()
+                .map(|section| section.title.to_string())
+                .collect()
+        };
+        let screen = screen_with(abc().without_menu(), Some(file.clone()));
+        // A, B, C, About, Settings, RustTV Remote, History.
+        for _ in 0..3 {
+            screen.tap(RIGHT);
+        }
+        for _ in 0..4 {
+            screen.long_press_ok();
+            screen.tap(DOWN);
+            screen.tap(OK); // Hide
+        }
+        assert_eq!(screen.kinds(), [0, 0, 0, 5], "A, B, C, Hidden apps");
+        assert_eq!(
+            order_file::load(&file).hidden,
+            ["about", "panel:history", "remote", "settings"]
+                .map(str::to_owned)
+                .into()
+        );
+        // The Hidden apps page lists them, drawn as their tiles.
+        assert_eq!(screen.window.get_focused_index(), 3);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Hidden));
+        let kinds: Vec<i32> = screen
+            .window
+            .get_hidden_tiles()
+            .iter()
+            .map(|tile| tile.kind)
+            .collect();
+        assert_eq!(kinds, [3, 6, 8, 9]);
+        // Settings back on Home; About stays hidden.
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Hidden));
+        screen.tap(BACK);
+        assert_eq!(screen.kinds(), [0, 0, 0, 6, 5]);
+        screen
+            ._controller
+            .borrow_mut()
+            .home
+            .focus_on(&TileId::Settings);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        assert_eq!(sections(&screen).last().map(String::as_str), Some("About"));
+        for _ in 0..10 {
+            screen.tap(DOWN);
+        }
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::About));
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        screen._controller.borrow_mut().home.close_settings();
+        drop(screen);
+
+        // Started again: still hidden. About back on Home: Settings is as
+        // it was, without the About section.
+        let screen = screen_with(abc().without_menu(), Some(file.clone()));
+        assert_eq!(screen.kinds(), [0, 0, 0, 6, 5]);
+        screen
+            ._controller
+            .borrow_mut()
+            .home
+            .focus_on(&TileId::Hidden);
+        screen.tap(OK);
+        screen.tap(OK); // About
+        screen.tap(BACK);
+        assert_eq!(screen.kinds()[..5], [0, 0, 0, 6, 3]);
+        screen
+            ._controller
+            .borrow_mut()
+            .home
+            .focus_on(&TileId::Settings);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        assert!(!sections(&screen).contains(&"About".to_owned()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Built-in tiles go into folders like apps (PANELS.md § 6): the folder's
+    /// tile shows their banners small, the open folder draws them as their
+    /// tiles, OK opens their page, and the phones see them in the folder
+    /// with their captions.
+    #[test]
+    fn built_in_tiles_go_into_folders_with_their_pictures() {
+        let screen = screen(None);
+        let drag = |over: Option<&str>, phase| {
+            screen
+                ._controller
+                .borrow_mut()
+                .remote_event(RemoteEvent::Input {
+                    phone: rusttv_remote::PhoneId([1; 16]),
+                    message: PhoneMessage::Drag {
+                        id: "remote".into(),
+                        over: over.map(Into::into),
+                        phase,
+                        on: over.is_some(),
+                    },
+                });
+        };
+        // A, B, C, RustTV Remote, History: Remote rests on History.
+        drag(None, DragPhase::Start);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Moving));
+        drag(Some("panel:history"), DragPhase::Move);
+        screen.wait(700);
+        drag(Some("panel:history"), DragPhase::End);
+        assert_eq!(screen.kinds(), [0, 0, 0, 7]);
+        let folder = screen.window.get_tiles().row_data(3).unwrap();
+        let minis: Vec<slint::Image> = folder.minis.iter().collect();
+        assert_eq!(minis.len(), 2, "History's and Remote's banners");
+        for mini in &minis {
+            let size = mini.size();
+            assert_eq!((size.width, size.height), (320, 180));
+        }
+        assert_eq!(screen.window.get_mode(), mode_value(State::Folder));
+        let kinds: Vec<i32> = screen
+            .window
+            .get_folder_tiles()
+            .iter()
+            .map(|tile| tile.kind)
+            .collect();
+        assert_eq!(kinds, [9, 8], "History, then Remote");
+        {
+            let controller = screen._controller.borrow();
+            let view = crate::remote::home_view(
+                &controller.home,
+                &|id| controller.remote_label(id),
+                false,
+                None,
+                &UpdateStatus::Idle,
+                (Some(rusttv_remote::protocol::Caption::Waiting), None),
+            );
+            let inside: Vec<(&str, Option<&str>)> = view
+                .tiles
+                .iter()
+                .filter(|tile| tile.folder.is_some())
+                .map(|tile| (tile.id.as_str(), tile.folder.as_deref()))
+                .collect();
+            assert_eq!(
+                inside,
+                [
+                    ("panel:history", Some("folder:1")),
+                    ("remote", Some("folder:1"))
+                ]
+            );
+            let history = view
+                .tiles
+                .iter()
+                .find(|tile| tile.id == "panel:history")
+                .unwrap();
+            assert_eq!(
+                history.caption,
+                Some(rusttv_remote::protocol::Caption::Waiting)
+            );
+        }
+        // The folder is open with Remote focused: OK opens its page.
+        assert_eq!(screen.window.get_folder_focus(), 1);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Remote));
+        assert_eq!(
+            screen._controller.borrow().home.order().keys().len(),
+            4,
+            "neither tile is back on Home"
+        );
     }
 
     fn menu_texts(screen: &Screen) -> Vec<String> {

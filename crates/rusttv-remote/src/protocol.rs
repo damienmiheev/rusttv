@@ -96,8 +96,8 @@ pub enum PhoneMessage {
     /// A choice in the open long-press menu.
     Menu { choice: MenuChoice },
     /// The picture of an app's tile, by component, or of a built-in tile
-    /// (`about`, `settings`, `remote`, `hidden-apps`): answered with a
-    /// [`TvMessage::Banner`] to this phone only.
+    /// (`about`, `settings`, `remote`, `hidden-apps`, `panel:history`):
+    /// answered with a [`TvMessage::Banner`] to this phone only.
     Banner { id: String },
     /// Moving a tile of the Home mirror: `over` is the tile it is over;
     /// `on` when the finger is over that tile's middle, where resting makes
@@ -255,8 +255,10 @@ pub fn picture_data(webp: &[u8]) -> Option<String> {
 /// The Home mirror (REMOTE.md § 4): sent whole after every change.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HomeView {
-    /// Visible tiles in order. Apps inside folders are listed too, with
-    /// their folder; hidden apps never are.
+    /// Visible tiles in order. Tiles inside folders (apps and built-in
+    /// tiles) are listed too, with their folder; hidden tiles never are.
+    /// In [`HomeMode::Settings`] for the About or RustTV Remote page,
+    /// [`HomeView::focused`] names that page's tile.
     pub tiles: Vec<TileView>,
     /// The focused tile.
     pub focused: Option<String>,
@@ -268,8 +270,9 @@ pub struct HomeView {
     /// The long-press menu, in [`HomeMode::Menu`].
     #[serde(default)]
     pub menu: Option<MenuView>,
-    /// The hidden apps, in [`HomeMode::Hidden`] (empty otherwise); the
-    /// focused one is [`HomeView::focused`].
+    /// The hidden tiles (apps, then built-in tiles), in
+    /// [`HomeMode::Hidden`] (empty otherwise); the focused one is
+    /// [`HomeView::focused`].
     #[serde(default)]
     pub hidden: Vec<TileView>,
 }
@@ -287,7 +290,7 @@ pub struct MenuView {
 pub enum MenuChoice {
     /// Pick the tile up to move it.
     Move,
-    /// Hide the app from Home.
+    /// Hide the tile (an app or a built-in tile) from Home.
     Hide,
 }
 

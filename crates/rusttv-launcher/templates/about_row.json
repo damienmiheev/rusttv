@@ -2,8 +2,13 @@
   "schema": 1,
   "component": "AboutListRow",
   "face": "row",
-  "props": ["version"],
+  "props": ["version", "status"],
   "root": { "list-row": {
     "title": { "tr": "RustTV {}", "args": [{ "ltr": "version" }] },
-    "detail": { "tr": "MIT OR Apache-2.0 · licences and third-party notices" } } }
+    "detail": { "select": "status", "cases": {
+      "update": { "tr": "Update available" },
+      "downloading": { "tr": "Downloading" },
+      "installing": { "tr": "Installing" } },
+      "else": { "tr": "MIT OR Apache-2.0 · licences and third-party notices" } },
+    "attention": { "select": "status", "cases": { "update": true } } } }
 }

@@ -80,10 +80,13 @@ pub enum TileId {
     /// The built-in RustTV Remote tile: pair a phone, the paired phones
     /// (REMOTE.md § 2).
     Remote,
-    /// Opens the hidden apps. Shown last, and only while an installed app is hidden;
-    /// never part of the [`Order`].
+    /// Opens the hidden apps. Shown last, and only while an installed app
+    /// or a built-in tile is hidden; never part of the [`Order`], never
+    /// hidden or in a folder, so a hidden Settings tile is always two
+    /// presses away (PANELS.md § 6).
     Hidden,
-    /// A folder of apps, by its number (the key of [`Home::folders`]).
+    /// A folder of apps and built-in tiles, by its number (the key of
+    /// [`Home::folders`]).
     Folder(u32),
     /// A panel's tile (PANELS.md § 6), written `panel:<id>`.
     Panel(PanelId),
@@ -127,6 +130,86 @@ fn is_builtin(id: &TileId) -> bool {
         id,
         TileId::About | TileId::Settings | TileId::Remote | TileId::Panel(_)
     )
+}
+
+/// Name of the About tile in the order file, the history and the phones'
+/// views. Component names always contain a `/`, so these names can't clash
+/// with an app.
+const ABOUT: &str = "about";
+
+/// Name of the Hidden apps tile (only as the order file's `focus`).
+const HIDDEN: &str = "hidden-apps";
+
+/// Name of the Settings tile.
+const SETTINGS: &str = "settings";
+
+/// Name of the RustTV Remote tile.
+const REMOTE: &str = "remote";
+
+/// Folders are named `folder:<number>`.
+pub(crate) const FOLDER: &str = "folder:";
+
+/// Panel tiles are named `panel:<id>` (format 6 in the history; PANELS.md
+/// § 6). Ids have no `/`, so they can't clash with an app.
+const PANEL: &str = "panel:";
+
+/// The tile a name stands for (the order file, the history, the phones).
+/// [`TileId::Hidden`] in an order is dropped when the order meets the app
+/// list, and so is a folder without an entry; so are About and Settings
+/// where a top-right menu has Settings. A panel this build doesn't know
+/// reads as an app, which is dropped as not installed, as builds before
+/// panel tiles do.
+pub(crate) fn tile_for_name(name: String) -> TileId {
+    match name.as_str() {
+        ABOUT => TileId::About,
+        SETTINGS => TileId::Settings,
+        REMOTE => TileId::Remote,
+        HIDDEN => TileId::Hidden,
+        _ => match (folder_number(&name), panel(&name)) {
+            (Some(number), _) => TileId::Folder(number),
+            (None, Some(panel)) => TileId::Panel(panel),
+            (None, None) => TileId::App(name),
+        },
+    }
+}
+
+/// The panel named `panel:<id>`, if this build has it.
+fn panel(name: &str) -> Option<PanelId> {
+    let id = name.strip_prefix(PANEL)?;
+    PanelId::ALL.into_iter().find(|panel| panel.id() == id)
+}
+
+/// The number in `folder:<number>`.
+pub(crate) fn folder_number(name: &str) -> Option<u32> {
+    name.strip_prefix(FOLDER)?.parse().ok()
+}
+
+/// A tile's name ([`tile_for_name`] reads it back).
+pub(crate) fn name_of(id: &TileId) -> String {
+    match id {
+        TileId::App(component) => component.clone(),
+        TileId::About => ABOUT.to_owned(),
+        TileId::Settings => SETTINGS.to_owned(),
+        TileId::Remote => REMOTE.to_owned(),
+        TileId::Hidden => HIDDEN.to_owned(),
+        TileId::Folder(number) => format!("{FOLDER}{number}"),
+        TileId::Panel(panel) => format!("{PANEL}{}", panel.id()),
+    }
+}
+
+/// The name a tile has in a folder or among the hidden tiles: apps and the
+/// built-in tiles (PANELS.md § 6) can be hidden and go into folders;
+/// folders and the Hidden apps tile can't (`None`).
+fn member_name(id: &TileId) -> Option<String> {
+    match id {
+        TileId::Folder(_) | TileId::Hidden => None,
+        _ => Some(name_of(id)),
+    }
+}
+
+/// The tile a folder's or the hidden list's entry stands for.
+fn member(name: &str) -> TileId {
+    tile_for_name(name.to_owned())
 }
 
 /// A launchable app as reported by the platform.
@@ -228,8 +311,9 @@ impl Default for FolderNames {
 pub struct Folder {
     /// What the person called it, or the first name it got.
     pub name: String,
-    /// Component names, in the folder's order. Never empty on Home: a
-    /// folder goes when its last app leaves.
+    /// Its tiles' names, in the folder's order: apps' component names and
+    /// built-in tiles' names (`about`, `panel:history`, [`name_of`]). Never
+    /// empty on Home: a folder goes when its last tile leaves.
     pub apps: Vec<String>,
 }
 
@@ -269,8 +353,8 @@ pub enum Input {
 }
 
 /// An entry of the top-right menu over Home (like Plasma Bigscreen's), in
-/// the order shown. Modify and Settings are always there; the platform
-/// says which others it can do ([`crate::Platform::quick_actions`]).
+/// the order shown. Modify, RustTV and Settings are always there; the
+/// platform says which others it can do ([`crate::Platform::quick_actions`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum QuickAction {
     /// Search.
@@ -283,6 +367,9 @@ pub enum QuickAction {
     Network,
     /// Opens KDE Connect.
     KdeConnect,
+    /// The RustTV quick panel: the panels' rows (About, RustTV Remote,
+    /// History; PANELS.md § 2), each opening its page.
+    Panels,
     /// The Settings page.
     Settings,
     /// The Power quick panel (restart, power off).
@@ -291,21 +378,30 @@ pub enum QuickAction {
 
 impl QuickAction {
     /// Every entry, in menu order.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Search,
         Self::Modify,
         Self::Audio,
         Self::Network,
         Self::KdeConnect,
+        Self::Panels,
         Self::Settings,
         Self::Power,
     ];
 
     /// Whether it opens a quick panel over Home.
     pub fn opens_panel(self) -> bool {
-        matches!(self, Self::Audio | Self::Power)
+        matches!(self, Self::Audio | Self::Panels | Self::Power)
     }
 }
+
+/// The panels' rows in the RustTV quick panel, top to bottom (PANELS.md
+/// § 2): About, RustTV Remote, History. OK on a row opens its page.
+pub const QUICK_PANELS: [TileId; 3] = [
+    TileId::About,
+    TileId::Remote,
+    TileId::Panel(PanelId::History),
+];
 
 /// An entry in the menu that a long press on a tile opens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -481,13 +577,20 @@ impl Order {
     /// tile the user moved elsewhere stays where it is; a missing one is
     /// added to the end block.
     /// Without `settings_tiles` (a top-right menu has Settings), the About
-    /// and Settings tiles are dropped.
-    fn reconcile(&mut self, apps: &[App], folders: &BTreeSet<u32>, settings_tiles: bool) -> bool {
+    /// and Settings tiles are dropped. Built-in tiles in `away` (hidden, or
+    /// in a folder) are dropped and not added back.
+    fn reconcile(
+        &mut self,
+        apps: &[App],
+        folders: &BTreeSet<u32>,
+        settings_tiles: bool,
+        away: &[TileId],
+    ) -> bool {
         let before = self.keys.clone();
         self.keys.retain(|(id, _)| match id {
             TileId::App(component) => apps.iter().any(|app| app.id == *component),
-            TileId::About | TileId::Settings => settings_tiles,
-            TileId::Remote | TileId::Panel(_) => true,
+            TileId::About | TileId::Settings => settings_tiles && !away.contains(id),
+            TileId::Remote | TileId::Panel(_) => !away.contains(id),
             TileId::Hidden => false,
             TileId::Folder(folder) => folders.contains(folder),
         });
@@ -528,7 +631,8 @@ impl Order {
         ids.extend(tail.iter().map(|(id, _)| id.clone()));
         let builtins = BUILTINS
             .iter()
-            .filter(|id| settings_tiles || !matches!(id, TileId::About | TileId::Settings));
+            .filter(|id| settings_tiles || !matches!(id, TileId::About | TileId::Settings))
+            .filter(|id| !away.contains(id));
         for builtin in builtins {
             if !ids.contains(builtin) {
                 ids.push(builtin.clone());
@@ -674,14 +778,11 @@ enum Mode {
 fn menu_items(tile: Option<&TileId>, sizes: bool) -> &'static [MenuItem] {
     match tile {
         Some(TileId::App(_)) if sizes => &[MenuItem::Move, MenuItem::Hide, MenuItem::Size],
-        Some(TileId::App(_)) => &[MenuItem::Move, MenuItem::Hide],
+        // Built-in tiles hide like apps (PANELS.md § 6).
         Some(
-            TileId::About
-            | TileId::Settings
-            | TileId::Remote
-            | TileId::Panel(_)
-            | TileId::Folder(_),
-        ) => &[MenuItem::Move],
+            TileId::App(_) | TileId::About | TileId::Settings | TileId::Remote | TileId::Panel(_),
+        ) => &[MenuItem::Move, MenuItem::Hide],
+        Some(TileId::Folder(_)) => &[MenuItem::Move],
         Some(TileId::Hidden) | None => &[],
     }
 }
@@ -692,11 +793,13 @@ pub struct Home {
     order: Order,
     /// Folders on Home by number; each one is in `order` once.
     folders: BTreeMap<u32, Folder>,
-    /// Component names of apps kept off Home, installed or not.
+    /// Names of tiles kept off Home ([`member_name`]): apps, installed or
+    /// not, and built-in tiles.
     hidden: BTreeSet<String>,
     /// The last app list from the platform.
     apps: Vec<App>,
-    /// Installed hidden apps, by label.
+    /// The hidden apps page: installed hidden apps by label, then this
+    /// Home's hidden built-in tiles in [`BUILTINS`] order.
     hidden_apps: Vec<String>,
     /// Tiles in display order: the order, then [`TileId::Hidden`] if any app is
     /// hidden. During a move this differs from `order`.
@@ -776,6 +879,23 @@ impl Home {
         }
     }
 
+    /// Whether this Home has the built-in tile `id` (somewhere: on the
+    /// grid, in a folder or hidden): About and Settings only as tiles
+    /// ([`Home::set_settings_tiles`]), RustTV Remote and panel tiles always.
+    fn has_builtin(&self, id: &TileId) -> bool {
+        match id {
+            TileId::About | TileId::Settings => self.settings_tiles,
+            TileId::Remote | TileId::Panel(_) => true,
+            TileId::App(_) | TileId::Hidden | TileId::Folder(_) => false,
+        }
+    }
+
+    /// Whether the tile is hidden (kept off Home, listed on the hidden apps
+    /// page).
+    pub fn is_hidden(&self, id: &TileId) -> bool {
+        member_name(id).is_some_and(|name| self.hidden.contains(&name))
+    }
+
     /// The top-right menu's entries.
     pub fn quick_actions(&self) -> &[QuickAction] {
         &self.quick_actions
@@ -852,14 +972,30 @@ impl Home {
         });
         hidden.dedup_by(|a, b| a.id == b.id);
         self.hidden_apps = hidden.into_iter().map(|app| app.id.clone()).collect();
+        let builtins: Vec<(TileId, String)> = BUILTINS
+            .iter()
+            .filter(|id| self.has_builtin(id))
+            .map(|id| (id.clone(), name_of(id)))
+            .collect();
+        self.hidden_apps.extend(
+            builtins
+                .iter()
+                .filter(|(_, name)| self.hidden.contains(name))
+                .map(|(_, name)| name.clone()),
+        );
 
-        // Folders keep only shown apps, each once; an empty folder goes.
+        // Folders keep only shown apps and this Home's built-in tiles that
+        // aren't hidden, each once; an empty folder goes.
         let folders_before = self.folders.clone();
         let mut placed = BTreeSet::new();
         for folder in self.folders.values_mut() {
-            folder
-                .apps
-                .retain(|id| shown.iter().any(|app| app.id == *id) && placed.insert(id.clone()));
+            folder.apps.retain(|name| {
+                let kept = shown.iter().any(|app| app.id == *name)
+                    || builtins
+                        .iter()
+                        .any(|(_, builtin)| builtin == name && !self.hidden.contains(name));
+                kept && placed.insert(name.clone())
+            });
         }
         self.folders.retain(|_, folder| !folder.apps.is_empty());
         let top: Vec<App> = shown
@@ -867,10 +1003,19 @@ impl Home {
             .filter(|app| !placed.contains(&app.id))
             .cloned()
             .collect();
+        // Built-in tiles off Home's grid: hidden, or in a folder.
+        let away: Vec<TileId> = BUILTINS
+            .iter()
+            .filter(|id| {
+                let name = name_of(id);
+                self.hidden.contains(&name) || placed.contains(&name)
+            })
+            .cloned()
+            .collect();
 
         let ids: BTreeSet<u32> = self.folders.keys().copied().collect();
-        let changed =
-            self.order.reconcile(&top, &ids, self.settings_tiles) || self.folders != folders_before;
+        let changed = self.order.reconcile(&top, &ids, self.settings_tiles, &away)
+            || self.folders != folders_before;
         self.tiles = self.order.ids();
         if !self.hidden_apps.is_empty() {
             self.tiles.push(TileId::Hidden);
@@ -919,26 +1064,22 @@ impl Home {
                 self.update_scroll();
             }
             Mode::Folder(open) => {
-                let TileId::App(component) = id else {
-                    return None;
-                };
+                let name = member_name(id)?;
                 let index = self
                     .folders
                     .get(&open.id)?
                     .apps
                     .iter()
-                    .position(|app| app == component)?;
+                    .position(|app| *app == name)?;
                 self.mode = Mode::Folder(OpenFolder {
                     focus: Some(index),
                     ..open
                 });
             }
-            // On the hidden apps page a tap puts the app back, as OK does.
+            // On the hidden apps page a tap puts the tile back, as OK does.
             Mode::Hidden { .. } if !long => {
-                let TileId::App(component) = id else {
-                    return None;
-                };
-                let focus = self.hidden_apps.iter().position(|app| app == component)?;
+                let name = member_name(id)?;
+                let focus = self.hidden_apps.iter().position(|app| *app == name)?;
                 self.mode = Mode::Hidden { focus };
                 return self.handle_hidden(Input::OkPressed);
             }
@@ -970,13 +1111,13 @@ impl Home {
                 moved
             }
             Mode::Folder(open) => {
-                let TileId::App(component) = id else {
+                let Some(name) = member_name(id) else {
                     return false;
                 };
                 let Some(index) = self
                     .folders
                     .get(&open.id)
-                    .and_then(|folder| folder.apps.iter().position(|app| app == component))
+                    .and_then(|folder| folder.apps.iter().position(|app| *app == name))
                 else {
                     return false;
                 };
@@ -1067,13 +1208,13 @@ impl Home {
                 self.focus = index;
             }
             Mode::Folder(open) => {
-                let TileId::App(component) = id else {
+                let Some(name) = member_name(id) else {
                     return false;
                 };
                 let Some(index) = self
                     .folders
                     .get(&open.id)
-                    .and_then(|folder| folder.apps.iter().position(|app| app == component))
+                    .and_then(|folder| folder.apps.iter().position(|app| *app == name))
                 else {
                     return false;
                 };
@@ -1133,13 +1274,13 @@ impl Home {
                 }
             }
             Place::Folder { id, index } => {
-                let TileId::App(component) = target else {
+                let Some(name) = member_name(target) else {
                     return;
                 };
                 let Some(folder) = self.folders.get_mut(&id) else {
                     return;
                 };
-                let Some(to) = folder.apps.iter().position(|app| app == component) else {
+                let Some(to) = folder.apps.iter().position(|app| *app == name) else {
                     return;
                 };
                 if to == index {
@@ -1208,12 +1349,14 @@ impl Home {
             || self.hidden_apps.iter().any(|app| app == id)
     }
 
-    /// Component names of all hidden apps, including ones no longer installed.
+    /// Names of all hidden tiles ([`name_of`]), including apps no longer
+    /// installed.
     pub fn hidden(&self) -> &BTreeSet<String> {
         &self.hidden
     }
 
-    /// Installed hidden apps as listed on the hidden apps page, by label.
+    /// The hidden apps page's tiles by name: installed hidden apps by
+    /// label, then this Home's hidden built-in tiles.
     pub fn hidden_apps(&self) -> &[String] {
         &self.hidden_apps
     }
@@ -1361,6 +1504,19 @@ impl Home {
         if let Mode::Quick { selected } = self.mode {
             self.mode = Mode::Bar { selected };
         }
+    }
+
+    /// OK (or a click) on row `row` of the RustTV quick panel
+    /// ([`QUICK_PANELS`]): opens that panel's page, as its tile does. Only
+    /// while that quick panel is open.
+    pub fn open_panel_row(&mut self, row: usize) -> Option<Effect> {
+        let Mode::Quick { selected } = self.mode else {
+            return None;
+        };
+        if self.quick_actions.get(selected) != Some(&QuickAction::Panels) {
+            return None;
+        }
+        self.open_builtin(QUICK_PANELS.get(row)?)
     }
 
     /// Leaves the RustTV Remote page (it decides when: Back).
@@ -1695,19 +1851,19 @@ impl Home {
         if left == 0 {
             self.folders.remove(&id);
             self.tiles.remove(at);
-            self.tiles.insert(at, TileId::App(app));
+            self.tiles.insert(at, member(&app));
         } else {
             if made && left == 1 {
-                // A folder this move made goes again: the other app is back.
+                // A folder this move made goes again: the other tile is back.
                 if let Some(other) = self
                     .folders
                     .remove(&id)
                     .and_then(|f| f.apps.into_iter().next())
                 {
-                    self.tiles[at] = TileId::App(other);
+                    self.tiles[at] = member(&other);
                 }
             }
-            self.tiles.insert(at + 1, TileId::App(app));
+            self.tiles.insert(at + 1, member(&app));
             self.focus = at + 1;
         }
         self.update_scroll();
@@ -1726,15 +1882,18 @@ impl Home {
         let Some(over) = self.moving_over() else {
             return;
         };
-        let (TileId::App(app), Some(target)) = (
-            self.tiles[self.focus].clone(),
+        let (Some(app), Some(target)) = (
+            member_name(&self.tiles[self.focus]),
             self.tiles.get(over).cloned(),
         ) else {
             return;
         };
         let (id, made) = match target {
             TileId::Folder(id) => (id, false),
-            TileId::App(other) => {
+            target => {
+                let Some(other) = member_name(&target) else {
+                    return;
+                };
                 let id = self.folders.keys().max().map_or(1, |max| max + 1);
                 let name = self.folder_name(&other, &app);
                 self.folders.insert(
@@ -1746,7 +1905,6 @@ impl Home {
                 );
                 (id, true)
             }
-            _ => return,
         };
         let Some(folder) = self.folders.get_mut(&id) else {
             return;
@@ -1791,15 +1949,15 @@ impl Home {
         self.folder_names.0[category.index()].clone()
     }
 
-    /// Whether the tile at `index` can take the moving app into a folder:
-    /// only an app can go into a folder, and only an app or a folder can
-    /// take it (no folders in folders).
+    /// Whether the tile at `index` can take the moving tile into a folder:
+    /// only an app or a built-in tile can go into a folder, and only one of
+    /// those or a folder can take it (no folders in folders; the Hidden
+    /// apps tile never).
     fn can_take(&self, index: usize) -> bool {
-        matches!(self.tiles.get(self.focus), Some(TileId::App(_)))
-            && matches!(
-                self.tiles.get(index),
-                Some(TileId::App(_) | TileId::Folder(_))
-            )
+        self.tiles.get(self.focus).and_then(member_name).is_some()
+            && self.tiles.get(index).is_some_and(|tile| {
+                matches!(tile, TileId::Folder(_)) || member_name(tile).is_some()
+            })
     }
 
     /// Up and Down pick an item, OK runs it (the release of the long press
@@ -1863,8 +2021,8 @@ impl Home {
                 self.hidden.remove(&id);
                 self.refresh();
                 if self.hidden_focus().is_none() {
-                    // That was the last one: back on Home, on the app.
-                    self.focus_on(&TileId::App(id));
+                    // That was the last one: back on Home, on the tile.
+                    self.focus_on(&member(&id));
                 }
                 Some(Effect::SaveOrder)
             }
@@ -1887,18 +2045,18 @@ impl Home {
                 .folders
                 .get(&id)
                 .and_then(|folder| folder.apps.get(index))
-                .cloned()
-                .map(TileId::App),
+                .map(|name| member(name)),
             Some(_) => None,
             None => self.focused().cloned(),
         }
     }
 
-    /// Hides the app the menu is for; the next tile (or app in the folder)
-    /// takes its place and focus. A folder whose last app this was goes.
+    /// Hides the app or built-in tile the menu is for; the next tile (or
+    /// the next in the folder) takes its place and focus. A folder whose
+    /// last tile this was goes.
     fn hide_current(&mut self) -> Option<Effect> {
         let open = self.open_folder();
-        let Some(TileId::App(id)) = self.current() else {
+        let Some(id) = self.current().as_ref().and_then(member_name) else {
             self.mode = Mode::Browse;
             return None;
         };
@@ -1960,23 +2118,8 @@ impl Home {
                 };
                 Some(Effect::Launch(component))
             }
-            TileId::About => {
-                self.mode = Mode::About {
-                    from_settings: false,
-                };
-                Some(Effect::OpenAbout)
-            }
-            TileId::Settings => {
-                self.mode = Mode::Settings;
-                Some(Effect::OpenSettings)
-            }
-            TileId::Remote => {
-                self.mode = Mode::Remote;
-                Some(Effect::OpenRemote)
-            }
-            TileId::Panel(PanelId::History) => {
-                self.mode = Mode::Settings;
-                Some(Effect::OpenHistory)
+            builtin @ (TileId::About | TileId::Settings | TileId::Remote | TileId::Panel(_)) => {
+                self.open_builtin(&builtin)
             }
             TileId::Hidden => {
                 self.mode = Mode::Hidden { focus: 0 };
@@ -1987,6 +2130,25 @@ impl Home {
                 None
             }
         }
+    }
+
+    /// Opens a built-in tile's page (from its tile, in a folder too, or
+    /// its row in the RustTV quick panel); Back from it returns Home.
+    fn open_builtin(&mut self, tile: &TileId) -> Option<Effect> {
+        let (mode, effect) = match tile {
+            TileId::About => (
+                Mode::About {
+                    from_settings: false,
+                },
+                Effect::OpenAbout,
+            ),
+            TileId::Settings => (Mode::Settings, Effect::OpenSettings),
+            TileId::Remote => (Mode::Remote, Effect::OpenRemote),
+            TileId::Panel(PanelId::History) => (Mode::Settings, Effect::OpenHistory),
+            TileId::App(_) | TileId::Hidden | TileId::Folder(_) => return None,
+        };
+        self.mode = mode;
+        Some(effect)
     }
 
     fn open_menu(&mut self) {
@@ -2041,12 +2203,10 @@ impl Home {
         match folder {
             Some(id) => {
                 self.focus_on(&TileId::Folder(id));
-                let index = self.folders.get(&id).and_then(|folder| {
-                    folder
-                        .apps
-                        .iter()
-                        .position(|app| TileId::App(app.clone()) == tile)
-                });
+                let index = self
+                    .folders
+                    .get(&id)
+                    .and_then(|folder| folder.apps.iter().position(|app| member(app) == tile));
                 self.mode = Mode::Folder(OpenFolder {
                     id,
                     focus: Some(index.unwrap_or(0)),
@@ -2422,6 +2582,7 @@ mod tests {
             &[app("c", "cinema"), app("a", "Bravo"), app("b", "alpha")],
             &BTreeSet::new(),
             false,
+            &[],
         );
         assert_eq!(
             order.ids(),
@@ -2434,7 +2595,7 @@ mod tests {
     #[test]
     fn without_a_top_right_menu_about_and_settings_are_tiles() {
         let mut order = Order::default();
-        order.reconcile(&[app("b", "B"), app("a", "A")], &BTreeSet::new(), true);
+        order.reconcile(&[app("b", "B"), app("a", "A")], &BTreeSet::new(), true, &[]);
         assert_eq!(
             order.ids(),
             [
@@ -2447,7 +2608,12 @@ mod tests {
             ]
         );
         // A menu with Settings takes their place.
-        order.reconcile(&[app("b", "B"), app("a", "A")], &BTreeSet::new(), false);
+        order.reconcile(
+            &[app("b", "B"), app("a", "A")],
+            &BTreeSet::new(),
+            false,
+            &[],
+        );
         assert_eq!(order.ids(), [id("a"), id("b"), TileId::Remote, HISTORY]);
     }
 
@@ -2475,8 +2641,8 @@ mod tests {
     }
 
     /// OK on History's tile opens Settings (on its History section, ui.rs);
-    /// closing Settings returns to the tile. Its menu is Move, like the
-    /// other built-in tiles, and it moves like them.
+    /// closing Settings returns to the tile. Its menu is Move and Hide, like
+    /// the other built-in tiles', and it moves like them.
     #[test]
     fn the_history_tile_opens_settings_and_moves_like_a_built_in_tile() {
         for settings_tiles in [false, true] {
@@ -2495,7 +2661,10 @@ mod tests {
             assert_eq!(home.state(), State::Browse);
             assert_eq!(home.focused(), Some(&HISTORY));
         }
-        assert_eq!(menu_items(Some(&HISTORY), true), [MenuItem::Move]);
+        assert_eq!(
+            menu_items(Some(&HISTORY), true),
+            [MenuItem::Move, MenuItem::Hide]
+        );
         let mut home = home(2);
         assert!(home.focus_on(&HISTORY));
         pick_up(&mut home);
@@ -2516,10 +2685,15 @@ mod tests {
     #[test]
     fn new_apps_go_after_the_last_tile_and_removed_apps_are_dropped() {
         let mut order = Order::from_keys([(TileId::Settings, 500), (id("b"), 1000)]);
-        assert!(order.reconcile(&[app("b", "B"), app("a", "A")], &BTreeSet::new(), false));
+        assert!(order.reconcile(
+            &[app("b", "B"), app("a", "A")],
+            &BTreeSet::new(),
+            false,
+            &[]
+        ));
         assert_eq!(order.ids(), [id("b"), id("a"), TileId::Remote, HISTORY]);
 
-        assert!(order.reconcile(&[app("a", "A")], &BTreeSet::new(), false));
+        assert!(order.reconcile(&[app("a", "A")], &BTreeSet::new(), false, &[]));
         assert_eq!(order.ids(), [id("a"), TileId::Remote, HISTORY]);
     }
 
@@ -2530,7 +2704,8 @@ mod tests {
         assert!(order.reconcile(
             &[app("a", "A"), app("c", "C"), app("b", "B")],
             &BTreeSet::new(),
-            true
+            true,
+            &[]
         ));
         assert_eq!(
             order.ids(),
@@ -2554,7 +2729,8 @@ mod tests {
         assert!(order.reconcile(
             &[app("a", "A"), app("c", "C"), app("b", "B")],
             &BTreeSet::new(),
-            false
+            false,
+            &[]
         ));
         assert_eq!(
             order.ids(),
@@ -2567,7 +2743,12 @@ mod tests {
     #[test]
     fn duplicate_apps_from_the_platform_appear_once() {
         let mut order = Order::default();
-        order.reconcile(&[app("a", "A"), app("a", "A")], &BTreeSet::new(), false);
+        order.reconcile(
+            &[app("a", "A"), app("a", "A")],
+            &BTreeSet::new(),
+            false,
+            &[],
+        );
         assert_eq!(order.ids(), [id("a"), TileId::Remote, HISTORY]);
     }
 
@@ -2909,8 +3090,10 @@ mod tests {
 
     #[test]
     fn an_unattended_move_drops_and_saves_after_the_idle_timeout() {
-        // a00, Remote: on top of Remote, no folder forms.
-        let mut home = home(1);
+        // A folder on top of an app: no folder forms (no folders in folders).
+        let mut home = home_with_folder();
+        press(&mut home, &[Input::Back, Input::Back]);
+        assert_eq!(home.focused(), Some(&TileId::Folder(1)));
         pick_up(&mut home);
         let last_key = ms(1000);
         home.handle(Input::Right, last_key);
@@ -2925,8 +3108,8 @@ mod tests {
             Some(Effect::SaveOrder)
         );
         assert_eq!(home.state(), State::Browse);
-        assert_eq!(home.order().ids()[1], id("a00"));
-        assert!(home.folders().is_empty());
+        assert_eq!(home.order().ids()[..2], [id("a02"), TileId::Folder(1)]);
+        assert_eq!(home.folders().len(), 1);
     }
 
     #[test]
@@ -2972,7 +3155,7 @@ mod tests {
     }
 
     #[test]
-    fn the_menu_offers_move_and_hide_for_apps_and_only_move_for_about() {
+    fn the_menu_offers_move_and_hide_for_apps_and_built_in_tiles() {
         let mut home = home(2);
         open_menu(&mut home);
         assert_eq!(
@@ -2988,12 +3171,26 @@ mod tests {
         assert_eq!(home.state(), State::Browse);
         assert_eq!(home.focus(), 0);
 
+        // Built-in tiles move and hide like apps (PANELS.md § 6); a folder
+        // only moves, and the Hidden apps tile has no menu.
         press(&mut home, &[Input::Right, Input::Right]);
         assert_eq!(home.focused(), Some(&TileId::Remote));
         open_menu(&mut home);
-        assert_eq!(home.menu(), Some((&[MenuItem::Move][..], 0)));
-        press(&mut home, &[Input::Down, Input::OkPressed]);
+        assert_eq!(
+            home.menu(),
+            Some((&[MenuItem::Move, MenuItem::Hide][..], 0))
+        );
+        press(&mut home, &[Input::OkPressed]);
         assert_eq!(home.state(), State::Moving);
+        for tile in [TileId::About, TileId::Settings, TileId::Remote, HISTORY] {
+            assert_eq!(
+                menu_items(Some(&tile), true),
+                [MenuItem::Move, MenuItem::Hide],
+                "{tile:?}"
+            );
+        }
+        assert_eq!(menu_items(Some(&TileId::Folder(1)), true), [MenuItem::Move]);
+        assert!(menu_items(Some(&TileId::Hidden), true).is_empty());
     }
 
     #[test]
@@ -3403,15 +3600,22 @@ mod tests {
     }
 
     #[test]
-    fn about_settings_and_folders_never_go_into_a_folder() {
-        // a00 Remote: Remote is not an app.
-        let mut home = home(1);
+    fn folders_and_the_hidden_apps_tile_never_go_into_a_folder() {
+        // The Hidden apps tile never takes a tile in: a00 can't move onto it.
+        let mut home = home(2);
+        press(&mut home, &[Input::Right]);
+        hide(&mut home);
+        assert_eq!(home.tiles().last(), Some(&TileId::Hidden));
+        assert!(home.focus_on(&id("a00")));
         pick_up(&mut home);
-        home.handle(Input::Right, ms(1000));
-        assert_eq!(home.folder_due(), None);
-        home.handle(Input::Tick, ms(5000));
+        press(&mut home, &[Input::Right; 4]);
+        assert_ne!(home.tiles().last(), Some(&id("a00")), "it stays before it");
+        assert!(
+            home.moving_over()
+                .is_none_or(|over| home.tiles()[over] != TileId::Hidden)
+        );
+        home.handle(Input::Tick, ms(60_000));
         assert!(home.folders().is_empty());
-        press(&mut home, &[Input::Back]);
 
         // A folder moved onto an app makes nothing: no folders in folders.
         let mut home = home_with_folder();
@@ -3456,8 +3660,10 @@ mod tests {
             Some(Effect::SaveOrder)
         );
         assert!(!home.hidden().contains("a01"));
-        // A choice the menu doesn't offer does nothing.
-        home.point(&TileId::Remote, true, Duration::ZERO);
+        // A choice the menu doesn't offer does nothing: a folder only moves.
+        let mut home = home_with_folder();
+        press(&mut home, &[Input::Back]);
+        home.point(&TileId::Folder(1), true, Duration::ZERO);
         assert_eq!(home.menu_pick(MenuItem::Hide, Duration::ZERO), None);
         assert_eq!(home.state(), State::Menu);
     }
@@ -3694,22 +3900,18 @@ mod tests {
                 now += ms(seed % 900);
                 pressed.push((input, now.as_millis()));
                 home.handle(input, now);
-                let mut all: Vec<&str> = home
+                // Every app and built-in tile once: on the grid, in a
+                // folder or on the hidden apps page.
+                let mut all: Vec<String> = home
                     .tiles()
                     .iter()
-                    .filter_map(|tile| match tile {
-                        TileId::App(id) => Some(id.as_str()),
-                        _ => None,
-                    })
-                    .chain(
-                        home.folders()
-                            .values()
-                            .flat_map(|f| f.apps.iter().map(String::as_str)),
-                    )
-                    .chain(home.hidden_apps().iter().map(String::as_str))
+                    .filter_map(member_name)
+                    .chain(home.folders().values().flat_map(|f| f.apps.clone()))
+                    .chain(home.hidden_apps().iter().cloned())
                     .collect();
                 all.sort_unstable();
-                let expected: Vec<String> = (0..9).map(|n| format!("a{n:02}")).collect();
+                let mut expected: Vec<String> = (0..9).map(|n| format!("a{n:02}")).collect();
+                expected.extend(["panel:history".to_owned(), "remote".to_owned()]);
                 assert_eq!(all, expected, "after {pressed:?}");
                 assert!(home.folders().values().all(|f| !f.apps.is_empty()));
                 for folder in home.folders().keys() {
@@ -3756,5 +3958,220 @@ mod tests {
             }
             assert_eq!(seen.len(), len, "{len} apps");
         }
+    }
+
+    // --- built-in tiles hidden and in folders (PANELS.md § 6) -------------
+
+    /// A Home with folder 1 = [remote, panel:history] (stored, as after a
+    /// restart) and the apps a00, a01.
+    fn home_with_built_in_folder(settings_tiles: bool) -> Home {
+        let folders = BTreeMap::from([(
+            1,
+            Folder {
+                name: "RustTV".into(),
+                apps: vec!["remote".into(), "panel:history".into()],
+            },
+        )]);
+        let mut home = Home::new(Order::default(), folders, BTreeSet::new(), false);
+        home.set_settings_tiles(settings_tiles);
+        home.set_apps(&apps(2));
+        home
+    }
+
+    #[test]
+    fn a_built_in_tile_in_a_folder_is_not_added_back_to_home() {
+        for settings_tiles in [false, true] {
+            let mut home = home_with_built_in_folder(settings_tiles);
+            let mut expected = vec![id("a00"), id("a01"), TileId::Folder(1)];
+            if settings_tiles {
+                expected.extend([TileId::About, TileId::Settings]);
+            }
+            assert_eq!(home.tiles(), expected, "{settings_tiles}");
+            // Reading the apps again changes nothing.
+            assert!(!home.set_apps(&apps(2)));
+            assert_eq!(home.tiles(), expected);
+            assert_eq!(
+                home.folders()[&1].apps,
+                ["remote", "panel:history"],
+                "kept in the folder"
+            );
+        }
+    }
+
+    #[test]
+    fn about_and_settings_leave_a_folder_where_a_top_right_menu_has_them() {
+        let folders = BTreeMap::from([(
+            1,
+            Folder {
+                name: "RustTV".into(),
+                apps: vec!["about".into(), "settings".into(), "remote".into()],
+            },
+        )]);
+        let hidden = BTreeSet::from(["about".to_owned()]);
+        let mut home = Home::new(Order::default(), folders, hidden, false);
+        home.set_apps(&apps(1));
+        // Linux: About and Settings are in the top-right menu, not tiles;
+        // a hidden About isn't listed (and no Hidden apps tile comes).
+        assert_eq!(home.folders()[&1].apps, ["remote"]);
+        assert!(home.hidden_apps().is_empty());
+        assert!(!home.tiles().contains(&TileId::Hidden));
+        assert!(home.is_hidden(&TileId::About), "kept for Android");
+        // Hidden wins over a folder, and a name is in one folder only.
+        let folders = BTreeMap::from([
+            (
+                1,
+                Folder {
+                    name: "A".into(),
+                    apps: vec!["remote".into(), "about".into()],
+                },
+            ),
+            (
+                2,
+                Folder {
+                    name: "B".into(),
+                    apps: vec!["remote".into(), "a00".into()],
+                },
+            ),
+        ]);
+        let hidden = BTreeSet::from(["about".to_owned()]);
+        let mut home = Home::new(Order::default(), folders, hidden, false);
+        home.set_settings_tiles(true);
+        home.set_apps(&apps(1));
+        assert_eq!(home.folders()[&1].apps, ["remote"]);
+        assert_eq!(home.folders()[&2].apps, ["a00"]);
+        assert_eq!(home.hidden_apps(), ["about"]);
+    }
+
+    #[test]
+    fn hiding_every_built_in_tile_keeps_the_hidden_apps_tile_and_lists_them() {
+        let mut home = Home::new(Order::default(), BTreeMap::new(), BTreeSet::new(), false);
+        home.set_settings_tiles(true);
+        home.set_apps(&apps(1));
+        assert!(home.focus_on(&TileId::About));
+        for _ in 0..4 {
+            assert_eq!(hide(&mut home), Some(Effect::SaveOrder));
+        }
+        assert_eq!(home.tiles(), [id("a00"), TileId::Hidden]);
+        assert_eq!(
+            hidden_page(&home),
+            ["about", "settings", "remote", "panel:history"]
+        );
+        // Settings is two presses away: the Hidden apps tile, then OK on it.
+        assert!(home.focus_on(&TileId::Hidden));
+        press(&mut home, &[Input::OkPressed, Input::OkReleased]);
+        assert_eq!(home.state(), State::Hidden);
+        press(&mut home, &[Input::Right]);
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed]),
+            Some(Effect::SaveOrder)
+        );
+        assert!(home.tiles().contains(&TileId::Settings));
+        // A tap on the phone puts History back; Back leaves the page.
+        assert_eq!(
+            home.point(&HISTORY, false, Duration::ZERO),
+            Some(Effect::SaveOrder)
+        );
+        assert_eq!(hidden_page(&home), ["about", "remote"]);
+        // The last one back: focus on it, on Home.
+        home.point(&TileId::About, false, Duration::ZERO);
+        home.point(&TileId::Remote, false, Duration::ZERO);
+        assert_eq!(home.state(), State::Browse);
+        assert_eq!(home.focused(), Some(&TileId::Remote));
+        assert!(!home.tiles().contains(&TileId::Hidden));
+    }
+
+    #[test]
+    fn built_in_tiles_make_folders_and_open_their_pages_from_them() {
+        // a00, Remote, History: Remote rests on History.
+        let mut home = home(1);
+        assert!(home.focus_on(&TileId::Remote));
+        pick_up(&mut home);
+        home.handle(Input::Right, ms(1000));
+        assert!(home.folder_due().is_some());
+        home.handle(Input::Tick, ms(1000) + FOLDER_HOVER);
+        assert_eq!(home.folders()[&1].apps, ["panel:history", "remote"]);
+        // A built-in folder gets the "Other" category's name.
+        assert_eq!(
+            home.folders()[&1].name,
+            FolderNames::default().0[Category::Other.index()]
+        );
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed]),
+            Some(Effect::SaveOrder)
+        );
+        assert_eq!(home.tiles(), [id("a00"), TileId::Folder(1)]);
+        // In the open folder, Remote's menu is Move and Hide; OK opens it.
+        assert_eq!(home.state(), State::Folder);
+        assert_eq!(home.items(), [MenuItem::Move, MenuItem::Hide]);
+        assert_eq!(
+            press(
+                &mut home,
+                &[Input::OkReleased, Input::OkPressed, Input::OkReleased]
+            ),
+            Some(Effect::OpenRemote)
+        );
+        assert_eq!(home.state(), State::Remote);
+        home.close_remote();
+        assert_eq!(home.focused(), Some(&TileId::Folder(1)));
+        // History from its folder (the first there) opens Settings on History.
+        press(&mut home, &[Input::OkPressed, Input::OkReleased]);
+        assert_eq!(home.open_folder().and_then(|open| open.focus), Some(0));
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed, Input::OkReleased]),
+            Some(Effect::OpenHistory)
+        );
+        home.close_settings();
+        // Hidden from inside the folder: it leaves it; Remote stays there.
+        press(&mut home, &[Input::OkPressed, Input::OkReleased]);
+        assert_eq!(home.state(), State::Folder);
+        assert_eq!(hide(&mut home), Some(Effect::SaveOrder));
+        assert_eq!(home.folders()[&1].apps, ["remote"]);
+        assert!(home.is_hidden(&HISTORY));
+        assert_eq!(home.tiles(), [id("a00"), TileId::Folder(1), TileId::Hidden]);
+    }
+
+    #[test]
+    fn the_rusttv_quick_panel_rows_open_their_pages() {
+        let mut home = home(1);
+        home.set_quick_actions(vec![
+            QuickAction::Modify,
+            QuickAction::Audio,
+            QuickAction::Panels,
+            QuickAction::Settings,
+        ]);
+        assert_eq!(home.open_panel_row(0), None, "only while it is open");
+        let panels = home
+            .quick_actions()
+            .iter()
+            .position(|action| *action == QuickAction::Panels)
+            .unwrap();
+        assert_eq!(
+            home.point_quick(panels),
+            Some(Effect::Quick(QuickAction::Panels))
+        );
+        assert_eq!(home.state(), State::Quick);
+        assert_eq!(home.open_panel_row(3), None, "no such row");
+        assert_eq!(home.open_panel_row(0), Some(Effect::OpenAbout));
+        assert_eq!(home.state(), State::About);
+        press(&mut home, &[Input::Back]);
+        assert_eq!(home.state(), State::Browse, "Back from it is Home");
+        for (row, effect, state) in [
+            (1, Effect::OpenRemote, State::Remote),
+            (2, Effect::OpenHistory, State::Settings),
+        ] {
+            home.point_quick(panels);
+            assert_eq!(home.open_panel_row(row), Some(effect));
+            assert_eq!(home.state(), state);
+            home.handle(Input::Paused, ms(0));
+        }
+        // Another quick panel's rows are its own.
+        let audio = home
+            .quick_actions()
+            .iter()
+            .position(|action| *action == QuickAction::Audio)
+            .unwrap();
+        home.point_quick(audio);
+        assert_eq!(home.state(), State::Quick);
+        assert_eq!(home.open_panel_row(0), None);
     }
 }

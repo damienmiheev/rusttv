@@ -403,11 +403,14 @@ echoed.
     formatted when Home reads it (resume, focus changes), never on a
     timer;
   - the open folder and its page;
-  - the focused tile;
+  - the focused tile (on the About or RustTV Remote page, that page's
+    tile, wherever it was opened from);
   - the mode: browse, menu, moving, hidden list, settings, review, or text
     with its label;
   - the open long-press menu (its items and the selected one), and on the
-    hidden apps page the hidden apps.
+    hidden apps page the hidden tiles: apps, then built-in tiles (About,
+    Settings, RustTV Remote, History; PANELS.md § 6), which can also be in
+    folders, listed with their folder and their caption.
 
   The phone mirrors Home exactly, the hidden apps page included (owner's
   decision, 2026-10-25): every paired phone, a guest's too, sees the hidden
@@ -422,8 +425,8 @@ echoed.
     timing;
   - `menu { choice: move | hide }` picks that item of the open menu, as
     selecting it and pressing OK (`Home::menu_pick`);
-  - on the hidden apps page, a tap on an app puts it back on Home, as OK
-    does.
+  - on the hidden apps page, a tap on a tile puts it back on Home, as OK
+    does; `hide` hides a built-in tile as it does an app.
 
   Settings, About and the RustTV Remote page show on the phone only as
   their name; there, as before, a phone can only press Back. The phone

@@ -158,17 +158,19 @@ pub fn diff(old: &State, new: &State) -> Vec<Change> {
     // (format 5, format 6) left them out, so they only seem to come or go
     // (only their moves count).
     let shown = |tile: &&String| !EVERY_HOME.contains(&tile.as_str());
+    // A tile hidden, or shown again, is only `hidden` (below), not removed
+    // or added too.
     for tile in after
         .iter()
         .filter(shown)
-        .filter(|tile| !before.contains(tile))
+        .filter(|tile| !before.contains(tile) && !was.hidden.contains(*tile))
     {
         changes.push(Change::Added { tile: tile.clone() });
     }
     for tile in before
         .iter()
         .filter(shown)
-        .filter(|tile| !after.contains(tile))
+        .filter(|tile| !after.contains(tile) && !now.hidden.contains(*tile))
     {
         changes.push(Change::Removed { tile: tile.clone() });
     }
@@ -392,6 +394,75 @@ mod tests {
         let changes = diff(&old, &new);
         assert_eq!(changes.len(), 6, "{changes:?}");
         assert_eq!(summary(&changes), "Hid com.example.a and 5 more");
+    }
+
+    /// Hiding a tile (an app or a built-in one) or showing it again is one
+    /// `hidden` change, not also a removal or an addition; so is putting a
+    /// built-in tile in a folder one `in_folder`.
+    #[test]
+    fn hiding_and_folders_report_only_that() {
+        let mut old = State::new();
+        old.launcher.order = vec![
+            "com.example.a/.Main".into(),
+            "about".into(),
+            "settings".into(),
+            "remote".into(),
+            "panel:history".into(),
+        ];
+        let mut new = old.clone();
+        new.launcher.order = vec!["folder:1".into(), "remote".into()];
+        new.launcher.folders.insert(
+            "folder:1".into(),
+            crate::state::Folder {
+                name: "RustTV".into(),
+                apps: vec!["settings".into(), "panel:history".into()],
+            },
+        );
+        new.launcher.hidden = ["com.example.a/.Main".into(), "about".into()].into();
+        let changes = diff(&old, &new);
+        assert_eq!(
+            changes,
+            [
+                Change::FolderAdded {
+                    folder: "folder:1".into(),
+                    name: "RustTV".into(),
+                },
+                Change::InFolder {
+                    tile: "settings".into(),
+                    folder: "folder:1".into(),
+                    name: "RustTV".into(),
+                    inside: true,
+                },
+                Change::InFolder {
+                    tile: "panel:history".into(),
+                    folder: "folder:1".into(),
+                    name: "RustTV".into(),
+                    inside: true,
+                },
+                Change::Hidden {
+                    tile: "about".into(),
+                    hidden: true,
+                },
+                Change::Hidden {
+                    tile: "com.example.a/.Main".into(),
+                    hidden: true,
+                },
+            ]
+        );
+        // And back: shown again, out of the folder.
+        let back = diff(&new, &old);
+        assert!(
+            back.iter()
+                .all(|change| !matches!(change, Change::Added { .. } | Change::Removed { .. })),
+            "{back:?}"
+        );
+        assert_eq!(
+            back.iter()
+                .filter(|change| matches!(change, Change::Hidden { hidden: false, .. }))
+                .count(),
+            2,
+            "{back:?}"
+        );
     }
 
     #[test]

@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "component": "RemoteListRow",
+  "face": "row",
+  "props": ["phones", "status"],
+  "root": { "list-row": {
+    "title": { "tr": "RustTV Remote" },
+    "detail": { "select": "status", "cases": {
+      "pairing": { "tr": "Pairing" } },
+      "else": { "select": "phones", "cases": {
+        "0": { "tr": "No phones" } },
+        "else": { "tr": "Phones: {}", "args": ["phones"] } } },
+    "attention": { "select": "status", "cases": { "pairing": true } } } }
+}

@@ -121,8 +121,12 @@ impl Controller {
     /// OK on the Settings entry of the top-right menu.
     pub(super) fn open_settings(&mut self) {
         self.settings = Some(
-            SettingsPage::new(Overview::default(), self.options.right_to_left)
-                .with_about(self.platform.top_right_menu()),
+            // About's section where Home has no About tile to open the
+            // licence notices and Slint's attribution: under a top-right
+            // menu, and while the About tile is hidden (PANELS.md § 6).
+            SettingsPage::new(Overview::default(), self.options.right_to_left).with_about(
+                self.platform.top_right_menu() || self.home.is_hidden(&crate::model::TileId::About),
+            ),
         );
         self.settings_status = (status::READING, String::new());
         self.refresh_settings_data();
@@ -518,6 +522,13 @@ impl Controller {
     /// An app's label with its package id, for the review screen and the
     /// history (labels come from apps, so bidi controls and line breaks go).
     fn tile_label(&self, tile: &str) -> String {
+        // A built-in tile hidden or put in a folder (PANELS.md § 6).
+        if let Some(window) = self.window.upgrade() {
+            let name = window.global::<Strings>().invoke_builtin_name(tile.into());
+            if !name.is_empty() {
+                return name.into();
+            }
+        }
         let package = tile.split('/').next().unwrap_or(tile);
         match self.apps.get(tile) {
             Some(app) => {
@@ -746,20 +757,7 @@ impl Controller {
     fn about_row(&self, window: &HomeWindow, page: &SettingsPage, about: AboutRow) -> SettingsRow {
         let strings = window.global::<Strings>();
         match about {
-            AboutRow::RustTv => {
-                let face = window.global::<AboutListRow>();
-                let Some(view) = panels::about_view(env!("CARGO_PKG_VERSION"), &self.update).row
-                else {
-                    return SettingsRow::default();
-                };
-                let version: SharedString = view.props.get("version").into();
-                SettingsRow {
-                    title: face.invoke_title(version.clone()),
-                    detail: face.invoke_detail(version.clone()),
-                    current: face.invoke_attention(version),
-                    ..SettingsRow::default()
-                }
-            }
+            AboutRow::RustTv => self.about_list_row(window),
             AboutRow::Update => SettingsRow {
                 title: strings.invoke_section_name(section_value(Section::Updates)),
                 detail: super::update_line(window, &self.update),
@@ -774,9 +772,26 @@ impl Controller {
         }
     }
 
-    /// History's row in Settings' list (its row face, PANELS.md § 4), from
-    /// the same view as its tile.
-    fn history_row(&self, window: &HomeWindow) -> SettingsRow {
+    /// About's row face (PANELS.md § 4): Settings' RustTV row and its row
+    /// in the RustTV quick panel, from the same view as its tile.
+    pub(super) fn about_list_row(&self, window: &HomeWindow) -> SettingsRow {
+        let face = window.global::<AboutListRow>();
+        let Some(view) = panels::about_view(env!("CARGO_PKG_VERSION"), &self.update).row else {
+            return SettingsRow::default();
+        };
+        let version: SharedString = view.props.get("version").into();
+        let status: SharedString = view.props.get("status").into();
+        SettingsRow {
+            title: face.invoke_title(version.clone(), status.clone()),
+            detail: face.invoke_detail(version.clone(), status.clone()),
+            current: face.invoke_attention(version, status),
+            ..SettingsRow::default()
+        }
+    }
+
+    /// History's row face (PANELS.md § 4): its entry in Settings' list and
+    /// its row in the RustTV quick panel, from the same view as its tile.
+    pub(super) fn history_row(&self, window: &HomeWindow) -> SettingsRow {
         let face = window.global::<HistoryListRow>();
         let Some(view) = panels::history_view(self.history.0.as_ref(), self.history.1).row else {
             return SettingsRow::default();

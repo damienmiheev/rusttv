@@ -50,8 +50,9 @@ pub(crate) struct PanelPage {
 
 /// Which faces a panel has: `None` for a face the panel doesn't have. About
 /// has all three, and Home relies on it (tests check it): the About page and
-/// Settings' RustTV row are always there. RustTV Remote has a tile and a
-/// page; History a tile and a row (its page is Settings' History section).
+/// Settings' RustTV row are always there. RustTV Remote has all three too;
+/// History a tile and a row (its page is Settings' History section). The
+/// rows also make the RustTV quick panel (PANELS.md § 2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PanelView {
     pub tile: Option<PanelTile>,
@@ -62,7 +63,8 @@ pub(crate) struct PanelView {
 /// About (templates/about_*.json). The tile shows the version, and a caption
 /// while an update is available, downloading or installing; anything else, a
 /// failure included, shows no caption (the reason is on the page). The row
-/// shows the version. The page shows the version and the updater's state
+/// shows the version and the tile's caption (else the licence line), with
+/// the accent dot while an update is available. The page shows the version and the updater's state
 /// with what it names (a version, a percent or a reason).
 pub(crate) fn about_view(version: &str, status: &UpdateStatus) -> PanelView {
     let caption = match status {
@@ -94,7 +96,10 @@ pub(crate) fn about_view(version: &str, status: &UpdateStatus) -> PanelView {
             ]),
         }),
         row: Some(PanelRow {
-            props: Props(vec![("version", version.to_owned())]),
+            props: Props(vec![
+                ("version", version.to_owned()),
+                ("status", caption.to_owned()),
+            ]),
         }),
         page: Some(PanelPage {
             props: Props(vec![
@@ -106,19 +111,21 @@ pub(crate) fn about_view(version: &str, status: &UpdateStatus) -> PanelView {
     }
 }
 
-/// RustTV Remote (templates/remote_*.json). The tile shows how many phones
-/// are paired, or "Pairing" (in the accent) while pairing is open. The page
-/// has no values of its own: its rows are Home's (ui.rs), as is its status
-/// line. It has no row: Remote isn't in Settings' list.
+/// RustTV Remote (templates/remote_*.json). The tile and the row show how
+/// many phones are paired, or "Pairing" (in the accent) while pairing is
+/// open; the row is in the RustTV quick panel, not in Settings' list. The
+/// page has no values of its own: its rows are Home's (ui.rs), as is its
+/// status line.
 pub(crate) fn remote_view(phones: usize, pairing: bool) -> PanelView {
+    let props = || {
+        Props(vec![
+            ("phones", phones.to_string()),
+            ("status", if pairing { "pairing" } else { "" }.to_owned()),
+        ])
+    };
     PanelView {
-        tile: Some(PanelTile {
-            props: Props(vec![
-                ("phones", phones.to_string()),
-                ("status", if pairing { "pairing" } else { "" }.to_owned()),
-            ]),
-        }),
-        row: None,
+        tile: Some(PanelTile { props: props() }),
+        row: Some(PanelRow { props: props() }),
         page: Some(PanelPage {
             props: Props(Vec::new()),
         }),
@@ -288,6 +295,39 @@ mod tests {
         assert_eq!(view.page.expect("page").props.get("version"), "1.2.3");
     }
 
+    /// The row (Settings' RustTV row, the RustTV quick panel) shows the
+    /// tile's caption in the tile's words, the licence line without one,
+    /// and the accent dot only while an update is available.
+    #[test]
+    fn about_row_shows_the_tiles_caption() {
+        for status in &STATUSES {
+            let view = about_view("1.2.3", status);
+            let tile = view.tile.expect("tile").props;
+            let row = view.row.expect("row").props;
+            assert_eq!(tile.get("status"), row.get("status"), "{status:?}");
+        }
+        let tile = template("about_tile");
+        let caption = tile["root"]["column"]["children"]
+            .as_array()
+            .expect("children")
+            .iter()
+            .filter_map(|child| child.get("text"))
+            .find(|text| text["show"] == "status")
+            .expect("the caption")["value"]["cases"]
+            .clone();
+        let row = &template("about_row")["root"]["list-row"];
+        assert_eq!(row["detail"]["select"], "status");
+        assert_eq!(row["detail"]["cases"], caption);
+        assert_eq!(
+            row["detail"]["else"]["tr"],
+            "MIT OR Apache-2.0 · licences and third-party notices"
+        );
+        assert_eq!(
+            row["attention"]["cases"],
+            serde_json::json!({"update": true})
+        );
+    }
+
     fn template(name: &str) -> serde_json::Value {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let json =
@@ -368,9 +408,10 @@ mod tests {
         }
     }
 
-    /// Remote's view sets exactly the properties its templates declare, it
-    /// has no row, and its tile has words for every status the view names
-    /// ("" shows no caption) and for no phones, and no others.
+    /// Remote's view sets exactly the properties its templates declare, its
+    /// tile and row the same values, and its tile and row have words for
+    /// every status the view names ("" shows no caption) and for no phones,
+    /// and no others.
     #[test]
     fn remote_view_matches_its_templates() {
         let declared = |name: &str| -> Vec<String> {
@@ -383,9 +424,11 @@ mod tests {
         };
         for pairing in [false, true] {
             let view = remote_view(3, pairing);
-            assert!(view.row.is_none());
             let tile = view.tile.expect("tile").props;
+            let row = view.row.expect("row").props;
+            assert_eq!(tile, row, "a name means the same on every face");
             assert_eq!(names(&tile), declared("remote_tile"));
+            assert_eq!(names(&row), declared("remote_row"));
             assert_eq!(
                 names(&view.page.expect("page").props),
                 declared("remote_page")
@@ -418,6 +461,21 @@ mod tests {
             .keys()
             .collect();
         assert_eq!(cases, ["pairing"]);
+        // The row: "Pairing" first, else the same phones line as the tile.
+        let row = &template("remote_row")["root"]["list-row"];
+        let detail = &row["detail"];
+        assert_eq!(detail["select"], "status");
+        let cases: Vec<&String> = detail["cases"].as_object().expect("cases").keys().collect();
+        assert_eq!(cases, ["pairing"]);
+        assert_eq!(
+            detail["cases"]["pairing"],
+            caption["value"]["cases"]["pairing"]
+        );
+        assert_eq!(detail["else"], *value, "the tile's phones line");
+        assert_eq!(
+            row["attention"]["cases"],
+            serde_json::json!({"pairing": true})
+        );
     }
 
     const NOW: i64 = 1_790_000_000;

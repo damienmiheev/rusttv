@@ -27,6 +27,9 @@
 //! state, Settings opened on History, an approved change, then the tile
 //! with the change's age (or, with `RUSTTV_HISTORY_PENDING=1`, waiting).
 //!
+//! `--demo-panels <dir>` does the same for panel tiles hidden and in a
+//! folder, the Hidden apps page and the top-right menu's RustTV panel.
+//!
 //! `--demo <dir>` instead plays a fixed key script and writes a BMP snapshot
 //! after each step into `<dir>`, then quits. Needs no screen-capture permission.
 
@@ -337,6 +340,88 @@ fn history_script(right_to_left: bool) -> Vec<DemoStep> {
     steps
 }
 
+/// Panel tiles hidden and in folders, and the RustTV quick panel
+/// (PANELS.md § 2, § 6): RustTV Remote's menu (Move, Hide), Remote held
+/// over History until they make a folder, the open folder and its tile,
+/// History hidden from inside it, the Hidden apps page, then (under a
+/// top-right menu) the RustTV entry's panel, Down to Remote's row and OK.
+fn panels_script(right_to_left: bool) -> Vec<DemoStep> {
+    use DemoStep::{Press, Release, Snapshot, Tap};
+    let (forward, back) = if right_to_left {
+        (LEFT, RIGHT)
+    } else {
+        (RIGHT, LEFT)
+    };
+    let mut steps = vec![ms(800)];
+    steps.extend([DOWN; 4].map(Tap));
+    steps.extend([forward; 8].map(Tap));
+    steps.extend([
+        Tap(back),
+        ms(600),
+        Snapshot("panels-0-remote"),
+        Press(OK),
+        ms(800),
+        Release(OK),
+        ms(300),
+        Snapshot("panels-1-menu"),
+        // Move, onto History, and stay until the folder forms.
+        Tap(OK),
+        Tap(forward),
+        ms(900),
+        Snapshot("panels-2-folder-moving"),
+        Tap(OK),
+        ms(600),
+        Snapshot("panels-3-folder-open"),
+        Tap(BACK),
+        ms(800),
+        Snapshot("panels-4-folder-tile"),
+        // Into the folder, History (its first) hidden from there.
+        Tap(OK),
+        ms(400),
+        Press(OK),
+        ms(800),
+        Release(OK),
+        Tap(DOWN),
+        Tap(OK),
+        ms(600),
+        Snapshot("panels-5-hidden-from-folder"),
+        Tap(BACK),
+        ms(400),
+    ]);
+    // The Hidden apps tile is last now.
+    steps.extend([DOWN; 4].map(Tap));
+    steps.extend([forward; 9].map(Tap));
+    steps.extend([
+        ms(600),
+        Snapshot("panels-6-hidden-tile"),
+        Tap(OK),
+        ms(600),
+        Snapshot("panels-7-hidden-page"),
+        Tap(BACK),
+        ms(300),
+        // Back on Home goes to the first row; Up reaches the top-right
+        // menu, where RustTV is the fifth entry.
+        Tap(BACK),
+        Tap(UP),
+    ]);
+    steps.extend([forward; 4].map(Tap));
+    steps.extend([
+        ms(300),
+        Snapshot("panels-8-rusttv-entry"),
+        Tap(OK),
+        ms(600),
+        Snapshot("panels-9-rusttv-panel"),
+        Tap(DOWN),
+        ms(300),
+        Snapshot("panels-10-remote-row"),
+        Tap(OK),
+        ms(600),
+        Snapshot("panels-11-remote-page"),
+        Tap(BACK),
+    ]);
+    steps
+}
+
 /// Whether the made-up TV may write settings itself: not with
 /// `RUSTTV_HISTORY_PENDING=1`.
 fn grant() -> bool {
@@ -396,9 +481,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             script = history_script(is_right_to_left(language));
             PathBuf::from(dir)
         }
+        ("--demo-panels", Some(dir)) => {
+            let language = options.language.as_deref().unwrap_or_default();
+            script = panels_script(is_right_to_left(language));
+            PathBuf::from(dir)
+        }
         _ => {
             return Err(
-                "usage: rusttv-launcher-desktop [--order <file> | --demo <dir> | --demo-remote <dir> | --demo-history <dir>]"
+                "usage: rusttv-launcher-desktop [--order <file> | --demo <dir> | --demo-remote <dir> | --demo-history <dir> | --demo-panels <dir>]"
                     .into(),
             );
         }
