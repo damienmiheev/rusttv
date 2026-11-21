@@ -17,7 +17,8 @@ Launcher improvements and system-wide improvements (from optimizer changes) are 
 
 | Metric | Method (ADB, rootless) | Unit |
 |---|---|---|
-| Cold start | `am force-stop <pkg>`; drop to idle; `am start -W -n <home component>` → `TotalTime`; cross-check with `ActivityTaskManager: Displayed` in logcat | ms |
+| Cold start | `am force-stop <pkg>`; drop to idle; `am start -W -n <home component>` → `TotalTime`; cross-check with `ActivityTaskManager: Displayed` in logcat. First frame only: see the rule below before comparing launchers | ms |
+| Cold start to visually complete | Screen recording of the cold start; time to the first frame after which the content stops changing (needed to compare launchers that draw a skeleton first) | ms |
 | Warm start | Launcher in background (open another app), then `input keyevent KEYCODE_HOME`; measure via logcat `Displayed` / `reportFullyDrawn` | ms |
 | Idle memory | 60 s after reaching home, `dumpsys meminfo <pkg>`: PSS total, RSS, native/graphics breakdown | MB |
 | Idle CPU | `/proc/<pid>/stat` utime+stime deltas over 5 min while idle (or `top -b -d 1`) | % of one core |
@@ -29,6 +30,19 @@ Launcher improvements and system-wide improvements (from optimizer changes) are 
 | Stability | Crashes/ANRs in logcat over a 24 h idle + scripted-navigation soak | count |
 
 Caveat: force-stopping the *current default* home may make the system relaunch it immediately. Cold-start runs must check (via `pidof`) that the process is really gone before starting the timer; if the system races us, measure with the launcher *not* set as default and launch it explicitly.
+
+**First frame is not "ready" (owner rule, 2026-11-21).** `TotalTime` ends at
+the first drawn frame. The stock launcher draws a skeleton first and fills its
+rows in later; RustTV draws its real grid in the first frame and only loads
+banners lazily. So:
+- **RustTV build against RustTV build** (A/B of one app): first-frame cold
+  start is a fair metric.
+- **RustTV against the stock launcher, or any other launcher:** never compare
+  first-frame times alone. Also measure **time to visually complete**: record
+  the screen during each cold start (`adb shell screenrecord`, or a camera)
+  and take the first frame after which the home screen's content stops
+  changing (rows, titles, pictures in place). Report both numbers, and say
+  which one a claim uses.
 
 Optional later: end-to-end latency with a high-speed camera (remote press → pixel change) to validate the Perfetto numbers.
 
