@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "component": "RemoteCorner",
+  "face": "corner",
+  "props": ["status"],
+  "root": { "glyph": {
+    "badge": "rusttv-remote",
+    "show": { "select": "status", "cases": { "pairing": true } } } }
+}

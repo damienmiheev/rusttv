@@ -59,8 +59,8 @@ msgstr "Приховані додатки"
 msgid "About"
 msgstr "Про програму"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "OK повертає додаток на головний екран, «Назад» — вихід."
+msgid "OK puts it back on Home. Back returns."
+msgstr "OK повертає на головний екран, «Назад» — вихід."
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "Версія {} · MIT OR Apache-2.0"
@@ -539,3 +539,30 @@ msgid_plural "{n} days ago"
 msgstr[0] "{n} день тому"
 msgstr[1] "{n} дні тому"
 msgstr[2] "{n} днів тому"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "Екран спокою"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "Через 5 хвилин на головному екрані — тьмяний годинник до натискання кнопки"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "Екран спокою: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "RustTV оновлено"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} під’єднано"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "Ваш комп’ютер застосував {n} зміну"
+msgstr[1] "Ваш комп’ютер застосував {n} зміни"
+msgstr[2] "Ваш комп’ютер застосував {n} змін"

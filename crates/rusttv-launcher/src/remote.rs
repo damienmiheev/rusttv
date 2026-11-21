@@ -704,10 +704,10 @@ mod tests {
             Some(crate::model::Effect::OpenRemote)
         );
         assert_eq!(view(&home).focused.as_deref(), Some("remote"));
+        // Back from its page: the folder again, where History is.
         home.close_remote();
+        assert!(home.open_folder().is_some());
         // History from the folder opens Settings, named History.
-        home.handle(Input::OkPressed, now);
-        home.handle(Input::OkReleased, now);
         assert_eq!(
             home.point(&TileId::Panel(PanelId::History), false, now),
             Some(crate::model::Effect::OpenHistory)
@@ -715,10 +715,10 @@ mod tests {
         let named = view(&home);
         assert_eq!(named.mode, HomeMode::Settings);
         assert_eq!(named.focused.as_deref(), Some("panel:history"));
+        // Back from it: the folder is open again. Dragged out of it: back
+        // on Home after it.
         home.close_settings();
-        // Dragged out of the open folder: back on Home after it.
-        home.handle(Input::OkPressed, now);
-        home.handle(Input::OkReleased, now);
+        assert!(home.open_folder().is_some());
         assert!(home.pick_up(&TileId::Remote, now));
         home.drag_out(now);
         home.handle(Input::OkPressed, now);

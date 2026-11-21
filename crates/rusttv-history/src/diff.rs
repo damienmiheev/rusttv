@@ -96,6 +96,11 @@ pub enum Change {
         /// Its new value: fewer effects.
         reduced: bool,
     },
+    /// The idle screen switch changed (PANELS.md § 9 Q6).
+    Ambient {
+        /// Its new value: Home dims to a clock after a while.
+        on: bool,
+    },
     /// A global setting changed; `None` = unset.
     Setting {
         /// The key.
@@ -268,6 +273,11 @@ pub fn diff(old: &State, new: &State) -> Vec<Change> {
             reduced: new.launcher.reduced_effects,
         });
     }
+    if old.launcher.ambient_off != new.launcher.ambient_off {
+        changes.push(Change::Ambient {
+            on: !new.launcher.ambient_off,
+        });
+    }
 
     for key in SETTING_KEYS {
         if old.setting(key) != new.setting(key) {
@@ -352,6 +362,9 @@ pub(crate) fn summary(changes: &[Change]) -> String {
         Change::Effects { reduced } => {
             format!("Effects {}", if *reduced { "reduced" } else { "full" })
         }
+        Change::Ambient { on } => {
+            format!("Idle screen {}", if *on { "on" } else { "off" })
+        }
         Change::Setting { key, new, .. } => {
             format!("{key} = {}", new.as_deref().unwrap_or("unset"))
         }
@@ -386,6 +399,7 @@ mod tests {
         new.launcher.hidden.insert("com.example.a/.Main".into());
         new.launcher.update_check = false;
         new.launcher.reduced_effects = true;
+        new.launcher.ambient_off = true;
         new.settings
             .global
             .insert("animator_duration_scale".into(), "0.5".into());
@@ -393,8 +407,28 @@ mod tests {
             .insert("com.example.t".into(), PackageState::Disabled);
         new.device.takeover = Some(true);
         let changes = diff(&old, &new);
-        assert_eq!(changes.len(), 6, "{changes:?}");
-        assert_eq!(summary(&changes), "Hid com.example.a and 5 more");
+        assert_eq!(changes.len(), 7, "{changes:?}");
+        assert!(
+            changes.contains(&Change::Ambient { on: false }),
+            "{changes:?}"
+        );
+        assert_eq!(summary(&changes), "Hid com.example.a and 6 more");
+    }
+
+    /// The idle screen's switch, both ways, and its summary; off is not
+    /// the default.
+    #[test]
+    fn the_idle_screen_switch_is_one_change_each_way() {
+        assert!(!State::new().launcher.ambient_off);
+        let on = State::new();
+        let mut off = State::new();
+        off.launcher.ambient_off = true;
+        let changes = diff(&on, &off);
+        assert_eq!(changes, [Change::Ambient { on: false }]);
+        assert_eq!(summary(&changes), "Idle screen off");
+        let changes = diff(&off, &on);
+        assert_eq!(changes, [Change::Ambient { on: true }]);
+        assert_eq!(summary(&changes), "Idle screen on");
     }
 
     /// Hiding a tile (an app or a built-in one) or showing it again is one

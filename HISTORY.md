@@ -40,13 +40,14 @@ commands.
 `state.toml`, the only file in each commit's tree:
 
 ```toml
-format = 6                     # History's panel tile's name needs it (below)
+format = 8                     # the idle screen switch needs it (below)
 
 [launcher]                     # the launcher's own state; only the TV writes it
 order = ["com.netflix.ninja/.MainActivity", "folder:1", "about", "settings", "remote", "panel:history"]
 hidden = ["com.example/.Main"]
 update_check = true
 reduced_effects = true         # format 4; only when effects are reduced
+ambient_off = true             # format 8; only when the idle screen is off
 
 [launcher.folders."folder:1"]  # format 2; only when a folder exists
 name = "Video"
@@ -93,6 +94,12 @@ takeover = "active"
   anyway and drop it from its folder. Undo brings a hidden or foldered
   built-in tile back where it was. A tile hidden or shown again is a
   `hidden` change only, never also removed or added.
+- **The idle screen switch** (format 8, *since 2026-11-21*, PANELS.md
+  § 9 Q6): `ambient_off = true` while Settings → Idle screen is Off. On is
+  the default and is never written, so a snapshot with it on keeps its
+  older format; one with it off is format 8, which builds before it refuse
+  (they would turn it back on when writing the snapshot again). Its change
+  is `ambient` (`on`); undo puts the switch back like the other settings.
 - **Linux tile names** (format 5): on Linux, apps are desktop entries, named
   by their id (`org.kde.dolphin.desktop`). A snapshot holding one, in the
   order, hidden or in a folder, is written as format 5, which older builds
@@ -468,8 +475,8 @@ history has been read once since start.
 Hidden-apps header: "Settings" (57u) at 90u/90u, one dim hint line. Below,
 two columns: left, the sections as menu rows (*since 2026-11-20*,
 History's with the last change's age under it, or "Waiting" and the
-accent dot while an approval waits) — **Animations, Effects, Updates,
-History, Waiting for your computer** (only when something waits), the
+accent dot while an approval waits) — **Animations, Effects, Idle
+screen, Updates, History, Waiting for your computer** (only when something waits), the
 platform's tabs, **About**; right, the
 surface panel showing the selected section. Up/Down move; Right or OK enter
 the panel; Left or Back return; Back on the list leaves Settings.
@@ -481,6 +488,10 @@ the panel; Left or Back return; Back on the list leaves Settings.
   without animations." Without the grant, a dim line "To change this on the
   TV: `rusttv history allow-tv-settings` on your computer"; choosing still
   works and becomes a pending approval.
+- **Idle screen** (*since 2026-11-21*, PANELS.md § 9 Q6): On / Off; On
+  says what it does ("After 5 minutes on Home, a dim clock until you press
+  a key"). Reviewed and approved like the others, and recorded
+  (`ambient_off`, format 8).
 - **Updates:** "Check for updates automatically", On / Off.
 - **History:** newest first; each row: summary (27u), then time · who (dim
   25u: "This TV", "Your computer", "Changed outside RustTV", "Restored from

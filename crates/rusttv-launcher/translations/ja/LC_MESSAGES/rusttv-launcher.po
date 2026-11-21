@@ -59,8 +59,8 @@ msgstr "非表示のアプリ"
 msgid "About"
 msgstr "概要"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "OK：アプリをホーム画面に戻す。戻る：前の画面へ。"
+msgid "OK puts it back on Home. Back returns."
+msgstr "OK：ホーム画面に戻す。戻る：前の画面へ。"
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "バージョン {} · MIT OR Apache-2.0"
@@ -533,3 +533,28 @@ msgstr[0] "{n}時間前"
 msgid "{n} day ago"
 msgid_plural "{n} days ago"
 msgstr[0] "{n}日前"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "アイドル画面"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "ホーム画面で5分たつと、ボタンを押すまで暗い時計を表示"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "アイドル画面: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "RustTV を更新しました"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} が接続しました"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "パソコンが {n} 件の変更を適用しました"

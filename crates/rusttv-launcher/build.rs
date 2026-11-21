@@ -76,12 +76,14 @@ fn main() {
 /// Test-only templates (codegen/test_templates/*.json) use the converter's
 /// paths the real ones don't (one column, a header without a hint,
 /// conditional blocks, rows in a column, a nested tile column, a row's
-/// attention). They are compiled into `test_pages.rs`, which only the
+/// attention, a prop as a condition, a banner without a detail, a
+/// first-strong isolate). They are compiled into `test_pages.rs`, which only the
 /// tests include; on purpose in every build (a second or so), so no build
 /// can carry a converter that writes Slint its compiler refuses.
 /// `TestPages` shows the page or tile its `page` names (the file's name),
-/// with `value` in every prop; a row's functions are its `<file>-title`,
-/// `-detail` and `-attention` (with empty props).
+/// with `value` in every prop; a row's (a corner glyph's, a banner's, an
+/// ambient line's) functions are its `<file>-<function>`, also with `value`
+/// in every prop (`convert::FUNCTION_FACES`).
 #[expect(
     clippy::expect_used,
     reason = "a build script reports errors by panicking; Slint prints the diagnostics"
@@ -99,15 +101,24 @@ fn write_test_pages(out: &Path, manifest: &Path) {
         imports.push_str(&format!(
             "import {{ {component} }} from \"{file}.slint\";\n"
         ));
-        if template["face"] == "row" {
-            // A row is a global of functions: call them, so they compile.
+        let face = template["face"].as_str().unwrap_or_default();
+        if let Some(fields) = convert::face_fields(face) {
+            // A row (a corner glyph, a banner, an ambient line) is a global
+            // of functions: call them with `value` in every prop, so they
+            // compile and a test can read them, and read its badge.
             let props = template["props"].as_array().map_or(0, Vec::len);
-            let args = vec!["\"\""; props].join(", ");
-            body.push_str(&format!(
-                "    out property <string> {name}-title: {component}.title({args});\n    \
-                 out property <string> {name}-detail: {component}.detail({args});\n    \
-                 out property <bool> {name}-attention: {component}.attention({args});\n"
-            ));
+            let args = vec!["root.value"; props].join(", ");
+            for (key, kind, _) in fields {
+                let value = if *kind == convert::Kind::Picture {
+                    format!("{component}.{key}")
+                } else {
+                    format!("{component}.{key}({args})")
+                };
+                body.push_str(&format!(
+                    "    out property <{}> {name}-{key}: {value};\n",
+                    kind.slint()
+                ));
+            }
         } else {
             // Every prop gets `value`, so a test can show conditional blocks.
             let props: String = template["props"]

@@ -312,10 +312,12 @@ impl Controller {
             panel.set_phones(tile.props.get("phones").into());
             panel.set_status(tile.props.get("status").into());
         }
+        // The status corner's glyph and the idle screen's line (pairing).
+        self.show_faces();
     }
 
     /// Remote's view: the paired phones, and whether pairing is open.
-    fn remote_panel_view(&self) -> panels::PanelView {
+    pub(super) fn remote_panel_view(&self) -> panels::PanelView {
         let phones = self
             .remote
             .as_ref()

@@ -15,7 +15,7 @@ const TOKENS: [&str; 5] = ["bg", "surface", "text", "text-dim", "accent"];
 /// function parameters). Home feeds a page's scroll box through `scroll-*`
 /// (it owns the scrolling), its rows through `rows-*` (it owns the focus)
 /// and its header's status line through `header-status`.
-const RESERVED_PROPS: [&str; 46] = [
+const RESERVED_PROPS: [&str; 47] = [
     "u",
     "if",
     "else",
@@ -63,6 +63,9 @@ const RESERVED_PROPS: [&str; 46] = [
     "row",
     "colspan",
     "rowspan",
+    // A function face's picture; reserved on every face, so a name means
+    // one thing everywhere.
+    "badge",
 ];
 
 /// Families of element properties (`min-width`, `drop-shadow-blur`, …),
@@ -125,8 +128,80 @@ pub const BLOCKS_SLINT: [&str; 15] = [
     "Tone",
 ];
 
-/// A row's function names, which its props (the parameters) can't take.
-const ROW_FUNCTIONS: [&str; 3] = ["title", "detail", "attention"];
+/// What a function face's field is: words (`@tr`), a condition, or the
+/// global's picture (a built-in badge).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    Text,
+    Flag,
+    Picture,
+}
+
+impl Kind {
+    /// The Slint type of its function (or, for the picture, property).
+    pub fn slint(self) -> &'static str {
+        match self {
+            Self::Text => "string",
+            Self::Flag => "bool",
+            Self::Picture => "image",
+        }
+    }
+}
+
+/// A function face's fields: the JSON key (the Slint function's name too),
+/// its kind, and the value when the template leaves it out (`None`: it is
+/// required).
+pub type Fields = &'static [(&'static str, Kind, Option<&'static str>)];
+
+/// Faces drawn by Home from a global of pure functions of the props (Rust
+/// calls them for the values Home shows), each with its root's name and
+/// fields: a row (Settings' list), a status-corner glyph, a banner and an
+/// ambient line (PANELS.md § 2, § 4.1). `badge` is the global's picture, an
+/// `out` property. A face's props are the functions' parameters, so they
+/// can't take these names.
+pub const FUNCTION_FACES: [(&str, &str, Fields); 4] = [
+    (
+        "row",
+        "list-row",
+        &[
+            ("title", Kind::Text, None),
+            ("detail", Kind::Text, Some("\"\"")),
+            ("attention", Kind::Flag, Some("false")),
+        ],
+    ),
+    (
+        "corner",
+        "glyph",
+        &[("show", Kind::Flag, None), ("badge", Kind::Picture, None)],
+    ),
+    (
+        "banner",
+        "banner",
+        &[
+            ("title", Kind::Text, None),
+            ("detail", Kind::Text, Some("\"\"")),
+            ("badge", Kind::Picture, None),
+        ],
+    ),
+    (
+        "ambient",
+        "glance",
+        &[
+            ("show", Kind::Flag, None),
+            ("text", Kind::Text, None),
+            ("badge", Kind::Picture, None),
+        ],
+    ),
+];
+
+/// The fields of a face drawn from a global of functions, `None` for a face
+/// drawn as a component (tile, page).
+pub fn face_fields(face: &str) -> Option<Fields> {
+    FUNCTION_FACES
+        .iter()
+        .find(|(name, _, _)| *name == face)
+        .map(|(_, _, fields)| *fields)
+}
 
 /// The template format's version: a runtime loader or an editor refuses a
 /// file it doesn't know.
@@ -164,12 +239,14 @@ const ROWS_SOURCES: [&str; 1] = ["remote"];
 /// the `Pictures` global (`pictures.slint`), which Rust sets.
 pub const PICTURES: [&str; 1] = ["remote-banner"];
 
-/// Converts `json` into Slint source: a tile is a component, a row a global
-/// of pure functions (its words, for Settings' list), a page a component
-/// of blocks (blocks.slint). The output imports `Theme`, `Dir`, `Badges`,
-/// `Pictures` and the blocks by name, found through the compiler's include
-/// paths, so every file shares the one `Dir.rtl`. A tile's images are
-/// [`BADGES`] (set from Rust); nothing else can be an image.
+/// Converts `json` into Slint source: a tile is a component, a page a
+/// component of blocks (blocks.slint), and a row, a status-corner glyph, a
+/// banner and an ambient line ([`FUNCTION_FACES`]) a global of pure
+/// functions of the props that Home calls. The output imports `Theme`,
+/// `Dir`, `Badges`, `Pictures` and the blocks by name, found through the
+/// compiler's include paths, so every file shares the one `Dir.rtl`. A
+/// tile's and a function face's images are [`BADGES`] (set from Rust);
+/// nothing else can be an image.
 pub fn convert(json: &str) -> Result<String, String> {
     let doc = parse(json)?;
     let doc = object(&doc, "template")?;
@@ -214,11 +291,11 @@ pub fn convert(json: &str) -> Result<String, String> {
             || RESERVED_PREFIXES
                 .iter()
                 .any(|prefix| prop.starts_with(prefix))
-            || (face == "row" && ROW_FUNCTIONS.contains(&prop))
+            || face_fields(face).is_some_and(|fields| fields.iter().any(|(key, _, _)| *key == prop))
             || props.contains(&prop)
         {
             return Err(format!(
-                "props[{i}]: {prop:?} is taken (a Slint word, an element property, `u`, `scroll-*`, a row's function, or a duplicate)"
+                "props[{i}]: {prop:?} is taken (a Slint word, an element property, `u`, `scroll-*`, the face's function or picture, or a duplicate)"
             ));
         }
         props.push(prop);
@@ -227,28 +304,47 @@ pub fn convert(json: &str) -> Result<String, String> {
     let (kind, body) = node(field(doc, "template", "root")?, "root")?;
     let root = match face {
         "tile" => "column",
-        "row" => "list-row",
         "page" => "page",
-        other => return Err(format!("face: {other:?} is not tile, row or page")),
+        other => match FUNCTION_FACES.iter().find(|(name, _, _)| *name == other) {
+            Some((_, root, _)) => root,
+            None => {
+                return Err(format!(
+                    "face: {other:?} is not tile, page, {}",
+                    FUNCTION_FACES.map(|(name, _, _)| name).join(", ")
+                ));
+            }
+        },
     };
     if kind != root {
         return Err(format!("root: a {face}'s root must be a {root}"));
     }
     let at = format!("root.{root}");
     let mut out = String::from("// Generated from a panel template by build.rs. Do not edit.\n");
-    // A row's words are functions of its properties; elsewhere they are
-    // the component's own.
-    let scope = if face == "row" { "" } else { "root." };
+    // A row's (a corner glyph's, …) words are functions of its
+    // properties; elsewhere they are the component's own.
+    let functions = face_fields(face);
+    let scope = if functions.is_some() { "" } else { "root." };
     let cx = Cx {
         props: &props,
         scope,
     };
-    match face {
-        "tile" => cx.tile(name, body, &at, &mut out)?,
-        "row" => cx.row(name, body, &at, &mut out)?,
-        _ => cx.page(name, body, &at, &mut out)?,
+    match (face, functions) {
+        ("tile", _) => cx.tile(name, body, &at, &mut out)?,
+        ("page", _) => cx.page(name, body, &at, &mut out)?,
+        (_, Some(functions)) => cx.functions(name, functions, body, &at, &mut out)?,
+        _ => {}
     }
     Ok(out)
+}
+
+/// How a text's argument is set off from the words around it.
+#[derive(Clone, Copy)]
+enum Isolate {
+    None,
+    /// Left to right whatever the language (a version).
+    Ltr,
+    /// The value's own direction (a name, in any script).
+    Auto,
 }
 
 /// What a page's blocks hold so far: its focus block and its marks.
@@ -311,43 +407,63 @@ impl Cx<'_> {
         Ok(())
     }
 
-    /// A row: its title, dim detail and attention (Settings' accent dot),
-    /// as functions of the properties, since Settings draws every row of
-    /// its list with one component (quick.slint `ControlRow`).
-    fn row(
+    /// A face Home draws from a global of pure functions of the properties
+    /// ([`FUNCTION_FACES`]), since one component draws every item of its
+    /// kind: a row (Settings' list, quick.slint `ControlRow`: title, dim
+    /// detail, accent dot), a status-corner glyph (a badge shown while its
+    /// panel needs attention), a banner (badge, title, detail) and an
+    /// ambient line (a badge and a text, shown on the idle screen). Each
+    /// field becomes a function of the same name, the picture the `badge`
+    /// property; a field left out takes its default, or is an error when it
+    /// has none.
+    fn functions(
         &self,
         name: &str,
+        fields: Fields,
         body: &Map<String, Value>,
         at: &str,
         out: &mut String,
     ) -> Result<(), String> {
-        only(body, at, &["title", "detail", "attention"])?;
+        let keys: Vec<&str> = fields.iter().map(|(key, _, _)| *key).collect();
+        only(body, at, &keys)?;
         let params = self
             .props
             .iter()
             .map(|prop| format!("{prop}: string"))
             .collect::<Vec<_>>()
             .join(", ");
-        let title = self.words(field(body, at, "title")?, &format!("{at}.title"))?;
-        let detail = match body.get("detail") {
-            Some(detail) => self.words(detail, &format!("{at}.detail"))?,
-            None => "\"\"".into(),
-        };
-        let attention = match body.get("attention") {
-            Some(attention) => self.flag(attention, &format!("{at}.attention"))?,
-            None => "false".into(),
-        };
-        let _ = writeln!(out, "\nexport global {name} {{");
-        for (function, kind, value) in [
-            ("title", "string", title),
-            ("detail", "string", detail),
-            ("attention", "bool", attention),
-        ] {
+        let mut badge = None;
+        let mut body_out = String::new();
+        for &(key, kind, default) in fields {
+            let field_at = format!("{at}.{key}");
+            let value = match (kind, body.get(key), default) {
+                (Kind::Picture, Some(value), _) => {
+                    let picture = string(value, &field_at)?;
+                    if !BADGES.contains(&picture) {
+                        return Err(format!("{field_at}: {picture:?} is not a built-in badge"));
+                    }
+                    badge = Some(picture);
+                    continue;
+                }
+                (Kind::Text, Some(value), _) => self.words(value, &field_at)?,
+                (Kind::Flag, Some(value), _) => self.flag(value, &field_at)?,
+                (_, None, Some(default)) => default.to_owned(),
+                (_, None, None) => return Err(format!("{at}: missing {key:?}")),
+            };
             let _ = writeln!(
-                out,
-                "    public pure function {function}({params}) -> {kind} {{\n        return {value};\n    }}"
+                body_out,
+                "    public pure function {key}({params}) -> {} {{\n        return {value};\n    }}",
+                kind.slint()
             );
         }
+        if badge.is_some() {
+            out.push_str("import { Badges } from \"badges.slint\";\n");
+        }
+        let _ = writeln!(out, "\nexport global {name} {{");
+        if let Some(badge) = badge {
+            let _ = writeln!(out, "    out property <image> badge: Badges.{badge};");
+        }
+        out.push_str(&body_out);
         out.push_str("}\n");
         Ok(())
     }
@@ -756,14 +872,16 @@ impl Cx<'_> {
         }
         let args: String = args
             .iter()
-            .map(|&(prop, ltr)| {
+            .map(|&(prop, isolate)| {
                 let prop = format!("{}{prop}", self.scope);
-                if ltr {
+                match isolate {
                     // U+2066 LEFT-TO-RIGHT ISOLATE … U+2069 POP DIRECTIONAL
                     // ISOLATE, as Slint escapes.
-                    format!(", \"\\u{{2066}}\" + {prop} + \"\\u{{2069}}\"")
-                } else {
-                    format!(", {prop}")
+                    Isolate::Ltr => format!(", \"\\u{{2066}}\" + {prop} + \"\\u{{2069}}\""),
+                    // U+2068 FIRST STRONG ISOLATE: the value's own first
+                    // letter decides its direction (a name in any script).
+                    Isolate::Auto => format!(", \"\\u{{2068}}\" + {prop} + \"\\u{{2069}}\""),
+                    Isolate::None => format!(", {prop}"),
                 }
             })
             .collect();
@@ -775,18 +893,26 @@ impl Cx<'_> {
         Ok(format!("@tr({}{plural}{args})", quote(text)))
     }
 
-    /// A text's argument: a property's name, or `{"ltr": name}` (that
-    /// property as a left-to-right isolate). Returns the name and whether it
-    /// is isolated.
-    fn arg<'v>(&self, value: &'v Value, at: &str) -> Result<(&'v str, bool), String> {
-        match value.as_object() {
-            Some(body) => {
-                only(body, at, &["ltr"])?;
-                let prop = self.prop(field(body, at, "ltr")?, &format!("{at}.ltr"))?;
-                Ok((prop, true))
+    /// A text's argument: a property's name, `{"ltr": name}` (that
+    /// property as a left-to-right isolate: a version) or `{"auto": name}`
+    /// (a first-strong isolate: a name in any script keeps its own
+    /// direction). Returns the name and how it is isolated.
+    fn arg<'v>(&self, value: &'v Value, at: &str) -> Result<(&'v str, Isolate), String> {
+        let Some(body) = value.as_object() else {
+            return Ok((self.prop(value, at)?, Isolate::None));
+        };
+        only(body, at, &["ltr", "auto"])?;
+        let (key, isolate) = match (body.get("ltr"), body.get("auto")) {
+            (Some(_), None) => ("ltr", Isolate::Ltr),
+            (None, Some(_)) => ("auto", Isolate::Auto),
+            _ => {
+                return Err(format!(
+                    "{at}: an argument is a prop, {{\"ltr\": prop}} or {{\"auto\": prop}}"
+                ));
             }
-            None => Ok((self.prop(value, at)?, false)),
-        }
+        };
+        let prop = self.prop(field(body, at, key)?, &format!("{at}.{key}"))?;
+        Ok((prop, isolate))
     }
 
     /// Colour: a token name or a `select` of token names.

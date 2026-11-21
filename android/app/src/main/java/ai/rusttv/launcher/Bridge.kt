@@ -127,6 +127,11 @@ object Bridge {
     fun utcOffsetSecs(): Int =
         java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 1000
 
+    /** Whether the TV shows the time on a 24-hour clock (its own setting, else its locale's). */
+    @JvmStatic
+    fun uses24Hours(context: Context): Boolean =
+        android.text.format.DateFormat.is24HourFormat(context)
+
     /** Set when an app was installed, updated or removed; cleared by [takeAppsChanged]. */
     private val appsChanged = AtomicBoolean(false)
 

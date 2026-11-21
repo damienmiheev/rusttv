@@ -30,6 +30,11 @@
 //! `--demo-panels <dir>` does the same for panel tiles hidden and in a
 //! folder, the Hidden apps page and the top-right menu's RustTV panel.
 //!
+//! `--demo-faces <dir>` does the same for Home's own faces of the panels:
+//! the status corner's clock (and, with `RUSTTV_UPDATE=available`, About's
+//! glyph and its line on the idle screen; an update known at start makes no
+//! banner), the idle screen and a key waking it.
+//!
 //! `--demo <dir>` instead plays a fixed key script and writes a BMP snapshot
 //! after each step into `<dir>`, then quits. Needs no screen-capture permission.
 
@@ -429,6 +434,23 @@ fn panels_script(right_to_left: bool, menu: bool) -> Vec<DemoStep> {
     steps
 }
 
+/// Home's own faces (PANELS.md § 9 Q2, Q6): the corner (with an update
+/// available, About's glyph), the idle screen, then a key that wakes Home
+/// and does nothing else.
+fn faces_script() -> Vec<DemoStep> {
+    use DemoStep::{Rest, Snapshot, Tap};
+    vec![
+        ms(900),
+        Snapshot("faces-1-corner"),
+        Rest,
+        ms(1500),
+        Snapshot("faces-2-ambient"),
+        Tap(RIGHT),
+        ms(300),
+        Snapshot("faces-3-woken"),
+    ]
+}
+
 /// Whether the made-up TV may write settings itself: not with
 /// `RUSTTV_HISTORY_PENDING=1`.
 fn grant() -> bool {
@@ -488,6 +510,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             script = history_script(is_right_to_left(language));
             PathBuf::from(dir)
         }
+        ("--demo-faces", Some(dir)) => {
+            script = faces_script();
+            PathBuf::from(dir)
+        }
         ("--demo-panels", Some(dir)) => {
             let language = options.language.as_deref().unwrap_or_default();
             let menu = std::env::var_os("RUSTTV_NO_DEVICE").is_none();
@@ -496,7 +522,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         _ => {
             return Err(
-                "usage: rusttv-launcher-desktop [--order <file> | --demo <dir> | --demo-remote <dir> | --demo-history <dir> | --demo-panels <dir>]"
+                "usage: rusttv-launcher-desktop [--order <file> | --demo <dir> | --demo-remote <dir> | --demo-history <dir> | --demo-panels <dir> | --demo-faces <dir>]"
                     .into(),
             );
         }

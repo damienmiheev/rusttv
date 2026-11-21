@@ -107,6 +107,14 @@ pub trait Platform {
         0
     }
 
+    /// Whether the TV's own setting shows the time on a 24-hour clock;
+    /// `None` where the platform has no such setting, and then the
+    /// language decides ([`crate::i18n::uses_24_hours`]). For Home's clock
+    /// (PANELS.md § 9 Q2).
+    fn uses_24_hours(&self) -> Option<bool> {
+        None
+    }
+
     /// Draws apps' tile pictures for RustTV Remote's phones, from any
     /// thread. None where the platform can't (the desktop dev mode): phones
     /// then show their stand-ins.

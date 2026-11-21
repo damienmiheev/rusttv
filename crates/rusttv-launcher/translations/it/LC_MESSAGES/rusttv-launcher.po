@@ -59,8 +59,8 @@ msgstr "App nascoste"
 msgid "About"
 msgstr "Informazioni"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "OK riporta l’app nella schermata Home. Indietro per tornare."
+msgid "OK puts it back on Home. Back returns."
+msgstr "OK lo riporta nella schermata Home. Indietro per tornare."
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "Versione {} · MIT OR Apache-2.0"
@@ -536,3 +536,29 @@ msgid "{n} day ago"
 msgid_plural "{n} days ago"
 msgstr[0] "{n} giorno fa"
 msgstr[1] "{n} giorni fa"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "Schermata di riposo"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "Dopo 5 minuti sulla Home, un orologio tenue finché non premi un tasto"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "Schermata di riposo: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "RustTV aggiornato"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} connesso"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "Il computer ha applicato {n} modifica"
+msgstr[1] "Il computer ha applicato {n} modifiche"

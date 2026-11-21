@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "component": "RemoteAmbient",
+  "face": "ambient",
+  "props": ["status"],
+  "root": { "glance": {
+    "badge": "rusttv-remote",
+    "show": { "select": "status", "cases": { "pairing": true } },
+    "text": { "tr": "Pairing" } } }
+}

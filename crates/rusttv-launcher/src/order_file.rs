@@ -185,6 +185,10 @@ pub(crate) const UPDATE_CHECK_OFF: &str = "update-check-off";
 /// start; Settings changes it.
 pub(crate) const REDUCED_EFFECTS: &str = "effects-reduced";
 
+/// The file whose presence turns the idle screen off (Home never dims to
+/// its clock; PANELS.md § 9 Q6). Settings changes it.
+pub(crate) const AMBIENT_OFF: &str = "ambient-off";
+
 /// The launcher's own state as history records it: tiles in order,
 /// folders, hidden tiles, the paired phones and the update switch. `dir` holds `order.toml` and
 /// the flag file.
@@ -219,6 +223,7 @@ pub(crate) fn launcher_state(dir: &Path) -> rusttv_history::Launcher {
         phones: crate::remote::phone_names(dir),
         update_check: !dir.join(UPDATE_CHECK_OFF).exists(),
         reduced_effects: dir.join(REDUCED_EFFECTS).exists(),
+        ambient_off: dir.join(AMBIENT_OFF).exists(),
     }
 }
 
@@ -247,7 +252,8 @@ pub(crate) fn write_launcher_state(dir: &Path, state: &rusttv_history::Launcher)
     // Phones can only be removed; ui.rs drops them from the listener too.
     crate::remote::keep_phones(dir, &state.phones).map_err(io::Error::other)?;
     set_flag(&dir.join(UPDATE_CHECK_OFF), !state.update_check)?;
-    set_flag(&dir.join(REDUCED_EFFECTS), state.reduced_effects)
+    set_flag(&dir.join(REDUCED_EFFECTS), state.reduced_effects)?;
+    set_flag(&dir.join(AMBIENT_OFF), state.ambient_off)
 }
 
 /// Creates or removes an empty flag file.
@@ -342,6 +348,28 @@ mod tests {
             order.keys().iter().map(|(id, _)| id.clone()).collect()
         };
         assert_eq!(ids(&load(&back.file()).order), ids(&order));
+    }
+
+    /// The idle screen switch is a flag file: history records it off
+    /// (format 8) and writes it back, and on removes the file again.
+    #[test]
+    fn the_idle_screen_switch_goes_through_history() {
+        let dir = TempDir::new("ambient-flag");
+        assert!(!launcher_state(&dir.0).ambient_off);
+        let mut state = launcher_state(&dir.0);
+        state.ambient_off = true;
+        write_launcher_state(&dir.0, &state).unwrap();
+        assert!(dir.0.join(AMBIENT_OFF).exists());
+        let read = launcher_state(&dir.0);
+        assert!(read.ambient_off);
+        let snapshot = rusttv_history::State {
+            launcher: read.clone(),
+            ..rusttv_history::State::new()
+        };
+        assert_eq!(snapshot.needed_format(), 8);
+        state.ambient_off = false;
+        write_launcher_state(&dir.0, &state).unwrap();
+        assert!(!dir.0.join(AMBIENT_OFF).exists());
     }
 
     /// A snapshot from before Remote's place was recorded (format 4, no

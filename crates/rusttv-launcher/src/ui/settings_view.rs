@@ -179,6 +179,8 @@ impl Controller {
             super::apply_effects(&window, overview.launcher.reduced_effects);
         }
         page.refresh(overview);
+        let ambient_off = page.overview().launcher.ambient_off;
+        self.set_ambient_setting(ambient_off);
         // The history thread read the summary with the page's data.
         self.show_history_panel();
         self.render();
@@ -192,14 +194,27 @@ impl Controller {
     pub(super) fn show_history_panel(&mut self) {
         // The TV's clock (Unix seconds), as RustTV Remote reads it.
         let now = i64::try_from(crate::remote::now()).unwrap_or(i64::MAX);
+        let before = self.history.0;
         self.history = (History::get().and_then(History::summary), now);
         let Some(window) = self.window.upgrade() else {
             return;
         };
+        let mut shown = false;
         if let Some(tile) = panels::history_view(self.history.0.as_ref(), self.history.1).tile {
             let panel = window.global::<HistoryPanel>();
-            panel.set_status(tile.props.get("status").into());
-            panel.set_count(tile.props.get("count").into());
+            let (status, count) = (tile.props.get("status"), tile.props.get("count"));
+            shown = panel.get_status() != status || panel.get_count() != count;
+            panel.set_status(status.into());
+            panel.set_count(count.into());
+        }
+        // A banner if the computer applied waiting approvals; the corner's
+        // glyph and the idle screen's line follow the summary. Only when
+        // something changed: this runs on every focus change.
+        if self.history.0 != before {
+            self.history_summary_changed(before);
+        }
+        if shown || self.history.0 != before {
+            self.show_faces();
         }
     }
 
@@ -439,6 +454,10 @@ impl Controller {
             return;
         };
         let loaded = order_file::load(path);
+        let ambient_off = path
+            .parent()
+            .is_some_and(|dir| dir.join(order_file::AMBIENT_OFF).exists());
+        self.set_ambient_setting(ambient_off);
         self.home
             .replace_order(loaded.order, loaded.folders, loaded.hidden);
         // A restore may have removed phones.
@@ -669,6 +688,16 @@ impl Controller {
                             ..SettingsRow::default()
                         })
                         .collect(),
+                    Section::Ambient => [true, false]
+                        .into_iter()
+                        .map(|on| SettingsRow {
+                            title: strings.invoke_on_off(on),
+                            detail: strings.invoke_ambient_detail(on),
+                            current: overview.launcher.ambient_off != on,
+                            dim: false,
+                            ..SettingsRow::default()
+                        })
+                        .collect(),
                     Section::Updates => [true, false]
                         .into_iter()
                         .map(|on| SettingsRow {
@@ -847,6 +876,7 @@ fn section_value(section: Section) -> i32 {
         Section::History => 2,
         Section::Waiting => 3,
         Section::Effects => 4,
+        Section::Ambient => 6,
         // Tabs are named by the platform.
         Section::About | Section::Tab(_) => 5,
     }
@@ -915,6 +945,7 @@ fn change_line(
             "".into(),
             strings.invoke_effects_choice(*reduced),
         ),
+        Change::Ambient { on } => (19, "".into(), "".into(), strings.invoke_on_off(*on)),
         Change::Setting { key, old, new } => {
             let index = SETTING_KEYS
                 .iter()

@@ -420,6 +420,19 @@ impl Platform for AndroidPlatform {
         .unwrap_or(0)
     }
 
+    fn uses_24_hours(&self) -> Option<bool> {
+        self.with_bridge("clock format", |env, bridge, activity| {
+            env.call_static_method(
+                bridge,
+                "uses24Hours",
+                "(Landroid/content/Context;)Z",
+                &[JValue::Object(activity)],
+            )?
+            .z()
+        })
+        .ok()
+    }
+
     fn pointer_state(&self) -> PointerState {
         self.with_bridge("pointer state", |env, bridge, _activity| {
             let text = env
