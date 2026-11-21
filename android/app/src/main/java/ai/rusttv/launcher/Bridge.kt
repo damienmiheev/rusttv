@@ -266,13 +266,6 @@ object Bridge {
     fun language(context: Context): String =
         context.resources.configuration.locales[0].toLanguageTag()
 
-    /** The third-party licence notices packed into the APK by Gradle (app/build.gradle.kts). */
-    @JvmStatic
-    fun notices(context: Context): String =
-        context.assets.open("licenses/THIRD_PARTY_NOTICES.txt").use {
-            it.readBytes().toString(Charsets.UTF_8)
-        }
-
     /** The updater's status, "kind" or "kind\tdetail" ([Updater]); a field read. */
     @JvmStatic
     fun updateStatus(context: Context): String = Updater.status(context)

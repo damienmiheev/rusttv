@@ -79,6 +79,8 @@ fn android_main(app: AndroidApp) {
 /// [`Platform`] backed by Android's package manager, through the Kotlin bridge.
 struct AndroidPlatform {
     app: AndroidApp,
+    /// The notices being read off the UI thread ([`Platform::prefetch_notices`]).
+    notices: std::sync::Mutex<Option<std::thread::JoinHandle<Result<String, PlatformError>>>>,
     vm: JavaVM,
     /// The `Bridge` class, loaded once through the app's class loader.
     bridge: GlobalRef,
@@ -106,6 +108,7 @@ impl AndroidPlatform {
         })?;
         Ok(Self {
             app: app.clone(),
+            notices: std::sync::Mutex::new(None),
             vm,
             bridge,
         })
@@ -326,18 +329,33 @@ impl Platform for AndroidPlatform {
     }
 
     fn notices(&self) -> Result<String, PlatformError> {
-        self.with_bridge("load notices", |env, bridge, activity| {
-            let text = env
-                .call_static_method(
-                    bridge,
-                    "notices",
-                    "(Landroid/content/Context;)Ljava/lang/String;",
-                    &[JValue::Object(activity)],
-                )?
-                .l()?;
-            let text = JString::from(text);
-            Ok(env.get_string(&text)?.into())
-        })
+        let prefetched = self
+            .notices
+            .lock()
+            .ok()
+            .and_then(|mut handle| handle.take());
+        match prefetched.map(std::thread::JoinHandle::join) {
+            Some(Ok(result)) => result,
+            // Not started, or the reading thread panicked: read here.
+            _ => read_notices(&self.app),
+        }
+    }
+
+    fn prefetch_notices(&self) {
+        let Ok(mut handle) = self.notices.lock() else {
+            return;
+        };
+        if handle.is_some() {
+            return;
+        }
+        let app = self.app.clone();
+        match std::thread::Builder::new()
+            .name("notices".into())
+            .spawn(move || read_notices(&app))
+        {
+            Ok(thread) => *handle = Some(thread),
+            Err(error) => log::warn!("reading the notices ahead failed: {error}"),
+        }
     }
 
     fn update_status(&self) -> Result<UpdateStatus, PlatformError> {
@@ -402,6 +420,7 @@ impl Platform for AndroidPlatform {
         let vm = unsafe { JavaVM::from_raw(self.vm.get_java_vm_pointer()) }.ok()?;
         let bridge = std::sync::Arc::new(AndroidPlatform {
             app: self.app.clone(),
+            notices: std::sync::Mutex::new(None),
             vm,
             bridge: self.bridge.clone(),
         });
@@ -732,6 +751,19 @@ fn load_class<'local>(
 }
 
 /// The activity, usable as an Android `Context`.
+/// The licence notices, straight from the APK: a Java String would cost two
+/// conversions of the whole ~760 KB text.
+fn read_notices(app: &AndroidApp) -> Result<String, PlatformError> {
+    let mut asset = app
+        .asset_manager()
+        .open(c"licenses/THIRD_PARTY_NOTICES.txt")
+        .ok_or_else(|| PlatformError::call("load notices", "asset missing"))?;
+    let mut bytes = Vec::new();
+    std::io::Read::read_to_end(&mut asset, &mut bytes)
+        .map_err(|error| PlatformError::call("load notices", error.to_string()))?;
+    String::from_utf8(bytes).map_err(|error| PlatformError::call("load notices", error.to_string()))
+}
+
 fn activity(app: &AndroidApp) -> JObject<'static> {
     // SAFETY: android-activity keeps a global reference to the activity for the
     // lifetime of the app; we only borrow it and never delete it.

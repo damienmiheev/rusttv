@@ -63,8 +63,13 @@ pub trait Platform {
 
     /// The third-party licence notices shipped with the launcher, as plain text.
     ///
-    /// Large (~560 KB on Android), so read only when the About page opens.
+    /// Large (~760 KB on Android), so read only when the About page first
+    /// opens, or ahead of it by [`Platform::prefetch_notices`].
     fn notices(&self) -> Result<String, PlatformError>;
+
+    /// Starts reading the notices off the UI thread, so the About page's
+    /// first open doesn't wait for them. Called once, after the first frame.
+    fn prefetch_notices(&self) {}
 
     /// Every [`Artwork::Later`] picture has been loaded. On Android this
     /// frees the pictures the system decoded for it, which otherwise wait for
