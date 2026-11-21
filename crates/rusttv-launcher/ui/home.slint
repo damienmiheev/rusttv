@@ -355,11 +355,6 @@ export global Effects {
     // The hero backdrop as one baked picture (`Glow.backdrop`) instead of
     // drawn gradients: set where there is a top-right menu (Linux).
     in property <bool> baked-backdrop: false;
-    // Panel faces keep one size on a tile and are scaled with a transform
-    // as it zooms (`Artwork.face-width`): where the renderer draws
-    // transforms (Skia, Android). The software renderer doesn't, so there
-    // they are laid out at the card's size, as before.
-    in property <bool> scaled-faces: false;
 }
 
 global Mode {
@@ -407,47 +402,28 @@ component Artwork inherits Rectangle {
         opacity: data.kind == 1 ? 1 : 0;
         animate opacity { duration: 300ms; easing: ease-out; }
     }
-    // The width the panel faces are laid out at; they are scaled from it to
-    // the card. A zooming tile gives a fixed one (`Effects.scaled-faces`):
-    // a face's cached layer (`cache-rendering-hint`) is then drawn once and
-    // only scaled, instead of drawn again, its text at a new size, on every
-    // frame of a zoom (OK pressed and let go to open a page, focus moving).
-    in property <length> face-width: self.width;
-    in property <length> face-height: self.height;
-    property <float> face-scale: self.width / self.face-width;
-    // The faces, laid out at the face size and scaled to the card. The
-    // transform is on this wrapper: on a face itself it would be inside the
-    // face's cached layer, which would then be drawn again at every scale.
-    Rectangle {
-        x: 0;
-        y: 0;
-        width: root.face-width;
-        height: root.face-height;
-        transform-origin: { x: 0px, y: 0px };
-        transform-scale: root.face-scale;
-        // The About panel's tile face, scaled to the card (the template is 250 u
-        // wide), so the hero draws the same tile larger.
-        if data.kind == 3: AboutTile {
-            u: root.face-width / 250;
-            // The template is 250 × 141 u; the hero's box is a little shorter.
-            height: parent.height;
-            version: AboutPanel.version;
-            status: AboutPanel.status;
-        }
-        // The RustTV Remote panel's tile face, the same way.
-        if data.kind == 8: RemoteTile {
-            u: root.face-width / 250;
-            height: parent.height;
-            phones: RemotePanel.phones;
-            status: RemotePanel.status;
-        }
-        // History's tile face, the same way.
-        if data.kind == 9: HistoryTile {
-            u: root.face-width / 250;
-            height: parent.height;
-            status: HistoryPanel.status;
-            count: HistoryPanel.count;
-        }
+    // The About panel's tile face, scaled to the card (the template is 250 u
+    // wide), so the hero draws the same tile larger.
+    if data.kind == 3: AboutTile {
+        u: parent.width / 250;
+        // The template is 250 × 141 u; the hero's box is a little shorter.
+        height: parent.height;
+        version: AboutPanel.version;
+        status: AboutPanel.status;
+    }
+    // The RustTV Remote panel's tile face, the same way.
+    if data.kind == 8: RemoteTile {
+        u: parent.width / 250;
+        height: parent.height;
+        phones: RemotePanel.phones;
+        status: RemotePanel.status;
+    }
+    // History's tile face, the same way.
+    if data.kind == 9: HistoryTile {
+        u: parent.width / 250;
+        height: parent.height;
+        status: HistoryPanel.status;
+        count: HistoryPanel.count;
     }
     // A folder: its first four apps in a 2 × 2 grid on the card, like a
     // small Home.
@@ -507,12 +483,10 @@ component Tile inherits Rectangle {
     property <bool> sway: focused && browsing && !pressed && idle-phase == 1;
     property <bool> jiggle: mode == Mode.moving;
     property <bool> launching: focused && mode == Mode.launching;
-    // The focused tile's zoom; its panel face is laid out at this size.
-    property <float> focus-zoom: 1.15;
     property <float> scale: launching ? 1.6
         : !focused ? 1.0
         : pressed && browsing ? 1.075
-        : focus-zoom;
+        : 1.15;
     // How much the tile sways, 0..1. Animated, so the sway grows from rest and
     // fades out again instead of jumping to wherever the phase happens to be.
     // It fades out only when the focused tile goes still after the idle time;
@@ -576,8 +550,6 @@ component Tile inherits Rectangle {
             Artwork {
                 width: parent.width;
                 height: parent.height;
-                face-width: Effects.scaled-faces ? root.width * root.focus-zoom : self.width;
-                face-height: Effects.scaled-faces ? root.height * root.focus-zoom : self.height;
                 data: root.data;
                 u: root.u;
             }

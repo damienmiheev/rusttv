@@ -609,10 +609,6 @@ fn start(
     window
         .global::<Effects>()
         .set_baked_backdrop(platform.top_right_menu());
-    // Android draws with Skia, which draws transforms (home.slint).
-    window
-        .global::<Effects>()
-        .set_scaled_faces(cfg!(target_os = "android"));
     window.global::<Hints>().set_keys(!options.no_key_hints);
     if std::env::var_os("RUSTTV_FPS").is_some_and(|value| value != "0") {
         count_frames(&window);
@@ -3595,36 +3591,6 @@ mod tests {
         assert_eq!((size.width, size.height), (320, 180));
         assert!(glow.strength > 0.5);
         assert!(glow.color.red() > glow.color.blue());
-    }
-
-    /// Where faces are scaled (Android), a panel tile's face keeps its
-    /// layout size while the tile zooms, so its cached layer is not drawn
-    /// again; only the transform changes.
-    #[test]
-    fn a_scaled_panel_face_keeps_its_size_while_its_tile_zooms() {
-        let screen = screen_with(abc().without_menu(), None);
-        screen.window.global::<Effects>().set_scaled_faces(true);
-        // The grid's About face: the smallest (the hero's is larger).
-        let face_width = || {
-            i_slint_backend_testing::ElementHandle::find_by_element_type_name(
-                &screen.window,
-                "AboutTile",
-            )
-            .map(|face| face.size().width)
-            .fold(f32::MAX, f32::min)
-        };
-        for _ in 0..3 {
-            screen.tap(RIGHT);
-        }
-        screen.wait(400);
-        let focused = face_width();
-        screen.tap(RIGHT);
-        screen.wait(400);
-        assert_eq!(face_width(), focused);
-        screen.key(OK, true);
-        screen.wait(100);
-        assert_eq!(face_width(), focused);
-        screen.key(OK, false);
     }
 
     #[test]
