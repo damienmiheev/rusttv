@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "component": "AboutCorner",
+  "face": "corner",
+  "props": ["status"],
+  "root": { "glyph": {
+    "badge": "rusttv-logo",
+    "show": { "select": "status", "cases": { "update": true } } } }
+}

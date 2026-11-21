@@ -11,11 +11,13 @@ use crate::HistoryError;
 ///
 /// 2 added `[launcher.folders]`, 3 `[launcher.phones]`, 4
 /// `reduced_effects`, 5 tile names of Linux desktop entries
-/// (`org.kde.dolphin.desktop`) and `remote`. A snapshot is written in the
-/// oldest format that holds it (no folders, no phones, full effects, only
-/// Android names: format 1), so older readers keep reading it until it
-/// needs more.
-pub const STATE_FORMAT: u32 = 5;
+/// (`org.kde.dolphin.desktop`) and `remote`, 6 panel tiles' names
+/// (`panel:history`, PANELS.md § 6), 7 built-in and panel tiles hidden or
+/// in a folder (`hidden = ["about"]`), 8 `ambient_off` (the idle screen
+/// turned off, PANELS.md § 9 Q6). A snapshot is written in the oldest
+/// format that holds it (no folders, no phones, full effects, only Android
+/// names: format 1), so older readers keep reading it until it needs more.
+pub const STATE_FORMAT: u32 = 8;
 
 /// The longest folder name, in characters (the launcher's limit).
 const FOLDER_NAME_MAX: usize = 40;
@@ -58,14 +60,15 @@ pub struct State {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Launcher {
-    /// Tile names in order: app component names, `about`, `settings`,
-    /// `folder:<number>`.
+    /// Tile names in order ([`is_tile_name`]): apps, built-in tiles
+    /// ([`BUILTIN_NAMES`]), panel tiles (`panel:<id>`), `folder:<number>`.
     #[serde(default)]
     pub order: Vec<String>,
     /// Folders by tile name (`folder:<number>`).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub folders: BTreeMap<String, Folder>,
-    /// Component names of apps kept off Home.
+    /// Names of tiles kept off Home: apps' components, and built-in and
+    /// panel tiles' names (format 7).
     #[serde(default)]
     pub hidden: BTreeSet<String>,
     /// Phones paired with RustTV Remote: id (32 hex digits) → name. Never
@@ -79,11 +82,15 @@ pub struct Launcher {
     /// for a weak GPU.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub reduced_effects: bool,
+    /// Whether the idle screen is off: Home never dims to its clock after
+    /// a while (format 8; on by default, so only written when off).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ambient_off: bool,
 }
 
 impl Launcher {
-    /// Every tile name it holds: the order, hidden apps, folders and their
-    /// apps.
+    /// Every tile name it holds: the order, hidden tiles, folders and their
+    /// tiles.
     fn tile_names(&self) -> impl Iterator<Item = &String> {
         self.order
             .iter()
@@ -102,6 +109,7 @@ impl Default for Launcher {
             phones: BTreeMap::new(),
             update_check: true,
             reduced_effects: false,
+            ambient_off: false,
         }
     }
 }
@@ -112,7 +120,8 @@ impl Default for Launcher {
 pub struct Folder {
     /// Its name, as the person sees it.
     pub name: String,
-    /// Component names of its apps, in order.
+    /// Its tiles' names, in order: apps' components, and built-in and
+    /// panel tiles' names (format 7).
     pub apps: Vec<String>,
 }
 
@@ -211,7 +220,18 @@ impl State {
 
     /// The oldest format that can hold this snapshot.
     pub fn needed_format(&self) -> u32 {
-        if self.launcher.tile_names().any(needs_format_five) {
+        let launcher = &self.launcher;
+        let off_home = launcher
+            .hidden
+            .iter()
+            .chain(launcher.folders.values().flat_map(|folder| &folder.apps));
+        if launcher.ambient_off {
+            8
+        } else if off_home.into_iter().any(|name| is_builtin_name(name)) {
+            7
+        } else if launcher.tile_names().any(|name| is_panel_name(name)) {
+            6
+        } else if self.launcher.tile_names().any(needs_format_five) {
             5
         } else if self.launcher.reduced_effects {
             4
@@ -361,8 +381,38 @@ fn needs_format_five(name: &String) -> bool {
     !name.contains('/') && (name == "remote" || name.ends_with(".desktop"))
 }
 
+/// The built-in tiles' names (format 1, `remote` format 5). The launcher
+/// never hides or folders `hidden-apps` (the Hidden apps tile), but a
+/// hand-edited snapshot could, so it counts like the others.
+const BUILTIN_NAMES: [&str; 4] = ["about", "settings", "hidden-apps", "remote"];
+
+/// Whether a tile name is a built-in or panel tile's. Hidden or in a
+/// folder, it needs format 7: builds before it accept the name there
+/// ([`is_tile_name`]) but would show the tile anyway and drop it from
+/// its folder.
+fn is_builtin_name(name: &str) -> bool {
+    BUILTIN_NAMES.contains(&name) || is_panel_name(name)
+}
+
+/// Whether a tile name is a panel tile's, `panel:<id>` (format 6; builds
+/// before it would read it as an app and drop it). The id is 1 to 40
+/// lowercase letters, digits and single '-' between them, so it never
+/// holds a `/` and can't clash with an app.
+fn is_panel_name(name: &str) -> bool {
+    name.strip_prefix("panel:").is_some_and(|id| {
+        (1..=40).contains(&id.len())
+            && id.starts_with(|c: char| c.is_ascii_lowercase())
+            && !id.ends_with('-')
+            && !id.contains("--")
+            && id
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    })
+}
+
 /// A tile name: `about`, `settings`, `hidden-apps`, `remote`,
-/// `folder:<number>`, a Linux desktop entry's id (`<id>.desktop`, format 5)
+/// `panel:<id>` (format 6, [`is_panel_name`]), `folder:<number>`, a Linux
+/// desktop entry's id (`<id>.desktop`, format 5)
 /// or a component `<package>/<class>`. Tile names are only shown, never run, so
 /// the package part is checked by its characters (not
 /// [`is_package_name`]'s stricter shape): one bad name must not stop the
@@ -370,7 +420,7 @@ fn needs_format_five(name: &String) -> bool {
 pub fn is_tile_name(name: &str) -> bool {
     match name.split_once('/') {
         None => {
-            matches!(name, "about" | "settings" | "hidden-apps" | "remote")
+            is_builtin_name(name)
                 || name
                     .strip_prefix("folder:")
                     .is_some_and(|number| number.parse::<u32>().is_ok() && !number.starts_with('+'))
@@ -460,8 +510,8 @@ mod tests {
     #[test]
     fn a_newer_format_says_so() {
         assert!(matches!(
-            State::parse("format = 6\nsomething_new = true\n"),
-            Err(HistoryError::FormatNewer(6))
+            State::parse("format = 9\nsomething_new = true\n"),
+            Err(HistoryError::FormatNewer(9))
         ));
     }
 
@@ -530,8 +580,147 @@ mod tests {
         let mut hidden = sample();
         hidden.launcher.hidden.insert("foot.desktop".into());
         assert_eq!(hidden.needed_format(), 5);
+        // So does the RustTV Remote tile, which every Home has.
+        let mut remote = sample();
+        remote.launcher.order.push("remote".into());
+        assert_eq!(remote.needed_format(), 5);
+        let downgraded = remote
+            .to_toml()
+            .unwrap()
+            .replacen("format = 5", "format = 4", 1);
+        assert!(matches!(
+            State::parse(&downgraded),
+            Err(HistoryError::Invalid(_))
+        ));
         assert_eq!(sample().needed_format(), 1);
         assert!(sample().to_toml().unwrap().starts_with("format = 1\n"));
+    }
+
+    #[test]
+    fn panel_tiles_need_format_six() {
+        let mut history = sample();
+        history.launcher.order.push("panel:history".into());
+        let text = history.to_toml().unwrap();
+        assert!(text.starts_with("format = 6\n"), "{text}");
+        assert_eq!(State::parse(&text).unwrap().launcher, history.launcher);
+        // A build that reads up to format 5 must refuse it, not read the
+        // panel as an app it then drops.
+        let downgraded = text.replacen("format = 6", "format = 5", 1);
+        assert!(matches!(
+            State::parse(&downgraded),
+            Err(HistoryError::Invalid(_))
+        ));
+        // Also with every older format's contents.
+        let mut all = history.clone();
+        all.launcher.order.push("remote".into());
+        all.launcher.reduced_effects = true;
+        assert_eq!(all.needed_format(), 6);
+        assert!(is_tile_name("panel:history"));
+        assert!(is_tile_name("panel:a1-b"));
+        for bad in [
+            "panel:",
+            "panel:History",
+            "panel:-a",
+            "panel:a-",
+            "panel:a--b",
+            "panel:1a",
+            "panel:a/b",
+            "panel:a b",
+        ] {
+            assert!(!is_tile_name(bad), "{bad}");
+        }
+        assert!(is_tile_name(&format!("panel:{}", "a".repeat(40))));
+        assert!(!is_tile_name(&format!("panel:{}", "a".repeat(41))));
+    }
+
+    /// A built-in or panel tile hidden or in a folder needs format 7:
+    /// builds that read up to 6 would take the name there and still show
+    /// the tile on Home (and drop it from the folder), so they must refuse.
+    #[test]
+    fn built_in_tiles_hidden_or_in_folders_need_format_seven() {
+        // An Android Home: every built-in tile in the order, an app hidden.
+        let home = |order: &[&str]| {
+            let mut state = sample();
+            state.launcher.order = order.iter().map(|name| (*name).to_owned()).collect();
+            state
+        };
+        let all = [
+            "com.example.a/.Main",
+            "about",
+            "settings",
+            "remote",
+            "panel:history",
+        ];
+        let normal = home(&all);
+        assert_eq!(normal.needed_format(), 6, "built-in tiles in the order");
+        assert!(normal.to_toml().unwrap().starts_with("format = 6\n"));
+        for name in [
+            "about",
+            "settings",
+            "remote",
+            "panel:history",
+            "hidden-apps",
+        ] {
+            let others: Vec<&str> = all.iter().copied().filter(|tile| *tile != name).collect();
+            let mut hidden = home(&others);
+            hidden.launcher.hidden.insert(name.into());
+            let mut in_folder = home(&[others.as_slice(), &["folder:1"]].concat());
+            in_folder.launcher.folders.insert(
+                "folder:1".into(),
+                Folder {
+                    name: "RustTV".into(),
+                    apps: vec![name.into(), "com.example.b/.Main".into()],
+                },
+            );
+            for state in [hidden, in_folder] {
+                assert_eq!(state.needed_format(), 7, "{name}");
+                let text = state.to_toml().unwrap();
+                assert!(text.starts_with("format = 7\n"), "{text}");
+                assert_eq!(State::parse(&text).unwrap().launcher, state.launcher);
+                let downgraded = text.replacen("format = 7", "format = 6", 1);
+                assert!(
+                    matches!(State::parse(&downgraded), Err(HistoryError::Invalid(_))),
+                    "{name}"
+                );
+            }
+        }
+    }
+
+    /// The idle screen turned off needs format 8; on (the default) is never
+    /// written, so a snapshot with it on stays in its older format.
+    #[test]
+    fn the_idle_screen_off_needs_format_eight() {
+        let mut off = sample();
+        off.launcher.ambient_off = true;
+        assert_eq!(off.needed_format(), 8);
+        let text = off.to_toml().unwrap();
+        assert!(text.starts_with("format = 8\n"), "{text}");
+        assert!(text.contains("ambient_off = true"), "{text}");
+        assert_eq!(State::parse(&text).unwrap().launcher, off.launcher);
+        // A build that reads up to format 7 must refuse it, not turn the
+        // idle screen back on when it writes the snapshot again.
+        let downgraded = text.replacen("format = 8", "format = 7", 1);
+        assert!(matches!(
+            State::parse(&downgraded),
+            Err(HistoryError::Invalid(_))
+        ));
+        let on = sample().to_toml().unwrap();
+        assert!(!on.contains("ambient_off"), "{on}");
+        assert!(on.starts_with("format = 1\n"), "{on}");
+    }
+
+    /// Snapshots written by older builds still load in this one.
+    #[test]
+    fn older_snapshots_still_load() {
+        for text in [
+            "format = 1\n[launcher]\norder = [\"a.b/.M\", \"about\", \"settings\"]\nhidden = [\"c.d/.M\"]\n",
+            "format = 5\n[launcher]\norder = [\"a.b/.M\", \"about\", \"settings\", \"remote\"]\n",
+            "format = 6\n[launcher]\norder = [\"a.b/.M\", \"remote\", \"panel:history\"]\n\n[launcher.folders.\"folder:1\"]\nname = \"V\"\napps = [\"e.f/.M\"]\n",
+            "format = 7\n[launcher]\norder = [\"a.b/.M\", \"remote\"]\nhidden = [\"panel:history\"]\n",
+        ] {
+            let state = State::parse(text).unwrap_or_else(|error| panic!("{text}: {error}"));
+            assert!(state.needed_format() <= state.format, "{text}");
+        }
     }
 
     #[test]

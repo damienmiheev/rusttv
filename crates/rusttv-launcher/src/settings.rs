@@ -57,6 +57,9 @@ pub(crate) enum Section {
     Animations,
     /// Full or reduced effects (shadows, backdrop) for a weak GPU.
     Effects,
+    /// The idle screen on or off (PANELS.md § 9 Q6): after a while on
+    /// Home, a dim clock.
+    Ambient,
     Updates,
     History,
     Waiting,
@@ -183,9 +186,11 @@ impl SettingsPage {
         self.loaded
     }
 
-    /// Whether Settings has its About tab: only where a top-right menu
-    /// replaces the About tile (Linux). Without one, the About tile opens
-    /// the About page and Settings stays as it was.
+    /// Whether Settings has its About tab: where a top-right menu replaces
+    /// the About tile (Linux), and while the About tile is hidden, so the
+    /// licence notices and Slint's attribution stay reachable (PANELS.md
+    /// § 6). Otherwise the About tile opens the About page and Settings
+    /// stays as it was.
     pub fn with_about(mut self, about: bool) -> Self {
         self.about = about;
         self
@@ -217,6 +222,19 @@ impl SettingsPage {
             Focus::List
         };
         true
+    }
+
+    /// Selects the History section, with focus on the section list (its
+    /// entries arrive later): History's tile opens Settings here.
+    pub fn show_history(&mut self) {
+        if let Some(section) = self
+            .sections()
+            .iter()
+            .position(|section| *section == Section::History)
+        {
+            self.section = section;
+            self.focus = Focus::List;
+        }
     }
 
     /// Replaces the data (after a change or a refresh), keeping focus where
@@ -274,6 +292,7 @@ impl SettingsPage {
         let mut sections = vec![
             Section::Animations,
             Section::Effects,
+            Section::Ambient,
             Section::Updates,
             Section::History,
         ];
@@ -365,6 +384,7 @@ impl SettingsPage {
         match self.section() {
             Section::Animations => self.animation_choice().unwrap_or(NORMAL_ANIMATIONS),
             Section::Effects => usize::from(self.overview.launcher.reduced_effects),
+            Section::Ambient => usize::from(self.overview.launcher.ambient_off),
             Section::Updates => usize::from(!self.overview.launcher.update_check),
             Section::History | Section::Waiting | Section::Tab(_) | Section::About => 0,
         }
@@ -373,7 +393,7 @@ impl SettingsPage {
     fn rows(&self) -> usize {
         match self.section() {
             Section::Animations => ANIMATION_CHOICES.len(),
-            Section::Effects | Section::Updates => 2,
+            Section::Effects | Section::Ambient | Section::Updates => 2,
             Section::History => self.overview.entries.len(),
             Section::Waiting => self.overview.pending.len(),
             Section::Tab(tab) => self.tabs.get(tab).map_or(0, |tab| tab.controls.len()),
@@ -485,6 +505,18 @@ impl SettingsPage {
                     launcher: Some(launcher),
                 }))
             }
+            Section::Ambient => {
+                let off = row == 1;
+                if self.overview.launcher.ambient_off == off {
+                    return None;
+                }
+                let mut launcher = self.overview.launcher.clone();
+                launcher.ambient_off = off;
+                Some(Action::Review(Draft {
+                    changes: Vec::new(),
+                    launcher: Some(launcher),
+                }))
+            }
             Section::Updates => {
                 let on = row == 0;
                 if self.overview.launcher.update_check == on {
@@ -573,10 +605,28 @@ mod tests {
     }
 
     #[test]
+    fn turning_the_idle_screen_off_reviews_the_launcher_state() {
+        let mut page = page();
+        page.handle(Input::Down);
+        page.handle(Input::Down);
+        assert_eq!(page.section(), Section::Ambient);
+        page.handle(Input::Right);
+        assert_eq!(page.panel_row(), Some(0), "focus starts on On, the default");
+        assert_eq!(page.handle(Input::OkReleased), None, "On is already on");
+        page.handle(Input::Down);
+        let Some(Action::Review(draft)) = page.handle(Input::OkReleased) else {
+            panic!("expected a review");
+        };
+        assert_eq!(draft.launcher.map(|l| l.ambient_off), Some(true));
+    }
+
+    #[test]
     fn turning_updates_off_reviews_the_launcher_state() {
         let mut page = page();
         page.handle(Input::Down);
         page.handle(Input::Down);
+        page.handle(Input::Down);
+        assert_eq!(page.section(), Section::Updates);
         page.handle(Input::Right);
         page.handle(Input::Down);
         let Some(Action::Review(draft)) = page.handle(Input::OkReleased) else {
@@ -588,7 +638,7 @@ mod tests {
     #[test]
     fn an_older_entry_can_be_restored_but_not_the_newest() {
         let mut page = page();
-        for _ in 0..3 {
+        for _ in 0..4 {
             page.handle(Input::Down);
         }
         assert_eq!(page.section(), Section::History);
@@ -621,7 +671,7 @@ mod tests {
     #[test]
     fn waiting_shows_only_with_pending_approvals() {
         let mut page = page();
-        assert_eq!(page.sections().len(), 5);
+        assert_eq!(page.sections().len(), 6);
         let mut overview = page.overview().clone();
         overview.pending.push(PendingApproval {
             hash: "a".repeat(64),
@@ -629,7 +679,7 @@ mod tests {
             change: Vec::new(),
         });
         page.refresh(overview);
-        assert_eq!(page.sections()[4], Section::Waiting);
+        assert_eq!(page.sections()[5], Section::Waiting);
         assert_eq!(page.sections().last(), Some(&Section::About));
     }
 
@@ -646,7 +696,7 @@ mod tests {
         assert_eq!(page.section(), Section::About);
         page.set_device(device.tabs(), device.about());
         assert_eq!(
-            page.sections()[4..],
+            page.sections()[5..],
             [Section::Tab(0), Section::About],
             "the tabs sit before About"
         );
@@ -679,7 +729,7 @@ mod tests {
     fn about_rows_check_for_updates_and_open_the_notices() {
         let mut page = page();
         page.set_device(Vec::new(), vec![("Kernel".into(), "6.18".into())]);
-        for _ in 0..4 {
+        for _ in 0..5 {
             page.handle(Input::Down);
         }
         assert_eq!(page.section(), Section::About);
@@ -727,5 +777,25 @@ mod tests {
         assert_eq!(page.section(), Section::Tab(1));
         assert_eq!(page.panel_row(), Some(0));
         assert!(!page.show_tab("display"));
+    }
+
+    /// History's tile opens Settings on the History section with the
+    /// section list focused, wherever focus was, and it stays there when
+    /// the platform's tabs or the history's data arrive.
+    #[test]
+    fn show_history_selects_history_with_the_list_focused() {
+        let mut page = page();
+        page.handle(Input::Right);
+        assert!(page.panel_row().is_some(), "focus in Animations' rows");
+        page.show_history();
+        assert_eq!(page.section(), Section::History);
+        assert_eq!(page.panel_row(), None);
+        page.set_device(Vec::new(), Vec::new());
+        page.refresh(page.overview().clone());
+        assert_eq!(page.section(), Section::History);
+        assert_eq!(page.panel_row(), None);
+        // OK then enters its entries.
+        page.handle(Input::OkReleased);
+        assert_eq!(page.panel_row(), Some(0));
     }
 }

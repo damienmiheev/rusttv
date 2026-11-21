@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "component": "GeneralPlural",
+  "face": "tile",
+  "props": ["count", "unit"],
+  "root": { "column": {
+    "width": 250, "height": 141,
+    "children": [
+      { "text": { "value": { "tr": "{n} file in {}", "plural": "{n} files in {}", "count": "count",
+                             "args": [{ "ltr": "unit" }] },
+                  "size": 23, "color": "text" } },
+      { "text": { "value": { "select": "unit", "cases": {
+                    "0": { "tr": "None" } },
+                    "else": { "tr": "One day", "plural": "{n} days", "count": "count" } },
+                  "size": 23, "color": "text-dim" } }
+    ] } }
+}

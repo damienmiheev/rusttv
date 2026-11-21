@@ -15,11 +15,18 @@ mod i18n;
 mod linux;
 mod model;
 mod order_file;
+mod panels;
 mod platform;
 mod remote;
 mod remote_page;
 mod review;
 mod settings;
+/// The panel template converter build.rs runs, compiled here for its tests.
+#[cfg(test)]
+#[path = "../codegen/convert.rs"]
+mod template_convert;
+#[cfg(test)]
+mod template_convert_tests;
 mod ui;
 
 #[cfg(any(test, feature = "test-util"))]
@@ -27,6 +34,8 @@ pub use device::FakeDevice;
 pub use device::{
     Control, ControlKind, DeviceSettings, QuickPanel, Tab, Value, Volume, VolumeChange,
 };
+#[cfg(any(test, feature = "test-util"))]
+pub use i18n::is_right_to_left;
 #[cfg(all(target_os = "linux", feature = "linux"))]
 pub use linux::{
     AppEvent, AppEvents, Limits, LinuxDevice, LinuxPlatform, run_portal, start_gamepads,
@@ -44,8 +53,10 @@ pub use ui::{DemoStep, run_demo};
 pub use ui::{Lifecycle, RunOptions, run};
 
 /// Starts the history thread for the desktop dev mode over `dir`, the
-/// directory of the order file (HISTORY.md).
+/// directory of the order file (HISTORY.md). Without `grant`, as on a TV
+/// without `WRITE_SECURE_SETTINGS`, an approved settings change waits for
+/// the computer (HISTORY.md § 6.3), which shows History's waiting approval.
 #[cfg(not(target_os = "android"))]
-pub fn start_desktop_history(dir: std::path::PathBuf) {
-    history::desktop::start(dir);
+pub fn start_desktop_history(dir: std::path::PathBuf, grant: bool) {
+    history::desktop::start(dir, grant);
 }

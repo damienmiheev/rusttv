@@ -16,7 +16,7 @@ use crate::device::{
     Control, ControlKind, Link, PanelAction, PanelPage, QuickPanel, Tab, Value, Volume,
     VolumeChange,
 };
-use crate::model::{Input, QuickAction};
+use crate::model::{Input, PanelId, QUICK_PANELS, QuickAction, State, TileId};
 use crate::platform::Platform;
 use rusttv_remote::protocol::TextEdit;
 
@@ -46,9 +46,9 @@ fn link_code(link: &Link) -> i32 {
     }
 }
 
-/// The top-right menu's entries: Modify and Settings, and the others the
-/// platform offers. None where the platform has no menu (Android); its Home
-/// has About and Settings tiles instead.
+/// The top-right menu's entries: Modify, RustTV (the panels' rows) and
+/// Settings, and the others the platform offers. None where the platform
+/// has no menu (Android); its Home has About and Settings tiles instead.
 pub(super) fn quick_actions(platform: &dyn Platform) -> Vec<QuickAction> {
     if !platform.top_right_menu() {
         return Vec::new();
@@ -57,8 +57,10 @@ pub(super) fn quick_actions(platform: &dyn Platform) -> Vec<QuickAction> {
     QuickAction::ALL
         .into_iter()
         .filter(|action| {
-            matches!(action, QuickAction::Modify | QuickAction::Settings)
-                || offered.contains(action)
+            matches!(
+                action,
+                QuickAction::Modify | QuickAction::Panels | QuickAction::Settings
+            ) || offered.contains(action)
         })
         .collect()
 }
@@ -73,6 +75,7 @@ fn quick_code(action: QuickAction) -> i32 {
         QuickAction::KdeConnect => 4,
         QuickAction::Settings => 5,
         QuickAction::Power => 6,
+        QuickAction::Panels => 7,
     }
 }
 
@@ -116,6 +119,14 @@ impl Controller {
     /// Carries out a top-right menu entry the platform does: opens its
     /// quick panel, or its app.
     pub(super) fn open_quick(&mut self, action: QuickAction) {
+        // One quick panel at a time: another entry replaces the open one.
+        self.close_quick_view();
+        if action == QuickAction::Panels {
+            self.panels_row = Some(0);
+            // History's age as of now, not of the last focus change.
+            self.show_history_panel();
+            return;
+        }
         if let Some(panel) = action.panel() {
             self.quick = Some(PanelPage::new(panel, self.options.right_to_left));
             self.quick_status = "…".to_owned();
@@ -169,6 +180,10 @@ impl Controller {
 
     /// A key while a quick panel is open.
     pub(super) fn quick_input(&mut self, input: Input) {
+        if let Some(row) = self.panels_row {
+            self.panels_input(row, input);
+            return;
+        }
         let Some(page) = &mut self.quick else {
             return;
         };
@@ -176,9 +191,42 @@ impl Controller {
         self.panel_action(action);
     }
 
+    /// The RustTV quick panel: Up and Down pick a panel's row, OK opens its
+    /// page, Back closes the panel.
+    fn panels_input(&mut self, row: usize, input: Input) {
+        let last = QUICK_PANELS.len() - 1;
+        match input {
+            Input::Up => self.panels_row = Some(row.saturating_sub(1)),
+            Input::Down => self.panels_row = Some((row + 1).min(last)),
+            Input::OkReleased => {
+                let effect = self.home.open_panel_row(row);
+                if effect.is_some() {
+                    self.close_quick_view();
+                    self.apply(effect);
+                }
+            }
+            Input::Back => {
+                self.close_quick_view();
+                self.home.close_quick();
+            }
+            _ => {}
+        }
+    }
+
     /// A mouse click on a row of the open quick panel.
     pub(super) fn quick_row_clicked(&mut self, row: i32) {
         if !self.pointer_reaches(false) {
+            return;
+        }
+        if self.panels_row.is_some() {
+            if let Ok(row) = usize::try_from(row)
+                && row < QUICK_PANELS.len()
+            {
+                self.panels_row = Some(row);
+                self.panels_input(row, Input::OkReleased);
+            }
+            self.restart_idle();
+            self.render();
             return;
         }
         let (Some(page), Ok(row)) = (&mut self.quick, usize::try_from(row)) else {
@@ -192,6 +240,11 @@ impl Controller {
 
     /// The scrim around the open quick panel was clicked: it closes.
     pub(super) fn quick_dismissed(&mut self) {
+        if self.panels_row.is_some() && self.pointer_reaches(false) {
+            self.panels_input(0, Input::Back);
+            self.render();
+            return;
+        }
         if self.quick.is_some() && self.pointer_reaches(false) {
             self.panel_action(Some(PanelAction::Close));
             self.render();
@@ -284,7 +337,12 @@ impl Controller {
 
     /// A volume key (the remote's, or `--volume` on Linux): changes the
     /// volume and shows the volume bar. Nothing without volume control.
+    /// It also wakes the idle screen (the volume still changes: the key
+    /// says what it wants, unlike a key that only wakes).
     pub(super) fn volume_key(&mut self, change: VolumeChange) {
+        if self.faces.ambient {
+            self.wake_ambient();
+        }
         let Some(device) = self.device.clone() else {
             return;
         };
@@ -370,6 +428,7 @@ impl Controller {
     /// The launcher left the screen (or Home was pressed): the panel closes.
     pub(super) fn close_quick_view(&mut self) {
         self.quick = None;
+        self.panels_row = None;
         self.quick_status.clear();
     }
 
@@ -389,6 +448,14 @@ impl Controller {
                 .quick_selected()
                 .map_or(-1, |selected| i32::try_from(selected).unwrap_or(i32::MAX)),
         );
+        if self.home.state() != State::Quick {
+            // Closed another way (Home, a page opened from the menu).
+            self.panels_row = None;
+        }
+        if let Some(row) = self.panels_row {
+            self.render_panels(window, row);
+            return;
+        }
         let Some(page) = &self.quick else {
             return;
         };
@@ -416,6 +483,34 @@ impl Controller {
             self.quick_rows.set_vec(rows);
         }
     }
+
+    /// Draws the RustTV quick panel: each panel's row face, from the same
+    /// view as its tile (PANELS.md § 2).
+    fn render_panels(&mut self, window: &HomeWindow, row: usize) {
+        window.set_quick_power(false);
+        // A name, the same in every language (quick.slint's entry too).
+        window.set_quick_title("RustTV".into());
+        window.set_quick_status(SharedString::new());
+        window.set_quick_row(i32::try_from(row).unwrap_or(i32::MAX));
+        window.set_quick_first_row(0);
+        let rows: Vec<SettingsRow> = QUICK_PANELS
+            .iter()
+            .map(|tile| match tile {
+                TileId::About => self.about_list_row(window),
+                TileId::Remote => self.remote_row(window),
+                TileId::Panel(PanelId::History) => self.history_row(window),
+                // Every row of `QUICK_PANELS` has a face above (a test
+                // opens each).
+                TileId::Settings | TileId::App(_) | TileId::Hidden | TileId::Folder(_) => {
+                    SettingsRow::default()
+                }
+            })
+            .collect();
+        if !self.quick_rows.iter().eq(rows.iter().cloned()) {
+            self.quick_rows.set_vec(rows);
+        }
+    }
+
     /// Opens the text prompt for a text control of a Settings tab: its field
     /// takes the focus, and with it the system's on-screen keyboard opens.
     pub(super) fn ask_text(&mut self, tab: String, control: String, title: String, secret: bool) {

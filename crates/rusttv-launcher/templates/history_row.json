@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "component": "HistoryListRow",
+  "face": "row",
+  "props": ["status", "count"],
+  "root": { "list-row": {
+    "title": { "tr": "History" },
+    "detail": { "select": "status", "cases": {
+      "waiting": { "tr": "Waiting" },
+      "now": { "tr": "Just now" },
+      "minutes": { "tr": "{n} minute ago", "plural": "{n} minutes ago", "count": "count" },
+      "hours": { "tr": "{n} hour ago", "plural": "{n} hours ago", "count": "count" },
+      "days": { "tr": "{n} day ago", "plural": "{n} days ago", "count": "count" } } },
+    "attention": { "select": "status", "cases": { "waiting": true } } } }
+}

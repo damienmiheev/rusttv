@@ -41,6 +41,21 @@ pub fn bundled_language(tag: &str) -> Option<&'static str> {
     LANGUAGES.iter().copied().find(|bundled| *bundled == wanted)
 }
 
+/// Whether a language's people read the time on a 24-hour clock, for
+/// Home's clock where the platform doesn't say ([`crate::Platform::uses_24_hours`]):
+/// a 12-hour clock for English (but British and Irish English), Hindi,
+/// Korean and Arabic, as their locales' usual formats are; 24 hours
+/// otherwise. The clock shows no AM/PM, as on a phone's status bar.
+pub fn uses_24_hours(tag: &str) -> bool {
+    let lower = tag.to_ascii_lowercase();
+    let mut parts = lower.split(['-', '_']);
+    match parts.next().unwrap_or_default() {
+        "en" => parts.any(|part| matches!(part, "gb" | "ie")),
+        "" | "hi" | "ko" | "ar" => false,
+        _ => true,
+    }
+}
+
 /// Whether a language tag's script runs right to left (Arabic, Hebrew, Persian, Urdu).
 pub fn is_right_to_left(tag: &str) -> bool {
     let lower = tag.to_ascii_lowercase();
@@ -71,6 +86,16 @@ mod tests {
         assert_eq!(bundled_language("en-US"), None);
         assert_eq!(bundled_language("sv-SE"), None);
         assert_eq!(bundled_language(""), None);
+    }
+
+    #[test]
+    fn the_clock_has_24_hours_except_where_12_is_usual() {
+        for tag in ["uk-UA", "de", "en-GB", "en_IE", "zh-Hant-TW", "ja", "fr-CA"] {
+            assert!(uses_24_hours(tag), "{tag}");
+        }
+        for tag in ["en", "en-US", "EN-au", "hi-IN", "ko", "ar-EG", ""] {
+            assert!(!uses_24_hours(tag), "{tag}");
+        }
     }
 
     #[test]

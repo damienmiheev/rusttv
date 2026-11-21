@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "component": "GeneralTile",
+  "face": "tile",
+  "props": ["value", "state"],
+  "root": { "column": {
+    "width": 250, "height": 141,
+    "padding": 8, "gap": 2, "align": "center",
+    "children": [
+      { "column": { "padding": 4, "gap": 2, "align": "start", "children": [
+        { "image": { "badge": "rusttv-remote", "height": 32 } },
+        { "text": { "value": { "tr": "Value {}", "args": [{ "ltr": "value" }] },
+                    "size": 25, "color": "text" } } ] } },
+      { "text": { "show": { "select": "state", "cases": { "on": true } },
+                  "value": { "tr": "On" }, "size": 23, "weight": 700,
+                  "color": { "select": "state", "cases": { "on": "accent" } } } }
+    ] } }
+}

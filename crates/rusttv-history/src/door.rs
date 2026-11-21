@@ -108,6 +108,9 @@ impl Observation {
         new.settings.global.clone_from(&self.settings);
         new.packages.clone_from(&self.packages);
         new.device = self.device.clone();
+        // `state` keeps the format it was read in, which may predate what
+        // its (newer) launcher section needs; the merged snapshot is new.
+        new.format = new.needed_format();
         new.validate()?;
         Ok(new)
     }
@@ -528,6 +531,17 @@ mod tests {
         assert!(Message::parse(b"kind = \"consume\"\napproval = \"12\"\n").is_err());
         assert!(Message::parse(b"kind = \"launcher\"\n").is_err());
         assert!(Message::parse(&vec![b' '; MAX_MESSAGE_BYTES + 1]).is_err());
+    }
+
+    #[test]
+    fn an_observation_applies_to_a_head_read_in_an_older_format() {
+        // The head was recorded before panel tiles; the live launcher has
+        // one hidden, which needs format 7.
+        let mut head = State::new();
+        head.format = 1;
+        head.launcher.hidden.insert("panel:history".into());
+        let state = Observation::default().applied_to(&head).unwrap();
+        assert_eq!(state.format, state.needed_format());
     }
 
     #[test]

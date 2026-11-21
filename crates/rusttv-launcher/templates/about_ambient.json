@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "component": "AboutAmbient",
+  "face": "ambient",
+  "props": ["status"],
+  "root": { "glance": {
+    "badge": "rusttv-logo",
+    "show": { "select": "status", "cases": { "update": true } },
+    "text": { "tr": "Update available" } } }
+}

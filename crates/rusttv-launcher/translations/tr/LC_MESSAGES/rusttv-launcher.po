@@ -59,8 +59,8 @@ msgstr "Gizli uygulamalar"
 msgid "About"
 msgstr "Hakkında"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "OK uygulamayı ana ekrana geri koyar. Geri: geri dön."
+msgid "OK puts it back on Home. Back returns."
+msgstr "OK ana ekrana geri koyar. Geri: geri dön."
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "Sürüm {} · MIT OR Apache-2.0"
@@ -441,14 +441,8 @@ msgstr "Uygulamayı kapat"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "Licences and third-party notices"
-msgstr "Lisanslar ve üçüncü taraf bildirimleri"
-
 msgid "Loading…"
 msgstr "Yükleniyor…"
-
-msgid "MIT OR Apache-2.0 · licences and third-party notices"
-msgstr "MIT OR Apache-2.0 · lisanslar ve üçüncü taraf bildirimleri"
 
 msgid "Modify"
 msgstr "Düzenle"
@@ -465,6 +459,9 @@ msgstr "Güç"
 msgid "RustTV {}"
 msgstr "RustTV {}"
 
+msgid "RustTV"
+msgstr "RustTV"
+
 msgid "Search"
 msgstr "Ara"
 
@@ -473,9 +470,6 @@ msgstr "Boyut"
 
 msgid "Size: {} %"
 msgstr "Boyut: %{}"
-
-msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
-msgstr "Slint (Royalty-free License 2.0), Skia, Rust kitaplıkları"
 
 msgid "Source code"
 msgstr "Kaynak kodu"
@@ -488,3 +482,83 @@ msgstr "Ses düzeyi"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "Klavyede ✓ onaylar, Geri iptal eder"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "İndiriliyor"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "Yükleniyor"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "Güncelleme var"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "Telefon yok"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "Telefonlar: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "Eşleniyor"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "Değiştirildi"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Waiting"
+msgstr "Bekliyor"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Just now"
+msgstr "Az önce"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "{n} dakika önce"
+msgstr[1] "{n} dakika önce"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "{n} saat önce"
+msgstr[1] "{n} saat önce"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "{n} gün önce"
+msgstr[1] "{n} gün önce"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "Bekleme ekranı"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "Ana ekranda 5 dakika sonra, bir tuşa basana dek soluk bir saat"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "Bekleme ekranı: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "RustTV güncellendi"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} bağlandı"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "Bilgisayar {n} değişikliği uyguladı"
+msgstr[1] "Bilgisayar {n} değişikliği uyguladı"

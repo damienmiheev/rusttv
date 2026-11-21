@@ -205,7 +205,7 @@ the file chooses them (or names a package in `also`).
 ## History
 
 *HISTORY.md.* The launcher keeps a history of what RustTV manages on the TV
-(its tile order, hidden apps and update switch, the three animation
+(its tile order, hidden tiles and update switch, the three animation
 settings, the catalog packages' states, the firmware and whether Home is
 taken over) as git commits in its private storage; this computer keeps a
 full copy of each, `<state dir>/history/<history id>.git` (a normal bare
@@ -244,9 +244,25 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
   added, never renamed, removed or changed in meaning; anything else bumps it.
   - `rusttv.v11`: [HistoryChange](#historychange) has a new kind for the
     launcher's Effects setting (`effects`, with `reduced`), and `history
-    show`'s `state` may hold `launcher.reduced_effects` (TV history snapshots
-    in format 4, written only while effects are reduced). Everything else is
-    unchanged.
+    show`'s `state` may hold `launcher.reduced_effects` (TV history
+    snapshots in format 4, written only while effects are reduced). TV
+    history snapshots in format 5 may hold Linux desktop entries' names and
+    the RustTV Remote tile, `remote`, in `launcher.order` (every Android
+    snapshot since it is recorded); [HistoryChange](#historychange)'s
+    `moved` may name `remote`, never `added` or `removed`. Snapshots in
+    format 6 also hold History's panel tile, `panel:history`, in
+    `launcher.order` (every snapshot with a launcher order since it is
+    recorded; panel tiles are `panel:<id>`, an id of 1–40 lowercase letters,
+    digits and single `-`, starting with a letter and not ending with `-`);
+    `moved` may name it, never `added` or `removed`. Snapshots in format
+    7 may hold built-in and panel tiles (`about`, `settings`, `remote`,
+    `panel:<id>`) in `launcher.hidden` and in `launcher.folders`' `apps`
+    (PANELS.md § 6); `hidden` and `in_folder` may name them, and a tile
+    hidden or shown again is only `hidden`, never also `removed` or
+    `added`. Snapshots in format 8 may hold `launcher.ambient_off`
+    (written only while the launcher's idle screen is off), and
+    [HistoryChange](#historychange) has a kind for that switch (`ambient`,
+    with `on`). Everything else is unchanged.
   - `rusttv.v10`: [HistoryChange](#historychange) has new kinds for phones
     paired with RustTV Remote (`phone_paired`, `phone_removed`, each with
     `phone`, the phone's id, and `name`), and `history show`'s `state` may
@@ -560,12 +576,16 @@ device's clock, or null before 2024), `author` (`tv` \| `mac` \| `drift`
 ### HistoryChange
 
 `kind` and its fields: `reordered` (`moved`: tiles, on Home or in a
-folder), `added` / `removed` (`tile`), `folder_added` / `folder_removed`
+folder), `added` / `removed` (`tile`; never `remote`, the RustTV Remote
+tile, or `panel:history`, History's tile, which older snapshots leave
+out), `folder_added` / `folder_removed`
 (`folder`: `folder:<number>`, `name`), `folder_renamed` (`folder`, `old`,
-`new`), `in_folder` (`tile`, `folder`, `name`, `inside`: the app went into
-the folder, or out of it), `phone_paired` / `phone_removed` (`phone`: the
-phone's id, 32 hex digits; `name`), `hidden` (`tile`,
-`hidden`), `update_check` (`on`), `effects` (`reduced`), `setting` (`key`, `old`, `new`; null =
+`new`), `in_folder` (`tile`, `folder`, `name`, `inside`: the app or
+built-in tile went into the folder, or out of it), `phone_paired` / `phone_removed` (`phone`: the
+phone's id, 32 hex digits; `name`), `hidden` (`tile`: an app or a
+built-in tile, `hidden`; a tile hidden or shown again is not also
+`removed` or `added`), `update_check` (`on`), `effects` (`reduced`), `ambient` (`on`: the
+launcher's idle screen), `setting` (`key`, `old`, `new`; null =
 unset), `package` (`package`, `old`, `new`: `enabled` \| `disabled`, null =
 not observed), `firmware` (`old`, `new`), `takeover` (`active`).
 

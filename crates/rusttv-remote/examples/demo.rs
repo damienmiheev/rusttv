@@ -16,8 +16,8 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rusttv_remote::protocol::{
-    AppView, DragPhase, FolderView, Gesture, HomeMode, HomeView, Key, KeyAction, PhoneMessage,
-    TextEdit, TextField, TileView, TvMessage,
+    AppView, Caption, DragPhase, FolderView, Gesture, HomeMode, HomeView, Key, KeyAction,
+    PhoneMessage, TextEdit, TextField, TileView, TvMessage,
 };
 use rusttv_remote::{Event, Options, PAGE, Phones, Remote};
 
@@ -33,6 +33,8 @@ fn tile(id: &str, label: &str, folder: Option<&str>) -> TileView {
         label: label.into(),
         banner: None,
         folder: folder.map(Into::into),
+        caption: None,
+        count: None,
     }
 }
 
@@ -77,7 +79,17 @@ fn main() {
             tile("com.browser/.Main", "Browser", None),
             tile("settings", "Settings", None),
             tile("hidden-apps", "Hidden apps", None),
-            tile("about", "About", None),
+            TileView {
+                // As when an update is available.
+                caption: Some(Caption::Update),
+                ..tile("about", "About", None)
+            },
+            TileView {
+                // The last change two hours ago.
+                caption: Some(Caption::Hours),
+                count: Some(2),
+                ..tile("panel:history", "History", None)
+            },
         ],
         focused: Some("com.google.youtube/.Main".into()),
         ..HomeView::default()

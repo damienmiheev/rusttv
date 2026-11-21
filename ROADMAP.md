@@ -119,7 +119,11 @@ Decided "not for now"; raise again when the core launcher is done.
   - Leaning when picked up: A + B first; C only as its own decision.
 
 - **Settings page with Screen care (OLED), and a top-right status corner** —
-  parked 2026-10-23. Facts from the Philips 65OLED818 (read-only): Google TV's
+  parked 2026-10-23. *Partly built 2026-11-21 as panel faces
+  ([PANELS.md](PANELS.md) § 9 Q2, Q6): a status corner with the clock and
+  attention glyphs, and an idle screen after 5 minutes on Home (black, dim
+  clock, a drift step a minute, any key only wakes; Settings → Idle screen
+  turns it off). The finer Screen care choices below stay parked.* Facts from the Philips 65OLED818 (read-only): Google TV's
   slideshow screensaver (`dreamx` Backdrop) is on after 10 min
   (`screen_off_timeout` 600000) and works over RustTV; TP Vision's
   `ImageStickingService` (GFX capture, in `org.droidtv.tvsystemui`) runs all

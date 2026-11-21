@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "component": "AboutListRow",
+  "face": "row",
+  "props": ["version", "status"],
+  "root": { "list-row": {
+    "title": { "tr": "RustTV {}", "args": [{ "ltr": "version" }] },
+    "detail": { "select": "status", "cases": {
+      "update": { "tr": "Update available" },
+      "downloading": { "tr": "Downloading" },
+      "installing": { "tr": "Installing" } },
+      "else": { "tr": "Third-party notices" } },
+    "attention": { "select": "status", "cases": { "update": true } } } }
+}

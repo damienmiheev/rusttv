@@ -59,8 +59,8 @@ msgstr "Apps ocultas"
 msgid "About"
 msgstr "Acerca de"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "OK vuelve a mostrar la app en la pantalla de inicio. Atrás para volver."
+msgid "OK puts it back on Home. Back returns."
+msgstr "OK vuelve a mostrarlo en la pantalla de inicio. Atrás para volver."
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "Versión {} · MIT OR Apache-2.0"
@@ -441,14 +441,8 @@ msgstr "Cerrar app"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "Licences and third-party notices"
-msgstr "Licencias y avisos de terceros"
-
 msgid "Loading…"
 msgstr "Cargando…"
-
-msgid "MIT OR Apache-2.0 · licences and third-party notices"
-msgstr "MIT OR Apache-2.0 · licencias y avisos de terceros"
 
 msgid "Modify"
 msgstr "Editar"
@@ -465,6 +459,9 @@ msgstr "Encendido"
 msgid "RustTV {}"
 msgstr "RustTV {}"
 
+msgid "RustTV"
+msgstr "RustTV"
+
 msgid "Search"
 msgstr "Buscar"
 
@@ -473,9 +470,6 @@ msgstr "Tamaño"
 
 msgid "Size: {} %"
 msgstr "Tamaño: {} %"
-
-msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
-msgstr "Slint (Royalty-free License 2.0), Skia, bibliotecas de Rust"
 
 msgid "Source code"
 msgstr "Código fuente"
@@ -488,3 +482,83 @@ msgstr "Volumen"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "✓ en el teclado confirma, Atrás cancela"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "Descargando"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "Instalando"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "Nueva versión"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "Sin teléfonos"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "Teléfonos: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "Vinculando"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "Último cambio"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Waiting"
+msgstr "En espera"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Just now"
+msgstr "Ahora mismo"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "hace {n} minuto"
+msgstr[1] "hace {n} minutos"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "hace {n} hora"
+msgstr[1] "hace {n} horas"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "hace {n} día"
+msgstr[1] "hace {n} días"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "Pantalla en reposo"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "Tras 5 minutos en la pantalla de inicio, un reloj tenue hasta que pulses una tecla"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "Pantalla en reposo: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "RustTV actualizado"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} conectado"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "Tu ordenador aplicó {n} cambio"
+msgstr[1] "Tu ordenador aplicó {n} cambios"

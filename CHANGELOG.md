@@ -8,6 +8,113 @@ field in `--json` output says which contract you get, CLI.md).
 
 ### Launcher
 
+- The About tile is the first panel (PANELS.md): the RustTV logo and
+  version, and "Update available", "Downloading" or "Installing" in place
+  of the update dot, drawn from a JSON template (`templates/about_tile.json`)
+  that the build turns into Slint. On Android, Settings keeps its dot (with
+  a top-right menu, as on Linux, neither tile is shown). The colours and
+  reading direction moved to `ui/theme.slint`, shared by every screen and
+  template. `scripts/launcher-pot.sh` extracts template texts for
+  translators. The desktop build takes `RUSTTV_UPDATE=available` and
+  `RUSTTV_NO_DEVICE=1` (the Android layout). Captions are short enough to
+  fit the tile in every language.
+- The About page and Settings' RustTV row are About's page and row faces,
+  drawn from templates (`templates/about_page.json`, `about_row.json`)
+  made of page blocks (title, paragraph, mark, scroll box, hint;
+  `ui/blocks.slint`). They work as before (OK installs or checks for an
+  update, Up and Down scroll the notices, Slint's attribution stays) and
+  look the same, pixel for pixel.
+- The RustTV Remote tile is a panel too (`templates/remote_tile.json`):
+  the Remote badge, how many phones are paired ("No phones",
+  "Phones: 2"), and "Pairing" in the accent while pairing is open. It
+  changes only when pairing opens or closes or a phone is paired or
+  removed; Home's tile list isn't redrawn. Three new texts in all 20
+  translations, measured to fit the tile.
+- The RustTV Remote page is drawn from a template
+  (`templates/remote_page.json`) with new general blocks: a list page's
+  header (title and status line), a picture and a focusable list of rows
+  with pointer hover and click. It looks and works as before, except that
+  "Pointer in other apps" is now dim where there is no pointer service,
+  and shows the accent dot while it is on.
+- A version inside right-to-left text (Arabic, Hebrew) is an isolated
+  left-to-right run: on the About tile and page, and Settings' RustTV and
+  Updates rows (templates: `{"ltr": prop}`).
+- History records where the RustTV Remote tile is, so undo brings it back
+  (HISTORY.md § 1). New snapshots are therefore at least state format 5
+  on Android too (6 with History's tile, below), which released builds
+  (0.3.2 and older) can't read. Older
+  snapshots still restore, with the tile at the end.
+- History has its own tile, a panel (`templates/history_tile.json`, the
+  first `panel:<id>` tile, `panel:history`): the History badge, "Last
+  change" and its age ("Just now", "2 hours ago"), or "Waiting" in the
+  accent while an approval waits for the computer. OK opens Settings on its
+  History section, whose entry in the section list now shows the same age,
+  or "Waiting" and the accent dot. The age comes from a summary the history
+  thread keeps after its own work and is formatted on resume and focus
+  changes, never by a timer; until the history has been read once since
+  start the tile shows just "History". A first run puts it last, after
+  RustTV Remote; it moves like the other built-in tiles. Its place is in the
+  history, so new snapshots with a launcher order are state format 6; older
+  snapshots still restore, with the tile at the end.
+- Panel templates take plural forms for any text with a number
+  (`"plural"` and `"count"`), so each language has its own forms ("1
+  hour", "2 hours", Ukrainian's three, Arabic's six). New texts in all 20
+  translations, measured to fit the tile. The desktop build takes
+  `--demo-history <dir>` and `RUSTTV_HISTORY_PENDING=1` (a TV without the
+  settings grant, so an approved change waits for the computer).
+- The About, Settings, RustTV Remote and History tiles can be hidden and
+  put in folders like apps (PANELS.md § 6): their menu is Move and Hide,
+  and holding a moving tile over another makes a folder of them. A folder
+  shows their banners small; the open folder draws them as their tiles and
+  OK opens their page. Hidden ones are listed on the Hidden apps page
+  (after the apps), whose tile is always on Home while something is
+  hidden, so a hidden Settings is two presses away. While About is hidden,
+  Settings gains its About section, so the licence notices and Slint's
+  attribution stay reachable. The history records them, so a snapshot
+  with a built-in tile hidden or in a folder is state format 7, which
+  builds before it refuse; older snapshots still restore. A change list
+  names hiding a tile only as hidden, no longer also as removed.
+- The top-right menu (Linux) has a RustTV entry: a quick panel with the
+  panels' rows, "RustTV <version>" (with "Update available",
+  "Downloading" or "Installing" while there is an update, else
+  "Third-party notices"), RustTV Remote (the paired phones, or
+  "Pairing") and History (the last change's age, or "Waiting"), each from
+  the same view as its tile; OK or a click opens its page. Settings'
+  RustTV row shows the same (its long licence line, which didn't fit the
+  panel in most languages, became "Third-party notices"). No new texts.
+  The desktop build takes `--demo-panels <dir>`.
+- Home has a status corner (PANELS.md § 9 Q2): the clock at the top end
+  (24 hours or 12 as the TV is set, without AM/PM; before the top-right
+  menu where there is one), set once a minute, and before it the badge of
+  up to two panels that need attention (an update available, an approval
+  waiting for the computer, pairing open). It shows with the hero, like the
+  top-right menu.
+- Panels show banners over Home (§ 9 Q4): a card at the top end for four
+  seconds, one at a time and queued: an update became available or was
+  installed, a paired phone connected ("Pixel connected", once per phone),
+  the computer applied changes that waited for it. Never over another app,
+  a page, a folder, a menu or the review screen (one cut short shows again,
+  whole); never focusable; no shadow or slide with reduced effects.
+- After 5 minutes on Home with nothing pressed, Home dims to an idle
+  screen (§ 9 Q6): black, a large dim clock and the panels' lines (an
+  update available, the last change's age), moving a little every minute
+  for OLED screens. Any key (or the pointer, or a phone) wakes Home and
+  does nothing else. It never shows over other apps and goes when the TV's
+  own screensaver starts. Settings → Idle screen turns it off; the choice
+  is in the TV's history (state format 8, only while off) and kept as the
+  `ambient-off` flag file next to `order.toml`.
+- Each of these faces is a template kind any panel can use (`corner`,
+  `banner`, `ambient` in `templates/*_corner.json`, `*_banner.json`,
+  `*_ambient.json`). New texts in all 20 translations, measured to fit. The
+  desktop build takes `--demo-faces <dir>`. The Linux home screen reads the
+  time zone through `date +%z` (history times were in UTC there).
+- Back from a page opened in a folder (About, RustTV Remote, Settings,
+  History) returns to that folder, as after an app opened from it. The
+  Hidden apps page's hint says "OK puts it back on Home", right for the
+  built-in tiles too.
+- An app list that couldn't be read no longer empties folders and the tile
+  order: until a list arrives, Home keeps every app it has stored, and a
+  save meanwhile writes them back unchanged.
 - Settings → Effects: Reduced turns the tile shadows and the backdrop glow
   off, for a weak GPU. The choice is in the TV's history and kept as the
   `effects-reduced` flag file next to `order.toml`, so an image can preset
@@ -38,10 +145,46 @@ field in `--json` output says which contract you get, CLI.md).
   when memory runs low (`~/.config/rusttv/linux.toml`). Stopping background
   apps (`freeze_background`) is off unless the config turns it on.
 
+### RustTV Remote
+
+- The phone's Home mirror shows About's caption too: "Update available"
+  (in the accent), "Downloading" or "Installing" on the tile's picture, in
+  the phone's language. The TV sends it as the tile's optional `caption`
+  (REMOTE.md § 4), from the same panel view as the TV's tile, only when
+  the update state changes it. Older pages ignore it.
+- History's tile shows its age or "Waiting" (in the accent) on the phone
+  too: new `caption` values (`waiting`, `just_now`, `minutes`, `hours`,
+  `days`) with an optional `count`, the age in the phone's language and
+  plural forms (REMOTE.md § 4). The phone may tap, drag or ask the
+  picture of `panel:history`.
+- The phone's mirror shows built-in tiles in folders and on the hidden
+  apps page, with their pictures and captions; its menu offers Hide for
+  them, and a tap on the hidden apps page puts one back (REMOTE.md § 4).
+  On a built-in page (About, RustTV Remote, Settings, or Settings opened
+  on History), `focused` names the tile that opened it, wherever it
+  was.
+
 ### CLI
 
 - Schema `rusttv.v11`: history changes have the new kind `effects`, and
   `history show` may include `launcher.reduced_effects` (CLI.md).
+- TV history snapshots in state format 6 hold History's tile,
+  `panel:history`, in `launcher.order`; `moved` may name it, never `added`
+  or `removed` (CLI.md). The schema stays `rusttv.v11`.
+- TV history snapshots in state format 7 may hold built-in and panel
+  tiles (`about`, `settings`, `remote`, `panel:history`) in
+  `launcher.hidden` and in folders' `apps`; `hidden` and `in_folder` may
+  name them, and hiding a tile (or showing it again) is reported only as
+  `hidden`, no longer also as `removed` (or `added`). The schema stays
+  `rusttv.v11` (CLI.md).
+- TV history snapshots in state format 8 may hold
+  `launcher.ambient_off` (the launcher's idle screen off), and history
+  changes have the kind `ambient` (`on`). The schema stays `rusttv.v11`
+  (CLI.md).
+- Fixed: once the launcher's tiles needed a newer state format than the
+  TV history's newest entry, the TV refused every record from the
+  computer (`HISTORY_INVALID`), so plans applied from the CLI weren't
+  recorded.
 
 ## 0.3.2 (2026-11-02)
 

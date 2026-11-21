@@ -94,8 +94,8 @@ to its home screen.
   first of `navigator.languages` among the launcher's 20, else English;
   right to left for Arabic and Hebrew), from `page/i18n.js`, checked by
   `page/i18n.test.mjs` in CI. Tiles show the apps' own banners (or icons),
-  see Storage; the built-in tiles (About, Settings, RustTV Remote, Hidden
-  apps) show their banners too. Not yet: renaming a folder from the phone
+  see Storage; the built-in tiles (About, Settings, RustTV Remote, History,
+  Hidden apps) show their banners too. Not yet: renaming a folder from the phone
   (typing works).
 - **Look:** the launcher's colours, Inter, the RustTV icon and the built-in
   tile images.
@@ -165,7 +165,8 @@ to its home screen.
     is off on plain HTTP.
   - As built (2026-10-25): the phone asks for each app it has no fresh
     picture of; the TV checks the app is installed and listed (on Home, in
-    a folder or on the hidden apps page), and its picture thread draws the banner (else the icon)
+    a folder or on the hidden apps page; a built-in tile's picture is
+    always there), and its picture thread draws the banner (else the icon)
     through `Bridge.tilePicture` and compresses it to WebP with Android's
     own encoder, then sends it to that phone only. After each burst it asks
     Android for one garbage collection, as the launcher does after loading
@@ -184,22 +185,23 @@ to its home screen.
 
 - **As built (2026-10-25):** RustTV Remote is a page of its own (owner
   decision 2026-10-25), opened from its own built-in Home tile (`remote`,
-  after About and Settings; it moves like them, and its banner is the
-  remote from the phone's home-screen icon). The page shows that banner
-  and what a phone may do, then "Pair a phone" and the paired phones (OK,
-  then OK again, removes one). "Pair a phone"
+  after About and Settings; it moves like them). Since 2026-11-20 the tile
+  is a panel (PANELS.md step 3): the remote badge, how many phones are
+  paired, and "Pairing" while pairing is open; its place is in the TV's
+  history (HISTORY.md § 1). The page, drawn from a panel template, shows
+  the banner (the remote from the phone's home-screen icon) and what a
+  phone may do, then "Pair a phone" and the paired phones (OK, then OK
+  again, removes one). "Pair a phone"
   starts the listener if needed and opens a FLAG_SECURE screen with the QR
   code (drawn by the launcher from `qrcode`'s modules) and the TV's address
   (the source address of its route to the internet, found with a UDP
   socket that sends nothing). A phone that asks shows "Allow “name”?" and
   the code; only OK on the TV's remote allows it, Back refuses. Phone input
   never reaches this screen, and on the page a phone can only press Back.
-  With no phone left, the listener stops. Not yet: the history entry for
-  pairing and removing (needs the phones in the history snapshot, a format
-  change of its own) and an on/off switch. `rusttv-launcher-desktop
-  --demo-remote <dir>` renders the page and the pairing screen. The tile
-  is not in the history snapshot: every Home has it, and RustTV builds that
-  don't know its name must still read the history (HISTORY.md § 1).
+  With no phone left, the listener stops. Pairing and removing are
+  history entries (`phone_paired`, `phone_removed`, HISTORY.md § 1). Not
+  yet: an on/off switch. `rusttv-launcher-desktop --demo-remote <dir>`
+  renders the tile, the page and the pairing screen.
 - **Starting:** "Pair a phone" on the RustTV Remote page shows a QR code with
   `http://<ip>:8484/#p=<secret>`.
   - The secret is 32 random bytes from `SecureRandom`, valid for 2 minutes
@@ -386,13 +388,31 @@ echoed.
   - `banner { id, kind: banner | icon, webp }`, to the phone that asked,
     in order (views are coalesced, pictures are not).
 - **`HomeView`:**
-  - the tiles in order: id, label, banner version, folder membership;
+  - the tiles in order: id, label, banner version, folder membership, and
+    an optional `caption` (`update`, `downloading` or `installing`: About's
+    update state, from `panels::about_view` like the TV's tile, PANELS.md;
+    History's tile `panel:history`: `waiting` while an approval waits for
+    the computer, else the last change's age, `just_now`, `minutes`,
+    `hours` or `days`, from `panels::history_view`) with an optional
+    `count` (the age's number). Each is left out when there is none, and a
+    page that doesn't know a value shows nothing. The phone draws it on
+    the tile's picture at the start side, `update` and `waiting` in the
+    accent and the others dim, in the phone's language (an age through
+    the browser's `Intl.RelativeTimeFormat`, with its plural forms). A
+    change of the update state resends the view only when the caption
+    changes (the download's percent never does); History's age is
+    formatted when Home reads it (resume, focus changes), never on a
+    timer;
   - the open folder and its page;
-  - the focused tile;
+  - the focused tile (on a built-in page, the tile that opened it,
+    wherever it was: `about`, `remote`, `settings`, or `panel:history` for
+    Settings opened on History, also while another section is shown);
   - the mode: browse, menu, moving, hidden list, settings, review, or text
     with its label;
   - the open long-press menu (its items and the selected one), and on the
-    hidden apps page the hidden apps.
+    hidden apps page the hidden tiles: apps, then built-in tiles (About,
+    Settings, RustTV Remote, History; PANELS.md § 6), which can also be in
+    folders, listed with their folder and their caption.
 
   The phone mirrors Home exactly, the hidden apps page included (owner's
   decision, 2026-10-25): every paired phone, a guest's too, sees the hidden
@@ -407,8 +427,8 @@ echoed.
     timing;
   - `menu { choice: move | hide }` picks that item of the open menu, as
     selecting it and pressing OK (`Home::menu_pick`);
-  - on the hidden apps page, a tap on an app puts it back on Home, as OK
-    does.
+  - on the hidden apps page, a tap on a tile puts it back on Home, as OK
+    does; `hide` hides a built-in tile as it does an app.
 
   Settings, About and the RustTV Remote page show on the phone only as
   their name; there, as before, a phone can only press Back. The phone

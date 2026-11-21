@@ -59,8 +59,8 @@ msgstr "Ứng dụng đã ẩn"
 msgid "About"
 msgstr "Giới thiệu"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "Nhấn OK để đưa ứng dụng trở lại màn hình chính. Nhấn Quay lại để trở về."
+msgid "OK puts it back on Home. Back returns."
+msgstr "Nhấn OK để đưa trở lại màn hình chính. Nhấn Quay lại để trở về."
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "Phiên bản {} · MIT OR Apache-2.0"
@@ -441,14 +441,8 @@ msgstr "Đóng ứng dụng"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "Licences and third-party notices"
-msgstr "Giấy phép và thông báo của bên thứ ba"
-
 msgid "Loading…"
 msgstr "Đang tải…"
-
-msgid "MIT OR Apache-2.0 · licences and third-party notices"
-msgstr "MIT OR Apache-2.0 · giấy phép và thông báo của bên thứ ba"
 
 msgid "Modify"
 msgstr "Chỉnh sửa"
@@ -465,6 +459,9 @@ msgstr "Nguồn"
 msgid "RustTV {}"
 msgstr "RustTV {}"
 
+msgid "RustTV"
+msgstr "RustTV"
+
 msgid "Search"
 msgstr "Tìm kiếm"
 
@@ -473,9 +470,6 @@ msgstr "Kích thước"
 
 msgid "Size: {} %"
 msgstr "Kích thước: {} %"
-
-msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
-msgstr "Slint (Royalty-free License 2.0), Skia, thư viện Rust"
 
 msgid "Source code"
 msgstr "Mã nguồn"
@@ -488,3 +482,79 @@ msgstr "Âm lượng"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "✓ trên bàn phím để xác nhận, Quay lại để hủy"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "Đang tải xuống"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "Đang cài đặt"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "Có bản cập nhật"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "Chưa ghép nối"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "Điện thoại: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "Đang ghép nối"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "Đã thay đổi"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Waiting"
+msgstr "Đang chờ"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Just now"
+msgstr "Vừa xong"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "{n} phút trước"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "{n} giờ trước"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "{n} ngày trước"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "Màn hình chờ"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "Sau 5 phút ở màn hình chính, đồng hồ mờ cho đến khi bạn nhấn phím"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "Màn hình chờ: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "Đã cập nhật RustTV"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} đã kết nối"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "Máy tính đã áp dụng {n} thay đổi"

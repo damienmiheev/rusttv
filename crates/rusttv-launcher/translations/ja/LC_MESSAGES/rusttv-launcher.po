@@ -59,8 +59,8 @@ msgstr "非表示のアプリ"
 msgid "About"
 msgstr "概要"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "OK：アプリをホーム画面に戻す。戻る：前の画面へ。"
+msgid "OK puts it back on Home. Back returns."
+msgstr "OK：ホーム画面に戻す。戻る：前の画面へ。"
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "バージョン {} · MIT OR Apache-2.0"
@@ -441,14 +441,8 @@ msgstr "アプリを閉じる"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "Licences and third-party notices"
-msgstr "ライセンスと第三者の表示"
-
 msgid "Loading…"
 msgstr "読み込み中…"
-
-msgid "MIT OR Apache-2.0 · licences and third-party notices"
-msgstr "MIT OR Apache-2.0 · ライセンスと第三者の表示"
 
 msgid "Modify"
 msgstr "編集"
@@ -465,6 +459,9 @@ msgstr "電源"
 msgid "RustTV {}"
 msgstr "RustTV {}"
 
+msgid "RustTV"
+msgstr "RustTV"
+
 msgid "Search"
 msgstr "検索"
 
@@ -473,9 +470,6 @@ msgstr "サイズ"
 
 msgid "Size: {} %"
 msgstr "サイズ：{} %"
-
-msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
-msgstr "Slint（Royalty-free License 2.0）、Skia、Rust ライブラリ"
 
 msgid "Source code"
 msgstr "ソースコード"
@@ -488,3 +482,79 @@ msgstr "音量"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "キーボードの ✓ で確定、戻るでキャンセル"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "ダウンロード中"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "インストール中"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "アップデートがあります"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "スマホなし"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "スマホ: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "ペアリング中"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "最終変更"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Waiting"
+msgstr "パソコン待ち"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Just now"
+msgstr "たった今"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "{n}分前"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "{n}時間前"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "{n}日前"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "アイドル画面"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "ホーム画面で5分たつと、ボタンを押すまで暗い時計を表示"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "アイドル画面: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "RustTV を更新しました"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} が接続しました"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "パソコンが {n} 件の変更を適用しました"

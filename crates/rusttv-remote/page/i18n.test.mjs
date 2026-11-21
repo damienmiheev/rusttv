@@ -41,4 +41,14 @@ assert.equal(pick(["zh-HK"]), "zh_TW");
 assert.equal(pick(["zh-Hans-CN"]), "zh_CN");
 assert.equal(pick(["xx", "de-AT"]), "de");
 assert.equal(pick(["xx"]), "en");
+// History's ages on the phone (app.js `captionOf`) come from the browser's
+// Intl.RelativeTimeFormat in the page's language: every language has one,
+// with Western digits as on the TV.
+for (const code of Object.keys(T)) {
+  const tag = code.replace("_", "-");
+  assert.deepEqual(Intl.RelativeTimeFormat.supportedLocalesOf([tag]), [tag], `${code}: relative times`);
+  const age = new Intl.RelativeTimeFormat(tag, { numeric: "always", numberingSystem: "latn" }).format(-12, "hour");
+  assert.ok(age.includes("12"), `${code}: ${age}`);
+}
+
 console.log(`i18n: ${Object.keys(T).length} languages × ${KEYS.length} texts ok`);

@@ -4,7 +4,8 @@ The launcher shows its texts in the TV's language, with English as the
 fallback. Translations are gettext `.po` files, compiled into the launcher
 (`build.rs`), so the APK ships no separate files.
 
-- `rusttv-launcher.pot`: every text, from `@tr(...)` in `../ui/home.slint`.
+- `rusttv-launcher.pot`: every text, from `@tr(...)` in `../ui/home.slint`,
+  `../ui/quick.slint` and the panel templates (`../templates/*.json`).
 - `<lang>/LC_MESSAGES/rusttv-launcher.po`: one language. The folder name is
   the language (`de`, `uk`), with the region only where it matters (`pt_BR`,
   `zh_CN` Simplified, `zh_TW` Traditional).
@@ -23,6 +24,11 @@ Ukrainian is reviewed by the owner first.
 - Keep "OK" (printed on remotes), "RustTV", "Slint", "Skia", "Rust", the
   licence names and the URL as they are.
 - Keep texts about as long as the English: TV space is limited.
+- A text with `{n}` (a number: "{n} hours ago") has plural forms: one
+  `msgstr[i]` for each form your `Plural-Forms` header names, in its
+  order. Keep `{n}` in each form that shows the number; a form may say it
+  in words instead (Arabic "قبل ساعة", one hour ago), but one form at
+  least must show `{n}`.
 - Never leave a `msgstr` empty and never mark an entry `fuzzy`: such
   entries are not used.
 
@@ -36,11 +42,16 @@ Ukrainian is reviewed by the owner first.
 
 ## Change a text
 
-Change it in `home.slint` or `quick.slint`, regenerate the template, and
-update every `.po` file: a `msgid` that no longer matches shows English.
-Regenerate with Slint's extractor (`cargo install slint-tr-extractor`) over
-both files, without the default context (`build.rs` turns it off):
+Change it in `home.slint`, `quick.slint` or a panel template
+(`templates/*.json`), regenerate the template, and update every `.po` file:
+a `msgid` that no longer matches shows English. Regenerate with Slint's
+extractor (`cargo install slint-tr-extractor`), without the default context
+(`build.rs` turns it off). The script also reads the Slint that `build.rs`
+generates from the panel templates, which lives in the build folder:
 
 ```bash
-slint-tr-extractor --no-default-translation-context ui/home.slint ui/quick.slint -o translations/rusttv-launcher.pot
+scripts/launcher-pot.sh
 ```
+
+A test (`src/panels.rs`) fails when a template text is missing from the
+`.pot` or untranslated in any language.

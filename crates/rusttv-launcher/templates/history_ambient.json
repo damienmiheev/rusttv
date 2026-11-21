@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "component": "HistoryAmbient",
+  "face": "ambient",
+  "props": ["status", "count"],
+  "root": { "glance": {
+    "badge": "rusttv-history",
+    "show": "status",
+    "text": { "select": "status", "cases": {
+      "waiting": { "tr": "Waiting" },
+      "now": { "tr": "Just now" },
+      "minutes": { "tr": "{n} minute ago", "plural": "{n} minutes ago", "count": "count" },
+      "hours": { "tr": "{n} hour ago", "plural": "{n} hours ago", "count": "count" },
+      "days": { "tr": "{n} day ago", "plural": "{n} days ago", "count": "count" } } } } }
+}
