@@ -181,6 +181,10 @@ field in `--json` output says which contract you get, CLI.md).
   `launcher.ambient_off` (the launcher's idle screen off), and history
   changes have the kind `ambient` (`on`). The schema stays `rusttv.v11`
   (CLI.md).
+- Fixed: once the launcher's tiles needed a newer state format than the
+  TV history's newest entry, the TV refused every record from the
+  computer (`HISTORY_INVALID`), so plans applied from the CLI weren't
+  recorded.
 
 ## 0.3.2 (2026-11-02)
 
