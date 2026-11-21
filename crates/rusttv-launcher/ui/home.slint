@@ -512,10 +512,19 @@ component Tile inherits Rectangle {
         duration: launching ? 500ms : focused ? 150ms : 250ms;
         easing: launching ? cubic-bezier(0.25, 0.1, 0.25, 1) : focused ? ease-out : ease-in-out;
     }
+    // The zoom the card is drawn at: a copy of `zoom` set only when its
+    // value changes. `zoom` is marked changed whenever anything it reads
+    // changes (the mode, on every page that opens or closes), and the card's
+    // size passes that on to the panel faces' cached layers
+    // (`cache-rendering-hint`), which then drew again, all at once, in the
+    // frame a page opened.
+    property <float> card-zoom;
+    init => { self.card-zoom = self.zoom; }
+    changed zoom => { self.card-zoom = self.zoom; }
 
     card := Rectangle {
-        width: parent.width * zoom;
-        height: parent.height * zoom;
+        width: parent.width * card-zoom;
+        height: parent.height * card-zoom;
         x: (parent.width - self.width) / 2 + (jiggle ? 1 * u * sin(jiggle-turns * 360deg + 90deg)
             : sway-amount * 3 * u * sin(sway-turns * 360deg + 90deg));
         y: (parent.height - self.height) / 2 + (jiggle ? 1.5 * u * sin(jiggle-turns * 720deg)
@@ -770,21 +779,48 @@ component BannerCard inherits Rectangle {
     in property <string> title;
     in property <string> detail;
     in property <image> badge;
+    // The drop shadow (`banner-shadow`, build.rs `banner_shadow`), drawn
+    // for a typical card and stretched to this one.
+    in property <image> shadow;
 
     property <length> pad: 24 * u;
     property <length> picture: 64 * u;
     property <length> text-width: min(720 * u, max(title-text.preferred-width, detail-text.preferred-width));
+    // How much it shows, 0..1. Set on each part rather than as the card's
+    // opacity: with its parts (and a drop shadow) under it, that renders
+    // the whole screen into an extra layer on every frame of the fade, as
+    // HeroLayer says; each part alone fades by its own alpha. The shadow is
+    // three pictures for the same reason: one Slint draws would have to be
+    // in that layer to fade with the card.
+    property <float> fade: shown ? 1 : 0;
+    animate fade { duration: shown ? 300ms : 250ms; easing: ease-out; }
+    // The shadow's blur, also its padding around the card.
+    property <length> blur: 40 * u;
     width: self.pad * 2 + self.picture + 24 * u + self.text-width;
     height: self.pad * 2 + self.picture;
-    border-radius: 24 * u;
-    background: Theme.surface;
-    drop-shadow-color: Effects.shadows ? #00000080 : transparent;
-    drop-shadow-blur: Effects.shadows ? 40 * u : 0;
-    drop-shadow-offset-y: Effects.shadows ? 16 * u : 0;
-    opacity: shown ? 1 : 0;
-    visible: self.opacity > 0;
-    animate opacity { duration: shown ? 300ms : 250ms; easing: ease-out; }
+    visible: self.fade > 0;
 
+    // `visible` here, not on the picture: on an element with `opacity` it
+    // puts one more element between, and the fade needs a layer again.
+    Rectangle {
+        visible: Effects.shadows;
+        Image {
+            x: -root.blur;
+            y: -root.blur + 16 * u;
+            width: root.width + 2 * root.blur;
+            height: root.height + 2 * root.blur;
+            source: root.shadow;
+            image-fit: fill;
+            opacity: root.fade;
+        }
+    }
+    Rectangle {
+        width: root.width;
+        height: root.height;
+        border-radius: 24 * u;
+        background: Theme.surface;
+        opacity: root.fade;
+    }
     Image {
         x: Dir.x(root.pad, root.picture, root.width);
         y: root.pad;
@@ -792,6 +828,7 @@ component BannerCard inherits Rectangle {
         height: root.picture;
         source: badge;
         image-fit: contain;
+        opacity: root.fade;
     }
     title-text := Text {
         x: Dir.x(root.pad + root.picture + 24 * u, root.text-width, root.width);
@@ -805,9 +842,10 @@ component BannerCard inherits Rectangle {
         font-weight: 500;
         color: Theme.text;
         overflow: elide;
+        opacity: root.fade;
     }
+    // No `visible: detail != ""`: an empty text draws nothing anyway.
     detail-text := Text {
-        visible: detail != "";
         x: Dir.x(root.pad + root.picture + 24 * u, root.text-width, root.width);
         y: root.pad + 36 * u;
         width: root.text-width;
@@ -818,6 +856,7 @@ component BannerCard inherits Rectangle {
         font-size: 25 * u;
         color: Theme.text-dim;
         overflow: elide;
+        opacity: root.fade;
     }
 }
 
@@ -931,6 +970,8 @@ export component HomeWindow inherits Window {
     in property <string> banner-title;
     in property <string> banner-detail;
     in property <image> banner-badge;
+    // Its drop shadow, blurred beforehand (build.rs `banner_shadow`).
+    in property <image> banner-shadow;
     // The idle screen, its panels' lines and its drift step.
     in property <bool> ambient-shown;
     in property <[AmbientLine]> ambient-lines;
@@ -1224,6 +1265,7 @@ export component HomeWindow inherits Window {
         title: banner-title;
         detail: banner-detail;
         badge: banner-badge;
+        shadow: banner-shadow;
     }
 
     if mode == Mode.quick && !quick-power: QuickPanel {

@@ -75,6 +75,10 @@ const ARTWORK_PER_TICK: usize = 2;
 /// Interval between artwork loading ticks.
 const ARTWORK_TICK: Duration = Duration::from_millis(16);
 
+/// Hero glows a worker thread makes per batch ([`Controller::make_glows`]):
+/// a few, so the first ones (the tiles on Home) are ready soon.
+const GLOWS_PER_BATCH: usize = 4;
+
 /// How long focus must rest before the hero follows it.
 const HERO_DELAY: Duration = Duration::from_millis(150);
 
@@ -95,6 +99,11 @@ const SETTINGS_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/setting
 const HIDDEN_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/hidden.rgba"));
 const REMOTE_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/remote.rgba"));
 const HISTORY_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/history.rgba"));
+
+/// The banner card's drop shadow, blurred by build.rs (`banner_shadow`), as
+/// RGBA (home.slint `BannerCard`).
+const BANNER_SHADOW_SIZE: (u32, u32) = (560, 192);
+const BANNER_SHADOW: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/banner-shadow.rgba"));
 
 /// A built-in tile's banner, by tile name, as RGBA ([`BUILTIN_BANNER_SIZE`]):
 /// for the phones' pictures.
@@ -584,6 +593,13 @@ fn start(
     }
     window.global::<Dir>().set_rtl(options.right_to_left);
     set_badges(&window);
+    window.set_banner_shadow(slint::Image::from_rgba8(
+        SharedPixelBuffer::clone_from_slice(
+            BANNER_SHADOW,
+            BANNER_SHADOW_SIZE.0,
+            BANNER_SHADOW_SIZE.1,
+        ),
+    ));
     let reduced = options
         .order_file
         .as_deref()
@@ -809,8 +825,14 @@ struct Controller {
     options: RunOptions,
     /// What the window shows of each app, by app id.
     apps: HashMap<String, AppView>,
-    /// Hero glows per app id, computed on first focus.
+    /// Hero glows per app id, made on a worker thread after the first
+    /// frame ([`Controller::make_glows`]), or on first focus before that.
     glows: HashMap<String, generated::Glow>,
+    /// Counts app list reads, so glows made from an older list's artwork
+    /// are dropped ([`Controller::glows_made`]).
+    glow_generation: u64,
+    /// A worker thread is making glows.
+    glows_making: bool,
     /// The About, Settings and Hidden apps tiles' banners and glows.
     builtins: Builtins,
     /// Tiles currently in the window's model, to rebuild it only when they change.
@@ -1039,6 +1061,8 @@ impl Controller {
                 options,
                 apps: HashMap::new(),
                 glows: HashMap::new(),
+                glow_generation: 0,
+                glows_making: false,
                 builtins,
                 shown: Vec::new(),
                 tiles,
@@ -1185,6 +1209,7 @@ impl Controller {
             Ok(entries) => {
                 let apps: Vec<App> = entries.iter().map(|entry| entry.app.clone()).collect();
                 self.glows.clear();
+                self.glow_generation += 1;
                 self.apps = entries
                     .into_iter()
                     .map(|entry| (entry.app.id.clone(), AppView::new(entry)))
@@ -1295,6 +1320,8 @@ impl Controller {
             self.artwork_timer.stop();
             if was_pending {
                 self.platform.artwork_loaded();
+                // The banners that just arrived have glows to make.
+                self.make_glows();
             }
         }
     }
@@ -2559,6 +2586,9 @@ impl Controller {
         self.hero_a_front = !self.hero_a_front;
         window.set_hero_a_front(self.hero_a_front);
         self.hero = focused;
+        // The first hero comes after the first frame: the other glows are
+        // made from now on, off the UI thread.
+        self.make_glows();
     }
 
     /// The hero glow for an app; `None` if it has no artwork.
@@ -2574,6 +2604,90 @@ impl Controller {
         );
         self.glows.insert(component.to_owned(), glow.clone());
         Some(glow)
+    }
+
+    /// Makes the hero glows not made yet, a few at a time on a worker
+    /// thread, so neither the first frame nor a tile's first focus waits
+    /// for them (~9 ms each on the Philips TV). Starts with the first hero,
+    /// which comes after the first frame, and again when banners arrive;
+    /// each batch's end starts the next until none is missing. A tile
+    /// focused before its glow is ready makes it then ([`Controller::glow`],
+    /// [`BuiltinView::glow`]).
+    fn make_glows(&mut self) {
+        if self.glows_making {
+            return;
+        }
+        let missing = |id: &TileId| match id {
+            TileId::App(component) if !self.glows.contains_key(component) => {
+                self.apps.get(component)?.glow_source.clone()
+            }
+            TileId::App(_) => None,
+            _ => {
+                let view = self.builtins.view(id)?;
+                if view.glow.get().is_some() {
+                    return None;
+                }
+                view.glow_source.clone()
+            }
+        };
+        // Tiles on Home first, in their order; then the others (hidden, in
+        // folders).
+        let others = Builtins::IDS
+            .into_iter()
+            .chain(self.apps.keys().cloned().map(TileId::App));
+        let mut seen = std::collections::HashSet::new();
+        let jobs: Vec<(TileId, Bitmap)> = self
+            .shown
+            .iter()
+            .cloned()
+            .chain(others)
+            .filter(|id| seen.insert(id.clone()))
+            .filter_map(|id| missing(&id).map(|source| (id, source)))
+            .take(GLOWS_PER_BATCH)
+            .collect();
+        if jobs.is_empty() {
+            return;
+        }
+        let (baked, right_to_left) = (self.platform.top_right_menu(), self.options.right_to_left);
+        let generation = self.glow_generation;
+        let started = settings_view::in_background(
+            "rusttv-glows",
+            move || {
+                jobs.into_iter()
+                    .map(|(id, source)| (id, glow_parts(&source, baked, right_to_left)))
+                    .collect::<Vec<_>>()
+            },
+            move |controller: &mut Controller, made| controller.glows_made(generation, made),
+        );
+        match started {
+            Ok(()) => self.glows_making = true,
+            // Focus makes them instead, as before.
+            Err(error) => log::warn!("starting the glow thread failed: {error}"),
+        }
+    }
+
+    /// A batch from [`Controller::make_glows`] is ready; glows made from an
+    /// app list read since are dropped. A glow focus made meanwhile stays.
+    fn glows_made(&mut self, generation: u64, made: Vec<(TileId, GlowParts)>) {
+        self.glows_making = false;
+        if generation == self.glow_generation {
+            for (id, parts) in made {
+                match &id {
+                    TileId::App(component) => {
+                        self.glows
+                            .entry(component.clone())
+                            .or_insert_with(|| glow_from_parts(parts));
+                    }
+                    _ => {
+                        if let Some(view) = self.builtins.view(&id) {
+                            // Already set when focus was first.
+                            let _ = view.glow.set(glow_from_parts(parts));
+                        }
+                    }
+                }
+            }
+        }
+        self.make_glows();
     }
 
     /// The open folder: its apps, focus and name, and the tile a moving app
@@ -2803,8 +2917,9 @@ impl AppView {
 }
 
 /// The banner and hero glow of one of the launcher's own tiles. The glow
-/// is made the first time the tile is in the hero, not in `Builtins::new`,
-/// to keep it off the cold start (the hero comes after the first frame).
+/// is not made in `Builtins::new`, to keep it off the cold start: a worker
+/// thread makes it after the first frame ([`Controller::make_glows`]), or
+/// the tile's first time in the hero, if that comes first.
 #[derive(Default)]
 struct BuiltinView {
     image: slint::Image,
@@ -2833,7 +2948,7 @@ impl BuiltinView {
         }
     }
 
-    /// The hero glow, made on the first call.
+    /// The hero glow, made on the first call if the worker has not made it.
     fn glow(&self) -> generated::Glow {
         self.glow
             .get_or_init(|| {
@@ -2858,6 +2973,15 @@ struct Builtins {
 }
 
 impl Builtins {
+    /// The tiles [`Builtins::view`] has a view of.
+    const IDS: [TileId; 5] = [
+        TileId::About,
+        TileId::Settings,
+        TileId::Remote,
+        TileId::Panel(PanelId::History),
+        TileId::Hidden,
+    ];
+
     fn new(baked: bool, right_to_left: bool) -> Self {
         Self {
             about: BuiltinView::new(ABOUT_BANNER, baked, right_to_left),
@@ -3035,18 +3159,35 @@ fn input_for_key(text: &str, pressed: bool) -> Option<Input> {
 /// the backdrop is painted once into a small picture; otherwise home.slint
 /// draws it from the other fields.
 fn hero_glow(source: &Bitmap, baked: bool, right_to_left: bool) -> generated::Glow {
+    glow_from_parts(glow_parts(source, baked, right_to_left))
+}
+
+/// What [`hero_glow`] computes, without Slint's types (which stay on the
+/// UI thread), so a worker thread can make it: the glow, and with `baked`
+/// the backdrop's RGB pixels ([`BACKDROP_SIZE`]).
+struct GlowParts {
+    glow: crate::platform::Glow,
+    backdrop: Option<Vec<u8>>,
+}
+
+/// The costly part of [`hero_glow`] (the colour quantization and the baked
+/// backdrop's pixels); any thread.
+fn glow_parts(source: &Bitmap, baked: bool, right_to_left: bool) -> GlowParts {
     let glow = source.glow(BACKDROP_BASE_TONE, BACKDROP_GLOW_TONE);
-    let colour = |[red, green, blue]: [u8; 3]| slint::Color::from_rgb_u8(red, green, blue);
-    let backdrop = if baked {
+    let backdrop = baked.then(|| {
         let (width, height) = BACKDROP_SIZE;
-        slint::Image::from_rgb8(SharedPixelBuffer::clone_from_slice(
-            &glow.paint(width, height, PAGE_COLOUR, right_to_left),
-            width,
-            height,
-        ))
-    } else {
-        slint::Image::default()
-    };
+        glow.paint(width, height, PAGE_COLOUR, right_to_left)
+    });
+    GlowParts { glow, backdrop }
+}
+
+/// The window's glow from [`glow_parts`]; cheap (one small copy).
+fn glow_from_parts(GlowParts { glow, backdrop }: GlowParts) -> generated::Glow {
+    let colour = |[red, green, blue]: [u8; 3]| slint::Color::from_rgb_u8(red, green, blue);
+    let backdrop = backdrop.map_or_else(slint::Image::default, |rgb| {
+        let (width, height) = BACKDROP_SIZE;
+        slint::Image::from_rgb8(SharedPixelBuffer::clone_from_slice(&rgb, width, height))
+    });
     generated::Glow {
         backdrop,
         base: colour(glow.base),
@@ -4145,6 +4286,48 @@ mod tests {
             (glow.x, glow.y, glow.strength),
             (expected.x, expected.y, expected.strength)
         );
+    }
+
+    /// After the first hero (which follows the first frame), a worker
+    /// thread makes every glow, so no tile's first focus makes one in a
+    /// frame; focus never moved here.
+    #[test]
+    fn glows_are_made_off_the_ui_thread_after_the_first_hero() {
+        let screen = screen(None);
+        {
+            let controller = screen._controller.borrow();
+            assert!(controller.builtins.history.glow.get().is_none());
+        }
+        screen.wait(HERO_DELAY.as_millis() as u64 + 1);
+        let all_made = || {
+            let controller = screen._controller.borrow();
+            Builtins::IDS.iter().all(|id| {
+                controller
+                    .builtins
+                    .view(id)
+                    .is_some_and(|view| view.glow.get().is_some())
+            }) && !controller.glows_making
+        };
+        for _ in 0..500 {
+            if all_made() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+            screen.wait(16);
+        }
+        assert!(all_made());
+        assert_eq!(screen.window.get_focused_index(), 0);
+    }
+
+    /// The banner's shadow picture build.rs blurs has the size home.slint
+    /// draws it at, is clear at its corners and darkest under the card.
+    #[test]
+    fn the_banner_shadow_is_the_size_home_draws() {
+        let (width, height) = BANNER_SHADOW_SIZE;
+        assert_eq!(BANNER_SHADOW.len(), (width * height * 4) as usize);
+        let alpha = |x: u32, y: u32| BANNER_SHADOW[((y * width + x) * 4 + 3) as usize];
+        assert_eq!(alpha(0, 0), 0);
+        assert_eq!(alpha(width / 2, height / 2), 128);
     }
 
     /// The RustTV Remote page (templates/remote_page.json) takes the
