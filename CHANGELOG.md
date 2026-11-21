@@ -4,6 +4,15 @@ All notable changes to RustTV. Versions follow [Semantic Versioning](https://sem
 before 1.0.0 a minor version may break the CLI/JSON contract (the `schema`
 field in `--json` output says which contract you get, CLI.md).
 
+## Unreleased
+
+### Launcher
+
+- The About page opens with less work: the licence notices are read straight
+  from the APK (no Java string conversions), ahead of time on a background
+  thread after the first frame, and kept after the page closes instead of
+  being read again at every open.
+
 ## 0.4.0 (2026-11-21)
 
 Panels: About, RustTV Remote and History are panel tiles drawn from

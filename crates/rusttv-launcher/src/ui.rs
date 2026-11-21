@@ -876,6 +876,11 @@ struct Controller {
     artwork_timer: Timer,
     /// The licence notices while the About page is open; read when it opens.
     notices: Option<Notices>,
+    /// The notices kept after the page closed, once read: reading them is
+    /// too slow to repeat for every open.
+    kept_notices: Option<Notices>,
+    /// [`Platform::prefetch_notices`] was called (once, at the first hero).
+    notices_prefetched: bool,
     /// The focused tile as last written to the order file.
     saved_focus: Option<TileId>,
     /// The updater's status as last shown.
@@ -1097,6 +1102,8 @@ impl Controller {
                 pending_artwork: VecDeque::new(),
                 artwork_timer: Timer::default(),
                 notices: None,
+                kept_notices: None,
+                notices_prefetched: false,
                 saved_focus,
                 update: UpdateStatus::Idle,
                 update_read: false,
@@ -1834,19 +1841,29 @@ impl Controller {
 
     /// Reads the notices for the About page; a failure is shown in their place.
     fn open_notices(&mut self) {
-        let text = self.platform.notices().unwrap_or_else(|error| {
-            log::warn!("loading the licence notices failed: {error}");
-            self.window
-                .upgrade()
-                .map(|window| {
-                    window
-                        .global::<Strings>()
-                        .invoke_couldnt_load_notices(error.to_string().into())
-                        .into()
-                })
-                .unwrap_or_default()
-        });
-        self.notices = Some(Notices::new(text));
+        if let Some(notices) = self.kept_notices.take() {
+            self.notices = Some(notices);
+            return;
+        }
+        let notices = match self.platform.notices() {
+            Ok(text) => Notices::new(text, true),
+            Err(error) => {
+                log::warn!("loading the licence notices failed: {error}");
+                let text = self
+                    .window
+                    .upgrade()
+                    .map(|window| {
+                        window
+                            .global::<Strings>()
+                            .invoke_couldnt_load_notices(error.to_string().into())
+                            .into()
+                    })
+                    .unwrap_or_default();
+                // Not kept: the next open tries again.
+                Notices::new(text, false)
+            }
+        };
+        self.notices = Some(notices);
     }
 
     /// Writes the order file with the focused tile. A failure only costs the
@@ -2151,9 +2168,15 @@ impl Controller {
         self.render_remote_page(&window);
         self.render_pairing(&window);
         window.set_pressed(self.pressed);
-        if self.home.state() != State::About && self.notices.take().is_some() {
-            // Closed: free the text until the page opens again.
+        if self.home.state() != State::About
+            && let Some(mut notices) = self.notices.take()
+        {
+            // Closed: the page shows nothing; the next open starts at the top.
             window.set_notices("".into());
+            if notices.keep {
+                notices.first = 0;
+                self.kept_notices = Some(notices);
+            }
         }
         if let Some(notices) = &self.notices {
             window.set_notices(notices.visible().into());
@@ -2598,8 +2621,12 @@ impl Controller {
         window.set_hero_a_front(self.hero_a_front);
         self.hero = focused;
         // The first hero comes after the first frame: the other glows are
-        // made from now on, off the UI thread.
+        // made from now on, off the UI thread, and the notices read ahead.
         self.make_glows();
+        if !self.notices_prefetched {
+            self.notices_prefetched = true;
+            self.platform.prefetch_notices();
+        }
     }
 
     /// The hero glow for an app; `None` if it has no artwork.
@@ -3041,10 +3068,12 @@ struct Notices {
     starts: Vec<usize>,
     /// The line at the top of the panel.
     first: usize,
+    /// Read as they are, so kept after the page closes (not an error text).
+    keep: bool,
 }
 
 impl Notices {
-    fn new(text: String) -> Self {
+    fn new(text: String, keep: bool) -> Self {
         let starts = std::iter::once(0)
             .chain(text.match_indices('\n').map(|(index, _)| index + 1))
             .collect();
@@ -3052,6 +3081,7 @@ impl Notices {
             text,
             starts,
             first: 0,
+            keep,
         }
     }
 
@@ -4020,7 +4050,7 @@ mod tests {
     }
 
     #[test]
-    fn back_closes_about_and_frees_the_notices() {
+    fn back_closes_about_and_keeps_the_notices() {
         let screen = screen(None);
         open_about(&screen);
         screen.tap(DOWN);
@@ -4029,10 +4059,11 @@ mod tests {
         assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
         assert_eq!(screen.window.get_notices(), "");
 
-        // Opening again (focus is still on the notices row) reads them
-        // again, from the top.
+        // Opening again (focus is still on the notices row) shows the kept
+        // notices from the top, without reading them again.
         screen.tap(OK);
-        assert_eq!(screen.shared.notices.get(), 2);
+        assert_eq!(screen.shared.notices.get(), 1);
+        assert_eq!(screen.window.get_notices_position(), 0.0);
         assert!(
             screen
                 .window
@@ -4042,8 +4073,10 @@ mod tests {
     }
 
     #[test]
-    fn notices_that_fail_to_load_say_so() {
-        struct Broken;
+    fn notices_that_fail_to_load_say_so_and_are_read_again() {
+        struct Broken {
+            reads: Rc<Cell<usize>>,
+        }
         impl Platform for Broken {
             fn list_apps(&self) -> Result<Vec<AppEntry>, PlatformError> {
                 Ok(Vec::new())
@@ -4059,6 +4092,7 @@ mod tests {
             }
             fn artwork_loaded(&self) {}
             fn notices(&self) -> Result<String, PlatformError> {
+                self.reads.set(self.reads.get() + 1);
                 Err(PlatformError::call("load notices", "asset missing"))
             }
             fn update_status(&self) -> Result<UpdateStatus, PlatformError> {
@@ -4073,7 +4107,11 @@ mod tests {
         }
         thread_local!(static BACKEND: () = i_slint_backend_testing::init_no_event_loop());
         BACKEND.with(|_| {});
-        let (window, _controller) = start(Broken, RunOptions::default(), real_clock()).unwrap();
+        let reads = Rc::new(Cell::new(0));
+        let platform = Broken {
+            reads: Rc::clone(&reads),
+        };
+        let (window, _controller) = start(platform, RunOptions::default(), real_clock()).unwrap();
         // No top-right menu (like Android): the About tile, focused first on
         // an empty Home, opens the notices.
         let tap = |text: &str| {
@@ -4093,6 +4131,10 @@ mod tests {
                 .starts_with("Couldn't load the licence notices:")
         );
         assert_eq!(window.get_notices_fraction(), 1.0);
+        // An error text isn't kept: the next open tries again.
+        tap(BACK);
+        tap(OK);
+        assert_eq!(reads.get(), 2);
     }
 
     // --- updates ---
