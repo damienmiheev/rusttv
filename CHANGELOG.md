@@ -4,7 +4,13 @@ All notable changes to RustTV. Versions follow [Semantic Versioning](https://sem
 before 1.0.0 a minor version may break the CLI/JSON contract (the `schema`
 field in `--json` output says which contract you get, CLI.md).
 
-## Unreleased
+## 0.4.0 (2026-11-21)
+
+Panels: About, RustTV Remote and History are panel tiles drawn from
+templates, with their pages, a status corner with the clock, banners and an
+idle screen on Home. Cold start is faster, and the TV history records plans
+from the computer again. The CLI JSON is `rusttv.v11`; TV history snapshots
+go up to state format 8, which 0.3.2 and older can't read.
 
 ### Launcher
 
