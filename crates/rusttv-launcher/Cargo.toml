@@ -88,10 +88,15 @@ jni.workspace = true
 
 [dev-dependencies]
 i-slint-backend-testing.workspace = true
+# Checks views against their templates (src/panels.rs). Already in the workspace.
+serde_json.workspace = true
 
 [build-dependencies]
 slint-build.workspace = true
 png.workspace = true
+# Reads the panel templates (codegen/convert.rs). Already in the workspace.
+serde_json.workspace = true
+serde.workspace = true
 
 [[bin]]
 name = "rusttv-launcher-desktop"

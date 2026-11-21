@@ -96,8 +96,8 @@ pub enum PhoneMessage {
     /// A choice in the open long-press menu.
     Menu { choice: MenuChoice },
     /// The picture of an app's tile, by component, or of a built-in tile
-    /// (`about`, `settings`, `remote`, `hidden-apps`): answered with a
-    /// [`TvMessage::Banner`] to this phone only.
+    /// (`about`, `settings`, `remote`, `hidden-apps`, `panel:history`):
+    /// answered with a [`TvMessage::Banner`] to this phone only.
     Banner { id: String },
     /// Moving a tile of the Home mirror: `over` is the tile it is over;
     /// `on` when the finger is over that tile's middle, where resting makes
@@ -255,8 +255,11 @@ pub fn picture_data(webp: &[u8]) -> Option<String> {
 /// The Home mirror (REMOTE.md § 4): sent whole after every change.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HomeView {
-    /// Visible tiles in order. Apps inside folders are listed too, with
-    /// their folder; hidden apps never are.
+    /// Visible tiles in order. Tiles inside folders (apps and built-in
+    /// tiles) are listed too, with their folder; hidden tiles never are.
+    /// In [`HomeMode::Settings`] (a built-in page), [`HomeView::focused`]
+    /// names the tile that opened it: `about`, `remote`, `settings`, or
+    /// `panel:history` for Settings opened on History.
     pub tiles: Vec<TileView>,
     /// The focused tile.
     pub focused: Option<String>,
@@ -268,8 +271,9 @@ pub struct HomeView {
     /// The long-press menu, in [`HomeMode::Menu`].
     #[serde(default)]
     pub menu: Option<MenuView>,
-    /// The hidden apps, in [`HomeMode::Hidden`] (empty otherwise); the
-    /// focused one is [`HomeView::focused`].
+    /// The hidden tiles (apps, then built-in tiles), in
+    /// [`HomeMode::Hidden`] (empty otherwise); the focused one is
+    /// [`HomeView::focused`].
     #[serde(default)]
     pub hidden: Vec<TileView>,
 }
@@ -287,7 +291,7 @@ pub struct MenuView {
 pub enum MenuChoice {
     /// Pick the tile up to move it.
     Move,
-    /// Hide the app from Home.
+    /// Hide the tile (an app or a built-in tile) from Home.
     Hide,
 }
 
@@ -295,13 +299,47 @@ pub enum MenuChoice {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TileView {
     /// Tile name: a component, `folder:<n>`, `about`, `settings`,
-    /// `remote` or `hidden-apps`.
+    /// `remote`, `hidden-apps` or `panel:history`.
     pub id: String,
     pub label: String,
     /// The banner's version (changes when the app updates), if it has one.
     pub banner: Option<u32>,
     /// The folder the tile is in.
     pub folder: Option<String>,
+    /// A short line the tile shows on its picture, as the TV's tile does
+    /// (About: the updater's state; History: the last change's age or an
+    /// approval waiting). Left out of the JSON when there is none; pages
+    /// that don't know it ignore it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub caption: Option<Caption>,
+    /// The number an age caption names ([`Caption::Minutes`],
+    /// [`Caption::Hours`], [`Caption::Days`]); left out otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub count: Option<u32>,
+}
+
+/// A tile's caption ([`TileView::caption`]): a kind from a fixed list, never
+/// words; the phone shows it in its own language.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum Caption {
+    /// An update is ready to install (the TV's accent colour).
+    Update,
+    /// The update is downloading.
+    Downloading,
+    /// The update is installing.
+    Installing,
+    /// History: an approval waits for the computer (the TV's accent colour).
+    Waiting,
+    /// History: the last change was less than a minute ago.
+    JustNow,
+    /// History: the last change was [`TileView::count`] minutes ago.
+    Minutes,
+    /// History: the last change was [`TileView::count`] hours ago.
+    Hours,
+    /// History: the last change was [`TileView::count`] days ago.
+    Days,
 }
 
 /// The open folder.
@@ -466,12 +504,15 @@ fn is_component(name: &str) -> bool {
     })
 }
 
-/// One of the launcher's own tiles.
+/// One of the launcher's own tiles, panel tiles included (`panel:<id>`).
 fn is_builtin(id: &str) -> bool {
-    matches!(id, "about" | "settings" | "remote" | "hidden-apps")
+    matches!(
+        id,
+        "about" | "settings" | "remote" | "hidden-apps" | "panel:history"
+    )
 }
 
-/// A tile id: a built-in tile, `folder:<number>` or a component.
+/// A tile id: a built-in or panel tile, `folder:<number>` or a component.
 fn is_tile_id(id: &str) -> bool {
     is_builtin(id)
         || id
@@ -619,6 +660,8 @@ mod tests {
                 label: "About".into(),
                 banner: Some(1),
                 folder: None,
+                caption: None,
+                count: None,
             }],
             focused: Some("about".into()),
             ..HomeView::default()
@@ -633,12 +676,101 @@ mod tests {
     }
 
     #[test]
+    fn a_tile_caption_is_sent_only_when_there_is_one() {
+        let about = |caption| TileView {
+            id: "about".into(),
+            label: "About".into(),
+            banner: None,
+            folder: None,
+            caption,
+            count: None,
+        };
+        let json = |tile: &TileView| serde_json::to_string(tile).unwrap();
+        // No caption: the tile's JSON is what it was before captions.
+        let before = r#"{"id":"about","label":"About","banner":null,"folder":null}"#;
+        assert_eq!(json(&about(None)), before);
+        for (caption, name) in [
+            (Caption::Update, "update"),
+            (Caption::Downloading, "downloading"),
+            (Caption::Installing, "installing"),
+        ] {
+            let tile = about(Some(caption));
+            assert!(json(&tile).ends_with(&format!(r#","caption":"{name}"}}"#)));
+            let back: TileView = serde_json::from_str(&json(&tile)).unwrap();
+            assert_eq!(back, tile, "round trip");
+        }
+        // A tile from before captions still reads, with none.
+        assert_eq!(
+            serde_json::from_str::<TileView>(before).unwrap(),
+            about(None)
+        );
+    }
+
+    /// History's captions: the waiting approval, or the age with its count
+    /// (sent only with one).
+    #[test]
+    fn history_captions_carry_their_count() {
+        let history = |caption, count| TileView {
+            id: "panel:history".into(),
+            label: "History".into(),
+            banner: None,
+            folder: None,
+            caption: Some(caption),
+            count,
+        };
+        let json = |tile: &TileView| serde_json::to_string(tile).unwrap();
+        for (caption, count, end) in [
+            (Caption::Waiting, None, r#""caption":"waiting"}"#),
+            (Caption::JustNow, None, r#""caption":"just_now"}"#),
+            (
+                Caption::Minutes,
+                Some(5),
+                r#""caption":"minutes","count":5}"#,
+            ),
+            (Caption::Hours, Some(2), r#""caption":"hours","count":2}"#),
+            (Caption::Days, Some(31), r#""caption":"days","count":31}"#),
+        ] {
+            let tile = history(caption, count);
+            assert!(json(&tile).ends_with(end), "{}", json(&tile));
+            let back: TileView = serde_json::from_str(&json(&tile)).unwrap();
+            assert_eq!(back, tile, "round trip");
+        }
+    }
+
+    /// History's panel tile is a tile the phone may tap, drag or ask the
+    /// picture of; another `panel:` id isn't.
+    #[test]
+    fn the_history_tile_is_a_tile_id() {
+        let ok = |message: &str| parse_phone(message.as_bytes()).is_ok();
+        assert!(ok(
+            r#"{"type":"tile","id":"panel:history","gesture":"tap"}"#
+        ));
+        assert!(ok(r#"{"type":"banner","id":"panel:history"}"#));
+        assert!(ok(
+            r#"{"type":"drag","id":"panel:history","over":"remote","phase":"move","on":false}"#
+        ));
+        assert!(ok(
+            r#"{"type":"drag","id":"remote","over":"panel:history","phase":"move","on":false}"#
+        ));
+        assert!(ok(
+            r#"{"type":"tile","id":"panel:history","gesture":"long_press"}"#
+        ));
+        assert!(!ok(
+            r#"{"type":"drag","id":"remote","over":"panel:clock","phase":"move","on":false}"#
+        ));
+        assert!(!ok(r#"{"type":"tile","id":"panel:clock","gesture":"tap"}"#));
+        assert!(!ok(r#"{"type":"banner","id":"panel:clock"}"#));
+    }
+
+    #[test]
     fn refuses_oversized_tv_messages() {
         let tile = TileView {
             id: "about".into(),
             label: "x".repeat(1000),
             banner: None,
             folder: None,
+            caption: None,
+            count: None,
         };
         let home = TvMessage::Home(HomeView {
             tiles: vec![tile; 80],

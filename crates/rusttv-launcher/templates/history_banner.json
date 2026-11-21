@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "component": "HistoryBanner",
+  "face": "banner",
+  "props": ["count"],
+  "root": { "banner": {
+    "badge": "rusttv-history",
+    "title": { "tr": "Your computer applied {n} change", "plural": "Your computer applied {n} changes", "count": "count" },
+    "detail": { "tr": "History" } } }
+}

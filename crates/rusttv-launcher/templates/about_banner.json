@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "component": "AboutBanner",
+  "face": "banner",
+  "props": ["event", "version"],
+  "root": { "banner": {
+    "badge": "rusttv-logo",
+    "title": { "select": "event", "cases": {
+      "available": { "tr": "Update available" },
+      "installed": { "tr": "RustTV updated" } } },
+    "detail": { "tr": "RustTV {}", "args": [{ "ltr": "version" }] } } }
+}

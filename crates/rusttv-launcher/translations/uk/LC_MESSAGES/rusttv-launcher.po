@@ -59,8 +59,8 @@ msgstr "Приховані додатки"
 msgid "About"
 msgstr "Про програму"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "OK повертає додаток на головний екран, «Назад» — вихід."
+msgid "OK puts it back on Home. Back returns."
+msgstr "OK повертає на головний екран, «Назад» — вихід."
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "Версія {} · MIT OR Apache-2.0"
@@ -441,14 +441,8 @@ msgstr "Закрити застосунок"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "Licences and third-party notices"
-msgstr "Ліцензії та повідомлення третіх сторін"
-
 msgid "Loading…"
 msgstr "Завантаження…"
-
-msgid "MIT OR Apache-2.0 · licences and third-party notices"
-msgstr "MIT OR Apache-2.0 · ліцензії та повідомлення третіх сторін"
 
 msgid "Modify"
 msgstr "Змінити"
@@ -465,6 +459,9 @@ msgstr "Живлення"
 msgid "RustTV {}"
 msgstr "RustTV {}"
 
+msgid "RustTV"
+msgstr "RustTV"
+
 msgid "Search"
 msgstr "Пошук"
 
@@ -473,9 +470,6 @@ msgstr "Розмір"
 
 msgid "Size: {} %"
 msgstr "Розмір: {} %"
-
-msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
-msgstr "Slint (Royalty-free License 2.0), Skia, бібліотеки Rust"
 
 msgid "Source code"
 msgstr "Вихідний код"
@@ -488,3 +482,87 @@ msgstr "Гучність"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "✓ на клавіатурі — підтвердити, «Назад» — скасувати"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "Завантаження"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "Встановлення"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "Є оновлення"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "Без телефонів"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "Телефони: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "Під'єднання"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "Змінено"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Waiting"
+msgstr "Очікує"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Just now"
+msgstr "Щойно"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "{n} хвилину тому"
+msgstr[1] "{n} хвилини тому"
+msgstr[2] "{n} хвилин тому"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "{n} годину тому"
+msgstr[1] "{n} години тому"
+msgstr[2] "{n} годин тому"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "{n} день тому"
+msgstr[1] "{n} дні тому"
+msgstr[2] "{n} днів тому"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "Екран спокою"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "Через 5 хвилин на головному екрані — тьмяний годинник до натискання кнопки"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "Екран спокою: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "RustTV оновлено"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} під’єднано"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "Ваш комп’ютер застосував {n} зміну"
+msgstr[1] "Ваш комп’ютер застосував {n} зміни"
+msgstr[2] "Ваш комп’ютер застосував {n} змін"

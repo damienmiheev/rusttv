@@ -13,10 +13,14 @@ use rusttv_history::tv::{ApplyOutcome, Refused};
 use rusttv_history::{Author, Change, PackageState, SETTING_KEYS, State, diff};
 use slint::{ComponentHandle, Model, SharedString, Timer, TimerMode};
 
-use super::{Controller, HomeWindow, ReviewLine, SettingsRow, Strings};
+use super::{
+    AboutListRow, Controller, HistoryListRow, HistoryPanel, HomeWindow, ReviewLine, SettingsRow,
+    Strings,
+};
 use crate::history::History;
 use crate::model::Input;
 use crate::order_file;
+use crate::panels::{self, CLOCK_SET_AFTER};
 use crate::review::{Arrow, Outcome, Phase, Review};
 use crate::settings::{AboutRow, Action, Draft, EntryView, Overview, Section, SettingsPage};
 
@@ -30,8 +34,9 @@ const PANEL_ROWS: usize = 6;
 /// Review lines visible at once.
 const REVIEW_ROWS: usize = 8;
 
-/// Times before this (2024-01-01) mean the TV's clock wasn't set.
-const CLOCK_SET_AFTER: i64 = 1_704_067_200;
+/// Where RustTV's source code is (the About tab's Source row; the About
+/// page says it in its template's "Source: …" text).
+const SOURCE: &str = "github.com/damienmiheev/rusttv";
 
 thread_local! {
     /// The controller, for results that arrive from other threads.
@@ -116,8 +121,12 @@ impl Controller {
     /// OK on the Settings entry of the top-right menu.
     pub(super) fn open_settings(&mut self) {
         self.settings = Some(
-            SettingsPage::new(Overview::default(), self.options.right_to_left)
-                .with_about(self.platform.top_right_menu()),
+            // About's section where Home has no About tile to open the
+            // licence notices and Slint's attribution: under a top-right
+            // menu, and while the About tile is hidden (PANELS.md § 6).
+            SettingsPage::new(Overview::default(), self.options.right_to_left).with_about(
+                self.platform.top_right_menu() || self.home.is_hidden(&crate::model::TileId::About),
+            ),
         );
         self.settings_status = (status::READING, String::new());
         self.refresh_settings_data();
@@ -170,7 +179,43 @@ impl Controller {
             super::apply_effects(&window, overview.launcher.reduced_effects);
         }
         page.refresh(overview);
+        let ambient_off = page.overview().launcher.ambient_off;
+        self.set_ambient_setting(ambient_off);
+        // The history thread read the summary with the page's data.
+        self.show_history_panel();
         self.render();
+    }
+
+    /// History's tile and Settings row (PANELS.md § 4): the history
+    /// thread's last summary (a copy, no history I/O, HISTORY.md § 9) with
+    /// its age formatted for the clock now. Sets History's two properties,
+    /// never the tile list; until the thread has read the history (the
+    /// first Settings page or change), the tile shows its plain state.
+    pub(super) fn show_history_panel(&mut self) {
+        // The TV's clock (Unix seconds), as RustTV Remote reads it.
+        let now = i64::try_from(crate::remote::now()).unwrap_or(i64::MAX);
+        let before = self.history.0;
+        self.history = (History::get().and_then(History::summary), now);
+        let Some(window) = self.window.upgrade() else {
+            return;
+        };
+        let mut shown = false;
+        if let Some(tile) = panels::history_view(self.history.0.as_ref(), self.history.1).tile {
+            let panel = window.global::<HistoryPanel>();
+            let (status, count) = (tile.props.get("status"), tile.props.get("count"));
+            shown = panel.get_status() != status || panel.get_count() != count;
+            panel.set_status(status.into());
+            panel.set_count(count.into());
+        }
+        // A banner if the computer applied waiting approvals; the corner's
+        // glyph and the idle screen's line follow the summary. Only when
+        // something changed: this runs on every focus change.
+        if self.history.0 != before {
+            self.history_summary_changed(before);
+        }
+        if shown || self.history.0 != before {
+            self.show_faces();
+        }
     }
 
     /// A key while Settings (or its review screen) is open.
@@ -180,7 +225,8 @@ impl Controller {
             return;
         }
         self.pointer_moved();
-        if self.review.is_some() || self.pairing.is_some() || self.prompt.is_some() {
+        // Nothing behind the review screen, pairing or a prompt.
+        if !self.pointer_reaches(false) || self.prompt.is_some() {
             return;
         }
         let (Some(page), Ok(index)) = (&mut self.settings, usize::try_from(index)) else {
@@ -366,6 +412,8 @@ impl Controller {
         if History::get().is_some_and(History::take_launcher_changed) {
             self.reload_launcher_state();
         }
+        // The thread read the summary before it answered.
+        self.show_history_panel();
         self.refresh_settings_data();
         self.render();
     }
@@ -406,6 +454,10 @@ impl Controller {
             return;
         };
         let loaded = order_file::load(path);
+        let ambient_off = path
+            .parent()
+            .is_some_and(|dir| dir.join(order_file::AMBIENT_OFF).exists());
+        self.set_ambient_setting(ambient_off);
         self.home
             .replace_order(loaded.order, loaded.folders, loaded.hidden);
         // A restore may have removed phones.
@@ -488,7 +540,14 @@ impl Controller {
 
     /// An app's label with its package id, for the review screen and the
     /// history (labels come from apps, so bidi controls and line breaks go).
-    fn tile_label(&self, tile: &str) -> String {
+    pub(super) fn tile_label(&self, tile: &str) -> String {
+        // A built-in tile hidden or put in a folder (PANELS.md § 6).
+        if let Some(window) = self.window.upgrade() {
+            let name = window.global::<Strings>().invoke_builtin_name(tile.into());
+            if !name.is_empty() {
+                return name.into();
+            }
+        }
         let package = tile.split('/').next().unwrap_or(tile);
         match self.apps.get(tile) {
             Some(app) => {
@@ -549,20 +608,25 @@ impl Controller {
             window.set_settings_row(-1);
             return;
         }
-        let names: Vec<SharedString> = page
+        let sections: Vec<SettingsRow> = page
             .sections()
             .iter()
             .map(|section| match section {
-                Section::Tab(index) => page
-                    .tabs()
-                    .get(*index)
-                    .map(|tab| tab.title.as_str().into())
-                    .unwrap_or_default(),
-                _ => strings.invoke_section_name(section_value(*section)),
+                Section::Tab(index) => row(
+                    page.tabs()
+                        .get(*index)
+                        .map(|tab| tab.title.as_str().into())
+                        .unwrap_or_default(),
+                    "",
+                ),
+                // History's row face (templates/history_row.json): the last
+                // change's age, or the accent dot while an approval waits.
+                Section::History => self.history_row(window),
+                _ => row(strings.invoke_section_name(section_value(*section)), ""),
             })
             .collect();
-        if !self.settings_sections.iter().eq(names.iter().cloned()) {
-            self.settings_sections.set_vec(names);
+        if !self.settings_sections.iter().eq(sections.iter().cloned()) {
+            self.settings_sections.set_vec(sections);
         }
         window.set_settings_section(to_i32(page.section_index()));
         let overview = page.overview();
@@ -620,6 +684,16 @@ impl Controller {
                             title: strings.invoke_effects_choice(reduced),
                             detail: strings.invoke_effects_detail(reduced),
                             current: overview.launcher.reduced_effects == reduced,
+                            dim: false,
+                            ..SettingsRow::default()
+                        })
+                        .collect(),
+                    Section::Ambient => [true, false]
+                        .into_iter()
+                        .map(|on| SettingsRow {
+                            title: strings.invoke_on_off(on),
+                            detail: strings.invoke_ambient_detail(on),
+                            current: overview.launcher.ambient_off != on,
                             dim: false,
                             ..SettingsRow::default()
                         })
@@ -707,27 +781,60 @@ impl Controller {
         }
     }
 
-    /// A row of the About tab: RustTV, the updater, the host's facts.
+    /// A row of the About tab: RustTV (About's row face, PANELS.md § 4),
+    /// the updater, the source, the host's facts.
     fn about_row(&self, window: &HomeWindow, page: &SettingsPage, about: AboutRow) -> SettingsRow {
         let strings = window.global::<Strings>();
-        let fixed = |kind: i32| SettingsRow {
-            title: strings.invoke_about_row(kind, env!("CARGO_PKG_VERSION").into()),
-            detail: strings.invoke_about_detail(kind),
-            ..SettingsRow::default()
-        };
         match about {
-            AboutRow::RustTv => fixed(0),
+            AboutRow::RustTv => self.about_list_row(window),
             AboutRow::Update => SettingsRow {
-                title: strings.invoke_about_row(1, "".into()),
-                detail: window.get_update_status(),
+                title: strings.invoke_section_name(section_value(Section::Updates)),
+                detail: super::update_line(window, &self.update),
                 current: self.update.is_available(),
                 ..SettingsRow::default()
             },
-            AboutRow::Source => fixed(2),
+            AboutRow::Source => row(strings.invoke_source_code(), SOURCE),
             AboutRow::Host(index) => {
                 let (label, value) = page.host().get(index).cloned().unwrap_or_default();
                 row(label.into(), &value)
             }
+        }
+    }
+
+    /// About's row face (PANELS.md § 4): Settings' RustTV row and its row
+    /// in the RustTV quick panel, from the same view as its tile.
+    pub(super) fn about_list_row(&self, window: &HomeWindow) -> SettingsRow {
+        let face = window.global::<AboutListRow>();
+        let Some(view) = panels::about_view(env!("CARGO_PKG_VERSION"), &self.update).row else {
+            return SettingsRow::default();
+        };
+        let version: SharedString = view.props.get("version").into();
+        let status: SharedString = view.props.get("status").into();
+        SettingsRow {
+            title: face.invoke_title(version.clone(), status.clone()),
+            detail: face.invoke_detail(version.clone(), status.clone()),
+            current: face.invoke_attention(version, status),
+            ..SettingsRow::default()
+        }
+    }
+
+    /// History's row face (PANELS.md § 4): its entry in Settings' list and
+    /// its row in the RustTV quick panel, from the same view as its tile.
+    pub(super) fn history_row(&self, window: &HomeWindow) -> SettingsRow {
+        let face = window.global::<HistoryListRow>();
+        let Some(view) = panels::history_view(self.history.0.as_ref(), self.history.1).row else {
+            return SettingsRow::default();
+        };
+        let status: SharedString = view.props.get("status").into();
+        let count: SharedString = view.props.get("count").into();
+        SettingsRow {
+            title: face.invoke_title(status.clone(), count.clone()),
+            detail: face.invoke_detail(status.clone(), count.clone()),
+            current: face.invoke_attention(status, count),
+            // The age arrives with the history's first answer: room for
+            // it from the start, so the sections under it stay put.
+            tall: true,
+            ..SettingsRow::default()
         }
     }
 
@@ -769,6 +876,7 @@ fn section_value(section: Section) -> i32 {
         Section::History => 2,
         Section::Waiting => 3,
         Section::Effects => 4,
+        Section::Ambient => 6,
         // Tabs are named by the platform.
         Section::About | Section::Tab(_) => 5,
     }
@@ -837,6 +945,7 @@ fn change_line(
             "".into(),
             strings.invoke_effects_choice(*reduced),
         ),
+        Change::Ambient { on } => (19, "".into(), "".into(), strings.invoke_on_off(*on)),
         Change::Setting { key, old, new } => {
             let index = SETTING_KEYS
                 .iter()

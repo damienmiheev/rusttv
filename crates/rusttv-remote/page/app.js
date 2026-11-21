@@ -442,8 +442,9 @@
   // IndexedDB and asks again after a week, so a connection only fetches what
   // is new. Until it arrives, the tile shows a colour from its id.
   const WEEK_MS = 7 * 24 * 3600 * 1000;
-  // The launcher's own tiles; their pictures come from the TV too.
-  const BUILTINS = ["about", "settings", "remote", "hidden-apps"];
+  // The launcher's own tiles, panel tiles included; their pictures come
+  // from the TV too. They can be hidden and in folders like apps.
+  const BUILTINS = ["about", "settings", "remote", "hidden-apps", "panel:history"];
   const pictures = new Map(); // id -> { kind, url, at }
   const asked = new Set();
   const db = new Promise((resolve) => {
@@ -590,11 +591,13 @@
       const element = old.get(tile.id);
       if (!element) return fresh;
       element.className = fresh.className;
-      element.setAttribute("aria-label", nameOf(tile));
+      element.setAttribute("aria-label", fresh.getAttribute("aria-label"));
       if (!(gesture && element === gesture.element)) {
-        // The same picture: keep its element, so it isn't decoded again.
+        // The same picture and caption: keep its element, so it isn't
+        // decoded again.
         const was = element.firstChild, art = fresh.firstChild;
-        if (art.dataset.picture && was?.dataset.picture === art.dataset.picture) fresh.replaceChild(was, art);
+        if (art.dataset.picture && was?.dataset.picture === art.dataset.picture
+          && was.dataset.caption === art.dataset.caption) fresh.replaceChild(was, art);
         element.replaceChildren(...fresh.childNodes);
       }
       return element;
@@ -609,8 +612,43 @@
   // apps and folders by their name.
   function nameOf(tile) {
     if (tile.id === "remote") return "RustTV Remote";
-    const key = { about: "tile_about", settings: "tile_settings", "hidden-apps": "hidden_title" }[tile.id];
+    const key = {
+      about: "tile_about", settings: "tile_settings", "hidden-apps": "hidden_title", "panel:history": "tile_history",
+    }[tile.id];
     return key ? t(key) : tile.label;
+  }
+
+  // A tile's caption (REMOTE.md § 4), from a fixed list: About's update
+  // state, History's waiting approval or the last change's age (with its
+  // `count`, in the phone's language and plural forms). Anything else
+  // shows none.
+  const CAPTIONS = new Map([
+    ["update", "caption_update"], ["downloading", "caption_downloading"], ["installing", "caption_installing"],
+    ["waiting", "caption_waiting"], ["just_now", "caption_just_now"],
+  ]);
+  const AGES = new Map([["minutes", "minute"], ["hours", "hour"], ["days", "day"]]);
+  let ages = null;
+  function captionOf(tile) {
+    const key = CAPTIONS.get(tile.caption);
+    if (key) return t(key);
+    const unit = AGES.get(tile.caption);
+    if (!unit || !Number.isInteger(tile.count) || tile.count < 0 || !window.Intl?.RelativeTimeFormat) return "";
+    // Western digits, as the TV shows them.
+    ages ??= new Intl.RelativeTimeFormat(window.RustTVText.lang.replace("_", "-"), { numeric: "always", numberingSystem: "latn" });
+    return ages.format(-tile.count, unit);
+  }
+
+  // On the picture's bottom start corner, as on the TV: "update" and
+  // "waiting" in the accent, the others dim.
+  function addCaption(box, tile) {
+    const text = captionOf(tile);
+    if (!text) return;
+    const caption = document.createElement("small");
+    const accent = tile.caption === "update" || tile.caption === "waiting";
+    caption.className = "caption" + (accent ? " accent" : "");
+    caption.textContent = text;
+    box.dataset.caption = text;
+    box.append(caption);
   }
 
   function tileButton(tile, tiles, focused) {
@@ -619,8 +657,11 @@
     const target = dragging && gesture && gesture.on && tile.id === gesture.over;
     button.className = "tile" + (tile.id === focused ? " focused" : "") + (moving ? " dragging" : "") + (target ? " over" : "");
     button.dataset.id = tile.id;
-    button.setAttribute("aria-label", nameOf(tile));
-    button.append(art(tile, tiles));
+    const caption = captionOf(tile);
+    button.setAttribute("aria-label", caption ? `${nameOf(tile)}, ${caption}` : nameOf(tile));
+    const box = art(tile, tiles);
+    addCaption(box, tile);
+    button.append(box);
     const name = document.createElement("div");
     name.className = "name";
     name.textContent = nameOf(tile);

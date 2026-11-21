@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "component": "GeneralCorner",
+  "face": "corner",
+  "props": ["state"],
+  "root": { "glyph": { "badge": "rusttv-logo", "show": "state" } }
+}

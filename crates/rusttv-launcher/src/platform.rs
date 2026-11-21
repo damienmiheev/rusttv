@@ -107,6 +107,14 @@ pub trait Platform {
         0
     }
 
+    /// Whether the TV's own setting shows the time on a 24-hour clock;
+    /// `None` where the platform has no such setting, and then the
+    /// language decides ([`crate::i18n::uses_24_hours`]). For Home's clock
+    /// (PANELS.md § 9 Q2).
+    fn uses_24_hours(&self) -> Option<bool> {
+        None
+    }
+
     /// Draws apps' tile pictures for RustTV Remote's phones, from any
     /// thread. None where the platform can't (the desktop dev mode): phones
     /// then show their stand-ins.
@@ -169,7 +177,7 @@ pub trait Platform {
     /// pointer's service on or off.
     fn open_pointer_settings(&mut self) {}
 
-    /// Whether Home has the top-right menu (Modify, Settings and
+    /// Whether Home has the top-right menu (Modify, RustTV, Settings and
     /// [`Platform::quick_actions`]). Without it (Android), About and
     /// Settings are tiles.
     fn top_right_menu(&self) -> bool {
@@ -177,7 +185,7 @@ pub trait Platform {
     }
 
     /// The entries of the top-right menu this platform can do, besides
-    /// Modify and Settings (always there): Search and KDE Connect when
+    /// Modify, RustTV and Settings (always there): Search and KDE Connect when
     /// [`Platform::quick_action_app`] names an app for them, Audio, Network
     /// and Power when [`Platform::device_settings`] has their quick panel.
     /// Called once at start; should be cheap.
@@ -1496,8 +1504,8 @@ mod tests {
         );
         home.set_apps(&apps);
 
-        // 14 apps + RustTV Remote: three rows, the last one short.
-        assert_eq!(home.tiles().len(), 15);
+        // 14 apps, RustTV Remote and History: three rows, the last one short.
+        assert_eq!(home.tiles().len(), 16);
         for entry in &entries {
             assert!(home.tiles().contains(&TileId::App(entry.app.id.clone())));
             platform.launch(&entry.app.id).unwrap();

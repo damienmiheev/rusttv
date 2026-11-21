@@ -38,7 +38,13 @@ impl crate::model::QuickAction {
         match self {
             Self::Audio => Some(QuickPanel::Audio),
             Self::Power => Some(QuickPanel::Power),
-            Self::Network | Self::Search | Self::Modify | Self::KdeConnect | Self::Settings => None,
+            // The RustTV panel's rows are the launcher's own (ui/device_view.rs).
+            Self::Network
+            | Self::Search
+            | Self::Modify
+            | Self::KdeConnect
+            | Self::Panels
+            | Self::Settings => None,
         }
     }
 }

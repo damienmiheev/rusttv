@@ -59,8 +59,8 @@ msgstr "숨긴 앱"
 msgid "About"
 msgstr "정보"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "OK: 앱을 홈 화면에 다시 표시. 뒤로: 돌아가기."
+msgid "OK puts it back on Home. Back returns."
+msgstr "OK: 홈 화면에 다시 표시. 뒤로: 돌아가기."
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "버전 {} · MIT OR Apache-2.0"
@@ -441,14 +441,8 @@ msgstr "앱 닫기"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "Licences and third-party notices"
-msgstr "라이선스 및 타사 고지"
-
 msgid "Loading…"
 msgstr "불러오는 중…"
-
-msgid "MIT OR Apache-2.0 · licences and third-party notices"
-msgstr "MIT OR Apache-2.0 · 라이선스 및 타사 고지"
 
 msgid "Modify"
 msgstr "편집"
@@ -465,6 +459,9 @@ msgstr "전원"
 msgid "RustTV {}"
 msgstr "RustTV {}"
 
+msgid "RustTV"
+msgstr "RustTV"
+
 msgid "Search"
 msgstr "검색"
 
@@ -473,9 +470,6 @@ msgstr "크기"
 
 msgid "Size: {} %"
 msgstr "크기: {} %"
-
-msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
-msgstr "Slint(Royalty-free License 2.0), Skia, Rust 라이브러리"
 
 msgid "Source code"
 msgstr "소스 코드"
@@ -488,3 +482,79 @@ msgstr "볼륨"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "키보드의 ✓로 확인, 뒤로로 취소"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "다운로드 중"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "설치 중"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "업데이트 있음"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "휴대폰 없음"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "휴대폰: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "연결 중"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "최근 변경"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Waiting"
+msgstr "컴퓨터 대기 중"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Just now"
+msgstr "방금"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "{n}분 전"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "{n}시간 전"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "{n}일 전"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "대기 화면"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "홈 화면에서 5분이 지나면 버튼을 누를 때까지 어두운 시계 표시"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "대기 화면: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "RustTV 업데이트됨"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} 연결됨"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "컴퓨터가 변경 {n}개를 적용함"

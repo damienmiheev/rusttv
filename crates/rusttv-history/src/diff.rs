@@ -5,6 +5,10 @@ use std::collections::BTreeSet;
 
 use crate::state::{Launcher, PackageState, SETTING_KEYS, State};
 
+/// Built-in tiles every Home has (RustTV Remote; History's panel tile,
+/// PANELS.md § 6), which a change list names only as moved.
+const EVERY_HOME: [&str; 2] = ["remote", "panel:history"];
+
 /// One difference between two snapshots.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
@@ -21,7 +25,8 @@ pub enum Change {
         /// The tile's name.
         tile: String,
     },
-    /// A tile left Home (an app was removed).
+    /// A tile left Home (an app was removed); a tile hidden is only
+    /// [`Change::Hidden`].
     Removed {
         /// The tile's name.
         tile: String,
@@ -33,7 +38,7 @@ pub enum Change {
         /// Its name.
         name: String,
     },
-    /// A folder went (its last app left it).
+    /// A folder went (its last tile left it).
     FolderRemoved {
         /// Its tile name.
         folder: String,
@@ -49,20 +54,20 @@ pub enum Change {
         /// After.
         new: String,
     },
-    /// An app on Home went into a folder or came out of one.
+    /// An app or a built-in tile went into a folder or came out of one.
     InFolder {
-        /// The app's component name.
+        /// The tile's name (an app's component, or `about`, `panel:history`).
         tile: String,
         /// The folder's tile name.
         folder: String,
         /// The folder's name.
         name: String,
-        /// Whether the app is in the folder now.
+        /// Whether the tile is in the folder now.
         inside: bool,
     },
-    /// An app was hidden or shown again.
+    /// An app or a built-in tile was hidden or shown again.
     Hidden {
-        /// The app's component name.
+        /// The tile's name (an app's component, or `about`, `panel:history`).
         tile: String,
         /// Whether it is hidden now.
         hidden: bool,
@@ -90,6 +95,11 @@ pub enum Change {
     Effects {
         /// Its new value: fewer effects.
         reduced: bool,
+    },
+    /// The idle screen switch changed (PANELS.md § 9 Q6).
+    Ambient {
+        /// Its new value: Home dims to a clock after a while.
+        on: bool,
     },
     /// A global setting changed; `None` = unset.
     Setting {
@@ -150,10 +160,24 @@ pub fn diff(old: &State, new: &State) -> Vec<Change> {
             .collect()
     };
     let (before, after) = (on_home(was), on_home(now));
-    for tile in after.iter().filter(|tile| !before.contains(tile)) {
+    // Every Home has these tiles; snapshots before they were recorded
+    // (format 5, format 6) left them out, so they only seem to come or go
+    // (only their moves count).
+    let shown = |tile: &&String| !EVERY_HOME.contains(&tile.as_str());
+    // A tile hidden, or shown again, is only `hidden` (below), not removed
+    // or added too.
+    for tile in after
+        .iter()
+        .filter(shown)
+        .filter(|tile| !before.contains(tile) && !was.hidden.contains(*tile))
+    {
         changes.push(Change::Added { tile: tile.clone() });
     }
-    for tile in before.iter().filter(|tile| !after.contains(tile)) {
+    for tile in before
+        .iter()
+        .filter(shown)
+        .filter(|tile| !after.contains(tile) && !now.hidden.contains(*tile))
+    {
         changes.push(Change::Removed { tile: tile.clone() });
     }
     for (folder, then) in &now.folders {
@@ -249,6 +273,11 @@ pub fn diff(old: &State, new: &State) -> Vec<Change> {
             reduced: new.launcher.reduced_effects,
         });
     }
+    if old.launcher.ambient_off != new.launcher.ambient_off {
+        changes.push(Change::Ambient {
+            on: !new.launcher.ambient_off,
+        });
+    }
 
     for key in SETTING_KEYS {
         if old.setting(key) != new.setting(key) {
@@ -333,6 +362,9 @@ pub(crate) fn summary(changes: &[Change]) -> String {
         Change::Effects { reduced } => {
             format!("Effects {}", if *reduced { "reduced" } else { "full" })
         }
+        Change::Ambient { on } => {
+            format!("Idle screen {}", if *on { "on" } else { "off" })
+        }
         Change::Setting { key, new, .. } => {
             format!("{key} = {}", new.as_deref().unwrap_or("unset"))
         }
@@ -367,6 +399,7 @@ mod tests {
         new.launcher.hidden.insert("com.example.a/.Main".into());
         new.launcher.update_check = false;
         new.launcher.reduced_effects = true;
+        new.launcher.ambient_off = true;
         new.settings
             .global
             .insert("animator_duration_scale".into(), "0.5".into());
@@ -374,8 +407,109 @@ mod tests {
             .insert("com.example.t".into(), PackageState::Disabled);
         new.device.takeover = Some(true);
         let changes = diff(&old, &new);
-        assert_eq!(changes.len(), 6, "{changes:?}");
-        assert_eq!(summary(&changes), "Hid com.example.a and 5 more");
+        assert_eq!(changes.len(), 7, "{changes:?}");
+        assert!(
+            changes.contains(&Change::Ambient { on: false }),
+            "{changes:?}"
+        );
+        assert_eq!(summary(&changes), "Hid com.example.a and 6 more");
+    }
+
+    /// The idle screen's switch, both ways, and its summary; off is not
+    /// the default.
+    #[test]
+    fn the_idle_screen_switch_is_one_change_each_way() {
+        assert!(!State::new().launcher.ambient_off);
+        let on = State::new();
+        let mut off = State::new();
+        off.launcher.ambient_off = true;
+        let changes = diff(&on, &off);
+        assert_eq!(changes, [Change::Ambient { on: false }]);
+        assert_eq!(summary(&changes), "Idle screen off");
+        let changes = diff(&off, &on);
+        assert_eq!(changes, [Change::Ambient { on: true }]);
+        assert_eq!(summary(&changes), "Idle screen on");
+    }
+
+    /// Hiding a tile (an app or a built-in one) or showing it again is one
+    /// `hidden` change, not also a removal or an addition; so is putting a
+    /// built-in tile in a folder one `in_folder`.
+    #[test]
+    fn hiding_and_folders_report_only_that() {
+        let mut old = State::new();
+        old.launcher.order = vec![
+            "com.example.a/.Main".into(),
+            "about".into(),
+            "settings".into(),
+            "remote".into(),
+            "panel:history".into(),
+        ];
+        let mut new = old.clone();
+        new.launcher.order = vec!["folder:1".into(), "remote".into()];
+        new.launcher.folders.insert(
+            "folder:1".into(),
+            crate::state::Folder {
+                name: "RustTV".into(),
+                apps: vec!["settings".into(), "panel:history".into()],
+            },
+        );
+        new.launcher.hidden = ["com.example.a/.Main".into(), "about".into()].into();
+        let changes = diff(&old, &new);
+        assert_eq!(
+            changes,
+            [
+                Change::FolderAdded {
+                    folder: "folder:1".into(),
+                    name: "RustTV".into(),
+                },
+                Change::InFolder {
+                    tile: "settings".into(),
+                    folder: "folder:1".into(),
+                    name: "RustTV".into(),
+                    inside: true,
+                },
+                Change::InFolder {
+                    tile: "panel:history".into(),
+                    folder: "folder:1".into(),
+                    name: "RustTV".into(),
+                    inside: true,
+                },
+                Change::Hidden {
+                    tile: "about".into(),
+                    hidden: true,
+                },
+                Change::Hidden {
+                    tile: "com.example.a/.Main".into(),
+                    hidden: true,
+                },
+            ]
+        );
+        // And back: shown again, out of the folder; still nothing added.
+        let out = |tile: &str| Change::InFolder {
+            tile: tile.into(),
+            folder: "folder:1".into(),
+            name: "RustTV".into(),
+            inside: false,
+        };
+        assert_eq!(
+            diff(&new, &old),
+            [
+                out("settings"),
+                out("panel:history"),
+                Change::FolderRemoved {
+                    folder: "folder:1".into(),
+                    name: "RustTV".into(),
+                },
+                Change::Hidden {
+                    tile: "about".into(),
+                    hidden: false,
+                },
+                Change::Hidden {
+                    tile: "com.example.a/.Main".into(),
+                    hidden: false,
+                },
+            ]
+        );
     }
 
     #[test]
@@ -433,6 +567,59 @@ mod tests {
             diff(&added, &old),
             vec![Change::Removed {
                 tile: "e.f/.New".into()
+            }]
+        );
+    }
+
+    /// A snapshot from before the RustTV Remote tile was recorded doesn't
+    /// make it look added (or removed, going back); its moves count.
+    #[test]
+    fn the_remote_tile_is_never_added_or_removed_only_moved() {
+        let mut old = State::new();
+        old.launcher.order = ["a.b/.A", "about"].map(String::from).to_vec();
+        let mut new = State::new();
+        new.launcher.order = ["a.b/.A", "about", "remote"].map(String::from).to_vec();
+        assert_eq!(diff(&old, &new), []);
+        assert_eq!(diff(&new, &old), []);
+        // Another tile added with it is still named.
+        let mut both = new.clone();
+        both.launcher.order.push("e.f/.New".into());
+        assert_eq!(
+            diff(&old, &both),
+            vec![Change::Added {
+                tile: "e.f/.New".into()
+            }]
+        );
+        let mut moved = new.clone();
+        moved.launcher.order = ["remote", "a.b/.A", "about"].map(String::from).to_vec();
+        assert_eq!(
+            diff(&new, &moved),
+            vec![Change::Reordered {
+                moved: vec!["remote".into(), "a.b/.A".into(), "about".into()]
+            }]
+        );
+    }
+
+    /// The same for History's panel tile, which snapshots before format 6
+    /// leave out.
+    #[test]
+    fn the_history_tile_is_never_added_or_removed_only_moved() {
+        let mut old = State::new();
+        old.launcher.order = ["a.b/.A", "remote"].map(String::from).to_vec();
+        let mut new = State::new();
+        new.launcher.order = ["a.b/.A", "remote", "panel:history"]
+            .map(String::from)
+            .to_vec();
+        assert_eq!(diff(&old, &new), []);
+        assert_eq!(diff(&new, &old), []);
+        let mut moved = new.clone();
+        moved.launcher.order = ["panel:history", "a.b/.A", "remote"]
+            .map(String::from)
+            .to_vec();
+        assert_eq!(
+            diff(&new, &moved),
+            vec![Change::Reordered {
+                moved: vec!["panel:history".into(), "a.b/.A".into(), "remote".into()]
             }]
         );
     }

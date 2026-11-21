@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "component": "GeneralBanner",
+  "face": "banner",
+  "props": ["count", "name"],
+  "root": { "banner": {
+    "badge": "rusttv-remote",
+    "title": { "tr": "{n} thing for {}", "plural": "{n} things for {}", "count": "count", "args": [{ "auto": "name" }] } } }
+}

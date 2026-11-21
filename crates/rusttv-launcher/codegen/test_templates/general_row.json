@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "component": "GeneralRow",
+  "face": "row",
+  "props": ["count", "state"],
+  "root": { "list-row": {
+    "title": { "tr": "Count {}", "args": [{ "ltr": "count" }] },
+    "detail": { "select": "state", "cases": { "on": { "tr": "On" } } },
+    "attention": { "select": "state", "cases": { "on": true } } } }
+}

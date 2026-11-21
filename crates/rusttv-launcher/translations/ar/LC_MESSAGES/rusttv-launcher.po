@@ -59,8 +59,8 @@ msgstr "التطبيقات المخفية"
 msgid "About"
 msgstr "حول"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "اضغط OK لإعادة التطبيق إلى الشاشة الرئيسية، و«رجوع» للعودة."
+msgid "OK puts it back on Home. Back returns."
+msgstr "اضغط OK لإعادته إلى الشاشة الرئيسية، و«رجوع» للعودة."
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "الإصدار {} · MIT OR Apache-2.0"
@@ -441,14 +441,8 @@ msgstr "إغلاق التطبيق"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "Licences and third-party notices"
-msgstr "التراخيص وإشعارات الأطراف الثالثة"
-
 msgid "Loading…"
 msgstr "جارٍ التحميل…"
-
-msgid "MIT OR Apache-2.0 · licences and third-party notices"
-msgstr "MIT OR Apache-2.0 · التراخيص وإشعارات الأطراف الثالثة"
 
 msgid "Modify"
 msgstr "تعديل"
@@ -465,6 +459,9 @@ msgstr "الطاقة"
 msgid "RustTV {}"
 msgstr "RustTV {}"
 
+msgid "RustTV"
+msgstr "RustTV"
+
 msgid "Search"
 msgstr "بحث"
 
@@ -473,9 +470,6 @@ msgstr "الحجم"
 
 msgid "Size: {} %"
 msgstr "الحجم: {} %"
-
-msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
-msgstr "Slint (Royalty-free License 2.0)، وSkia، ومكتبات Rust"
 
 msgid "Source code"
 msgstr "الشيفرة المصدرية"
@@ -488,3 +482,99 @@ msgstr "مستوى الصوت"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "✓ على لوحة المفاتيح للتأكيد، «رجوع» للإلغاء"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "جارٍ التنزيل"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "جارٍ التثبيت"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "تحديث متاح"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "لا هواتف"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "الهواتف: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "جارٍ الإقران"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "آخر تغيير"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Waiting"
+msgstr "قيد الانتظار"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Just now"
+msgstr "الآن"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "قبل {n} دقيقة"
+msgstr[1] "قبل دقيقة"
+msgstr[2] "قبل دقيقتين"
+msgstr[3] "قبل {n} دقائق"
+msgstr[4] "قبل {n} دقيقة"
+msgstr[5] "قبل {n} دقيقة"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "قبل {n} ساعة"
+msgstr[1] "قبل ساعة"
+msgstr[2] "قبل ساعتين"
+msgstr[3] "قبل {n} ساعات"
+msgstr[4] "قبل {n} ساعة"
+msgstr[5] "قبل {n} ساعة"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "قبل {n} يوم"
+msgstr[1] "قبل يوم"
+msgstr[2] "قبل يومين"
+msgstr[3] "قبل {n} أيام"
+msgstr[4] "قبل {n} يومًا"
+msgstr[5] "قبل {n} يوم"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "شاشة الخمول"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "بعد 5 دقائق على الشاشة الرئيسية: ساعة خافتة حتى تضغط زرًا"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "شاشة الخمول: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "تم تحديث RustTV"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "تم توصيل {}"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "طبّق الكمبيوتر {n} تغيير"
+msgstr[1] "طبّق الكمبيوتر تغييرًا واحدًا"
+msgstr[2] "طبّق الكمبيوتر تغييرين"
+msgstr[3] "طبّق الكمبيوتر {n} تغييرات"
+msgstr[4] "طبّق الكمبيوتر {n} تغييرًا"
+msgstr[5] "طبّق الكمبيوتر {n} تغيير"

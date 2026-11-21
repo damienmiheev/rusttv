@@ -16,9 +16,10 @@ use crate::history::History;
 use crate::i18n;
 use crate::model::{
     App, Category, Effect, FolderNames, Home, Input, LONG_PRESS, MOVE_IDLE_TIMEOUT, MenuItem,
-    Scroll, State, TileId,
+    PanelId, Scroll, State, TileId,
 };
 use crate::order_file;
+use crate::panels;
 use crate::platform::{
     AppEntry, Artwork, Bitmap, Platform, PlatformError, PointerState, UpdateStatus,
 };
@@ -45,10 +46,14 @@ mod generated {
     slint::include_modules!();
 }
 use generated::{
-    Dir, Effects, Hints, HomeWindow, Pointer, ReviewLine, SettingsRow, Strings, TileData,
+    AboutAmbient, AboutBanner, AboutCorner, AboutListRow, AboutPanel, AmbientLine, Badges, Dir,
+    Effects, Hints, HistoryAmbient, HistoryBanner, HistoryCorner, HistoryListRow, HistoryPanel,
+    HomeWindow, Pictures, Pointer, RemoteAmbient, RemoteBanner, RemoteCorner, RemoteListRow,
+    RemotePanel, ReviewLine, SettingsRow, Strings, TileData,
 };
 
 mod device_view;
+mod faces_view;
 mod remote_view;
 mod settings_view;
 
@@ -70,6 +75,10 @@ const ARTWORK_PER_TICK: usize = 2;
 /// Interval between artwork loading ticks.
 const ARTWORK_TICK: Duration = Duration::from_millis(16);
 
+/// Hero glows a worker thread makes per batch ([`Controller::make_glows`]):
+/// a few, so the first ones (the tiles on Home) are ready soon.
+const GLOWS_PER_BATCH: usize = 4;
+
 /// How long focus must rest before the hero follows it.
 const HERO_DELAY: Duration = Duration::from_millis(150);
 
@@ -89,6 +98,12 @@ const ABOUT_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/about.rgba
 const SETTINGS_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/settings.rgba"));
 const HIDDEN_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/hidden.rgba"));
 const REMOTE_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/remote.rgba"));
+const HISTORY_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/history.rgba"));
+
+/// The banner card's drop shadow, blurred by build.rs (`banner_shadow`), as
+/// RGBA (home.slint `BannerCard`).
+const BANNER_SHADOW_SIZE: (u32, u32) = (560, 192);
+const BANNER_SHADOW: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/banner-shadow.rgba"));
 
 /// A built-in tile's banner, by tile name, as RGBA ([`BUILTIN_BANNER_SIZE`]):
 /// for the phones' pictures.
@@ -98,6 +113,7 @@ pub(crate) fn builtin_banner(name: &str) -> Option<(u32, u32, &'static [u8])> {
         "settings" => SETTINGS_BANNER,
         "hidden-apps" => HIDDEN_BANNER,
         "remote" => REMOTE_BANNER,
+        "panel:history" => HISTORY_BANNER,
         _ => return None,
     };
     Some((BUILTIN_BANNER_SIZE.0, BUILTIN_BANNER_SIZE.1, rgba))
@@ -358,6 +374,9 @@ pub enum DemoStep {
     Wait(Duration),
     /// Render the window and pass the picture to the callback under this name.
     Snapshot(&'static str),
+    /// Home has rested for the idle screen's time ([`faces_view::AMBIENT_AFTER`]):
+    /// it dims to the idle screen now, if it would then.
+    Rest,
 }
 
 /// Runs the home screen through scripted key presses, taking snapshots, then quits.
@@ -371,10 +390,11 @@ pub fn run_demo(
     steps: &[DemoStep],
     on_snapshot: impl FnMut(&str, Result<Bitmap, PlatformError>) + 'static,
 ) -> Result<(), PlatformError> {
-    let (window, _controller) = start(platform, options, real_clock())?;
+    let (window, controller) = start(platform, options, real_clock())?;
     let demo = Rc::new(Demo {
         steps: steps.to_vec(),
         window: window.as_weak(),
+        controller: Rc::downgrade(&controller),
         on_snapshot: RefCell::new(Box::new(on_snapshot)),
     });
     Timer::single_shot(Duration::ZERO, move || demo.step(0));
@@ -389,6 +409,7 @@ type SnapshotCallback = Box<dyn FnMut(&str, Result<Bitmap, PlatformError>)>;
 struct Demo {
     steps: Vec<DemoStep>,
     window: slint::Weak<HomeWindow>,
+    controller: Weak<RefCell<Controller>>,
     on_snapshot: RefCell<SnapshotCallback>,
 }
 
@@ -427,6 +448,11 @@ impl Demo {
             DemoStep::Press(text) => key(text, true),
             DemoStep::Release(text) => key(text, false),
             DemoStep::Wait(duration) => delay = duration,
+            DemoStep::Rest => {
+                if let Some(controller) = self.controller.upgrade() {
+                    controller.borrow_mut().enter_ambient();
+                }
+            }
             DemoStep::Snapshot(name) => {
                 let picture =
                     window
@@ -445,6 +471,27 @@ impl Demo {
         Timer::single_shot(delay, move || self.step(index + 1));
     }
 }
+
+/// Sets the About panel's tile and page values (src/panels.rs): window-global
+/// properties, so a status change redraws the tile without touching the
+/// tile list; the page reads them only while it is open. (Its row is read
+/// when Settings draws its list.) A name means one value on every face
+/// (panels.rs tests), so `version` is set once.
+fn show_about_panel(window: &HomeWindow, status: &UpdateStatus) {
+    let view = panels::about_view(env!("CARGO_PKG_VERSION"), status);
+    let about = window.global::<AboutPanel>();
+    if let Some(tile) = view.tile {
+        about.set_version(tile.props.get("version").into());
+        about.set_status(tile.props.get("status").into());
+    }
+    if let Some(page) = view.page {
+        about.set_update(page.props.get("update").into());
+        about.set_update_detail(page.props.get("update-detail").into());
+    }
+}
+
+include!(concat!(env!("OUT_DIR"), "/badges.rs"));
+include!(concat!(env!("OUT_DIR"), "/pictures.rs"));
 
 /// Sets the effects: `reduced` (Settings → Effects) turns shadows and the
 /// backdrop glow off, for a weak GPU.
@@ -545,6 +592,14 @@ fn start(
         options.right_to_left |= i18n::is_right_to_left(language);
     }
     window.global::<Dir>().set_rtl(options.right_to_left);
+    set_badges(&window);
+    window.set_banner_shadow(slint::Image::from_rgba8(
+        SharedPixelBuffer::clone_from_slice(
+            BANNER_SHADOW,
+            BANNER_SHADOW_SIZE.0,
+            BANNER_SHADOW_SIZE.1,
+        ),
+    ));
     let reduced = options
         .order_file
         .as_deref()
@@ -577,6 +632,12 @@ fn start(
     window.on_list_pointer(move |list, index, action| {
         if let Some(controller) = weak.upgrade() {
             controller.borrow_mut().list_pointer(list, index, action);
+        }
+    });
+    let weak = Rc::downgrade(&controller);
+    window.on_ambient_woken(move || {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow_mut().wake_ambient();
         }
     });
     let weak = Rc::downgrade(&controller);
@@ -764,8 +825,20 @@ struct Controller {
     options: RunOptions,
     /// What the window shows of each app, by app id.
     apps: HashMap<String, AppView>,
-    /// Hero glows per app id, computed on first focus.
+    /// Hero glows per app id, made on a worker thread after the first
+    /// frame ([`Controller::make_glows`]), or on first focus before that.
     glows: HashMap<String, generated::Glow>,
+    /// Counts app list reads, so glows made from an older list's artwork
+    /// are dropped ([`Controller::glows_made`]).
+    glow_generation: u64,
+    /// A worker thread is making glows.
+    glows_making: bool,
+    /// Every glow [`Controller::make_glows`] makes is made; cleared when
+    /// the app list, Home's tiles or their artwork change.
+    glows_complete: bool,
+    /// The glow thread could not start or failed: focus makes glows from
+    /// then on, as before.
+    glows_failed: bool,
     /// The About, Settings and Hidden apps tiles' banners and glows.
     builtins: Builtins,
     /// Tiles currently in the window's model, to rebuild it only when they change.
@@ -807,6 +880,8 @@ struct Controller {
     saved_focus: Option<TileId>,
     /// The updater's status as last shown.
     update: UpdateStatus,
+    /// Whether the updater's status was read since start.
+    update_read: bool,
     update_timer: Timer,
     /// The Settings page while it is open (HISTORY.md § 8).
     settings: Option<crate::settings::SettingsPage>,
@@ -822,7 +897,7 @@ struct Controller {
     swallow_ok_release: bool,
     /// Packs the history a few seconds after the launcher left the screen.
     pack_timer: Timer,
-    settings_sections: Rc<VecModel<SharedString>>,
+    settings_sections: Rc<VecModel<SettingsRow>>,
     settings_rows: Rc<VecModel<SettingsRow>>,
     review_lines: Rc<VecModel<ReviewLine>>,
     review_code: Rc<VecModel<i32>>,
@@ -833,6 +908,10 @@ struct Controller {
     remote_rows: Rc<VecModel<SettingsRow>>,
     /// The pairing screen, over the RustTV Remote page.
     pairing: Option<remote_view::Pairing>,
+    /// Runs while pairing is open (the listener's secret is valid, at most
+    /// [`rusttv_remote::PAIRING_TIME`]): the RustTV Remote tile says
+    /// "Pairing".
+    pairing_timer: Timer,
     /// Another app is on screen (Android paused the launcher): phones get
     /// the touchpad, not the Home mirror.
     away: bool,
@@ -876,6 +955,9 @@ struct Controller {
     /// The quick panel while it is open, and its status line ("…" while
     /// reading, or why a change failed).
     quick: Option<crate::device::PanelPage>,
+    /// The RustTV quick panel's focused row, while it is open (its rows are
+    /// the panels', [`crate::model::QUICK_PANELS`]).
+    panels_row: Option<usize>,
     quick_status: String,
     quick_rows: Rc<VecModel<SettingsRow>>,
     /// The top-right menu's entries, as quick.slint codes.
@@ -884,6 +966,13 @@ struct Controller {
     volume_timer: Timer,
     /// The platform tab Settings opens on once its tabs are read.
     settings_tab: Option<&'static str>,
+    /// History's tile data as last read from the history thread, and the
+    /// TV's clock then (Unix seconds): its age is formatted on resume,
+    /// focus changes and the clock's minute tick, no timer of its own
+    /// (PANELS.md § 4).
+    history: (Option<crate::history::Summary>, i64),
+    /// The focused tile when History's data was last read.
+    history_focus: Option<TileId>,
     /// The network interfaces on the Network entry, as quick.slint codes.
     link_codes: Rc<VecModel<i32>>,
     /// Reads the network interfaces again every [`device_view::LINKS_EVERY`].
@@ -894,6 +983,8 @@ struct Controller {
     pointer_timer: Timer,
     /// The open text prompt, and the device control its text is for.
     prompt: Option<device_view::Prompt>,
+    /// The status corner, banners and the idle screen (ui/faces_view.rs).
+    faces: faces_view::Faces,
 }
 
 impl Controller {
@@ -927,8 +1018,7 @@ impl Controller {
         window.set_quick_actions(ModelRc::from(quick_codes.clone()));
         let link_codes = Rc::new(VecModel::default());
         window.set_network_icons(ModelRc::from(link_codes.clone()));
-        window.set_version(env!("CARGO_PKG_VERSION").into());
-        window.set_update_status(update_line(window, &UpdateStatus::Idle));
+        show_about_panel(window, &UpdateStatus::Idle);
 
         let (order, folders, hidden, saved_focus) =
             options
@@ -959,8 +1049,17 @@ impl Controller {
         if let Some(id) = &saved_focus {
             home.focus_on(id);
         }
+        // Settings → Idle screen: on unless its flag file is there.
+        let ambient_off = options
+            .order_file
+            .as_deref()
+            .and_then(std::path::Path::parent)
+            .is_some_and(|dir| dir.join(order_file::AMBIENT_OFF).exists());
+        let faces = faces_view::Faces::new(window, ambient_off);
         let right_to_left = options.right_to_left;
         let baked = platform.top_right_menu();
+        let builtins = Builtins::new(baked, right_to_left);
+        set_pictures(window, |name| builtins.page_picture(name));
         let controller = Rc::new_cyclic(|me| {
             RefCell::new(Self {
                 home,
@@ -968,7 +1067,11 @@ impl Controller {
                 options,
                 apps: HashMap::new(),
                 glows: HashMap::new(),
-                builtins: Builtins::new(baked, right_to_left),
+                glow_generation: 0,
+                glows_making: false,
+                glows_complete: false,
+                glows_failed: false,
+                builtins,
                 shown: Vec::new(),
                 tiles,
                 hidden_shown: Vec::new(),
@@ -996,6 +1099,7 @@ impl Controller {
                 notices: None,
                 saved_focus,
                 update: UpdateStatus::Idle,
+                update_read: false,
                 update_timer: Timer::default(),
                 settings: None,
                 review: None,
@@ -1011,6 +1115,7 @@ impl Controller {
                 remote_page: None,
                 remote_rows,
                 pairing: None,
+                pairing_timer: Timer::default(),
                 away: false,
                 resized: None,
                 relaunch: None,
@@ -1025,16 +1130,20 @@ impl Controller {
                 device,
                 device_pending: 0,
                 quick: None,
+                panels_row: None,
                 quick_status: String::new(),
                 quick_rows,
                 quick_codes,
                 volume_timer: Timer::default(),
                 settings_tab: None,
+                history: (None, 0),
+                history_focus: None,
                 link_codes,
                 links_timer: Timer::default(),
                 scroll_rest: 0.0,
                 pointer_timer: Timer::default(),
                 prompt: None,
+                faces,
             })
         });
         *controller.borrow().options.lifecycle.0.borrow_mut() = Rc::downgrade(&controller);
@@ -1049,6 +1158,8 @@ impl Controller {
             this.render();
             this.refresh_update();
             this.start_links();
+            this.tick_clock();
+            this.show_faces();
         }
         controller
     }
@@ -1062,9 +1173,18 @@ impl Controller {
         // pointer never shows over RustTV.
         self.platform.pointer_stop();
         self.platform.hide_tv_keyboard(false);
-        self.push_remote_view();
+        // The update status and History's age first, so the phones get one
+        // view with the current captions.
         self.refresh_update();
+        self.show_history_panel();
+        self.push_remote_view();
         self.pack_timer.stop();
+        // The clock runs again, and Home may dim after a rest from now (no
+        // sway until a key, as after a long time away before).
+        self.leave_ambient();
+        self.tick_clock();
+        self.set_idle_phase(0);
+        self.arm_ambient(faces_view::AMBIENT_AFTER);
         if let Some(history) = History::get() {
             history.resumed();
             if history.take_launcher_changed() {
@@ -1088,9 +1208,17 @@ impl Controller {
     /// Re-reads the app list from the platform.
     fn reload_apps(&mut self) {
         match self.platform.list_apps() {
+            // A TV always has apps: an empty list is one that couldn't be
+            // read, so the apps shown stay (`Home::set_apps` keeps them too).
+            Ok(entries) if entries.is_empty() => {
+                log::warn!("the app list came back empty; keeping the last one");
+                self.home.set_apps(&[]);
+            }
             Ok(entries) => {
                 let apps: Vec<App> = entries.iter().map(|entry| entry.app.clone()).collect();
                 self.glows.clear();
+                self.glow_generation += 1;
+                self.glows_complete = false;
                 self.apps = entries
                     .into_iter()
                     .map(|entry| (entry.app.id.clone(), AppView::new(entry)))
@@ -1201,6 +1329,9 @@ impl Controller {
             self.artwork_timer.stop();
             if was_pending {
                 self.platform.artwork_loaded();
+                // The banners that just arrived have glows to make.
+                self.glows_complete = false;
+                self.make_glows();
             }
         }
     }
@@ -1214,6 +1345,25 @@ impl Controller {
         // The prompt's text field has the keys; this sees only what it left.
         if self.prompt.is_some() {
             return false;
+        }
+        // The idle screen: the key that wakes it does nothing else, its
+        // repeats and release neither (PANELS.md § 9 Q6). Any other key
+        // ends that, so a lost release can't swallow a later press.
+        if let Some(held) = &self.faces.ambient_key {
+            if held.as_str() == text {
+                if !pressed {
+                    self.faces.ambient_key = None;
+                }
+                return true;
+            }
+            self.faces.ambient_key = None;
+        }
+        if self.faces.ambient {
+            if pressed {
+                self.faces.ambient_key = Some(text.into());
+                self.wake_ambient();
+            }
+            return true;
         }
         // The Menu key (keyboards; a controller's top button): the focused
         // tile's menu, as a long OK. Not while the pairing, trust or review
@@ -1269,6 +1419,11 @@ impl Controller {
             self.save_order();
         }
         if input == Input::Paused {
+            self.faces_away();
+            // No sway and no idle screen while away; resuming starts the
+            // wait again.
+            self.idle_timer.stop();
+            self.set_idle_phase(0);
             self.prompt = None;
             self.close_settings_view();
             self.close_quick_view();
@@ -1311,6 +1466,12 @@ impl Controller {
             Some(Effect::OpenSettingsTab(tab)) => {
                 self.settings_tab = Some(tab);
                 self.open_settings();
+            }
+            Some(Effect::OpenHistory) => {
+                self.open_settings();
+                if let Some(page) = &mut self.settings {
+                    page.show_history();
+                }
             }
             Some(Effect::Settings(input)) => self.settings_input(input),
             Some(Effect::OpenRemote) => self.open_remote_page(),
@@ -1618,20 +1779,37 @@ impl Controller {
         self.schedule_update_poll();
     }
 
-    /// Pushes a changed update status to the About page's line and the About
-    /// tile's dot; an unchanged one costs nothing.
+    /// Pushes a changed update status to the About page's line, the About
+    /// tile's caption (on the TV and the phones) and Settings' dot; an
+    /// unchanged one costs nothing.
     fn show_update(&mut self, status: UpdateStatus) {
+        // The first read since start: an update it names is old news (no
+        // banner; the status corner shows it).
+        let first = !std::mem::replace(&mut self.update_read, true);
         if status == self.update {
             return;
         }
         if let Some(window) = self.window.upgrade() {
-            window.set_update_status(update_line(&window, &status));
             window.set_update_available(status.is_available());
+            show_about_panel(&window, &status);
         }
+        // The phones' Home mirror shows only the caption (not the percent),
+        // and only while RustTV is in front.
+        let caption_changed =
+            crate::remote::about_caption(&status) != crate::remote::about_caption(&self.update);
+        let before = (!first).then_some(&self.update);
+        let banner = panels::about_banner(env!("CARGO_PKG_VERSION"), before, &status);
         self.update = status;
-        // Settings' About tab shows the status in a row.
-        if self.settings.is_some() {
+        self.show_faces();
+        if let Some(banner) = banner {
+            self.queue_banner(faces_view::Panel::About, &banner);
+        }
+        // Settings' About tab and the RustTV quick panel show the status in
+        // a row; rendering also updates the phones.
+        if self.settings.is_some() || self.panels_row.is_some() {
             self.render();
+        } else if caption_changed && !self.away {
+            self.push_remote_view();
         }
     }
 
@@ -1820,7 +1998,10 @@ impl Controller {
     /// Back to the still focus look, sway from [`SWAY_AFTER`], back to still at
     /// [`SWAY_UNTIL`]. The sway fades in and out (`home.slint`), so neither
     /// change jumps.
+    /// After that, at [`faces_view::AMBIENT_AFTER`], the idle screen
+    /// (ui/faces_view.rs); any activity takes it away and starts again.
     fn restart_idle(&mut self) {
+        self.leave_ambient();
         self.set_idle_phase(0);
         let me = self.me.clone();
         self.idle_timer
@@ -1830,11 +2011,13 @@ impl Controller {
                 };
                 let this = controller.borrow();
                 this.set_idle_phase(1);
-                let window = this.window.clone();
+                let me = this.me.clone();
                 this.idle_timer
                     .start(TimerMode::SingleShot, SWAY_UNTIL - SWAY_AFTER, move || {
-                        if let Some(window) = window.upgrade() {
-                            window.set_idle_phase(0);
+                        if let Some(controller) = me.upgrade() {
+                            let this = controller.borrow();
+                            this.set_idle_phase(0);
+                            this.arm_ambient(faces_view::AMBIENT_AFTER - SWAY_UNTIL);
                         }
                     });
             });
@@ -1900,6 +2083,7 @@ impl Controller {
         };
         if self.home.tiles() != self.shown {
             self.shown = self.home.tiles().to_vec();
+            self.glows_complete = false;
             let rows: Vec<TileData> = self.shown.iter().map(|id| self.tile_data(id)).collect();
             self.tiles.set_vec(rows);
             self.queue_artwork(&self.shown.clone());
@@ -1910,7 +2094,7 @@ impl Controller {
                 .hidden_apps()
                 .iter()
                 .cloned()
-                .map(TileId::App)
+                .map(order_file::tile_for_name)
                 .collect(),
             None => Vec::new(),
         };
@@ -1977,6 +2161,11 @@ impl Controller {
             window.set_notices_fraction(notices.fraction());
         }
 
+        // History's age, formatted again when the focus moves.
+        if self.home.focused() != self.history_focus.as_ref() {
+            self.history_focus = self.home.focused().cloned();
+            self.show_history_panel();
+        }
         if self.home.focused() != self.hero.as_ref() {
             let me = self.me.clone();
             self.hero_timer
@@ -1987,6 +2176,7 @@ impl Controller {
                 });
         }
         self.push_remote_view();
+        self.after_render_faces();
     }
 
     /// Starts the phone remote if a phone is paired (REMOTE.md § 3). Its
@@ -2001,7 +2191,9 @@ impl Controller {
                 |ip| ip.to_string(),
             );
             log::info!("RustTV Remote: pair at {}", link.open_pairing(&host));
+            self.pairing_opened();
         }
+        self.show_remote_panel();
     }
 
     /// Starts the listener: with a paired phone, or when `force`d (pairing).
@@ -2073,6 +2265,8 @@ impl Controller {
                 &|id| self.remote_label(id),
                 self.review.is_some(),
                 rename,
+                &self.update,
+                crate::remote::history_caption(self.history.0.as_ref(), self.history.1),
             );
             TvMessage::Home(view)
         };
@@ -2097,6 +2291,7 @@ impl Controller {
             TileId::About => "About".to_owned(),
             TileId::Settings => "Settings".to_owned(),
             TileId::Remote => "RustTV Remote".to_owned(),
+            TileId::Panel(PanelId::History) => "History".to_owned(),
             TileId::Hidden => "Hidden apps".to_owned(),
         }
     }
@@ -2112,6 +2307,8 @@ impl Controller {
                 code,
             } => self.pair_request(request, name, code),
             RemoteEvent::Paired(_) => {
+                // The listener spent the pairing secret.
+                self.pairing_timer.stop();
                 if let Some(link) = &self.remote {
                     link.save_phones();
                 }
@@ -2125,7 +2322,9 @@ impl Controller {
             RemoteEvent::PairingClosed => self.pairing_closed(),
             RemoteEvent::Connected(phone) => {
                 // The listener already sent this phone the latest view.
-                self.connected.insert(phone);
+                if self.connected.insert(phone) {
+                    self.phone_connected(phone);
+                }
                 if let Some(page) = &mut self.remote_page
                     && let Some(link) = &self.remote
                 {
@@ -2180,6 +2379,22 @@ impl Controller {
     }
 
     fn phone_input(&mut self, message: PhoneMessage) {
+        // On the idle screen a phone's key, tap, menu choice or drag wakes
+        // Home and does nothing else, like the remote's; its page's other
+        // messages (typing, text) aren't someone at the TV.
+        if self.faces.ambient
+            && !self.away
+            && matches!(
+                message,
+                PhoneMessage::Key { .. }
+                    | PhoneMessage::Tile { .. }
+                    | PhoneMessage::Menu { .. }
+                    | PhoneMessage::Drag { .. }
+            )
+        {
+            self.wake_ambient();
+            return;
+        }
         match message {
             // In other apps the pointer's service presses keys (REMOTE.md
             // § 5): once per press, on the way down.
@@ -2367,7 +2582,7 @@ impl Controller {
             .unwrap_or_default();
         let glow = match &focused {
             Some(TileId::App(component)) => self.glow(component),
-            Some(builtin) => self.builtins.view(builtin).map(|view| view.glow.clone()),
+            Some(builtin) => self.builtins.view(builtin).map(BuiltinView::glow),
             None => None,
         }
         .unwrap_or_default();
@@ -2382,6 +2597,9 @@ impl Controller {
         self.hero_a_front = !self.hero_a_front;
         window.set_hero_a_front(self.hero_a_front);
         self.hero = focused;
+        // The first hero comes after the first frame: the other glows are
+        // made from now on, off the UI thread.
+        self.make_glows();
     }
 
     /// The hero glow for an app; `None` if it has no artwork.
@@ -2397,6 +2615,99 @@ impl Controller {
         );
         self.glows.insert(component.to_owned(), glow.clone());
         Some(glow)
+    }
+
+    /// Makes the hero glows of Home's tiles and the built-in tiles not made
+    /// yet, a few at a time on a worker thread, so neither the first frame
+    /// nor a tile's first focus does that work in a frame. Starts with the
+    /// first hero, which comes after the first frame, and again when
+    /// banners arrive; each batch's end starts the next until none is
+    /// missing. Other apps (hidden, in folders) and a tile focused before
+    /// its glow is ready make theirs on focus ([`Controller::glow`],
+    /// [`BuiltinView::glow`]).
+    fn make_glows(&mut self) {
+        if self.glows_making || self.glows_complete || self.glows_failed {
+            return;
+        }
+        let missing = |id: &TileId| match id {
+            TileId::App(component) if !self.glows.contains_key(component) => {
+                self.apps.get(component)?.glow_source.clone()
+            }
+            TileId::App(_) => None,
+            _ => {
+                let view = self.builtins.view(id)?;
+                if view.glow.get().is_some() {
+                    return None;
+                }
+                view.glow_source.clone()
+            }
+        };
+        // Tiles on Home first, in their order; then the built-in tiles.
+        let jobs: Vec<(TileId, Bitmap)> = self
+            .shown
+            .iter()
+            .chain(Builtins::IDS.iter())
+            .filter_map(|id| missing(id).map(|source| (id.clone(), source)))
+            .take(GLOWS_PER_BATCH)
+            .collect();
+        if jobs.is_empty() {
+            self.glows_complete = true;
+            return;
+        }
+        let (baked, right_to_left) = (self.platform.top_right_menu(), self.options.right_to_left);
+        let generation = self.glow_generation;
+        let started = settings_view::in_background(
+            "rusttv-glows",
+            move || {
+                // A panic is reported as `None`, so the UI stops waiting.
+                std::panic::catch_unwind(move || {
+                    jobs.into_iter()
+                        .map(|(id, source)| (id, glow_parts(&source, baked, right_to_left)))
+                        .collect::<Vec<_>>()
+                })
+                .ok()
+            },
+            move |controller: &mut Controller, made| match made {
+                Some(made) => controller.glows_made(generation, made),
+                None => {
+                    log::warn!("the glow thread failed; glows are made on focus");
+                    controller.glows_making = false;
+                    controller.glows_failed = true;
+                }
+            },
+        );
+        match started {
+            Ok(()) => self.glows_making = true,
+            // Focus makes them instead, as before.
+            Err(error) => {
+                log::warn!("starting the glow thread failed: {error}");
+                self.glows_failed = true;
+            }
+        }
+    }
+
+    /// A batch from [`Controller::make_glows`] is ready; glows made from an
+    /// app list read since are dropped. A glow focus made meanwhile stays.
+    fn glows_made(&mut self, generation: u64, made: Vec<(TileId, GlowParts)>) {
+        self.glows_making = false;
+        if generation == self.glow_generation {
+            for (id, parts) in made {
+                match &id {
+                    TileId::App(component) => {
+                        self.glows
+                            .entry(component.clone())
+                            .or_insert_with(|| glow_from_parts(parts));
+                    }
+                    _ => {
+                        if let Some(view) = self.builtins.view(&id) {
+                            // Already set when focus was first.
+                            let _ = view.glow.set(glow_from_parts(parts));
+                        }
+                    }
+                }
+            }
+        }
+        self.make_glows();
     }
 
     /// The open folder: its apps, focus and name, and the tile a moving app
@@ -2415,7 +2726,12 @@ impl Controller {
         };
         window.set_folder_name(folder.name.as_str().into());
         window.set_folder_focus(open.focus.map_or(-1, to_i32));
-        let tiles: Vec<TileId> = folder.apps.iter().cloned().map(TileId::App).collect();
+        let tiles: Vec<TileId> = folder
+            .apps
+            .iter()
+            .cloned()
+            .map(order_file::tile_for_name)
+            .collect();
         if tiles != self.folder_shown {
             self.folder_shown = tiles;
             let rows: Vec<TileData> = self
@@ -2501,7 +2817,14 @@ impl Controller {
                     .into_iter()
                     .flat_map(|folder| &folder.apps)
                     .take(4)
-                    .filter_map(|app| self.apps.get(app).map(|view| view.image.clone()))
+                    .filter_map(|name| match self.apps.get(name) {
+                        Some(view) => Some(view.image.clone()),
+                        // A built-in tile shows its banner (PANELS.md § 6).
+                        None => self
+                            .builtins
+                            .view(&order_file::tile_for_name(name.clone()))
+                            .map(|view| view.image.clone()),
+                    })
                     .collect();
                 return TileData {
                     label: folder
@@ -2539,6 +2862,13 @@ impl Controller {
                 return TileData {
                     image: self.builtins.remote.image.clone(),
                     kind: 8,
+                    ..TileData::default()
+                };
+            }
+            TileId::Panel(PanelId::History) => {
+                return TileData {
+                    image: self.builtins.history.image.clone(),
+                    kind: 9,
                     ..TileData::default()
                 };
             }
@@ -2606,11 +2936,18 @@ impl AppView {
     }
 }
 
-/// The banner and hero glow of one of the launcher's own tiles.
+/// The banner and hero glow of one of the launcher's own tiles. The glow
+/// is not made in `Builtins::new`, to keep it off the cold start: a worker
+/// thread makes it after the first frame ([`Controller::make_glows`]), or
+/// the tile's first time in the hero, if that comes first.
 #[derive(Default)]
 struct BuiltinView {
     image: slint::Image,
-    glow: generated::Glow,
+    /// The banner shrunk for [`hero_glow`]; `None` if it had the wrong size.
+    glow_source: Option<Bitmap>,
+    baked: bool,
+    right_to_left: bool,
+    glow: std::cell::OnceCell<generated::Glow>,
 }
 
 impl BuiltinView {
@@ -2624,30 +2961,53 @@ impl BuiltinView {
         };
         Self {
             image: image(&bitmap),
-            glow: hero_glow(
-                &bitmap.shrink(GLOW_SOURCE_SIZE.0, GLOW_SOURCE_SIZE.1),
-                baked,
-                right_to_left,
-            ),
+            glow_source: Some(bitmap.shrink(GLOW_SOURCE_SIZE.0, GLOW_SOURCE_SIZE.1)),
+            baked,
+            right_to_left,
+            glow: std::cell::OnceCell::new(),
         }
+    }
+
+    /// The hero glow, made on the first call if the worker has not made it.
+    fn glow(&self) -> generated::Glow {
+        self.glow
+            .get_or_init(|| {
+                self.glow_source
+                    .as_ref()
+                    .map_or_else(generated::Glow::default, |source| {
+                        hero_glow(source, self.baked, self.right_to_left)
+                    })
+            })
+            .clone()
     }
 }
 
-/// The Settings, RustTV Remote and Hidden apps tiles' banners and glows,
-/// made once.
+/// The About, Settings, RustTV Remote, History and Hidden apps tiles'
+/// banners and glows, made once.
 struct Builtins {
     about: BuiltinView,
     settings: BuiltinView,
     remote: BuiltinView,
+    history: BuiltinView,
     hidden: BuiltinView,
 }
 
 impl Builtins {
+    /// The tiles [`Builtins::view`] has a view of.
+    const IDS: [TileId; 5] = [
+        TileId::About,
+        TileId::Settings,
+        TileId::Remote,
+        TileId::Panel(PanelId::History),
+        TileId::Hidden,
+    ];
+
     fn new(baked: bool, right_to_left: bool) -> Self {
         Self {
             about: BuiltinView::new(ABOUT_BANNER, baked, right_to_left),
             settings: BuiltinView::new(SETTINGS_BANNER, baked, right_to_left),
             remote: BuiltinView::new(REMOTE_BANNER, baked, right_to_left),
+            history: BuiltinView::new(HISTORY_BANNER, baked, right_to_left),
             hidden: BuiltinView::new(HIDDEN_BANNER, baked, right_to_left),
         }
     }
@@ -2658,8 +3018,18 @@ impl Builtins {
             TileId::About => Some(&self.about),
             TileId::Settings => Some(&self.settings),
             TileId::Remote => Some(&self.remote),
+            TileId::Panel(PanelId::History) => Some(&self.history),
             TileId::Hidden => Some(&self.hidden),
             TileId::App(_) | TileId::Folder(_) => None,
+        }
+    }
+
+    /// A picture panel pages may show (convert.rs `PICTURES`), by name; an
+    /// empty one for a name Home doesn't have (a test checks every name).
+    fn page_picture(&self, name: &str) -> slint::Image {
+        match name {
+            "remote-banner" => self.remote.image.clone(),
+            _ => slint::Image::default(),
         }
     }
 }
@@ -2764,9 +3134,10 @@ fn overlay_texts(window: &HomeWindow) -> crate::platform::OverlayTexts {
     }
 }
 
-/// The About page's update line for a status, in the current language
-/// (`Strings.update-line` in home.slint); says what OK does when it isn't a
-/// plain check.
+/// The updater's line for a status in Settings' Updates row, in the current
+/// language (`Strings.update-line` in home.slint; the About page says the
+/// same from its template, a test checks); says what OK does when it isn't
+/// a plain check.
 fn update_line(window: &HomeWindow, status: &UpdateStatus) -> SharedString {
     let (kind, detail) = match status {
         UpdateStatus::Idle => (0, String::new()),
@@ -2808,18 +3179,35 @@ fn input_for_key(text: &str, pressed: bool) -> Option<Input> {
 /// the backdrop is painted once into a small picture; otherwise home.slint
 /// draws it from the other fields.
 fn hero_glow(source: &Bitmap, baked: bool, right_to_left: bool) -> generated::Glow {
+    glow_from_parts(glow_parts(source, baked, right_to_left))
+}
+
+/// What [`hero_glow`] computes, without Slint's types (which stay on the
+/// UI thread), so a worker thread can make it: the glow, and with `baked`
+/// the backdrop's RGB pixels ([`BACKDROP_SIZE`]).
+struct GlowParts {
+    glow: crate::platform::Glow,
+    backdrop: Option<Vec<u8>>,
+}
+
+/// The costly part of [`hero_glow`] (the colour quantization and the baked
+/// backdrop's pixels); any thread.
+fn glow_parts(source: &Bitmap, baked: bool, right_to_left: bool) -> GlowParts {
     let glow = source.glow(BACKDROP_BASE_TONE, BACKDROP_GLOW_TONE);
-    let colour = |[red, green, blue]: [u8; 3]| slint::Color::from_rgb_u8(red, green, blue);
-    let backdrop = if baked {
+    let backdrop = baked.then(|| {
         let (width, height) = BACKDROP_SIZE;
-        slint::Image::from_rgb8(SharedPixelBuffer::clone_from_slice(
-            &glow.paint(width, height, PAGE_COLOUR, right_to_left),
-            width,
-            height,
-        ))
-    } else {
-        slint::Image::default()
-    };
+        glow.paint(width, height, PAGE_COLOUR, right_to_left)
+    });
+    GlowParts { glow, backdrop }
+}
+
+/// The window's glow from [`glow_parts`]; cheap (one small copy).
+fn glow_from_parts(GlowParts { glow, backdrop }: GlowParts) -> generated::Glow {
+    let colour = |[red, green, blue]: [u8; 3]| slint::Color::from_rgb_u8(red, green, blue);
+    let backdrop = backdrop.map_or_else(slint::Image::default, |rgb| {
+        let (width, height) = BACKDROP_SIZE;
+        slint::Image::from_rgb8(SharedPixelBuffer::clone_from_slice(&rgb, width, height))
+    });
     generated::Glow {
         backdrop,
         base: colour(glow.base),
@@ -2841,7 +3229,7 @@ fn image(bitmap: &Bitmap) -> slint::Image {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusttv_remote::protocol::PointerAction;
+    use rusttv_remote::protocol::{Caption, PointerAction};
 
     #[test]
     fn remote_and_keyboard_keys_map_to_inputs() {
@@ -3038,10 +3426,15 @@ mod tests {
 
     /// A screen whose phone remote listens on any free port.
     fn screen_with_remote(order_file: PathBuf) -> Screen {
+        screen_with_remote_on(abc(), order_file)
+    }
+
+    /// [`screen_with_remote`] on `platform`.
+    fn screen_with_remote_on(platform: FakePlatform, order_file: PathBuf) -> Screen {
         thread_local!(static BACKEND: () = i_slint_backend_testing::init_no_event_loop());
         BACKEND.with(|_| {});
         let shared = Shared {
-            platform: Rc::new(RefCell::new(abc())),
+            platform: Rc::new(RefCell::new(platform)),
             ..Shared::default()
         };
         let lifecycle = Lifecycle::default();
@@ -3211,8 +3604,8 @@ mod tests {
             .collect();
         assert_eq!(
             kinds[3..],
-            [3, 6, 8],
-            "A, B, C, About, Settings, RustTV Remote"
+            [3, 6, 8, 9],
+            "A, B, C, About, Settings, RustTV Remote, History"
         );
         for tile in screen
             .window
@@ -3247,7 +3640,7 @@ mod tests {
             .window
             .get_settings_sections()
             .iter()
-            .map(|section| section.to_string())
+            .map(|section| section.title.to_string())
             .collect();
         assert!(
             !sections.iter().any(|section| section == "About"),
@@ -3351,7 +3744,16 @@ mod tests {
             .map(|(id, _)| id.clone())
             .collect();
         let app = |name: &str| TileId::App(format!("{name}/.Main"));
-        assert_eq!(saved, [app("b"), app("a"), app("c"), TileId::Remote]);
+        assert_eq!(
+            saved,
+            [
+                app("b"),
+                app("a"),
+                app("c"),
+                TileId::Remote,
+                TileId::Panel(PanelId::History)
+            ]
+        );
     }
 
     #[test]
@@ -3398,15 +3800,15 @@ mod tests {
         }
         screen.lifecycle.resumed();
         screen.wait(1);
-        // A, B, C loading; RustTV Remote.
-        assert_eq!(screen.kinds(), [4, 4, 4, 8]);
+        // A, B, C loading; RustTV Remote, History.
+        assert_eq!(screen.kinds(), [4, 4, 4, 8, 9]);
         assert_eq!(screen.artwork_calls(), 0);
 
         assert_eq!(screen.shared.platform.borrow().artwork_loaded_calls(), 0);
 
         screen.wait(20);
         screen.wait(20);
-        assert_eq!(screen.kinds(), [0, 0, 0, 8]);
+        assert_eq!(screen.kinds(), [0, 0, 0, 8, 9]);
         assert_eq!(screen.artwork_calls(), 3);
         // Told once, after the last picture, so it can free what it decoded.
         assert_eq!(screen.shared.platform.borrow().artwork_loaded_calls(), 1);
@@ -3425,8 +3827,8 @@ mod tests {
             screen.tap(DOWN);
             screen.tap(OK); // Hide from Home
             assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
-            // A, C, RustTV Remote, Hidden apps; focus on C, where B was.
-            assert_eq!(screen.kinds(), [0, 0, 8, 5]);
+            // A, C, RustTV Remote, History, Hidden apps; focus on C, where B was.
+            assert_eq!(screen.kinds(), [0, 0, 8, 9, 5]);
             assert_eq!(screen.window.get_focused_index(), 1);
             assert!(screen.launched().is_empty());
         }
@@ -3434,10 +3836,10 @@ mod tests {
 
         // Started again, with artwork loaded later as on Android: B's is not read.
         let screen = screen_with(abc().with_lazy_artwork(), Some(file.clone()));
-        assert_eq!(screen.kinds(), [4, 4, 8, 5]);
+        assert_eq!(screen.kinds(), [4, 4, 8, 9, 5]);
         screen.wait(20);
         screen.wait(20);
-        assert_eq!(screen.kinds(), [0, 0, 8, 5]);
+        assert_eq!(screen.kinds(), [0, 0, 8, 9, 5]);
         assert_eq!(screen.artwork_calls(), 2);
 
         // Its page reads it.
@@ -3464,7 +3866,7 @@ mod tests {
         // on it.
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
-        assert_eq!(screen.kinds(), [0, 0, 0, 8]);
+        assert_eq!(screen.kinds(), [0, 0, 0, 8, 9]);
         assert_eq!(screen.window.get_focused_index(), 2);
         assert_eq!(screen.window.get_tiles().row_data(2).unwrap().label, "B");
         assert!(order_file::load(&file).hidden.is_empty());
@@ -3492,6 +3894,12 @@ mod tests {
         assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
     }
 
+    /// A version as templates show it inside text: a left-to-right isolate
+    /// (U+2066 … U+2069, convert.rs `{"ltr": prop}`).
+    fn ltr(text: &str) -> String {
+        format!("\u{2066}{text}\u{2069}")
+    }
+
     /// Opens Settings with a click on its entry in the top-right menu.
     fn click_settings(window: &HomeWindow) {
         let index = window
@@ -3514,6 +3922,57 @@ mod tests {
         screen.tap(RIGHT);
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::About));
+    }
+
+    /// Settings' RustTV row is About's row face (templates/about_row.json),
+    /// and the page's values reach `AboutPanel` (templates/about_page.json).
+    #[test]
+    fn about_row_and_page_come_from_the_about_view() {
+        let screen = screen(None);
+        click_settings(&screen.window);
+        for _ in 0..10 {
+            screen.tap(DOWN);
+        }
+        let first = screen
+            .window
+            .get_settings_rows()
+            .row_data(0)
+            .expect("the RustTV row");
+        assert_eq!(
+            first.title,
+            format!("RustTV {}", ltr(env!("CARGO_PKG_VERSION"))).as_str()
+        );
+        assert_eq!(first.detail, "Third-party notices");
+        assert!(!first.current);
+
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::About));
+        let about = screen.window.global::<AboutPanel>();
+        assert_eq!(about.get_version(), env!("CARGO_PKG_VERSION"));
+        assert_eq!(about.get_update(), "idle");
+        assert_eq!(about.get_update_detail(), "");
+    }
+
+    /// home.slint gives the About page every property its template declares,
+    /// from `AboutPanel`, and its scroll box's.
+    #[test]
+    fn home_binds_every_about_page_property() {
+        let page: serde_json::Value =
+            serde_json::from_str(include_str!("../templates/about_page.json")).expect("JSON");
+        let home = include_str!("../ui/home.slint");
+        let start = home.find("AboutPage {").expect("the About page");
+        let block = &home[start..start + home[start..].find('}').expect("its end")];
+        for prop in page["props"].as_array().expect("props") {
+            let prop = prop.as_str().expect("a name");
+            assert!(
+                block.contains(&format!("{prop}: AboutPanel.{prop};")),
+                "{prop} isn't bound"
+            );
+        }
+        for prop in ["scroll-text", "scroll-position", "scroll-fraction"] {
+            assert!(block.contains(&format!("{prop}: ")), "{prop} isn't bound");
+        }
     }
 
     #[test]
@@ -3651,23 +4110,69 @@ mod tests {
 
     const POLL: u64 = UPDATE_POLL.as_millis() as u64;
 
+    /// What the open About page draws as its updater line (the paragraph of
+    /// templates/about_page.json that selects on `update`), read through
+    /// Slint's test search. Only builds with debug assertions carry the
+    /// element names it needs (build.rs); its tests are ignored elsewhere.
+    fn page_line(window: &HomeWindow) -> String {
+        let page: serde_json::Value =
+            serde_json::from_str(include_str!("../templates/about_page.json")).expect("JSON");
+        let index = panels::updater_line_index(&page);
+        i_slint_backend_testing::ElementHandle::find_by_element_type_name(window, "PageText")
+            .nth(index)
+            .and_then(|line| line.accessible_label())
+            .expect("the About page's updater line")
+            .into()
+    }
+
+    /// The About page and Settings' Updates row say the same for every
+    /// status, each from its own words.
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
+    fn the_about_page_and_settings_word_every_status_alike() {
+        let screen = screen(None);
+        open_about(&screen);
+        for status in &panels::UPDATE_STATUSES {
+            let status = match status {
+                UpdateStatus::Available(_) => UpdateStatus::Available("0.2.0".into()),
+                UpdateStatus::NeedsPermission(_) => UpdateStatus::NeedsPermission("0.2.0".into()),
+                UpdateStatus::Failed(_) => UpdateStatus::Failed("no network".into()),
+                other => other.clone(),
+            };
+            show_about_panel(&screen.window, &status);
+            assert_eq!(
+                page_line(&screen.window),
+                update_line(&screen.window, &status).as_str(),
+                "{status:?}"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn ok_on_about_checks_for_updates_when_none_is_known() {
         let screen = screen(None);
         open_about(&screen);
-        assert_eq!(
-            screen.window.get_update_status(),
-            "Press OK to check for updates"
-        );
+        assert_eq!(page_line(&screen.window), "Press OK to check for updates");
 
         screen.tap(OK);
         assert_eq!(screen.update_calls(), (1, 0));
-        assert_eq!(screen.window.get_update_status(), "Up to date");
+        assert_eq!(page_line(&screen.window), "Up to date");
         assert!(!screen.window.get_update_available());
         assert_eq!(screen.window.get_mode(), mode_value(State::About));
     }
 
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn an_available_update_shows_a_dot_and_ok_on_about_installs_it() {
         let mut platform = abc();
         platform.set_update_status(UpdateStatus::Available("0.2.0".into()));
@@ -3676,12 +4181,12 @@ mod tests {
 
         open_about(&screen);
         assert_eq!(
-            screen.window.get_update_status(),
-            "Version 0.2.0 available — press OK to install"
+            page_line(&screen.window),
+            format!("Version {} available — press OK to install", ltr("0.2.0"))
         );
         screen.tap(OK);
         assert_eq!(screen.update_calls(), (0, 1));
-        assert_eq!(screen.window.get_update_status(), "Installing…");
+        assert_eq!(page_line(&screen.window), "Installing…");
         assert!(!screen.window.get_update_available());
 
         // OK while it runs does nothing.
@@ -3692,20 +4197,27 @@ mod tests {
         screen.set_update(UpdateStatus::Failed("Android refused it".into()));
         screen.wait(POLL + 1);
         assert_eq!(
-            screen.window.get_update_status(),
+            page_line(&screen.window),
             "Update failed: Android refused it"
         );
     }
 
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn without_install_permission_ok_asks_again_after_it_is_granted() {
         let mut platform = abc();
         platform.set_update_status(UpdateStatus::NeedsPermission("0.2.0".into()));
         let screen = screen_with(platform, None);
         open_about(&screen);
         assert_eq!(
-            screen.window.get_update_status(),
-            "Allow RustTV to install apps, then press OK to install 0.2.0"
+            page_line(&screen.window),
+            format!(
+                "Allow RustTV to install apps, then press OK to install {}",
+                ltr("0.2.0")
+            )
         );
         assert!(screen.window.get_update_available());
         screen.tap(OK);
@@ -3736,12 +4248,344 @@ mod tests {
     }
 
     #[test]
+    fn the_about_tile_caption_follows_the_update_without_redrawing_home() {
+        let screen = screen(None);
+        let about = screen.window.global::<AboutPanel>();
+        assert_eq!(about.get_version(), env!("CARGO_PKG_VERSION"));
+        assert_eq!(about.get_status(), "");
+        let tiles = screen.window.get_tiles();
+        let before: Vec<TileData> = tiles.iter().collect();
+        let artwork = screen.artwork_calls();
+
+        screen.set_update(UpdateStatus::Available("0.2.0".into()));
+        screen.come_back();
+        assert_eq!(about.get_status(), "update");
+        // Settings keeps its dot; About shows the caption instead.
+        assert!(screen.window.get_update_available());
+
+        screen.set_update(UpdateStatus::Downloading(30));
+        screen.come_back();
+        assert_eq!(about.get_status(), "downloading");
+        screen.set_update(UpdateStatus::Failed("no network".into()));
+        screen.wait(POLL + 1);
+        assert_eq!(about.get_status(), "");
+
+        // Only the two globals changed: same tile rows, no artwork asked for.
+        let after: Vec<TileData> = screen.window.get_tiles().iter().collect();
+        assert_eq!(before, after);
+        assert_eq!(screen.artwork_calls(), artwork);
+    }
+
+    /// Every picture a page template may name (convert.rs `PICTURES`, the
+    /// generated `Pictures` global) is one Home has.
+    #[test]
+    fn every_page_picture_is_one_home_has() {
+        let builtins = Builtins::new(false, false);
+        for name in crate::template_convert::PICTURES {
+            assert!(builtins.page_picture(name).size().width > 0, "{name}");
+        }
+        assert_eq!(builtins.page_picture("nope").size().width, 0);
+    }
+
+    /// A built-in tile's hero glow waits for its first use (cold start),
+    /// then is the one made from its banner, once.
+    #[test]
+    fn builtin_glow_is_made_when_first_needed() {
+        let view = BuiltinView::new(HISTORY_BANNER, false, false);
+        assert!(view.glow.get().is_none());
+        let expected = hero_glow(
+            view.glow_source.as_ref().expect("the banner has its size"),
+            false,
+            false,
+        );
+        let glow = view.glow();
+        assert!(view.glow.get().is_some());
+        assert_eq!(glow.color, expected.color);
+        assert_eq!(glow.base, expected.base);
+        assert_eq!(
+            (glow.x, glow.y, glow.strength),
+            (expected.x, expected.y, expected.strength)
+        );
+    }
+
+    /// After the first hero (which follows the first frame), a worker
+    /// thread makes every glow, so no tile's first focus makes one in a
+    /// frame; focus never moved here.
+    #[test]
+    fn glows_are_made_off_the_ui_thread_after_the_first_hero() {
+        let screen = screen(None);
+        {
+            let controller = screen._controller.borrow();
+            assert!(controller.builtins.history.glow.get().is_none());
+        }
+        screen.wait(HERO_DELAY.as_millis() as u64 + 1);
+        let all_made = || {
+            let controller = screen._controller.borrow();
+            Builtins::IDS.iter().all(|id| {
+                controller
+                    .builtins
+                    .view(id)
+                    .is_some_and(|view| view.glow.get().is_some())
+            }) && !controller.glows_making
+        };
+        for _ in 0..500 {
+            if all_made() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+            screen.wait(16);
+        }
+        assert!(all_made());
+        assert_eq!(screen.window.get_focused_index(), 0);
+    }
+
+    /// The banner's shadow picture build.rs blurs has the size home.slint
+    /// draws it at, is clear at its corners and darkest under the card.
+    #[test]
+    fn the_banner_shadow_is_the_size_home_draws() {
+        let (width, height) = BANNER_SHADOW_SIZE;
+        assert_eq!(BANNER_SHADOW.len(), (width * height * 4) as usize);
+        let alpha = |x: u32, y: u32| BANNER_SHADOW[((y * width + x) * 4 + 3) as usize];
+        assert_eq!(alpha(0, 0), 0);
+        assert_eq!(alpha(width / 2, height / 2), 128);
+    }
+
+    /// Glows a batch made from an app list read since are dropped.
+    #[test]
+    fn glows_from_an_older_app_list_are_dropped() {
+        let screen = screen(None);
+        let mut controller = screen._controller.borrow_mut();
+        controller.glow_generation += 1;
+        let parts = glow_parts(
+            &Bitmap::new(1, 1, vec![200, 40, 40, 255]).expect("one pixel"),
+            false,
+            false,
+        );
+        let old = controller.glow_generation - 1;
+        controller.glows_made(old, vec![(TileId::App("a/.Main".to_owned()), parts)]);
+        assert!(controller.glows.is_empty());
+    }
+
+    /// The RustTV Remote page (templates/remote_page.json) takes the
+    /// pointer on its rows, as before it was a template: hovering a row
+    /// focuses it, a click presses OK there; nothing reaches it behind the
+    /// pairing screen. home.slint binds what the page's template needs.
+    #[test]
+    fn the_remote_page_rows_take_the_pointer() {
+        let home = include_str!("../ui/home.slint");
+        let start = home.find("RemotePage {").expect("the Remote page");
+        let mut depth = 0;
+        let end = home[start..]
+            .char_indices()
+            .find(|&(_, c)| {
+                depth += match c {
+                    '{' => 1,
+                    '}' => -1,
+                    _ => 0,
+                };
+                c == '}' && depth == 0
+            })
+            .map(|(i, _)| start + i)
+            .expect("its end");
+        let block = &home[start..end];
+        for bound in [
+            "header-status: settings-status;",
+            "rows-model: remote-rows;",
+            "rows-focus: remote-row;",
+            "rows-first: remote-first-row;",
+            "root.list-pointer(2, index, action);",
+        ] {
+            assert!(block.contains(bound), "{bound} isn't bound");
+        }
+
+        let dir = temp_dir("remote-pointer");
+        let screen = screen_with_remote(dir.join("order.toml"));
+        // A, B, C, RustTV Remote (its own page), History.
+        for _ in 0..3 {
+            screen.tap(RIGHT);
+        }
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Remote));
+        assert_eq!(screen.window.get_remote_row(), 0);
+        let rows = screen.window.get_remote_rows();
+        assert_eq!(rows.row_count(), 2, "Pair a phone, Pointer in other apps");
+        // The pointer row is dim where there is no pointer service.
+        assert!(rows.row_data(1).expect("the pointer row").dim);
+
+        // Where a row's middle is (blocks.slint): the surface panel starts
+        // at 720 u, 260 u under a header; rows start 24 u into it, 104 u
+        // apart, 96 u tall. The window is 1920 u wide.
+        let u = screen.window.window().size().width as f32
+            / screen.window.window().scale_factor()
+            / 1920.0;
+        let row = |index: f32| {
+            slint::LogicalPosition::new(
+                (720.0 + 200.0) * u,
+                (260.0 + 24.0 + 104.0 * index + 48.0) * u,
+            )
+        };
+        let hover = |position| {
+            screen
+                .window
+                .window()
+                .dispatch_event(WindowEvent::PointerMoved { position });
+        };
+        hover(row(1.0));
+        assert_eq!(screen.window.get_remote_row(), 1, "hover focuses the row");
+        // A click on "Pair a phone" presses OK there: the pairing screen.
+        hover(row(0.0));
+        let button = slint::platform::PointerEventButton::Left;
+        screen
+            .window
+            .window()
+            .dispatch_event(WindowEvent::PointerPressed {
+                position: row(0.0),
+                button,
+            });
+        screen
+            .window
+            .window()
+            .dispatch_event(WindowEvent::PointerReleased {
+                position: row(0.0),
+                button,
+            });
+        assert_eq!(screen.window.get_mode(), 9, "the pairing screen opens");
+        // Behind it, the rows take no pointer.
+        hover(row(1.0));
+        assert_eq!(screen.window.get_remote_row(), 0);
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Remote));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// The RustTV Remote tile shows the paired phones' count, and "Pairing"
+    /// while pairing is open, from the remote's events and pairing's own
+    /// time limit: two globals, never the tile list.
+    #[test]
+    fn the_remote_tile_follows_pairing_without_redrawing_home() {
+        let dir = temp_dir("remote-tile");
+        // One phone paired before Home starts (its keys made up).
+        let phone = rusttv_remote::PhoneId([1; 16]);
+        std::fs::create_dir_all(dir.join("remote")).unwrap();
+        std::fs::write(
+            dir.join("remote/phones.toml"),
+            format!(
+                "format = 1\n\n[[phone]]\nid = \"{phone}\"\nname = \"Pixel\"\nauth = \"{}\"\nkey = \"{}\"\npaired_at = 0\n",
+                "02".repeat(32),
+                "03".repeat(32)
+            ),
+        )
+        .unwrap();
+        let screen = screen_with_remote(dir.join("order.toml"));
+        let remote = screen.window.global::<RemotePanel>();
+        assert_eq!(remote.get_phones(), "1");
+        assert_eq!(remote.get_status(), "");
+        let before: Vec<TileData> = screen.window.get_tiles().iter().collect();
+        let artwork = screen.artwork_calls();
+
+        let opened = || {
+            let mut controller = screen._controller.borrow_mut();
+            controller.pairing_opened();
+            controller.show_remote_panel();
+        };
+        opened();
+        assert_eq!(remote.get_status(), "pairing");
+        // Too many wrong tries close it.
+        screen
+            ._controller
+            .borrow_mut()
+            .remote_event(RemoteEvent::PairingClosed);
+        assert_eq!(remote.get_status(), "");
+        // A phone paired: the listener spent the secret.
+        opened();
+        screen
+            ._controller
+            .borrow_mut()
+            .remote_event(RemoteEvent::Paired(rusttv_remote::PhoneId([2; 16])));
+        assert_eq!(remote.get_status(), "");
+        // Nothing happened: the secret runs out.
+        opened();
+        screen.wait(rusttv_remote::PAIRING_TIME.as_millis() as u64 - 1);
+        assert_eq!(remote.get_status(), "pairing");
+        screen.wait(2);
+        assert_eq!(remote.get_status(), "");
+        // The phone removed (OK twice on its row): none left.
+        assert_eq!(remote.get_phones(), "1");
+        screen._controller.borrow_mut().remove_phone(phone);
+        assert_eq!(remote.get_phones(), "0");
+
+        let after: Vec<TileData> = screen.window.get_tiles().iter().collect();
+        assert_eq!(before, after);
+        assert_eq!(screen.artwork_calls(), artwork);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_phones_see_the_about_caption_as_the_update_changes() {
+        let dir = temp_dir("remote-caption");
+        // Without a top-right menu (Android), About is a tile on Home.
+        let screen = screen_with_remote_on(abc().without_menu(), dir.join("order.toml"));
+        screen._controller.borrow_mut().start_remote_now(true);
+        let caption = || {
+            let controller = screen._controller.borrow();
+            let link = controller.remote.as_ref().expect("the listener runs");
+            match link.last() {
+                Some(TvMessage::Home(view)) => {
+                    view.tiles
+                        .iter()
+                        .find(|tile| tile.id == "about")
+                        .expect("About is on Home")
+                        .caption
+                }
+                other => panic!("no Home view sent: {other:?}"),
+            }
+        };
+        screen.come_back();
+        assert_eq!(caption(), None);
+
+        // Resuming reads the status, as on the TV.
+        screen.set_update(UpdateStatus::Available("0.2.0".into()));
+        screen.come_back();
+        assert_eq!(caption(), Some(Caption::Update));
+        screen.set_update(UpdateStatus::Downloading(30));
+        screen.come_back();
+        assert_eq!(caption(), Some(Caption::Downloading));
+        // While another app is in front the phones show that app; coming
+        // back to RustTV sends Home with the current caption.
+        screen.lifecycle.paused();
+        screen.wait(1);
+        screen.set_update(UpdateStatus::Installing);
+        screen.wait(POLL + 1);
+        {
+            let controller = screen._controller.borrow();
+            let link = controller.remote.as_ref().expect("the listener runs");
+            assert!(
+                matches!(link.last(), Some(TvMessage::App(_))),
+                "{:?}",
+                link.last()
+            );
+        }
+        screen.come_back();
+        assert_eq!(caption(), Some(Caption::Installing));
+        // In front, the poll that follows a running step pushes a change
+        // at once.
+        screen.set_update(UpdateStatus::Failed("no network".into()));
+        screen.wait(POLL + 1);
+        assert_eq!(caption(), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn about_shows_download_progress_as_it_comes() {
         let screen = screen(None);
         open_about(&screen);
         screen.set_update(UpdateStatus::Downloading(40));
         screen.wait(POLL + 1);
-        assert_eq!(screen.window.get_update_status(), "Downloading 40%");
+        assert_eq!(page_line(&screen.window), "Downloading 40%");
 
         // Closed while it runs: still followed, so the dot is right when it ends.
         screen.tap(BACK);
@@ -3753,23 +4597,110 @@ mod tests {
     // --- languages ---
 
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn a_device_language_with_a_translation_shows_it() {
         let screen = screen_in(abc(), None, Some("uk-UA"));
         open_about(&screen);
-        let line = screen.window.get_update_status();
+        let line = page_line(&screen.window);
         assert!(!line.is_empty());
         assert_ne!(line, "Press OK to check for updates");
         assert!(!screen.window.global::<Dir>().get_rtl());
     }
 
     #[test]
+    #[cfg_attr(
+        not(debug_assertions),
+        ignore = "reads the drawn page, which needs Slint's debug info (build.rs)"
+    )]
     fn a_language_without_a_translation_falls_back_to_english() {
         let screen = screen_in(abc(), None, Some("sv-SE"));
         open_about(&screen);
-        assert_eq!(
-            screen.window.get_update_status(),
-            "Press OK to check for updates"
-        );
+        assert_eq!(page_line(&screen.window), "Press OK to check for updates");
+    }
+
+    /// History's ages take each language's plural forms (gettext's, through
+    /// the templates' `plural`), here through its row face's functions:
+    /// English's two, Ukrainian's and Polish's three, French's (0 and 1
+    /// singular), Arabic's six.
+    #[test]
+    fn history_ages_take_each_languages_plural_forms() {
+        /// A language and its (status, count, words) cases.
+        type Ages<'a> = (Option<&'a str>, &'a [(&'a str, &'a str, &'a str)]);
+        let cases: [Ages<'_>; 5] = [
+            (
+                None,
+                &[
+                    ("hours", "1", "1 hour ago"),
+                    ("hours", "2", "2 hours ago"),
+                    ("minutes", "1", "1 minute ago"),
+                    ("days", "12", "12 days ago"),
+                    ("now", "0", "Just now"),
+                ],
+            ),
+            (
+                Some("uk-UA"),
+                &[
+                    ("hours", "1", "1 годину тому"),
+                    ("hours", "3", "3 години тому"),
+                    ("hours", "5", "5 годин тому"),
+                    ("hours", "11", "11 годин тому"),
+                    ("hours", "21", "21 годину тому"),
+                    ("days", "22", "22 дні тому"),
+                    ("minutes", "2", "2 хвилини тому"),
+                    ("minutes", "12", "12 хвилин тому"),
+                ],
+            ),
+            (
+                Some("pl-PL"),
+                &[
+                    ("minutes", "1", "1 minutę temu"),
+                    ("minutes", "4", "4 minuty temu"),
+                    ("minutes", "5", "5 minut temu"),
+                    ("minutes", "22", "22 minuty temu"),
+                    ("hours", "12", "12 godzin temu"),
+                ],
+            ),
+            (
+                Some("fr-FR"),
+                &[
+                    ("days", "1", "il y a 1 jour"),
+                    ("days", "2", "il y a 2 jours"),
+                ],
+            ),
+            (
+                Some("ar-EG"),
+                &[
+                    ("hours", "1", "قبل ساعة"),
+                    ("hours", "2", "قبل ساعتين"),
+                    ("hours", "3", "قبل 3 ساعات"),
+                    ("hours", "11", "قبل 11 ساعة"),
+                    ("days", "100", "قبل 100 يوم"),
+                    ("minutes", "2", "قبل دقيقتين"),
+                    ("minutes", "15", "قبل 15 دقيقة"),
+                ],
+            ),
+        ];
+        for (language, ages) in cases {
+            let screen = screen_in(abc(), None, language);
+            let row = screen.window.global::<HistoryListRow>();
+            for (status, count, want) in ages {
+                assert_eq!(
+                    row.invoke_detail((*status).into(), (*count).into()),
+                    *want,
+                    "{language:?} {status} {count}"
+                );
+            }
+            // Its title is the History section's name, in every language.
+            assert_eq!(
+                row.invoke_title("hours".into(), "2".into()),
+                screen.window.global::<Strings>().invoke_section_name(2)
+            );
+            assert!(row.invoke_attention("waiting".into(), "0".into()));
+            assert!(!row.invoke_attention("hours".into(), "2".into()));
+        }
     }
 
     #[test]
@@ -3836,7 +4767,7 @@ mod tests {
                 std::env::temp_dir().join(format!("rusttv-ui-history-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
-            crate::history::desktop::start(dir.clone());
+            crate::history::desktop::start(dir.clone(), true);
             dir
         });
         (dir.clone(), guard)
@@ -3924,6 +4855,517 @@ mod tests {
             ]
         );
         assert_eq!(controller.home.state(), State::Browse);
+    }
+
+    // --- Home's own faces: the status corner, banners, the idle screen ---
+
+    impl Screen {
+        /// Rests on Home until the idle screen's time: the sway, its end,
+        /// then the rest of [`faces_view::AMBIENT_AFTER`].
+        fn rest(&self) {
+            self.wait(SWAY_AFTER.as_millis() as u64 + 1);
+            self.wait((SWAY_UNTIL - SWAY_AFTER).as_millis() as u64 + 1);
+            self.wait((faces_view::AMBIENT_AFTER - SWAY_UNTIL).as_millis() as u64 + 1);
+        }
+
+        fn glyphs(&self) -> usize {
+            self.window.get_corner_glyphs().row_count()
+        }
+
+        fn banner(&self) -> Option<(String, String)> {
+            self.window.get_banner_shown().then(|| {
+                (
+                    self.window.get_banner_title().to_string(),
+                    self.window.get_banner_detail().to_string(),
+                )
+            })
+        }
+    }
+
+    /// The clock is "H:MM" or "HH:MM", set at start and again each minute.
+    #[test]
+    fn the_status_corner_has_the_clock() {
+        let screen = screen(None);
+        let clock = screen.window.get_clock_text();
+        let (hours, minutes) = clock.split_once(':').expect("H:MM");
+        assert!((1..=2).contains(&hours.len()), "{clock}");
+        assert!(
+            hours
+                .chars()
+                .chain(minutes.chars())
+                .all(|c| c.is_ascii_digit()),
+            "{clock}"
+        );
+        assert_eq!(minutes.len(), 2, "{clock}");
+        // A minute later the timer set it again (the same text or the next).
+        screen.window.set_clock_text("".into());
+        screen.wait(61_000);
+        assert!(!screen.window.get_clock_text().is_empty());
+        assert!(!screen.window.get_ambient_shown());
+    }
+
+    /// Panels that need attention put their badge in the corner, at most
+    /// two, About's first; the rest of the time it is the clock alone.
+    #[test]
+    fn the_status_corner_shows_at_most_two_attention_glyphs() {
+        let screen = screen(None);
+        assert_eq!(screen.glyphs(), 0);
+        // Downloading is the person's own doing: no glyph.
+        screen.set_update(UpdateStatus::Downloading(10));
+        screen.come_back();
+        assert_eq!(screen.glyphs(), 0);
+        screen.set_update(UpdateStatus::Available("9.9.9".into()));
+        screen.come_back();
+        assert_eq!(screen.glyphs(), 1);
+        {
+            let mut controller = screen._controller.borrow_mut();
+            controller.history.0 = Some(crate::history::Summary {
+                last_unix: None,
+                pending: 1,
+            });
+            controller.show_faces();
+        }
+        assert_eq!(screen.glyphs(), 2);
+        let about = screen.window.global::<AboutCorner>().get_badge();
+        assert_eq!(screen.window.get_corner_glyphs().row_data(0), Some(about));
+        // Pairing open too: still two.
+        {
+            let controller = screen._controller.borrow();
+            controller
+                .pairing_timer
+                .start(TimerMode::SingleShot, Duration::from_secs(60), || {});
+            controller.show_remote_panel();
+        }
+        assert_eq!(screen.glyphs(), 2);
+        let remote = screen.window.global::<RemoteCorner>().get_badge();
+        assert_eq!(
+            screen.window.get_corner_glyphs().row_data(1),
+            Some(remote.clone())
+        );
+        screen
+            ._controller
+            .borrow_mut()
+            .show_update(UpdateStatus::UpToDate);
+        let history = screen.window.global::<HistoryCorner>().get_badge();
+        assert_eq!(
+            screen.window.get_corner_glyphs().iter().collect::<Vec<_>>(),
+            [remote, history]
+        );
+    }
+
+    /// An update that becomes available shows About's banner once, over
+    /// Home only: it goes at once when the menu opens over Home, comes back
+    /// whole when Home is alone again, and leaves after its four seconds;
+    /// the next waits for it.
+    #[test]
+    fn banners_show_one_at_a_time_over_plain_home() {
+        let screen = screen(None);
+        assert_eq!(screen.banner(), None);
+        screen.set_update(UpdateStatus::Checking);
+        screen.come_back();
+        assert_eq!(screen.banner(), None);
+        screen.set_update(UpdateStatus::Available("9.9.9".into()));
+        screen.come_back();
+        assert_eq!(
+            screen.banner(),
+            Some((
+                "Update available".into(),
+                "RustTV \u{2066}9.9.9\u{2069}".into()
+            ))
+        );
+        // Still available: no second banner.
+        screen.come_back();
+        screen
+            ._controller
+            .borrow_mut()
+            .queue_banner(faces_view::Panel::Remote, &panels::remote_banner("Pixel"));
+        // The menu over Home takes the banner away; it waits.
+        screen.key(OK, true);
+        screen.wait(LONG_PRESS.as_millis() as u64 + 50);
+        screen.key(OK, false);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Menu));
+        assert_eq!(screen.banner(), None);
+        screen.wait(5_000);
+        assert_eq!(screen.banner(), None, "never over the menu");
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert_eq!(
+            screen.banner().map(|b| b.0),
+            Some("Update available".into())
+        );
+        screen.wait(3_000);
+        assert!(screen.banner().is_some(), "four seconds");
+        screen.wait(1_100);
+        assert_eq!(screen.banner(), None);
+        screen.wait(500);
+        assert_eq!(
+            screen.banner(),
+            Some((
+                "\u{2068}Pixel\u{2069} connected".into(),
+                "RustTV Remote".into()
+            ))
+        );
+        screen.wait(4_100);
+        screen.wait(500);
+        assert_eq!(screen.banner(), None, "the queue is empty");
+    }
+
+    /// Banners from while the launcher is away are dropped; one on screen
+    /// goes when it leaves, and never shows over a page (the review screen
+    /// opens over Settings, a page: `home_alone`).
+    #[test]
+    fn banners_never_cover_another_app_a_page_or_the_review() {
+        let screen = screen(None);
+        screen.lifecycle.paused();
+        screen.wait(1);
+        screen
+            ._controller
+            .borrow_mut()
+            .queue_banner(faces_view::Panel::Remote, &panels::remote_banner("Pixel"));
+        screen.come_back();
+        assert_eq!(screen.banner(), None, "an event from while away is dropped");
+        screen
+            ._controller
+            .borrow_mut()
+            .queue_banner(faces_view::Panel::Remote, &panels::remote_banner("Pixel"));
+        assert!(screen.banner().is_some());
+        // Away with a banner on screen: it goes, and doesn't come back.
+        screen.lifecycle.paused();
+        screen.wait(1);
+        assert_eq!(screen.banner(), None);
+        screen.come_back();
+        screen.wait(5_000);
+        assert_eq!(screen.banner(), None);
+        // A page: Settings, from the top-right menu.
+        screen
+            ._controller
+            .borrow_mut()
+            .queue_banner(faces_view::Panel::Remote, &panels::remote_banner("Pixel"));
+        assert!(screen.banner().is_some());
+        click_settings(&screen.window);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        assert_eq!(screen.banner(), None);
+        // However long the page stays open.
+        screen.wait(5_000);
+        assert_eq!(screen.banner(), None);
+        // Back on Home it shows, whole.
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert!(screen.banner().is_some());
+    }
+
+    /// History's banner when the computer applied a waiting change, with
+    /// the count in the language's plural form; none when it ran out.
+    #[test]
+    fn the_computer_applying_waiting_changes_makes_a_banner() {
+        let screen = screen(None);
+        let before = crate::history::Summary {
+            last_unix: Some(panels::CLOCK_SET_AFTER),
+            pending: 2,
+        };
+        {
+            let mut controller = screen._controller.borrow_mut();
+            controller.history.0 = Some(crate::history::Summary {
+                pending: 0,
+                ..before
+            });
+            controller.history_summary_changed(Some(before));
+        }
+        assert_eq!(screen.banner(), None, "ran out: no new entry");
+        {
+            let mut controller = screen._controller.borrow_mut();
+            controller.history.0 = Some(crate::history::Summary {
+                last_unix: Some(panels::CLOCK_SET_AFTER + 60),
+                pending: 1,
+            });
+            controller.history_summary_changed(Some(before));
+        }
+        assert_eq!(
+            screen.banner(),
+            Some(("Your computer applied 1 change".into(), "History".into()))
+        );
+    }
+
+    /// A phone's connection makes RustTV Remote's banner with its name,
+    /// once per phone.
+    #[test]
+    fn a_phone_connecting_makes_a_banner_once() {
+        let dir = temp_dir("faces-phone");
+        let phone = rusttv_remote::PhoneId([1; 16]);
+        std::fs::create_dir_all(dir.join("remote")).unwrap();
+        std::fs::write(
+            dir.join("remote/phones.toml"),
+            format!(
+                "format = 1\n\n[[phone]]\nid = \"{phone}\"\nname = \"Pixel\"\nauth = \"{}\"\nkey = \"{}\"\npaired_at = 0\n",
+                "02".repeat(32),
+                "03".repeat(32)
+            ),
+        )
+        .unwrap();
+        let screen = screen_with_remote(dir.join("order.toml"));
+        let event = |event| screen._controller.borrow_mut().remote_event(event);
+        event(RemoteEvent::Connected(phone));
+        assert_eq!(
+            screen.banner(),
+            Some((
+                "\u{2068}Pixel\u{2069} connected".into(),
+                "RustTV Remote".into()
+            ))
+        );
+        screen.wait(4_100);
+        screen.wait(500);
+        event(RemoteEvent::Disconnected(phone));
+        event(RemoteEvent::Connected(phone));
+        assert_eq!(screen.banner(), None, "one banner per phone");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// After five minutes on Home the idle screen comes, with the panels'
+    /// lines; a key wakes Home and does nothing else (its release neither),
+    /// and the wait starts again.
+    #[test]
+    fn the_idle_screen_comes_after_a_rest_and_a_key_only_wakes_it() {
+        let screen = screen(None);
+        screen.set_update(UpdateStatus::Available("9.9.9".into()));
+        screen.come_back();
+        screen.rest();
+        assert!(screen.window.get_ambient_shown());
+        assert_eq!(screen.banner(), None, "no banner over the idle screen");
+        // About's line first (History's follows once its summary is read).
+        let lines: Vec<AmbientLine> = screen.window.get_ambient_lines().iter().collect();
+        assert_eq!(lines[0].text, "Update available");
+        assert_eq!(
+            lines[0].badge,
+            screen.window.global::<AboutAmbient>().get_badge()
+        );
+        let drift = screen.window.get_ambient_drift();
+        screen.wait(61_000);
+        assert_ne!(
+            screen.window.get_ambient_drift(),
+            drift,
+            "it moves each minute"
+        );
+        let focus = screen._controller.borrow().home.focus();
+        screen.key(RIGHT, true);
+        assert!(!screen.window.get_ambient_shown());
+        screen.key(RIGHT, false);
+        assert_eq!(screen._controller.borrow().home.focus(), focus);
+        // OK wakes it without launching, also on its release.
+        screen.rest();
+        assert!(screen.window.get_ambient_shown());
+        screen.tap(OK);
+        assert!(!screen.window.get_ambient_shown());
+        assert!(screen.launched().is_empty());
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        // The next key acts again.
+        screen.tap(RIGHT);
+        assert_eq!(screen._controller.borrow().home.focus(), focus + 1);
+    }
+
+    /// The pointer and a phone wake it too, and reach nothing behind it.
+    #[test]
+    fn the_pointer_and_phones_wake_the_idle_screen() {
+        let screen = screen(None);
+        screen.rest();
+        assert!(screen.window.get_ambient_shown());
+        screen.window.invoke_ambient_woken();
+        assert!(!screen.window.get_ambient_shown());
+        screen.rest();
+        let focus = screen._controller.borrow().home.focus();
+        phone_says(
+            &screen,
+            PhoneMessage::Key {
+                name: PhoneKey::Right,
+                action: KeyAction::Press,
+            },
+        );
+        assert!(!screen.window.get_ambient_shown());
+        assert_eq!(screen._controller.borrow().home.focus(), focus);
+        assert!(screen.launched().is_empty());
+    }
+
+    /// Never over another app, a page or a menu; it goes when the launcher
+    /// leaves (the TV's own screensaver pauses it); off in Settings.
+    #[test]
+    fn the_idle_screen_only_comes_over_plain_home_and_can_be_off() {
+        let screen = screen(None);
+        screen.key(OK, true);
+        screen.wait(LONG_PRESS.as_millis() as u64 + 50);
+        screen.key(OK, false);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Menu));
+        screen.rest();
+        assert!(!screen.window.get_ambient_shown(), "not over the menu");
+        screen.tap(BACK);
+        screen.rest();
+        assert!(screen.window.get_ambient_shown());
+        // The TV dreams (or an app opens): the launcher pauses.
+        screen.lifecycle.paused();
+        screen.wait(1);
+        assert!(!screen.window.get_ambient_shown());
+        screen.rest();
+        assert!(!screen.window.get_ambient_shown(), "never while away");
+        // Back on Home it comes after a rest from then.
+        screen.come_back();
+        screen.wait((faces_view::AMBIENT_AFTER).as_millis() as u64 + 1);
+        assert!(screen.window.get_ambient_shown());
+        screen.tap(LEFT);
+        // Settings → Idle screen → Off.
+        screen._controller.borrow_mut().set_ambient_setting(true);
+        screen.rest();
+        assert!(!screen.window.get_ambient_shown());
+        screen._controller.borrow_mut().set_ambient_setting(false);
+        screen.tap(LEFT);
+        screen.rest();
+        assert!(screen.window.get_ambient_shown());
+    }
+
+    /// A banner that comes while the idle screen is up waits for Home to
+    /// wake; the idle screen never comes while the launcher is away; a
+    /// volume key wakes it and still changes the volume.
+    #[test]
+    fn the_idle_screen_holds_banners_and_a_volume_key_wakes_it() {
+        let platform = abc().with_device();
+        let device = platform.device().unwrap();
+        let screen = screen_with(platform, None);
+        screen.rest();
+        assert!(screen.window.get_ambient_shown());
+        let pixel = || panels::remote_banner("Pixel");
+        screen
+            ._controller
+            .borrow_mut()
+            .queue_banner(faces_view::Panel::Remote, &pixel());
+        assert_eq!(screen.banner(), None, "never over the idle screen");
+        // However long the idle screen stays: it is news when Home wakes.
+        screen.wait(60_000);
+        screen
+            ._controller
+            .borrow_mut()
+            .volume_key(crate::device::VolumeChange::Up);
+        assert!(!screen.window.get_ambient_shown());
+        assert!(screen.banner().is_some(), "it shows once Home is awake");
+        settle(&screen);
+        assert_eq!(device.changes(), ["volume Up"]);
+        // Away: entering it does nothing.
+        screen.lifecycle.paused();
+        screen.wait(1);
+        screen._controller.borrow_mut().enter_ambient();
+        assert!(!screen.window.get_ambient_shown());
+        assert!(
+            !screen._controller.borrow().idle_timer.running(),
+            "no wait armed while away"
+        );
+    }
+
+    /// The key that woke the idle screen is swallowed with its repeats and
+    /// release; a different key acts.
+    #[test]
+    fn a_held_key_that_wakes_the_idle_screen_does_nothing_else() {
+        let screen = screen(None);
+        screen.rest();
+        let focus = screen._controller.borrow().home.focus();
+        screen.key(RIGHT, true);
+        for _ in 0..3 {
+            screen
+                .window
+                .window()
+                .dispatch_event(WindowEvent::KeyPressRepeated { text: RIGHT.into() });
+        }
+        screen.key(RIGHT, false);
+        assert_eq!(screen._controller.borrow().home.focus(), focus);
+        assert!(screen._controller.borrow().faces.ambient_key.is_none());
+        screen.tap(RIGHT);
+        assert_eq!(screen._controller.borrow().home.focus(), focus + 1);
+    }
+
+    /// At most four banners wait (the oldest waiting one goes), and one
+    /// that waited over half a minute is old news.
+    #[test]
+    fn the_banner_queue_keeps_four_and_drops_old_news() {
+        let screen = screen(None);
+        let queue = |name| {
+            screen
+                ._controller
+                .borrow_mut()
+                .queue_banner(faces_view::Panel::Remote, &panels::remote_banner(name));
+        };
+        click_settings(&screen.window);
+        for name in ["A", "B", "C", "D", "E"] {
+            queue(name);
+        }
+        screen.tap(BACK);
+        for name in ["B", "C", "D", "E"] {
+            let title = format!("\u{2068}{name}\u{2069} connected");
+            assert_eq!(screen.banner().map(|b| b.0), Some(title));
+            screen.wait(4_100);
+            screen.wait(500);
+        }
+        assert_eq!(screen.banner(), None);
+        // One that waited over 30 s behind a page: dropped.
+        click_settings(&screen.window);
+        queue("F");
+        screen.wait(31_000);
+        screen.tap(BACK);
+        assert_eq!(screen.banner(), None);
+        screen.wait(5_000);
+        assert_eq!(screen.banner(), None);
+    }
+
+    /// The count in History's banner is the number of approvals the
+    /// computer applied.
+    #[test]
+    fn history_banner_says_how_many_changes() {
+        let screen = screen(None);
+        let before = crate::history::Summary {
+            last_unix: Some(panels::CLOCK_SET_AFTER),
+            pending: 3,
+        };
+        {
+            let mut controller = screen._controller.borrow_mut();
+            controller.history.0 = Some(crate::history::Summary {
+                last_unix: Some(panels::CLOCK_SET_AFTER + 60),
+                pending: 1,
+            });
+            controller.history_summary_changed(Some(before));
+        }
+        assert_eq!(
+            screen.banner().map(|b| b.0),
+            Some("Your computer applied 2 changes".into())
+        );
+    }
+
+    /// An update already known when the launcher starts makes no banner;
+    /// only the glyph and the idle screen's line say it.
+    #[test]
+    fn an_update_known_at_start_makes_no_banner() {
+        let mut platform = abc();
+        platform.set_update_status(UpdateStatus::Available("9.9.9".into()));
+        let screen = screen_with(platform, None);
+        screen.come_back();
+        assert_eq!(screen.banner(), None);
+        assert_eq!(screen.glyphs(), 1);
+    }
+
+    /// The Settings page's Idle screen texts; its detail names the wait
+    /// the timer uses, so the two can't drift apart.
+    #[test]
+    fn the_idle_screen_setting_says_its_wait() {
+        let screen = screen(None);
+        let strings = screen.window.global::<Strings>();
+        assert_eq!(strings.invoke_section_name(6), "Idle screen");
+        assert_eq!(
+            strings.invoke_change_line(19, "".into(), "".into(), strings.invoke_on_off(false)),
+            "Idle screen: Off"
+        );
+        let minutes = faces_view::AMBIENT_AFTER.as_secs() / 60;
+        assert_eq!(faces_view::AMBIENT_AFTER.as_secs() % 60, 0);
+        assert!(
+            strings
+                .invoke_ambient_detail(true)
+                .starts_with(&format!("After {minutes} minutes ")),
+            "{}",
+            strings.invoke_ambient_detail(true)
+        );
+        assert_eq!(strings.invoke_ambient_detail(false), "");
     }
 
     // --- the pointer (REMOTE.md § 5) ---
@@ -4097,8 +5539,8 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let screen = screen_with_remote(dir.join("order.toml"));
-        // A, B, C, RustTV Remote: its own page.
-        for _ in 0..5 {
+        // A, B, C, RustTV Remote (its own page), History.
+        for _ in 0..3 {
             screen.tap(RIGHT);
         }
         screen.tap(OK);
@@ -4122,13 +5564,17 @@ mod tests {
             "kept out of captures"
         );
         if screen.window.get_pairing_phase() == 3 {
-            // A machine without a network route: nothing else to check.
+            // A machine without a network route: no secret, so the tile
+            // doesn't say "Pairing"; nothing else to check.
             assert_eq!(screen.window.get_pairing_failure(), 2, "no network address");
+            assert_eq!(screen.window.global::<RemotePanel>().get_status(), "");
             return;
         }
         assert_eq!(screen.window.get_pairing_phase(), 0);
         assert!(screen.window.get_pairing_qr().size().width > 100);
         assert!(screen.window.get_pairing_address().starts_with("http://"));
+        let remote = screen.window.global::<RemotePanel>();
+        assert_eq!(remote.get_status(), "pairing", "the tile says Pairing");
 
         event(RemoteEvent::PairRequest {
             request: 7,
@@ -4147,6 +5593,15 @@ mod tests {
         screen.wait(2100);
         assert_eq!(screen.window.get_mode(), mode_value(State::Remote));
         assert!(!screen.shared.platform.borrow().secure());
+        // The screen closed itself (the phone is listed); a real listener
+        // would also have sent `Paired`.
+        assert_eq!(remote.get_status(), "", "pairing closed");
+        // Opened again and left with Back: the tile stops saying "Pairing".
+        screen.tap(OK);
+        assert_eq!(remote.get_status(), "pairing");
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Remote));
+        assert_eq!(remote.get_status(), "");
         event(phone_key(PhoneKey::Back));
         assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
         let _ = std::fs::remove_dir_all(dir);
@@ -4271,8 +5726,8 @@ mod tests {
         click_settings(&screen.window);
         assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
         settle(&screen);
-        // Animations, Effects, Updates, History, About.
-        assert_eq!(screen.window.get_settings_sections().row_count(), 5);
+        // Animations, Effects, Idle screen, Updates, History, About.
+        assert_eq!(screen.window.get_settings_sections().row_count(), 6);
         assert_eq!(screen.window.get_settings_rows().row_count(), 7);
         screen.tap(RIGHT); // focus on Normal, the current choice
         assert_eq!(screen.window.get_settings_row(), 4);
@@ -4315,6 +5770,145 @@ mod tests {
         assert_eq!(newest.changes.len(), 3);
     }
 
+    /// History's tile: once the history thread has read the history, a
+    /// focus change formats its age (two globals, never the tile list);
+    /// OK on it opens Settings on its History section, whose row shows the
+    /// same words (two lines tall from the start), and the accent dot and
+    /// "Waiting" while an approval waits. The pointer finds the rows under
+    /// the taller one.
+    #[test]
+    fn the_history_tile_shows_the_age_and_opens_settings_on_history() {
+        let (dir, _history) = history_dir();
+        let screen = screen(Some(dir.join("order.toml")));
+        let history = crate::history::History::get().unwrap();
+        history.launcher_edited();
+        // Answered after the edit: the summary is there by then. (The
+        // thread is the process's: its newest entry may be another
+        // test's, so the age is compared with the view's, not a constant.)
+        let _ = history.overview();
+        let summary = history.summary();
+        assert!(summary.is_some_and(|summary| summary.last_unix.is_some()));
+        let tiles: Vec<TileData> = screen.window.get_tiles().iter().collect();
+        let artwork = screen.artwork_calls();
+        let panel = screen.window.global::<HistoryPanel>();
+        // A, B, C, RustTV Remote, History: to the last tile.
+        for _ in 0..10 {
+            screen.tap(RIGHT);
+        }
+        assert_eq!(
+            screen._controller.borrow().home.focused().cloned(),
+            Some(TileId::Panel(PanelId::History))
+        );
+        // Compared with the copy Home drew from: another test's history
+        // work may change the thread's summary meanwhile.
+        let (shown, now) = screen._controller.borrow().history;
+        assert!(shown.is_some_and(|summary| summary.last_unix.is_some()));
+        let view = panels::history_view(shown.as_ref(), now)
+            .tile
+            .unwrap()
+            .props;
+        assert!(!view.get("status").is_empty());
+        assert_eq!(
+            (panel.get_status().as_str(), panel.get_count().as_str()),
+            (view.get("status"), view.get("count"))
+        );
+        let after: Vec<TileData> = screen.window.get_tiles().iter().collect();
+        assert_eq!(tiles, after, "only the globals changed");
+        assert_eq!(screen.artwork_calls(), artwork);
+
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        settle(&screen);
+        // Animations, Effects, Idle screen, Updates, History, About: on
+        // History.
+        assert_eq!(screen.window.get_settings_section(), 4);
+        assert_eq!(screen.window.get_settings_row(), -1);
+        let face = screen.window.global::<HistoryListRow>();
+        let section = |index: usize| {
+            screen
+                .window
+                .get_settings_sections()
+                .row_data(index)
+                .unwrap()
+        };
+        let row = section(4);
+        assert_eq!(
+            (row.title.as_str(), row.current, row.tall),
+            ("History", false, true)
+        );
+        assert_eq!(
+            row.detail,
+            face.invoke_detail(panel.get_status(), panel.get_count())
+        );
+        assert!(!row.detail.is_empty());
+        assert!(!section(5).tall, "only History's row keeps a second line");
+
+        // While an approval waits: the dot and "Waiting".
+        screen._controller.borrow_mut().history.0 = Some(crate::history::Summary {
+            last_unix: None,
+            pending: 1,
+        });
+        screen._controller.borrow_mut().render();
+        let row = section(4);
+        assert_eq!((row.detail.as_str(), row.current), ("Waiting", true));
+
+        // The pointer, mirroring home.slint's section list: History's row
+        // is 96 u tall, the others 64 u, 8 u apart from 260 u; the list
+        // starts 90 u in. The window is 1920 u
+        // wide.
+        let u = screen.window.window().size().width as f32
+            / screen.window.window().scale_factor()
+            / 1920.0;
+        let hover = |y: f32| {
+            screen
+                .window
+                .window()
+                .dispatch_event(WindowEvent::PointerMoved {
+                    position: slint::LogicalPosition::new(200.0 * u, y * u),
+                });
+        };
+        // The middle of Waiting's row: under four short rows and History's.
+        hover(260.0 + 4.0 * 72.0 + 104.0 + 32.0);
+        assert_eq!(screen.window.get_settings_section(), 5);
+        // History's second line.
+        hover(260.0 + 4.0 * 72.0 + 80.0);
+        assert_eq!(screen.window.get_settings_section(), 4);
+
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert_eq!(
+            screen._controller.borrow().home.focused().cloned(),
+            Some(TileId::Panel(PanelId::History))
+        );
+    }
+
+    /// The phone moves History's tile like any built-in tile (`panel:history`).
+    #[test]
+    fn a_phone_drag_moves_the_history_tile() {
+        let screen = screen(None);
+        let drag = |over: Option<&str>, phase| {
+            screen
+                ._controller
+                .borrow_mut()
+                .remote_event(RemoteEvent::Input {
+                    phone: rusttv_remote::PhoneId([1; 16]),
+                    message: PhoneMessage::Drag {
+                        id: "panel:history".into(),
+                        over: over.map(Into::into),
+                        phase,
+                        on: false,
+                    },
+                });
+        };
+        drag(None, DragPhase::Start);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Moving));
+        drag(Some("a/.Main"), DragPhase::Move);
+        drag(Some("a/.Main"), DragPhase::End);
+        let controller = screen._controller.borrow();
+        assert_eq!(controller.home.tiles()[0], TileId::Panel(PanelId::History));
+        assert_eq!(controller.home.state(), State::Browse);
+    }
+
     #[test]
     fn a_wrong_arrow_changes_nothing_and_says_so() {
         let (dir, _history) = history_dir();
@@ -4345,17 +5939,17 @@ mod tests {
     }
 
     #[test]
-    fn the_menu_shows_modify_and_settings_and_what_the_platform_offers() {
+    fn the_menu_shows_modify_rusttv_and_settings_and_what_the_platform_offers() {
         let screen = screen(None);
-        assert_eq!(quick_codes(&screen), [1, 5], "Modify and Settings");
+        assert_eq!(quick_codes(&screen), [1, 7, 5], "Modify, RustTV, Settings");
         let screen = screen_with(abc().with_device(), None);
-        assert_eq!(quick_codes(&screen), [1, 2, 3, 4, 5, 6]);
+        assert_eq!(quick_codes(&screen), [1, 2, 3, 4, 7, 5, 6]);
         assert_eq!(screen.window.get_quick_selected(), -1);
         screen.tap(UP);
         assert_eq!(screen.window.get_mode(), mode_value(State::Bar));
         assert_eq!(screen.window.get_quick_selected(), 0);
-        // Settings, the fifth entry, opens the Settings page.
-        for _ in 0..4 {
+        // Settings, the sixth entry, opens the Settings page.
+        for _ in 0..5 {
             screen.tap(RIGHT);
         }
         screen.tap(OK);
@@ -4427,6 +6021,387 @@ mod tests {
         assert!(screen.window.get_quick_power());
         screen.window.invoke_quick_dismissed();
         assert_ne!(screen.window.get_mode(), mode_value(State::Quick));
+    }
+
+    /// The RustTV entry of the top-right menu opens the panels' rows (About,
+    /// RustTV Remote, History), each its row face from the same view as its
+    /// tile; OK, a click or the pointer opens the row's page, and Back
+    /// closes the panel.
+    #[test]
+    fn the_rusttv_panel_shows_the_panels_rows_and_opens_their_pages() {
+        let screen = screen(None);
+        let open_panel = |screen: &Screen| {
+            let index = quick_codes(screen)
+                .iter()
+                .position(|code| *code == 7)
+                .unwrap();
+            screen
+                .window
+                .invoke_quick_clicked(i32::try_from(index).unwrap());
+            assert_eq!(screen.window.get_mode(), mode_value(State::Quick));
+        };
+        open_panel(&screen);
+        assert_eq!(screen.window.get_quick_title(), "RustTV");
+        let rows: Vec<SettingsRow> = screen.window.get_quick_rows().iter().collect();
+        let texts: Vec<(&str, &str, bool)> = rows
+            .iter()
+            .map(|row| (row.title.as_str(), row.detail.as_str(), row.current))
+            .collect();
+        let version = format!("RustTV {}", ltr(env!("CARGO_PKG_VERSION")));
+        assert_eq!(
+            texts[..2],
+            [
+                (version.as_str(), "Third-party notices", false),
+                ("RustTV Remote", "No phones", false),
+            ]
+        );
+        // History's row: its age once the process's history has been read
+        // (another test may have read it), two lines from the start.
+        assert_eq!(texts[2].0, "History");
+        assert!(rows[2].tall);
+        assert_eq!(texts.len(), 3);
+        assert_eq!(screen.window.get_quick_row(), 0);
+
+        // Up stops at the first row, Down at the last.
+        screen.tap(UP);
+        assert_eq!(screen.window.get_quick_row(), 0);
+        for _ in 0..4 {
+            screen.tap(DOWN);
+        }
+        assert_eq!(screen.window.get_quick_row(), 2);
+        screen.tap(UP);
+        screen.tap(UP);
+
+        // Downloading and installing show on About's row as on its tile.
+        for (status, words) in [
+            (UpdateStatus::Downloading(40), "Downloading"),
+            (UpdateStatus::Installing, "Installing"),
+        ] {
+            screen._controller.borrow_mut().show_update(status);
+            let row = screen.window.get_quick_rows().row_data(0).unwrap();
+            assert_eq!((row.detail.as_str(), row.current), (words, false));
+        }
+
+        // An update and pairing show on the rows as on the tiles.
+        {
+            let mut controller = screen._controller.borrow_mut();
+            controller.update = UpdateStatus::Available("9.9.9".into());
+            controller.pairing_opened();
+            controller.render();
+        }
+        let rows: Vec<SettingsRow> = screen.window.get_quick_rows().iter().collect();
+        assert_eq!(
+            (rows[0].detail.as_str(), rows[0].current),
+            ("Update available", true)
+        );
+        assert_eq!(
+            (rows[1].detail.as_str(), rows[1].current),
+            ("Pairing", true)
+        );
+        // The pairing secret's time runs out: the row follows by itself.
+        screen.wait(u64::try_from(rusttv_remote::PAIRING_TIME.as_millis()).unwrap() + 1);
+        let row = screen.window.get_quick_rows().row_data(1).unwrap();
+        assert_eq!((row.detail.as_str(), row.current), ("No phones", false));
+
+        // Down and OK: RustTV Remote's page; Back is Home.
+        screen.tap(DOWN);
+        assert_eq!(screen.window.get_quick_row(), 1);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Remote));
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+
+        // A click on a row: About's page.
+        open_panel(&screen);
+        screen.window.invoke_quick_row_clicked(0);
+        assert_eq!(screen.window.get_mode(), mode_value(State::About));
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+
+        // The pointer walks to History's row and clicks: Settings on History.
+        open_panel(&screen);
+        screen.window.invoke_list_pointer(3, 2, 0);
+        assert_eq!(screen.window.get_quick_row(), 2, "hover focuses");
+        screen.window.invoke_list_pointer(3, 2, 1);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        screen._controller.borrow_mut().home.close_settings();
+
+        // Back closes the panel, focus back on its entry.
+        open_panel(&screen);
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Bar));
+        let selected = usize::try_from(screen.window.get_quick_selected()).unwrap();
+        assert_eq!(quick_codes(&screen)[selected], 7);
+
+        // From the keys: Up from Home, Right to RustTV (after Modify), OK.
+        screen.tap(DOWN);
+        screen.tap(UP);
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_quick_title(), "RustTV");
+        // A click beside it closes it too.
+        screen.window.invoke_quick_dismissed();
+        assert_eq!(screen.window.get_mode(), mode_value(State::Bar));
+        // Home (the launcher leaving the screen) closes it, and the next
+        // quick panel takes the keys itself.
+        open_panel(&screen);
+        screen.lifecycle.paused();
+        screen.lifecycle.resumed();
+        screen.wait(1);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert!(screen._controller.borrow().panels_row.is_none());
+    }
+
+    /// Another entry of the top-right menu replaces the RustTV panel: the
+    /// power key over it opens the power menu, and Audio's controls take
+    /// the keys after it.
+    #[test]
+    fn another_quick_panel_replaces_the_rusttv_panel() {
+        let screen = screen_with(abc().with_device(), None);
+        let click = |code: i32| {
+            let index = quick_codes(&screen)
+                .iter()
+                .position(|known| *known == code)
+                .unwrap();
+            screen
+                .window
+                .invoke_quick_clicked(i32::try_from(index).unwrap());
+        };
+        click(7);
+        assert_eq!(screen.window.get_quick_title(), "RustTV");
+        screen.lifecycle.power_menu();
+        settle(&screen);
+        assert!(screen.window.get_quick_power());
+        assert!(screen._controller.borrow().panels_row.is_none());
+        screen.tap(BACK);
+        click(7);
+        // After the power menu, the panel isn't drawn full screen.
+        assert!(!screen.window.get_quick_power());
+        assert_eq!(screen.window.get_quick_title(), "RustTV");
+        click(2); // Audio
+        settle(&screen);
+        assert_eq!(screen.window.get_quick_title(), "Audio");
+        assert!(screen.window.get_quick_rows().row_data(0).unwrap().slider);
+    }
+
+    /// Settings' change list names hidden or foldered built-in tiles as
+    /// their tiles do, in the window's language; apps keep their own label.
+    #[test]
+    fn change_lines_name_built_in_tiles_in_words() {
+        let screen = screen(None);
+        let controller = screen._controller.borrow();
+        for (name, words) in [
+            ("about", "About"),
+            ("settings", "Settings"),
+            ("remote", "RustTV Remote"),
+            ("panel:history", "History"),
+        ] {
+            assert_eq!(controller.tile_label(name), words);
+        }
+        // Every built-in tile this build has (model.rs `name_of`) has words.
+        for tile in [TileId::About, TileId::Settings, TileId::Remote]
+            .into_iter()
+            .chain(PanelId::ALL.map(TileId::Panel))
+        {
+            let name = order_file::name_of(&tile);
+            assert_ne!(controller.tile_label(&name), name, "{name}");
+        }
+        assert_eq!(controller.tile_label("b/.Main"), "B (b)");
+    }
+
+    /// Every built-in tile hides like an app (PANELS.md § 6). The Hidden
+    /// apps tile comes and lists them after the apps, so Settings is never
+    /// out of reach; while About is hidden, Settings has its About section,
+    /// so the licence notices and Slint's attribution stay reachable. OK
+    /// puts a tile back, and the order file keeps them.
+    #[test]
+    fn built_in_tiles_hide_and_settings_and_the_notices_stay_reachable() {
+        let dir = temp_dir("hide-built-ins");
+        let file = dir.join("order.toml");
+        let sections = |screen: &Screen| -> Vec<String> {
+            screen
+                .window
+                .get_settings_sections()
+                .iter()
+                .map(|section| section.title.to_string())
+                .collect()
+        };
+        let screen = screen_with(abc().without_menu(), Some(file.clone()));
+        // A, B, C, About, Settings, RustTV Remote, History.
+        for _ in 0..3 {
+            screen.tap(RIGHT);
+        }
+        for _ in 0..4 {
+            screen.long_press_ok();
+            screen.tap(DOWN);
+            screen.tap(OK); // Hide
+        }
+        assert_eq!(screen.kinds(), [0, 0, 0, 5], "A, B, C, Hidden apps");
+        assert_eq!(
+            order_file::load(&file).hidden,
+            ["about", "panel:history", "remote", "settings"]
+                .map(str::to_owned)
+                .into()
+        );
+        // The Hidden apps page lists them, drawn as their tiles.
+        assert_eq!(screen.window.get_focused_index(), 3);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Hidden));
+        let kinds: Vec<i32> = screen
+            .window
+            .get_hidden_tiles()
+            .iter()
+            .map(|tile| tile.kind)
+            .collect();
+        assert_eq!(kinds, [3, 6, 8, 9]);
+        // Settings back on Home; About stays hidden.
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Hidden));
+        screen.tap(BACK);
+        assert_eq!(screen.kinds(), [0, 0, 0, 6, 5]);
+        screen
+            ._controller
+            .borrow_mut()
+            .home
+            .focus_on(&TileId::Settings);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        assert_eq!(sections(&screen).last().map(String::as_str), Some("About"));
+        for _ in 0..10 {
+            screen.tap(DOWN);
+        }
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::About));
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        screen._controller.borrow_mut().home.close_settings();
+        drop(screen);
+
+        // Started again: still hidden. About back on Home: Settings is as
+        // it was, without the About section.
+        let screen = screen_with(abc().without_menu(), Some(file.clone()));
+        assert_eq!(screen.kinds(), [0, 0, 0, 6, 5]);
+        screen
+            ._controller
+            .borrow_mut()
+            .home
+            .focus_on(&TileId::Hidden);
+        screen.tap(OK);
+        screen.tap(OK); // About
+        screen.tap(BACK);
+        assert_eq!(screen.kinds()[..5], [0, 0, 0, 6, 3]);
+        screen
+            ._controller
+            .borrow_mut()
+            .home
+            .focus_on(&TileId::Settings);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        assert!(!sections(&screen).contains(&"About".to_owned()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Built-in tiles go into folders like apps (PANELS.md § 6): the folder's
+    /// tile shows their banners small, the open folder draws them as their
+    /// tiles, OK opens their page, and the phones see them in the folder
+    /// with their captions.
+    #[test]
+    fn built_in_tiles_go_into_folders_with_their_pictures() {
+        let screen = screen(None);
+        let drag = |over: Option<&str>, phase| {
+            screen
+                ._controller
+                .borrow_mut()
+                .remote_event(RemoteEvent::Input {
+                    phone: rusttv_remote::PhoneId([1; 16]),
+                    message: PhoneMessage::Drag {
+                        id: "remote".into(),
+                        over: over.map(Into::into),
+                        phase,
+                        on: over.is_some(),
+                    },
+                });
+        };
+        // A, B, C, RustTV Remote, History: Remote rests on History.
+        drag(None, DragPhase::Start);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Moving));
+        drag(Some("panel:history"), DragPhase::Move);
+        screen.wait(700);
+        drag(Some("panel:history"), DragPhase::End);
+        assert_eq!(screen.kinds(), [0, 0, 0, 7]);
+        let folder = screen.window.get_tiles().row_data(3).unwrap();
+        let minis: Vec<slint::Image> = folder.minis.iter().collect();
+        assert_eq!(minis.len(), 2, "History's and Remote's banners");
+        for mini in &minis {
+            let size = mini.size();
+            assert_eq!((size.width, size.height), (320, 180));
+        }
+        assert_eq!(screen.window.get_mode(), mode_value(State::Folder));
+        let kinds: Vec<i32> = screen
+            .window
+            .get_folder_tiles()
+            .iter()
+            .map(|tile| tile.kind)
+            .collect();
+        assert_eq!(kinds, [9, 8], "History, then Remote");
+        {
+            let controller = screen._controller.borrow();
+            let view = crate::remote::home_view(
+                &controller.home,
+                &|id| controller.remote_label(id),
+                false,
+                None,
+                &UpdateStatus::Idle,
+                (Some(rusttv_remote::protocol::Caption::Waiting), None),
+            );
+            let inside: Vec<(&str, Option<&str>)> = view
+                .tiles
+                .iter()
+                .filter(|tile| tile.folder.is_some())
+                .map(|tile| (tile.id.as_str(), tile.folder.as_deref()))
+                .collect();
+            assert_eq!(
+                inside,
+                [
+                    ("panel:history", Some("folder:1")),
+                    ("remote", Some("folder:1"))
+                ]
+            );
+            let history = view
+                .tiles
+                .iter()
+                .find(|tile| tile.id == "panel:history")
+                .unwrap();
+            assert_eq!(
+                history.caption,
+                Some(rusttv_remote::protocol::Caption::Waiting)
+            );
+        }
+        // The folder is open with Remote focused: OK opens its page.
+        assert_eq!(screen.window.get_folder_focus(), 1);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Remote));
+        let order: Vec<TileId> = screen
+            ._controller
+            .borrow()
+            .home
+            .order()
+            .keys()
+            .iter()
+            .map(|(id, _)| id.clone())
+            .collect();
+        assert_eq!(
+            order,
+            [
+                TileId::App("a/.Main".into()),
+                TileId::App("b/.Main".into()),
+                TileId::App("c/.Main".into()),
+                TileId::Folder(1)
+            ],
+            "neither tile is back on Home"
+        );
     }
 
     fn menu_texts(screen: &Screen) -> Vec<String> {
@@ -4611,7 +6586,7 @@ mod tests {
             .window
             .get_settings_sections()
             .iter()
-            .position(|section| section == "Display")
+            .position(|section| section.title == "Display")
             .unwrap();
         for _ in 0..display {
             screen.tap(DOWN);
@@ -4691,7 +6666,7 @@ mod tests {
             .window
             .get_settings_sections()
             .iter()
-            .position(|section| section == "Display")
+            .position(|section| section.title == "Display")
             .unwrap();
         let display = i32::try_from(display).unwrap();
         screen.window.invoke_settings_pointer(false, display, 0);
@@ -4731,7 +6706,12 @@ mod tests {
         let screen = screen_with(abc().with_device(), None);
         click_settings(&screen.window);
         settle(&screen);
-        let sections: Vec<SharedString> = screen.window.get_settings_sections().iter().collect();
+        let sections: Vec<SharedString> = screen
+            .window
+            .get_settings_sections()
+            .iter()
+            .map(|section| section.title)
+            .collect();
         assert_eq!(
             sections[sections.len() - 2..],
             [SharedString::from("Display"), SharedString::from("About")]

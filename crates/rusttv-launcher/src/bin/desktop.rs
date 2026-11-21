@@ -7,11 +7,33 @@
 //!
 //! `RUSTTV_LANG=<tag>` (e.g. `uk`, `ar`) shows that translation.
 //!
+//! `RUSTTV_UPDATE=available|downloading|installing` makes the made-up updater
+//! report that state, to see the About tile's caption.
+//!
+//! `RUSTTV_NO_DEVICE=1` leaves out the made-up device controls, so Home has
+//! no top-right menu and shows the About and Settings tiles, as on Android.
+//!
 //! `RUSTTV_REMOTE_PAIR=1` starts RustTV Remote with pairing open and prints
 //! the pairing link; every phone that asks is allowed (REMOTE.md).
 //!
-//! `--demo-remote <dir>` does the same for RustTV Remote's Settings section
-//! and pairing screen.
+//! `RUSTTV_HISTORY_PENDING=1` runs as a TV without the settings grant, in
+//! any mode: an approved Animations change then waits for the computer, so
+//! History's tile shows its waiting approval (HISTORY.md § 6.3).
+//!
+//! `--demo-remote <dir>` does the same for RustTV Remote's tile, page and
+//! pairing screen.
+//!
+//! `--demo-history <dir>` does the same for History's tile: its plain
+//! state, Settings opened on History, an approved change, then the tile
+//! with the change's age (or, with `RUSTTV_HISTORY_PENDING=1`, waiting).
+//!
+//! `--demo-panels <dir>` does the same for panel tiles hidden and in a
+//! folder, the Hidden apps page and the top-right menu's RustTV panel.
+//!
+//! `--demo-faces <dir>` does the same for Home's own faces of the panels:
+//! the status corner's clock (and, with `RUSTTV_UPDATE=available`, About's
+//! glyph and its line on the idle screen; an update known at start makes no
+//! banner), the idle screen and a key waking it.
 //!
 //! `--demo <dir>` instead plays a fixed key script and writes a BMP snapshot
 //! after each step into `<dir>`, then quits. Needs no screen-capture permission.
@@ -23,7 +45,8 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use rusttv_launcher::{
-    Bitmap, DemoStep, FakePlatform, RunOptions, run, run_demo, start_desktop_history,
+    Bitmap, DemoStep, FakePlatform, RunOptions, UpdateStatus, is_right_to_left, run, run_demo,
+    start_desktop_history,
 };
 
 /// Prints the launcher's info, warning and error messages, so the desktop dev
@@ -229,17 +252,25 @@ fn demo_script() -> Vec<DemoStep> {
     ]
 }
 
-/// The RustTV Remote page (REMOTE.md § 2), then the pairing code. Its tile
-/// is the last: Sports, Weather, Settings, RustTV Remote.
-fn remote_script() -> Vec<DemoStep> {
+/// RustTV Remote's tile, its page (REMOTE.md § 2), then the pairing code.
+/// Its tile is the last but one, before History (Sports, Weather, Settings,
+/// RustTV Remote, History; with `RUSTTV_NO_DEVICE=1` after About and
+/// Settings): Down to the last row, to its end (Left in a right-to-left
+/// language), then one back.
+fn remote_script(right_to_left: bool) -> Vec<DemoStep> {
     use DemoStep::{Snapshot, Tap};
-    vec![
-        ms(800),
-        Tap(DOWN),
-        Tap(DOWN),
-        Tap(RIGHT),
-        Tap(RIGHT),
-        Tap(RIGHT),
+    let (forward, back) = if right_to_left {
+        (LEFT, RIGHT)
+    } else {
+        (RIGHT, LEFT)
+    };
+    let mut steps = vec![ms(800)];
+    steps.extend([DOWN; 4].map(Tap));
+    steps.extend([forward; 7].map(Tap));
+    steps.push(Tap(back));
+    steps.extend([
+        ms(600),
+        Snapshot("remote-0-tile"),
         Tap(OK),
         ms(600),
         Snapshot("remote-1-settings"),
@@ -247,7 +278,183 @@ fn remote_script() -> Vec<DemoStep> {
         ms(300),
         Snapshot("remote-2-pairing-code"),
         Tap(BACK),
+    ]);
+    steps
+}
+
+/// History's tile (PANELS.md § 4): the last tile. Its plain state (the
+/// history isn't read at start), OK opens Settings on History, an
+/// Animations change approved with FakePlatform's code, then Home with the
+/// tile's age, or its waiting approval with `RUSTTV_HISTORY_PENDING=1`.
+fn history_script(right_to_left: bool) -> Vec<DemoStep> {
+    use DemoStep::{Press, Release, Snapshot, Tap};
+    let (forward, back) = if right_to_left {
+        (LEFT, RIGHT)
+    } else {
+        (RIGHT, LEFT)
+    };
+    let mut steps = vec![ms(800)];
+    steps.extend([DOWN; 4].map(Tap));
+    steps.extend([forward; 8].map(Tap));
+    steps.extend([
+        ms(600),
+        Snapshot("history-0-tile-plain"),
+        Tap(OK),
+        ms(600),
+        Snapshot("history-1-settings"),
+        // Up to Animations (History is the fourth section), into its
+        // rows, Off, then review it.
+        Tap(UP),
+        Tap(UP),
+        Tap(UP),
+        Tap(forward),
+        Tap(UP),
+        Tap(UP),
+        Tap(UP),
+        Tap(UP),
+        Tap(OK),
+        ms(400),
+    ]);
+    // The review's list, its Approve row, then the code and the hold.
+    steps.extend([DOWN; 4].map(Tap));
+    steps.extend([
+        Tap(OK),
+        ms(300),
+        // FakePlatform's code: left, up, right, down.
+        Tap(LEFT),
+        Tap(UP),
+        Tap(RIGHT),
+        Tap(DOWN),
+        ms(1200),
+        Press(OK),
+        ms(2400),
+        Release(OK),
+        ms(800),
+        Snapshot("history-2-applied"),
+        Tap(back),
+        ms(300),
+        Snapshot("history-3-settings-row"),
+        Tap(BACK),
+        ms(300),
+        // A focus change formats the tile's age again.
+        Tap(back),
+        Tap(forward),
+        ms(600),
+        Snapshot("history-4-tile"),
+    ]);
+    steps
+}
+
+/// Panel tiles hidden and in folders, and the RustTV quick panel
+/// (PANELS.md § 2, § 6): RustTV Remote's menu (Move, Hide), Remote held
+/// over History until they make a folder, the open folder and its tile,
+/// History hidden from inside it, the Hidden apps page, then, with a
+/// top-right menu (`menu`; not with `RUSTTV_NO_DEVICE=1`), the RustTV
+/// entry's panel, Down to Remote's row and OK.
+fn panels_script(right_to_left: bool, menu: bool) -> Vec<DemoStep> {
+    use DemoStep::{Press, Release, Snapshot, Tap};
+    let (forward, back) = if right_to_left {
+        (LEFT, RIGHT)
+    } else {
+        (RIGHT, LEFT)
+    };
+    let mut steps = vec![ms(800)];
+    steps.extend([DOWN; 4].map(Tap));
+    steps.extend([forward; 8].map(Tap));
+    steps.extend([
+        Tap(back),
+        ms(600),
+        Snapshot("panels-0-remote"),
+        Press(OK),
+        ms(800),
+        Release(OK),
+        ms(300),
+        Snapshot("panels-1-menu"),
+        // Move, onto History, and stay until the folder forms.
+        Tap(OK),
+        Tap(forward),
+        ms(900),
+        Snapshot("panels-2-folder-moving"),
+        Tap(OK),
+        ms(600),
+        Snapshot("panels-3-folder-open"),
+        Tap(BACK),
+        ms(800),
+        Snapshot("panels-4-folder-tile"),
+        // Into the folder, History (its first) hidden from there.
+        Tap(OK),
+        ms(400),
+        Press(OK),
+        ms(800),
+        Release(OK),
+        Tap(DOWN),
+        Tap(OK),
+        ms(600),
+        Snapshot("panels-5-hidden-from-folder"),
+        Tap(BACK),
+        ms(400),
+    ]);
+    // The Hidden apps tile is last now.
+    steps.extend([DOWN; 4].map(Tap));
+    steps.extend([forward; 9].map(Tap));
+    steps.extend([
+        ms(600),
+        Snapshot("panels-6-hidden-tile"),
+        Tap(OK),
+        ms(600),
+        Snapshot("panels-7-hidden-page"),
+        Tap(BACK),
+        ms(300),
+    ]);
+    if !menu {
+        return steps;
+    }
+    steps.extend([
+        // Back on Home goes to the first row; Up reaches the top-right
+        // menu, where RustTV is the fifth entry (Modify, Audio, Network,
+        // KDE Connect, RustTV).
+        Tap(BACK),
+        Tap(UP),
+    ]);
+    steps.extend([forward; 4].map(Tap));
+    steps.extend([
+        ms(300),
+        Snapshot("panels-8-rusttv-entry"),
+        Tap(OK),
+        ms(600),
+        Snapshot("panels-9-rusttv-panel"),
+        Tap(DOWN),
+        ms(300),
+        Snapshot("panels-10-remote-row"),
+        Tap(OK),
+        ms(600),
+        Snapshot("panels-11-remote-page"),
+        Tap(BACK),
+    ]);
+    steps
+}
+
+/// Home's own faces (PANELS.md § 9 Q2, Q6): the corner (with an update
+/// available, About's glyph), the idle screen, then a key that wakes Home
+/// and does nothing else.
+fn faces_script() -> Vec<DemoStep> {
+    use DemoStep::{Rest, Snapshot, Tap};
+    vec![
+        ms(900),
+        Snapshot("faces-1-corner"),
+        Rest,
+        ms(1500),
+        Snapshot("faces-2-ambient"),
+        Tap(RIGHT),
+        ms(300),
+        Snapshot("faces-3-woken"),
     ]
+}
+
+/// Whether the made-up TV may write settings itself: not with
+/// `RUSTTV_HISTORY_PENDING=1`.
+fn grant() -> bool {
+    std::env::var("RUSTTV_HISTORY_PENDING").as_deref() != Ok("1")
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -273,30 +480,49 @@ fn main() -> Result<(), Box<dyn Error>> {
         let dir = std::env::temp_dir().join(format!("rusttv-desktop-{}", std::process::id()));
         std::fs::create_dir_all(&dir)?;
         options.order_file = Some(dir.join("order.toml"));
-        start_desktop_history(dir);
-        return Ok(run(FakePlatform::sample().with_device(), options)?);
+        start_desktop_history(dir, grant());
+        return Ok(run(sample_platform(), options)?);
     };
     let dir = match (flag.as_str(), args.next()) {
         ("--order", Some(file)) => {
             let file = PathBuf::from(file);
             // History next to the order file, like the launcher's files dir.
             let parent = file.parent().map_or_else(PathBuf::new, Path::to_path_buf);
-            start_desktop_history(if parent.as_os_str().is_empty() {
-                ".".into()
-            } else {
-                parent
-            });
+            start_desktop_history(
+                if parent.as_os_str().is_empty() {
+                    ".".into()
+                } else {
+                    parent
+                },
+                grant(),
+            );
             options.order_file = Some(file);
-            return Ok(run(FakePlatform::sample().with_device(), options)?);
+            return Ok(run(sample_platform(), options)?);
         }
         ("--demo", Some(dir)) => PathBuf::from(dir),
         ("--demo-remote", Some(dir)) => {
-            script = remote_script();
+            let language = options.language.as_deref().unwrap_or_default();
+            script = remote_script(is_right_to_left(language));
+            PathBuf::from(dir)
+        }
+        ("--demo-history", Some(dir)) => {
+            let language = options.language.as_deref().unwrap_or_default();
+            script = history_script(is_right_to_left(language));
+            PathBuf::from(dir)
+        }
+        ("--demo-faces", Some(dir)) => {
+            script = faces_script();
+            PathBuf::from(dir)
+        }
+        ("--demo-panels", Some(dir)) => {
+            let language = options.language.as_deref().unwrap_or_default();
+            let menu = std::env::var_os("RUSTTV_NO_DEVICE").is_none();
+            script = panels_script(is_right_to_left(language), menu);
             PathBuf::from(dir)
         }
         _ => {
             return Err(
-                "usage: rusttv-launcher-desktop [--order <file> | --demo <dir> | --demo-remote <dir>]"
+                "usage: rusttv-launcher-desktop [--order <file> | --demo <dir> | --demo-remote <dir> | --demo-history <dir> | --demo-panels <dir> | --demo-faces <dir>]"
                     .into(),
             );
         }
@@ -307,9 +533,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let _ = std::fs::remove_dir_all(&state);
     std::fs::create_dir_all(&state)?;
     options.order_file = Some(state.join("order.toml"));
-    start_desktop_history(state);
+    start_desktop_history(state, grant());
 
-    let mut platform = FakePlatform::sample().with_device();
+    let mut platform = sample_platform();
     platform.fail_launches_of(FAILING_APP);
     let failures: Rc<RefCell<Vec<String>>> = Rc::default();
     let record = failures.clone();
@@ -329,6 +555,25 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else {
         Err(failures.join("; ").into())
     }
+}
+
+/// The made-up apps and device, with the updater state from `RUSTTV_UPDATE`.
+fn sample_platform() -> FakePlatform {
+    let mut platform = if std::env::var_os("RUSTTV_NO_DEVICE").is_some() {
+        FakePlatform::sample().without_menu()
+    } else {
+        FakePlatform::sample().with_device()
+    };
+    let status = match std::env::var("RUSTTV_UPDATE").as_deref() {
+        Ok("available") => Some(UpdateStatus::Available("9.9.9".into())),
+        Ok("downloading") => Some(UpdateStatus::Downloading(40)),
+        Ok("installing") => Some(UpdateStatus::Installing),
+        _ => None,
+    };
+    if let Some(status) = status {
+        platform.set_update_status(status);
+    }
+    platform
 }
 
 /// Writes an uncompressed 32-bit BMP, which macOS `sips` and most viewers read.

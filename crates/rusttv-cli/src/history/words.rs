@@ -96,7 +96,7 @@ pub(crate) enum ChangeView {
     Reordered { moved: Vec<String> },
     /// A tile appeared on Home (an app installed).
     Added { tile: String },
-    /// A tile left Home (an app removed).
+    /// A tile left Home (an app removed; not one hidden).
     Removed { tile: String },
     /// A folder made on Home.
     FolderAdded { folder: String, name: String },
@@ -108,14 +108,14 @@ pub(crate) enum ChangeView {
         old: String,
         new: String,
     },
-    /// An app put into a folder or taken out of it.
+    /// An app or a built-in tile put into a folder or taken out of it.
     InFolder {
         tile: String,
         folder: String,
         name: String,
         inside: bool,
     },
-    /// An app hidden or shown again.
+    /// An app or a built-in tile hidden or shown again.
     Hidden { tile: String, hidden: bool },
     /// A phone paired with RustTV Remote.
     PhonePaired { phone: String, name: String },
@@ -125,6 +125,8 @@ pub(crate) enum ChangeView {
     UpdateCheck { on: bool },
     /// The launcher's effects switch: fewer effects for a weak GPU.
     Effects { reduced: bool },
+    /// The launcher's idle screen switch: Home dims to a clock after a while.
+    Ambient { on: bool },
     /// A global setting; null = unset.
     Setting {
         key: String,
@@ -193,6 +195,7 @@ impl ChangeView {
             },
             Change::UpdateCheck { on } => Self::UpdateCheck { on: *on },
             Change::Effects { reduced } => Self::Effects { reduced: *reduced },
+            Change::Ambient { on } => Self::Ambient { on: *on },
             Change::Setting { key, old, new } => Self::Setting {
                 key: key.clone(),
                 old: old.clone(),
@@ -259,6 +262,7 @@ pub(crate) fn change(change: &Change) -> String {
         Change::Effects { reduced } => {
             format!("Effects: {}", if *reduced { "reduced" } else { "full" })
         }
+        Change::Ambient { on } => format!("Idle screen: {}", if *on { "on" } else { "off" }),
         Change::Setting { key, old, new } => {
             format!("{}: {} → {}", setting_name(key), setting(old), setting(new))
         }
@@ -294,6 +298,15 @@ pub(crate) fn duration(seconds: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The idle screen's change in JSON (`kind: ambient`) and in words.
+    #[test]
+    fn the_idle_screen_change_reads_in_json_and_words() {
+        let off = Change::Ambient { on: false };
+        let json = serde_json::to_value(ChangeView::new(&off)).unwrap();
+        assert_eq!(json, serde_json::json!({ "kind": "ambient", "on": false }));
+        assert_eq!(change(&off), "Idle screen: off");
+    }
 
     #[test]
     fn times_are_utc_dates_and_unset_clocks_say_so() {

@@ -59,8 +59,8 @@ msgstr "แอปที่ซ่อนไว้"
 msgid "About"
 msgstr "เกี่ยวกับ"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "กด OK เพื่อนำแอปกลับไปที่หน้าจอหลัก กดกลับเพื่อย้อนกลับ"
+msgid "OK puts it back on Home. Back returns."
+msgstr "กด OK เพื่อนำกลับไปที่หน้าจอหลัก กดกลับเพื่อย้อนกลับ"
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "เวอร์ชัน {} · MIT OR Apache-2.0"
@@ -441,14 +441,8 @@ msgstr "ปิดแอป"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "Licences and third-party notices"
-msgstr "สัญญาอนุญาตและประกาศของบุคคลที่สาม"
-
 msgid "Loading…"
 msgstr "กำลังโหลด…"
-
-msgid "MIT OR Apache-2.0 · licences and third-party notices"
-msgstr "MIT OR Apache-2.0 · สัญญาอนุญาตและประกาศของบุคคลที่สาม"
 
 msgid "Modify"
 msgstr "แก้ไข"
@@ -465,6 +459,9 @@ msgstr "พลังงาน"
 msgid "RustTV {}"
 msgstr "RustTV {}"
 
+msgid "RustTV"
+msgstr "RustTV"
+
 msgid "Search"
 msgstr "ค้นหา"
 
@@ -473,9 +470,6 @@ msgstr "ขนาด"
 
 msgid "Size: {} %"
 msgstr "ขนาด: {} %"
-
-msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
-msgstr "Slint (Royalty-free License 2.0), Skia, ไลบรารี Rust"
 
 msgid "Source code"
 msgstr "ซอร์สโค้ด"
@@ -488,3 +482,79 @@ msgstr "ระดับเสียง"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "✓ บนแป้นพิมพ์เพื่อยืนยัน กลับเพื่อยกเลิก"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "กำลังโหลด"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "กำลังติดตั้ง"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "มีอัปเดต"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "ไม่มีโทรศัพท์"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "โทรศัพท์: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "กำลังจับคู่"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "เปลี่ยนล่าสุด"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Waiting"
+msgstr "รอคอมพิวเตอร์"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Just now"
+msgstr "เมื่อสักครู่"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "{n} นาทีที่แล้ว"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "{n} ชั่วโมงที่แล้ว"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "{n} วันก่อน"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "หน้าจอพัก"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "อยู่ที่หน้าจอหลัก 5 นาที จะแสดงนาฬิกาหรี่จนกว่าจะกดปุ่ม"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "หน้าจอพัก: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "อัปเดต RustTV แล้ว"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "เชื่อมต่อ {} แล้ว"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "คอมพิวเตอร์ใช้การเปลี่ยนแปลง {n} รายการแล้ว"

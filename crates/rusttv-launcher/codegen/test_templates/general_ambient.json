@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "component": "GeneralAmbient",
+  "face": "ambient",
+  "props": ["state"],
+  "root": { "glance": {
+    "badge": "rusttv-history",
+    "show": { "select": "state", "cases": { "on": true, "off": false } },
+    "text": { "select": "state", "cases": { "on": { "tr": "On" } }, "else": { "tr": "Off" } } } }
+}

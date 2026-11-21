@@ -9,7 +9,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 
 use rusttv_history::door::{ApprovedChange, CommitKind, CommitResult};
@@ -36,6 +36,19 @@ pub(crate) trait HistoryPlatform: Send {
 }
 
 type Reply<T> = Sender<T>;
+
+/// What History's tile shows (PANELS.md § 4, "History's faces"): the newest
+/// entry's time and how many approvals wait for the computer. The history
+/// thread keeps it after the work that changes it, so Home reads it
+/// without any history I/O (HISTORY.md § 9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) struct Summary {
+    /// When the newest entry was made (TV clock, Unix seconds); `None`
+    /// while the history is empty.
+    pub last_unix: Option<i64>,
+    /// Approvals waiting for the computer (HISTORY.md § 6.3).
+    pub pending: usize,
+}
 
 /// Work for the history thread.
 enum Job {
@@ -75,6 +88,8 @@ pub(crate) struct History {
     /// Set when recovery or a change rewrote the launcher's state: the UI
     /// reloads it.
     launcher_changed: Arc<AtomicBool>,
+    /// History's tile data, once the thread has read it ([`Summary`]).
+    summary: Arc<Mutex<Option<Summary>>>,
 }
 
 static GLOBAL: OnceLock<History> = OnceLock::new();
@@ -99,6 +114,7 @@ impl History {
             busy: Arc::default(),
             interrupt: Arc::default(),
             launcher_changed: Arc::default(),
+            summary: Arc::default(),
         };
         let shared = history.clone();
         let spawned = thread::Builder::new()
@@ -145,6 +161,23 @@ impl History {
     /// Whether the launcher's state was rewritten since the last call.
     pub fn take_launcher_changed(&self) -> bool {
         self.launcher_changed.swap(false, Ordering::SeqCst)
+    }
+
+    /// History's tile data, if the thread has read it since it started
+    /// (after the first Settings page or change): a lock and a copy, no
+    /// history I/O, so Home may call it on resume and focus changes.
+    pub fn summary(&self) -> Option<Summary> {
+        match self.summary.lock() {
+            Ok(summary) => *summary,
+            Err(poisoned) => *poisoned.into_inner(),
+        }
+    }
+
+    fn set_summary(&self, summary: Summary) {
+        match self.summary.lock() {
+            Ok(mut slot) => *slot = Some(summary),
+            Err(poisoned) => *poisoned.into_inner() = Some(summary),
+        }
     }
 
     /// The Settings page's data.
@@ -253,19 +286,34 @@ fn run(history: &mut TvHistory, job: Job, platform: &mut dyn HistoryPlatform, sh
     let new_id = || id.clone();
     let test_build = platform.test_build();
     let (device, clock) = platform.parts();
+    // Jobs that may add an entry or change the approvals refresh History's
+    // tile data before they answer, so the UI reads the new one with the
+    // answer; the Settings page's data carries it already.
     match job {
         Job::LauncherEdited => {
             if let Err(error) = history.record_launcher_edit(device, clock, &new_id) {
                 log::warn!("history: {error}");
             }
+            refresh_summary(history, clock, shared);
         }
         Job::Pack => {
             if let Err(error) = history.pack(&shared.interrupt) {
                 log::info!("history: packing stopped: {error}");
             }
+            // While the launcher is away: History's tile then has its data
+            // on the next resume, approvals left from before a restart
+            // included, with no history I/O on Home's paths.
+            refresh_summary(history, clock, shared);
         }
         Job::Overview(reply) => {
-            let _ = reply.send(overview(history, device, clock, test_build));
+            let overview = overview(history, device, clock, test_build);
+            if overview.error.is_none() {
+                shared.set_summary(Summary {
+                    last_unix: overview.entries.first().map(|entry| entry.time_unix),
+                    pending: overview.pending.len(),
+                });
+            }
+            let _ = reply.send(overview);
         }
         Job::RestoreDraft(id, reply) => {
             let _ =
@@ -289,6 +337,7 @@ fn run(history: &mut TvHistory, job: Job, platform: &mut dyn HistoryPlatform, sh
             if draft.launcher.is_some() {
                 shared.launcher_changed.store(true, Ordering::SeqCst);
             }
+            refresh_summary(history, clock, shared);
             let _ = reply.send(outcome);
         }
         Job::WrongCode(reply) => {
@@ -307,11 +356,30 @@ fn run(history: &mut TvHistory, job: Job, platform: &mut dyn HistoryPlatform, sh
                 .pending(clock)
                 .and_then(|list| list.to_toml())
                 .map_err(Refused::from);
+            // Approvals that ran out drop out of the count.
+            refresh_summary(history, clock, shared);
             let _ = reply.send(list);
         }
         Job::Commit(kind, bytes, reply) => {
-            let _ = reply.send(history.commit(kind, &bytes, device, clock, &new_id));
+            let result = history.commit(kind, &bytes, device, clock, &new_id);
+            refresh_summary(history, clock, shared);
+            let _ = reply.send(result);
         }
+    }
+}
+
+/// Reads History's tile data again: the newest entry's time and the
+/// approvals waiting. A failure keeps the last one.
+fn refresh_summary(history: &TvHistory, clock: &dyn TvClock, shared: &History) {
+    let read = || -> Result<Summary, HistoryError> {
+        Ok(Summary {
+            last_unix: history.store().log(1)?.first().map(|entry| entry.time_unix),
+            pending: history.pending(clock)?.approval.len(),
+        })
+    };
+    match read() {
+        Ok(summary) => shared.set_summary(summary),
+        Err(error) => log::warn!("history: {error}"),
     }
 }
 
@@ -481,6 +549,8 @@ mod tests {
     struct Device {
         launcher: Launcher,
         settings: BTreeMap<String, String>,
+        /// Without the grant: a setting's change waits for the computer.
+        no_grant: bool,
     }
 
     impl TvDevice for Device {
@@ -495,7 +565,7 @@ mod tests {
             Ok(self.settings.get(key).cloned())
         }
         fn can_write_settings(&self) -> bool {
-            true
+            !self.no_grant
         }
         fn put_setting(&mut self, key: &str, value: &str) -> Result<(), HistoryError> {
             self.settings.insert(key.to_owned(), value.to_owned());
@@ -540,6 +610,10 @@ mod tests {
     }
 
     fn start(test_build: bool) -> (History, PathBuf) {
+        start_with(test_build, Device::default())
+    }
+
+    fn start_with(test_build: bool, device: Device) -> (History, PathBuf) {
         static NEXT: Mutex<u32> = Mutex::new(0);
         let mut next = NEXT.lock().unwrap();
         *next += 1;
@@ -550,11 +624,82 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         let platform = Platform {
             root: root.clone(),
-            device: Device::default(),
+            device,
             clock: Clock(Instant::now()),
             test_build,
         };
         (History::start(Box::new(platform)), root)
+    }
+
+    /// History's tile data: nothing until the thread has read the history
+    /// (never at start), then the newest entry's time and the approvals
+    /// waiting, after a change, an approval and the Settings page's read.
+    #[test]
+    fn the_summary_follows_entries_and_approvals() {
+        let (history, root) = start_with(
+            false,
+            Device {
+                no_grant: true,
+                ..Device::default()
+            },
+        );
+        assert_eq!(history.summary(), None);
+        history.launcher_edited();
+        // A job with an answer runs after it: the summary is set by then.
+        history.wrong_code();
+        assert_eq!(
+            history.summary(),
+            Some(Summary {
+                last_unix: Some(1_790_000_000),
+                pending: 0
+            })
+        );
+        let draft = Draft {
+            changes: vec![ApprovedChange::Setting {
+                key: "animator_duration_scale".into(),
+                old: None,
+                new: Some("0.5".into()),
+            }],
+            launcher: None,
+        };
+        assert!(matches!(
+            history.apply(draft),
+            Ok(ApplyOutcome::Applied { pending }) if !pending.is_empty()
+        ));
+        assert_eq!(history.summary().map(|summary| summary.pending), Some(1));
+        let overview = history.overview();
+        assert_eq!(overview.pending.len(), 1);
+        assert_eq!(
+            history.summary(),
+            Some(Summary {
+                last_unix: overview.entries.first().map(|entry| entry.time_unix),
+                pending: 1
+            })
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    /// A thread that panicked holding the summary's lock doesn't take it
+    /// away: Home still reads and the thread still writes it.
+    #[test]
+    fn a_poisoned_summary_still_reads_and_writes() {
+        let (history, root) = start(false);
+        let summary = Summary {
+            last_unix: Some(1),
+            pending: 2,
+        };
+        history.set_summary(summary);
+        let shared = history.clone();
+        let _ = std::thread::spawn(move || {
+            let _guard = shared.summary.lock();
+            panic!("poisons the lock");
+        })
+        .join();
+        assert!(history.summary.is_poisoned());
+        assert_eq!(history.summary(), Some(summary));
+        history.set_summary(Summary::default());
+        assert_eq!(history.summary(), Some(Summary::default()));
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
@@ -614,6 +759,8 @@ pub(crate) mod desktop {
     struct Device {
         dir: PathBuf,
         settings: BTreeMap<String, String>,
+        /// Whether the launcher may write settings itself.
+        grant: bool,
     }
 
     impl TvDevice for Device {
@@ -628,7 +775,7 @@ pub(crate) mod desktop {
             Ok(self.settings.get(key).cloned())
         }
         fn can_write_settings(&self) -> bool {
-            true
+            self.grant
         }
         fn put_setting(&mut self, key: &str, value: &str) -> Result<(), HistoryError> {
             self.settings.insert(key.to_owned(), value.to_owned());
@@ -682,13 +829,15 @@ pub(crate) mod desktop {
         }
     }
 
-    /// Starts the process's history thread over `dir` (where the order file is).
-    pub(crate) fn start(dir: PathBuf) {
+    /// Starts the process's history thread over `dir` (where the order file
+    /// is); without `grant` a settings change waits for the computer.
+    pub(crate) fn start(dir: PathBuf, grant: bool) {
         super::History::global(|| {
             Box::new(Platform {
                 device: Device {
                     dir,
                     settings: BTreeMap::new(),
+                    grant,
                 },
                 clock: Clock(Instant::now()),
             })

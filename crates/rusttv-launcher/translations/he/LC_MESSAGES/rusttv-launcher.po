@@ -59,8 +59,8 @@ msgstr "אפליקציות מוסתרות"
 msgid "About"
 msgstr "מידע"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "OK – החזרת האפליקציה למסך הבית. חזרה – יציאה מהמסך."
+msgid "OK puts it back on Home. Back returns."
+msgstr "OK – החזרה למסך הבית. חזרה – יציאה מהמסך."
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "גרסה {} · MIT OR Apache-2.0"
@@ -441,14 +441,8 @@ msgstr "סגירת האפליקציה"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "Licences and third-party notices"
-msgstr "רישיונות והודעות של צד שלישי"
-
 msgid "Loading…"
 msgstr "בטעינה…"
-
-msgid "MIT OR Apache-2.0 · licences and third-party notices"
-msgstr "MIT OR Apache-2.0 · רישיונות והודעות של צד שלישי"
 
 msgid "Modify"
 msgstr "עריכה"
@@ -465,6 +459,9 @@ msgstr "הפעלה"
 msgid "RustTV {}"
 msgstr "RustTV {}"
 
+msgid "RustTV"
+msgstr "RustTV"
+
 msgid "Search"
 msgstr "חיפוש"
 
@@ -473,9 +470,6 @@ msgstr "גודל"
 
 msgid "Size: {} %"
 msgstr "גודל: {} %"
-
-msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
-msgstr "Slint (Royalty-free License 2.0), ‏Skia, ספריות Rust"
 
 msgid "Source code"
 msgstr "קוד מקור"
@@ -488,3 +482,83 @@ msgstr "עוצמת קול"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "‏✓ במקלדת מאשר, חזרה מבטלת"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "ההורדה מתבצעת"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "ההתקנה מתבצעת"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "יש עדכון"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "אין טלפונים"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "טלפונים: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "צימוד פתוח"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "שינוי אחרון"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Waiting"
+msgstr "ממתין"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Just now"
+msgstr "הרגע"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "לפני דקה"
+msgstr[1] "לפני {n} דקות"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "לפני שעה"
+msgstr[1] "לפני {n} שעות"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "לפני יום"
+msgstr[1] "לפני {n} ימים"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "מסך מנוחה"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "אחרי 5 דקות במסך הבית: שעון עמום עד שתלחצו על מקש"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "מסך מנוחה: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "RustTV עודכן"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} מחובר"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "המחשב החיל שינוי אחד"
+msgstr[1] "המחשב החיל {n} שינויים"

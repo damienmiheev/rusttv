@@ -59,8 +59,8 @@ msgstr "छिपाए गए ऐप्लिकेशन"
 msgid "About"
 msgstr "जानकारी"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "OK दबाकर ऐप्लिकेशन को होम स्क्रीन पर वापस लाएं। लौटने के लिए 'वापस' दबाएं।"
+msgid "OK puts it back on Home. Back returns."
+msgstr "OK दबाकर इसे होम स्क्रीन पर वापस लाएं। लौटने के लिए 'वापस' दबाएं।"
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "वर्शन {} · MIT OR Apache-2.0"
@@ -441,14 +441,8 @@ msgstr "ऐप बंद करें"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "Licences and third-party notices"
-msgstr "लाइसेंस और तृतीय-पक्ष सूचनाएँ"
-
 msgid "Loading…"
 msgstr "लोड हो रहा है…"
-
-msgid "MIT OR Apache-2.0 · licences and third-party notices"
-msgstr "MIT OR Apache-2.0 · लाइसेंस और तृतीय-पक्ष सूचनाएँ"
 
 msgid "Modify"
 msgstr "बदलें"
@@ -465,6 +459,9 @@ msgstr "पावर"
 msgid "RustTV {}"
 msgstr "RustTV {}"
 
+msgid "RustTV"
+msgstr "RustTV"
+
 msgid "Search"
 msgstr "खोजें"
 
@@ -473,9 +470,6 @@ msgstr "आकार"
 
 msgid "Size: {} %"
 msgstr "आकार: {} %"
-
-msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
-msgstr "Slint (Royalty-free License 2.0), Skia, Rust लाइब्रेरी"
 
 msgid "Source code"
 msgstr "सोर्स कोड"
@@ -488,3 +482,83 @@ msgstr "वॉल्यूम"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "कीबोर्ड पर ✓ पुष्टि करता है, वापस रद्द करता है"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "डाउनलोड जारी"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "इंस्टॉल जारी"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "अपडेट उपलब्ध"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "कोई फ़ोन नहीं"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "फ़ोन: {}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "जोड़ा जा रहा है"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "पिछला बदलाव"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Waiting"
+msgstr "इंतज़ार में"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Just now"
+msgstr "अभी-अभी"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "{n} मिनट पहले"
+msgstr[1] "{n} मिनट पहले"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "{n} घंटा पहले"
+msgstr[1] "{n} घंटे पहले"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "{n} दिन पहले"
+msgstr[1] "{n} दिन पहले"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "निष्क्रिय स्क्रीन"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "होम स्क्रीन पर 5 मिनट बाद, कोई बटन दबाने तक मंद घड़ी"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "निष्क्रिय स्क्रीन: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "RustTV अपडेट हुआ"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} कनेक्ट हुआ"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "आपके कंप्यूटर ने {n} बदलाव लागू किया"
+msgstr[1] "आपके कंप्यूटर ने {n} बदलाव लागू किए"

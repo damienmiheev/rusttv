@@ -59,8 +59,8 @@ msgstr "已隐藏的应用"
 msgid "About"
 msgstr "关于"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "按 OK 键将应用放回主屏幕，按返回键返回。"
+msgid "OK puts it back on Home. Back returns."
+msgstr "按 OK 键将它放回主屏幕，按返回键返回。"
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "版本 {} · MIT OR Apache-2.0"
@@ -441,14 +441,8 @@ msgstr "关闭应用"
 msgid "KDE Connect"
 msgstr "KDE Connect"
 
-msgid "Licences and third-party notices"
-msgstr "许可证和第三方声明"
-
 msgid "Loading…"
 msgstr "正在加载…"
-
-msgid "MIT OR Apache-2.0 · licences and third-party notices"
-msgstr "MIT OR Apache-2.0 · 许可证和第三方声明"
 
 msgid "Modify"
 msgstr "编辑"
@@ -465,6 +459,9 @@ msgstr "电源"
 msgid "RustTV {}"
 msgstr "RustTV {}"
 
+msgid "RustTV"
+msgstr "RustTV"
+
 msgid "Search"
 msgstr "搜索"
 
@@ -473,9 +470,6 @@ msgstr "大小"
 
 msgid "Size: {} %"
 msgstr "大小：{} %"
-
-msgid "Slint (Royalty-free License 2.0), Skia, Rust libraries"
-msgstr "Slint（Royalty-free License 2.0）、Skia、Rust 库"
 
 msgid "Source code"
 msgstr "源代码"
@@ -488,3 +482,79 @@ msgstr "音量"
 
 msgid "✓ on the keyboard confirms, Back cancels"
 msgstr "按键盘上的 ✓ 确认，按返回取消"
+
+#: templates/about_tile.json
+msgid "Downloading"
+msgstr "正在下载"
+
+#: templates/about_tile.json
+msgid "Installing"
+msgstr "正在安装"
+
+#: templates/about_tile.json
+msgid "Update available"
+msgstr "有可用更新"
+
+#: templates/remote_tile.json
+msgid "No phones"
+msgstr "没有手机"
+
+#: templates/remote_tile.json
+msgid "Phones: {}"
+msgstr "手机：{}"
+
+#: templates/remote_tile.json
+msgid "Pairing"
+msgstr "正在配对"
+
+#: templates/history_tile.json
+msgid "Last change"
+msgstr "上次更改"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Waiting"
+msgstr "等待电脑"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "Just now"
+msgstr "刚刚"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} minute ago"
+msgid_plural "{n} minutes ago"
+msgstr[0] "{n} 分钟前"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} hour ago"
+msgid_plural "{n} hours ago"
+msgstr[0] "{n} 小时前"
+
+#: templates/history_row.json templates/history_tile.json
+msgid "{n} day ago"
+msgid_plural "{n} days ago"
+msgstr[0] "{n} 天前"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "待机画面"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "在主屏幕停留 5 分钟后显示暗色时钟，按任意键返回"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "待机画面：{}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "RustTV 已更新"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} 已连接"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "电脑已应用 {n} 项更改"
