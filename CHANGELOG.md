@@ -83,6 +83,38 @@ field in `--json` output says which contract you get, CLI.md).
   RustTV row shows the same (its long licence line, which didn't fit the
   panel in most languages, became "Third-party notices"). No new texts.
   The desktop build takes `--demo-panels <dir>`.
+- Home has a status corner (PANELS.md § 9 Q2): the clock at the top end
+  (24 hours or 12 as the TV is set, without AM/PM; before the top-right
+  menu where there is one), set once a minute, and before it the badge of
+  up to two panels that need attention (an update available, an approval
+  waiting for the computer, pairing open). It shows with the hero, like the
+  top-right menu.
+- Panels show banners over Home (§ 9 Q4): a card at the top end for four
+  seconds, one at a time and queued: an update became available or was
+  installed, a paired phone connected ("Pixel connected", once per phone),
+  the computer applied changes that waited for it. Never over another app,
+  a page, a folder, a menu or the review screen (one cut short shows again,
+  whole); never focusable; no shadow or slide with reduced effects.
+- After 5 minutes on Home with nothing pressed, Home dims to an idle
+  screen (§ 9 Q6): black, a large dim clock and the panels' lines (an
+  update available, the last change's age), moving a little every minute
+  for OLED screens. Any key (or the pointer, or a phone) wakes Home and
+  does nothing else. It never shows over other apps and goes when the TV's
+  own screensaver starts. Settings → Idle screen turns it off; the choice
+  is in the TV's history (state format 8, only while off) and kept as the
+  `ambient-off` flag file next to `order.toml`.
+- Each of these faces is a template kind any panel can use (`corner`,
+  `banner`, `ambient` in `templates/*_corner.json`, `*_banner.json`,
+  `*_ambient.json`). New texts in all 20 translations, measured to fit. The
+  desktop build takes `--demo-faces <dir>`. The Linux home screen reads the
+  time zone through `date +%z` (history times were in UTC there).
+- Back from a page opened in a folder (About, RustTV Remote, Settings,
+  History) returns to that folder, as after an app opened from it. The
+  Hidden apps page's hint says "OK puts it back on Home", right for the
+  built-in tiles too.
+- An app list that couldn't be read no longer empties folders and the tile
+  order: until a list arrives, Home keeps every app it has stored, and a
+  save meanwhile writes them back unchanged.
 - Settings → Effects: Reduced turns the tile shadows and the backdrop glow
   off, for a weak GPU. The choice is in the TV's history and kept as the
   `effects-reduced` flag file next to `order.toml`, so an image can preset
@@ -145,6 +177,10 @@ field in `--json` output says which contract you get, CLI.md).
   name them, and hiding a tile (or showing it again) is reported only as
   `hidden`, no longer also as `removed` (or `added`). The schema stays
   `rusttv.v11` (CLI.md).
+- TV history snapshots in state format 8 may hold
+  `launcher.ambient_off` (the launcher's idle screen off), and history
+  changes have the kind `ambient` (`on`). The schema stays `rusttv.v11`
+  (CLI.md).
 
 ## 0.3.2 (2026-11-02)
 

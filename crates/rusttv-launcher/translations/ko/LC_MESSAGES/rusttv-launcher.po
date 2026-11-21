@@ -59,8 +59,8 @@ msgstr "숨긴 앱"
 msgid "About"
 msgstr "정보"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "OK: 앱을 홈 화면에 다시 표시. 뒤로: 돌아가기."
+msgid "OK puts it back on Home. Back returns."
+msgstr "OK: 홈 화면에 다시 표시. 뒤로: 돌아가기."
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "버전 {} · MIT OR Apache-2.0"
@@ -533,3 +533,28 @@ msgstr[0] "{n}시간 전"
 msgid "{n} day ago"
 msgid_plural "{n} days ago"
 msgstr[0] "{n}일 전"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "대기 화면"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "홈 화면에서 5분이 지나면 버튼을 누를 때까지 어두운 시계 표시"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "대기 화면: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "RustTV 업데이트됨"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} 연결됨"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "컴퓨터가 변경 {n}개를 적용함"

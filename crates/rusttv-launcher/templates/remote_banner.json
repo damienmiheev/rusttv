@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "component": "RemoteBanner",
+  "face": "banner",
+  "props": ["phone"],
+  "root": { "banner": {
+    "badge": "rusttv-remote",
+    "title": { "tr": "{} connected", "args": ["phone"] },
+    "detail": { "tr": "RustTV Remote" } } }
+}

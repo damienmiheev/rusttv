@@ -21,7 +21,13 @@ const ONE_COLUMN: &str = include_str!("../codegen/test_templates/general_page.js
 const GENERAL_TILE: &str = include_str!("../codegen/test_templates/general_tile.json");
 const GENERAL_ROW: &str = include_str!("../codegen/test_templates/general_row.json");
 const GENERAL_PLURAL: &str = include_str!("../codegen/test_templates/general_plural.json");
+const GENERAL_CORNER: &str = include_str!("../codegen/test_templates/general_corner.json");
+const GENERAL_BANNER: &str = include_str!("../codegen/test_templates/general_banner.json");
+const GENERAL_AMBIENT: &str = include_str!("../codegen/test_templates/general_ambient.json");
 const HISTORY_ROW: &str = include_str!("../templates/history_row.json");
+const HISTORY_AMBIENT: &str = include_str!("../templates/history_ambient.json");
+const ABOUT_BANNER: &str = include_str!("../templates/about_banner.json");
+const REMOTE_CORNER: &str = include_str!("../templates/remote_corner.json");
 const REMOTE_PAGE: &str = include_str!("../templates/remote_page.json");
 
 /// A Slint string argument as a left-to-right isolate (convert.rs `arg`).
@@ -193,6 +199,173 @@ fn a_general_tile_and_row_convert() {
 /// A text with plural forms becomes Slint's `@tr("…" | "…" % n)`, its
 /// count read as a number, with other args after it; in a `select` too,
 /// on a tile, a row and a page block.
+/// The status corner's glyph, the banner and the idle screen's line are
+/// globals of functions of their props (PANELS.md § 4.1), with their badge
+/// as a picture property; Home calls them (ui/faces_view.rs).
+#[test]
+fn corner_banner_and_ambient_faces_convert() {
+    let corner = run(REMOTE_CORNER).expect("corner converts");
+    assert!(
+        corner.contains("import { Badges } from \"badges.slint\";"),
+        "{corner}"
+    );
+    assert!(corner.contains("export global RemoteCorner {"), "{corner}");
+    assert!(
+        corner.contains("    out property <image> badge: Badges.rusttv-remote;"),
+        "{corner}"
+    );
+    assert!(
+        corner.contains(
+            "public pure function shown(status: string) -> bool {\n        return (status == \"pairing\" ? true : false);"
+        ),
+        "{corner}"
+    );
+
+    let banner = run(ABOUT_BANNER).expect("banner converts");
+    assert!(banner.contains("export global AboutBanner {"), "{banner}");
+    assert!(
+        banner.contains("public pure function title(event: string, version: string) -> string {")
+    );
+    assert!(banner.contains("@tr(\"RustTV updated\")"), "{banner}");
+    assert!(
+        banner.contains(&format!("@tr(\"RustTV {{}}\", {})", isolated("version"))),
+        "{banner}"
+    );
+    assert!(banner.contains("out property <image> badge: Badges.rusttv-logo;"));
+
+    // A banner without a detail has an empty one.
+    let general = run(GENERAL_BANNER).expect("converts");
+    assert!(
+        general.contains("public pure function detail(count: string, name: string) -> string {\n        return \"\";"),
+        "{general}"
+    );
+    assert!(
+        general.contains(" | \"{n} things for {}\" % count.to-float()"),
+        "{general}"
+    );
+
+    let ambient = run(HISTORY_AMBIENT).expect("ambient converts");
+    assert!(
+        ambient.contains("export global HistoryAmbient {"),
+        "{ambient}"
+    );
+    // `show` as a prop's name: shown while it isn't empty.
+    assert!(
+        ambient.contains("public pure function shown(status: string, count: string) -> bool {\n        return status != \"\";"),
+        "{ambient}"
+    );
+    assert!(
+        ambient.contains("public pure function text(status: string, count: string) -> string {")
+    );
+    assert!(
+        ambient.contains("\"{n} hours ago\" % count.to-float()"),
+        "{ambient}"
+    );
+    for out in [&corner, &banner, &general, &ambient] {
+        assert_mirrored(out);
+    }
+    for json in [GENERAL_CORNER, GENERAL_AMBIENT] {
+        run(json).expect("converts");
+    }
+}
+
+/// What the new faces' schema refuses: a missing condition, picture or
+/// title; another face's fields; a badge that isn't built in; a prop named
+/// like the face's functions or picture; the wrong root.
+#[test]
+fn rejects_corner_banner_and_ambient_outside_the_schema() {
+    let show = "\"show\": { \"select\": \"status\", \"cases\": { \"pairing\": true } }";
+    assert!(REMOTE_CORNER.contains(show));
+    let title = "\"title\": { \"select\": \"event\"";
+    assert!(ABOUT_BANNER.contains(title));
+    let text = "\"text\": { \"select\": \"status\"";
+    assert!(HISTORY_AMBIENT.contains(text));
+    let cases = [
+        (
+            REMOTE_CORNER.replace(&format!(",\n    {show}"), ""),
+            "missing \"show\"",
+        ),
+        (
+            REMOTE_CORNER.replace("\"badge\": \"rusttv-remote\",", ""),
+            "missing \"badge\"",
+        ),
+        (
+            REMOTE_CORNER.replace("\"rusttv-remote\"", "\"phone.png\""),
+            "is not a built-in badge",
+        ),
+        (
+            REMOTE_CORNER.replace(show, &format!("{show}, \"title\": {{ \"tr\": \"T\" }}")),
+            "unknown field \"title\"",
+        ),
+        (
+            REMOTE_CORNER.replace("\"glyph\"", "\"glance\""),
+            "a corner's root must be a glyph",
+        ),
+        (
+            REMOTE_CORNER.replace("[\"status\"]", "[\"status\", \"badge\"]"),
+            "is taken",
+        ),
+        (
+            REMOTE_CORNER.replace("[\"status\"]", "[\"status\", \"shown\"]"),
+            "is taken",
+        ),
+        (
+            REMOTE_CORNER.replace("\"pairing\": true", "\"pairing\": \"yes\""),
+            "expected true or false",
+        ),
+        (
+            ABOUT_BANNER.replace(title, "\"heading\": { \"select\": \"event\""),
+            "unknown field \"heading\"",
+        ),
+        (
+            ABOUT_BANNER.replace("\"badge\": \"rusttv-logo\",", ""),
+            "missing \"badge\"",
+        ),
+        (
+            ABOUT_BANNER.replace(
+                "[\"event\", \"version\"]",
+                "[\"event\", \"version\", \"title\"]",
+            ),
+            "is taken",
+        ),
+        (
+            ABOUT_BANNER.replace("\"version\" }]", "\"build\" }]"),
+            "\"build\" is not in props",
+        ),
+        (
+            ABOUT_BANNER.replace("\"face\": \"banner\"", "\"face\": \"corner\""),
+            "a corner's root must be a glyph",
+        ),
+        (
+            HISTORY_AMBIENT.replace(text, "\"words\": { \"select\": \"status\""),
+            "unknown field \"words\"",
+        ),
+        (
+            HISTORY_AMBIENT.replace("\"show\": \"status\",", ""),
+            "missing \"show\"",
+        ),
+        (
+            HISTORY_AMBIENT.replace(
+                "[\"status\", \"count\"]",
+                "[\"status\", \"count\", \"text\"]",
+            ),
+            "is taken",
+        ),
+        (
+            HISTORY_AMBIENT.replace("\"show\": \"status\"", "\"show\": \"state\""),
+            "\"state\" is not in props",
+        ),
+    ];
+    for (json, expected) in cases {
+        assert!(
+            json != REMOTE_CORNER && json != ABOUT_BANNER && json != HISTORY_AMBIENT,
+            "the case must change the template ({expected})"
+        );
+        let got = err(&json);
+        assert!(got.contains(expected), "expected {expected:?}, got {got:?}");
+    }
+}
+
 #[test]
 fn plural_texts_convert_with_their_count() {
     let tile = run(GENERAL_PLURAL).expect("converts");
@@ -490,8 +663,8 @@ fn rejects_what_the_schema_does_not_hold() {
             "reads version 1",
         ),
         (
-            OK.replace("\"face\": \"tile\"", "\"face\": \"banner\""),
-            "is not tile, row or page",
+            OK.replace("\"face\": \"tile\"", "\"face\": \"card\""),
+            "is not tile, page, row, corner, banner, ambient",
         ),
         (
             OK.replace("\"face\": \"tile\"", "\"face\": \"page\""),
@@ -870,5 +1043,21 @@ fn the_test_templates_compile_and_draw() {
     assert_eq!(pages.get_general_row_title(), "Count \u{2066}\u{2069}");
     assert_eq!(pages.get_general_row_detail(), "");
     assert!(!pages.get_general_row_attention());
+    // The corner's glyph, the banner and the ambient line with empty
+    // properties: hidden, a count of 0 and an empty isolate, the `else`
+    // text; each has its badge.
+    assert!(!pages.get_general_corner_shown());
+    assert_eq!(
+        pages.get_general_banner_title(),
+        "0 things for \u{2066}\u{2069}"
+    );
+    assert_eq!(pages.get_general_banner_detail(), "");
+    assert!(!pages.get_general_ambient_shown());
+    assert_eq!(pages.get_general_ambient_text(), "Off");
+    // Badges are images Rust sets (none in this test): only their type
+    // is checked by compiling.
+    let _: slint::Image = pages.get_general_corner_badge();
+    let _: slint::Image = pages.get_general_banner_badge();
+    let _: slint::Image = pages.get_general_ambient_badge();
     pages.hide().expect("hidden");
 }

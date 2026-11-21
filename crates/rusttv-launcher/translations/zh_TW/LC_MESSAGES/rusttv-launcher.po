@@ -59,8 +59,8 @@ msgstr "已隱藏的應用程式"
 msgid "About"
 msgstr "關於"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "按 OK 鍵將應用程式放回主畫面，按返回鍵返回。"
+msgid "OK puts it back on Home. Back returns."
+msgstr "按 OK 鍵將它放回主畫面，按返回鍵返回。"
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "版本 {} · MIT OR Apache-2.0"
@@ -533,3 +533,28 @@ msgstr[0] "{n} 小時前"
 msgid "{n} day ago"
 msgid_plural "{n} days ago"
 msgstr[0] "{n} 天前"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "待機畫面"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "在主畫面停留 5 分鐘後顯示暗色時鐘，按任意鍵返回"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "待機畫面：{}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "RustTV 已更新"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} 已連線"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "電腦已套用 {n} 項變更"

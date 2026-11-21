@@ -48,16 +48,41 @@ pub(crate) struct PanelPage {
     pub props: Props,
 }
 
+/// What a panel's glyph in Home's status corner shows (a `corner`
+/// template): its badge, while the panel needs attention.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PanelCorner {
+    pub props: Props,
+}
+
+/// What a panel's line on the idle screen shows (an `ambient` template).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PanelAmbient {
+    pub props: Props,
+}
+
+/// A banner a panel shows once over Home (a `banner` template): an event,
+/// not a state, so it comes from the change that makes it
+/// ([`about_banner`], [`remote_banner`], [`history_banner`]), not from a
+/// view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PanelBanner {
+    pub props: Props,
+}
+
 /// Which faces a panel has: `None` for a face the panel doesn't have. About
-/// has all three, and Home relies on it (tests check it): the About page and
-/// Settings' RustTV row are always there. RustTV Remote has all three too;
-/// History a tile and a row (its page is Settings' History section). The
-/// rows also make the RustTV quick panel (PANELS.md § 2).
+/// has a tile, a row and a page, and Home relies on it (tests check it): the
+/// About page and Settings' RustTV row are always there. RustTV Remote has
+/// all three too; History a tile and a row (its page is Settings' History
+/// section). The rows also make the RustTV quick panel (PANELS.md § 2).
+/// Each also has a status-corner glyph and an idle-screen line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PanelView {
     pub tile: Option<PanelTile>,
     pub row: Option<PanelRow>,
     pub page: Option<PanelPage>,
+    pub corner: Option<PanelCorner>,
+    pub ambient: Option<PanelAmbient>,
 }
 
 /// About (templates/about_*.json). The tile shows the version, and a caption
@@ -108,7 +133,43 @@ pub(crate) fn about_view(version: &str, status: &UpdateStatus) -> PanelView {
                 ("update-detail", detail),
             ]),
         }),
+        // The corner's glyph and the idle screen's line while an update is
+        // available (`update`); not while it downloads or installs, which
+        // the person started.
+        corner: Some(PanelCorner {
+            props: Props(vec![("status", caption.to_owned())]),
+        }),
+        ambient: Some(PanelAmbient {
+            props: Props(vec![("status", caption.to_owned())]),
+        }),
     }
+}
+
+/// About's banner when the updater's status changes from `before` to
+/// `after`: an update became available (its version), or it was installed
+/// (`version`, the running one); `None` for any other change. The first
+/// status read since start (`before` is `Idle`) makes no "available"
+/// banner: that update is old news, and the status corner's glyph shows it.
+pub(crate) fn about_banner(
+    version: &str,
+    before: &UpdateStatus,
+    after: &UpdateStatus,
+) -> Option<PanelBanner> {
+    let (event, version) = match after {
+        UpdateStatus::Available(new) | UpdateStatus::NeedsPermission(new)
+            if !before.is_available() && *before != UpdateStatus::Idle =>
+        {
+            ("available", new.as_str())
+        }
+        UpdateStatus::Installed if *before != UpdateStatus::Installed => ("installed", version),
+        _ => return None,
+    };
+    Some(PanelBanner {
+        props: Props(vec![
+            ("event", event.to_owned()),
+            ("version", version.to_owned()),
+        ]),
+    })
 }
 
 /// RustTV Remote (templates/remote_*.json). The tile and the row show how
@@ -123,12 +184,28 @@ pub(crate) fn remote_view(phones: usize, pairing: bool) -> PanelView {
             ("status", if pairing { "pairing" } else { "" }.to_owned()),
         ])
     };
+    let status = || {
+        Props(vec![(
+            "status",
+            if pairing { "pairing" } else { "" }.to_owned(),
+        )])
+    };
     PanelView {
         tile: Some(PanelTile { props: props() }),
         row: Some(PanelRow { props: props() }),
         page: Some(PanelPage {
             props: Props(Vec::new()),
         }),
+        corner: Some(PanelCorner { props: status() }),
+        ambient: Some(PanelAmbient { props: status() }),
+    }
+}
+
+/// RustTV Remote's banner when a paired phone connects (`name`, as it was
+/// paired), while RustTV is in front.
+pub(crate) fn remote_banner(name: &str) -> PanelBanner {
+    PanelBanner {
+        props: Props(vec![("phone", name.to_owned())]),
     }
 }
 
@@ -168,7 +245,36 @@ pub(crate) fn history_view(summary: Option<&Summary>, now_unix: i64) -> PanelVie
         tile: Some(PanelTile { props: props() }),
         row: Some(PanelRow { props: props() }),
         page: None,
+        // The corner's glyph while an approval waits; the idle screen's
+        // line names the waiting approval or the last change's age.
+        corner: Some(PanelCorner {
+            props: Props(vec![("status", status.to_owned())]),
+        }),
+        ambient: Some(PanelAmbient { props: props() }),
     }
+}
+
+/// History's banner when the summary changes from `before` to `after`: the
+/// computer applied approvals that waited for it (fewer wait, and a newer
+/// entry recorded them), with how many. Approvals that ran out (two hours)
+/// make no entry, so they make no banner either.
+pub(crate) fn history_banner(
+    before: Option<&Summary>,
+    after: Option<&Summary>,
+) -> Option<PanelBanner> {
+    let (before, after) = (before?, after?);
+    let applied = before
+        .pending
+        .checked_sub(after.pending)
+        .filter(|n| *n > 0)?;
+    let newer = match (before.last_unix, after.last_unix) {
+        (Some(old), Some(new)) => new > old,
+        (None, Some(_)) => true,
+        (_, None) => false,
+    };
+    newer.then(|| PanelBanner {
+        props: Props(vec![("count", applied.to_string())]),
+    })
 }
 
 /// Every `UpdateStatus` with a detail, for tests across modules.
@@ -323,6 +429,189 @@ mod tests {
             row["attention"]["cases"],
             serde_json::json!({"update": true})
         );
+    }
+
+    /// The corner's glyph and the idle screen's line get the tile's caption
+    /// (a name means one value on every face); their templates show them
+    /// only for "update", not while an update downloads or installs, which
+    /// the person started (ui.rs tests draw them).
+    #[test]
+    fn about_corner_and_ambient_follow_the_caption() {
+        for status in &STATUSES {
+            let view = about_view("1.2.3", status);
+            let caption = view.tile.expect("tile").props;
+            let corner = view.corner.expect("corner").props;
+            let ambient = view.ambient.expect("ambient").props;
+            assert_eq!(corner.get("status"), caption.get("status"), "{status:?}");
+            assert_eq!(ambient.get("status"), caption.get("status"), "{status:?}");
+        }
+        for face in ["about_corner", "about_ambient"] {
+            let root = &template(face)["root"];
+            let body = root.get("glyph").or(root.get("glance")).expect("root");
+            assert_eq!(
+                body["show"],
+                serde_json::json!({"select": "status", "cases": {"update": true}}),
+                "{face}"
+            );
+        }
+    }
+
+    #[test]
+    fn about_banner_comes_once_for_a_new_update_and_for_an_install() {
+        let available = UpdateStatus::Available("2.0.0".into());
+        let banner =
+            about_banner("1.2.3", &UpdateStatus::Checking, &available).expect("a new update");
+        assert_eq!(banner.props.get("event"), "available");
+        assert_eq!(banner.props.get("version"), "2.0.0");
+        // Known at start already: no banner (the corner shows it).
+        assert_eq!(about_banner("1.2.3", &UpdateStatus::Idle, &available), None);
+        // Still available (or now needing permission): no second banner.
+        assert_eq!(about_banner("1.2.3", &available, &available), None);
+        let permission = UpdateStatus::NeedsPermission("2.0.0".into());
+        assert_eq!(about_banner("1.2.3", &available, &permission), None);
+        let installed = about_banner("1.2.3", &UpdateStatus::Installing, &UpdateStatus::Installed)
+            .expect("installed");
+        assert_eq!(installed.props.get("event"), "installed");
+        assert_eq!(installed.props.get("version"), "1.2.3");
+        assert_eq!(
+            about_banner("1.2.3", &UpdateStatus::Installed, &UpdateStatus::Installed),
+            None
+        );
+        for before in &STATUSES {
+            for after in &STATUSES {
+                let banner = about_banner("1.2.3", before, after);
+                let expected = (after.is_available()
+                    && !before.is_available()
+                    && *before != UpdateStatus::Idle)
+                    || (*after == UpdateStatus::Installed && *before != UpdateStatus::Installed);
+                assert_eq!(banner.is_some(), expected, "{before:?} -> {after:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn remote_corner_and_ambient_show_pairing() {
+        for pairing in [false, true] {
+            let view = remote_view(2, pairing);
+            let expected = if pairing { "pairing" } else { "" };
+            assert_eq!(view.corner.expect("corner").props.get("status"), expected);
+            assert_eq!(view.ambient.expect("ambient").props.get("status"), expected);
+        }
+        assert_eq!(remote_banner("Pixel").props.get("phone"), "Pixel");
+    }
+
+    #[test]
+    fn history_corner_waits_and_ambient_carries_the_age() {
+        let now = CLOCK_SET_AFTER + 10_000;
+        let waiting = Summary {
+            last_unix: Some(now - 7_200),
+            pending: 1,
+        };
+        let view = history_view(Some(&waiting), now);
+        assert_eq!(view.corner.expect("corner").props.get("status"), "waiting");
+        let aged = Summary {
+            pending: 0,
+            ..waiting
+        };
+        let view = history_view(Some(&aged), now);
+        assert_eq!(view.corner.expect("corner").props.get("status"), "hours");
+        let ambient = view.ambient.expect("ambient").props;
+        assert_eq!(ambient.get("status"), "hours");
+        assert_eq!(ambient.get("count"), "2");
+    }
+
+    /// The banner only when the computer applied waiting approvals (a newer
+    /// entry), never for approvals that ran out or before the first read.
+    #[test]
+    fn history_banner_counts_approvals_the_computer_applied() {
+        let before = Summary {
+            last_unix: Some(CLOCK_SET_AFTER),
+            pending: 3,
+        };
+        let applied = Summary {
+            last_unix: Some(CLOCK_SET_AFTER + 60),
+            pending: 1,
+        };
+        let banner = history_banner(Some(&before), Some(&applied)).expect("applied");
+        assert_eq!(banner.props.get("count"), "2");
+        let ran_out = Summary {
+            pending: 0,
+            ..before
+        };
+        assert_eq!(history_banner(Some(&before), Some(&ran_out)), None);
+        assert_eq!(history_banner(None, Some(&applied)), None);
+        assert_eq!(history_banner(Some(&applied), Some(&applied)), None);
+        let more = Summary {
+            last_unix: Some(CLOCK_SET_AFTER + 120),
+            pending: 4,
+        };
+        assert_eq!(history_banner(Some(&before), Some(&more)), None);
+        let empty = Summary {
+            last_unix: None,
+            pending: 1,
+        };
+        let first = Summary {
+            last_unix: Some(CLOCK_SET_AFTER),
+            pending: 0,
+        };
+        assert!(history_banner(Some(&empty), Some(&first)).is_some());
+    }
+
+    /// Each face's template takes exactly the props its view sets, in
+    /// order, so Rust can pass them by position (PANELS.md § 4.1).
+    #[test]
+    fn new_faces_props_match_their_templates() {
+        let now = CLOCK_SET_AFTER;
+        let views = [
+            ("about", about_view("1", &UpdateStatus::Idle)),
+            ("remote", remote_view(0, false)),
+            ("history", history_view(None, now)),
+        ];
+        for (panel, view) in views {
+            for (face, props) in [
+                ("corner", view.corner.map(|face| face.props)),
+                ("ambient", view.ambient.map(|face| face.props)),
+            ] {
+                let props = props.expect("every panel has the face");
+                let names: Vec<&str> = props.0.iter().map(|(name, _)| *name).collect();
+                let template = template(&format!("{panel}_{face}"));
+                assert_eq!(
+                    template["props"],
+                    serde_json::json!(names),
+                    "{panel} {face}"
+                );
+            }
+        }
+        let banners = [
+            (
+                "about",
+                about_banner("1", &UpdateStatus::Checking, &UpdateStatus::Installed),
+            ),
+            ("remote", Some(remote_banner("P"))),
+            (
+                "history",
+                history_banner(
+                    Some(&Summary {
+                        last_unix: None,
+                        pending: 1,
+                    }),
+                    Some(&Summary {
+                        last_unix: Some(now),
+                        pending: 0,
+                    }),
+                ),
+            ),
+        ];
+        for (panel, banner) in banners {
+            let props = banner.expect("a banner").props;
+            let names: Vec<&str> = props.0.iter().map(|(name, _)| *name).collect();
+            let template = template(&format!("{panel}_banner"));
+            assert_eq!(
+                template["props"],
+                serde_json::json!(names),
+                "{panel} banner"
+            );
+        }
     }
 
     fn template(name: &str) -> serde_json::Value {

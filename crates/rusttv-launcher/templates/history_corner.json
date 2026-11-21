@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "component": "HistoryCorner",
+  "face": "corner",
+  "props": ["status"],
+  "root": { "glyph": {
+    "badge": "rusttv-history",
+    "show": { "select": "status", "cases": { "waiting": true } } } }
+}

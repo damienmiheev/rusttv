@@ -59,8 +59,8 @@ msgstr "แอปที่ซ่อนไว้"
 msgid "About"
 msgstr "เกี่ยวกับ"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "กด OK เพื่อนำแอปกลับไปที่หน้าจอหลัก กดกลับเพื่อย้อนกลับ"
+msgid "OK puts it back on Home. Back returns."
+msgstr "กด OK เพื่อนำกลับไปที่หน้าจอหลัก กดกลับเพื่อย้อนกลับ"
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "เวอร์ชัน {} · MIT OR Apache-2.0"
@@ -533,3 +533,28 @@ msgstr[0] "{n} ชั่วโมงที่แล้ว"
 msgid "{n} day ago"
 msgid_plural "{n} days ago"
 msgstr[0] "{n} วันก่อน"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "หน้าจอพัก"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "อยู่ที่หน้าจอหลัก 5 นาที จะแสดงนาฬิกาหรี่จนกว่าจะกดปุ่ม"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "หน้าจอพัก: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "อัปเดต RustTV แล้ว"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "เชื่อมต่อ {} แล้ว"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "คอมพิวเตอร์ใช้ {n} การเปลี่ยนแปลงแล้ว"

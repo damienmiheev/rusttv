@@ -125,8 +125,49 @@ pub const BLOCKS_SLINT: [&str; 15] = [
     "Tone",
 ];
 
-/// A row's function names, which its props (the parameters) can't take.
-const ROW_FUNCTIONS: [&str; 3] = ["title", "detail", "attention"];
+/// A function face's functions (and picture), each with its Slint type.
+type Functions = &'static [(&'static str, &'static str)];
+
+/// Faces drawn by Home from a global of pure functions (Rust calls them
+/// for the values Home shows), with each function's kind: a row (Settings'
+/// list), a status-corner glyph, a banner and an ambient line (PANELS.md
+/// § 2). `badge` is the global's picture, an `out` property. A face's
+/// props are the functions' parameters, so they can't take these names.
+pub const FUNCTION_FACES: [(&str, &str, Functions); 4] = [
+    (
+        "row",
+        "list-row",
+        &[
+            ("title", "string"),
+            ("detail", "string"),
+            ("attention", "bool"),
+        ],
+    ),
+    ("corner", "glyph", &[("shown", "bool"), ("badge", "image")]),
+    (
+        "banner",
+        "banner",
+        &[
+            ("title", "string"),
+            ("detail", "string"),
+            ("badge", "image"),
+        ],
+    ),
+    (
+        "ambient",
+        "glance",
+        &[("shown", "bool"), ("text", "string"), ("badge", "image")],
+    ),
+];
+
+/// The functions (and picture) a face's global has, `None` for a face drawn
+/// as a component (tile, page).
+pub fn face_functions(face: &str) -> Option<Functions> {
+    FUNCTION_FACES
+        .iter()
+        .find(|(name, _, _)| *name == face)
+        .map(|(_, _, functions)| *functions)
+}
 
 /// The template format's version: a runtime loader or an editor refuses a
 /// file it doesn't know.
@@ -214,11 +255,12 @@ pub fn convert(json: &str) -> Result<String, String> {
             || RESERVED_PREFIXES
                 .iter()
                 .any(|prefix| prop.starts_with(prefix))
-            || (face == "row" && ROW_FUNCTIONS.contains(&prop))
+            || face_functions(face)
+                .is_some_and(|functions| functions.iter().any(|(function, _)| *function == prop))
             || props.contains(&prop)
         {
             return Err(format!(
-                "props[{i}]: {prop:?} is taken (a Slint word, an element property, `u`, `scroll-*`, a row's function, or a duplicate)"
+                "props[{i}]: {prop:?} is taken (a Slint word, an element property, `u`, `scroll-*`, the face's function or picture, or a duplicate)"
             ));
         }
         props.push(prop);
@@ -227,26 +269,35 @@ pub fn convert(json: &str) -> Result<String, String> {
     let (kind, body) = node(field(doc, "template", "root")?, "root")?;
     let root = match face {
         "tile" => "column",
-        "row" => "list-row",
         "page" => "page",
-        other => return Err(format!("face: {other:?} is not tile, row or page")),
+        other => match FUNCTION_FACES.iter().find(|(name, _, _)| *name == other) {
+            Some((_, root, _)) => root,
+            None => {
+                return Err(format!(
+                    "face: {other:?} is not tile, page, {}",
+                    FUNCTION_FACES.map(|(name, _, _)| name).join(", ")
+                ));
+            }
+        },
     };
     if kind != root {
         return Err(format!("root: a {face}'s root must be a {root}"));
     }
     let at = format!("root.{root}");
     let mut out = String::from("// Generated from a panel template by build.rs. Do not edit.\n");
-    // A row's words are functions of its properties; elsewhere they are
-    // the component's own.
-    let scope = if face == "row" { "" } else { "root." };
+    // A row's (a corner glyph's, …) words are functions of its
+    // properties; elsewhere they are the component's own.
+    let functions = face_functions(face);
+    let scope = if functions.is_some() { "" } else { "root." };
     let cx = Cx {
         props: &props,
         scope,
     };
-    match face {
-        "tile" => cx.tile(name, body, &at, &mut out)?,
-        "row" => cx.row(name, body, &at, &mut out)?,
-        _ => cx.page(name, body, &at, &mut out)?,
+    match (face, functions) {
+        ("tile", _) => cx.tile(name, body, &at, &mut out)?,
+        ("page", _) => cx.page(name, body, &at, &mut out)?,
+        (_, Some(functions)) => cx.functions(name, functions, body, &at, &mut out)?,
+        _ => {}
     }
     Ok(out)
 }
@@ -311,43 +362,76 @@ impl Cx<'_> {
         Ok(())
     }
 
-    /// A row: its title, dim detail and attention (Settings' accent dot),
-    /// as functions of the properties, since Settings draws every row of
-    /// its list with one component (quick.slint `ControlRow`).
-    fn row(
+    /// A face Home draws from a global of pure functions of the properties
+    /// ([`FUNCTION_FACES`]), since one component draws every item of its
+    /// kind: a row (Settings' list, quick.slint `ControlRow`: title, dim
+    /// detail, accent dot), a status-corner glyph (a badge `shown` while
+    /// its panel needs attention), a banner (badge, title, detail) and an
+    /// ambient line (a badge and a text, `shown` on the idle screen). A
+    /// texts-only field is optional where Home can draw without it
+    /// (`detail`, `attention`); a condition (`shown`) and a picture
+    /// (`badge`) are required.
+    fn functions(
         &self,
         name: &str,
+        functions: &[(&str, &str)],
         body: &Map<String, Value>,
         at: &str,
         out: &mut String,
     ) -> Result<(), String> {
-        only(body, at, &["title", "detail", "attention"])?;
+        // In the template, a glyph's and a glance's condition is `show`, as
+        // on a tile's text; the function is `shown`.
+        fn key(function: &str) -> &str {
+            if function == "shown" {
+                "show"
+            } else {
+                function
+            }
+        }
+        let keys: Vec<&str> = functions
+            .iter()
+            .map(|(function, _)| key(function))
+            .collect();
+        only(body, at, &keys)?;
         let params = self
             .props
             .iter()
             .map(|prop| format!("{prop}: string"))
             .collect::<Vec<_>>()
             .join(", ");
-        let title = self.words(field(body, at, "title")?, &format!("{at}.title"))?;
-        let detail = match body.get("detail") {
-            Some(detail) => self.words(detail, &format!("{at}.detail"))?,
-            None => "\"\"".into(),
-        };
-        let attention = match body.get("attention") {
-            Some(attention) => self.flag(attention, &format!("{at}.attention"))?,
-            None => "false".into(),
-        };
-        let _ = writeln!(out, "\nexport global {name} {{");
-        for (function, kind, value) in [
-            ("title", "string", title),
-            ("detail", "string", detail),
-            ("attention", "bool", attention),
-        ] {
+        let mut badge = None;
+        let mut body_out = String::new();
+        for &(function, kind) in functions {
+            let field_at = format!("{at}.{}", key(function));
+            let value = body.get(key(function));
+            let value = match (kind, value) {
+                ("image", Some(value)) => {
+                    let picture = string(value, &field_at)?;
+                    if !BADGES.contains(&picture) {
+                        return Err(format!("{field_at}: {picture:?} is not a built-in badge"));
+                    }
+                    badge = Some(picture);
+                    continue;
+                }
+                ("string", Some(value)) => self.words(value, &field_at)?,
+                ("bool", Some(value)) => self.flag(value, &field_at)?,
+                ("string", None) if function == "detail" => "\"\"".into(),
+                ("bool", None) if function == "attention" => "false".into(),
+                _ => return Err(format!("{at}: missing {:?}", key(function))),
+            };
             let _ = writeln!(
-                out,
+                body_out,
                 "    public pure function {function}({params}) -> {kind} {{\n        return {value};\n    }}"
             );
         }
+        if badge.is_some() {
+            out.push_str("import { Badges } from \"badges.slint\";\n");
+        }
+        let _ = writeln!(out, "\nexport global {name} {{");
+        if let Some(badge) = badge {
+            let _ = writeln!(out, "    out property <image> badge: Badges.{badge};");
+        }
+        out.push_str(&body_out);
         out.push_str("}\n");
         Ok(())
     }

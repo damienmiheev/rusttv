@@ -259,7 +259,10 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
     `panel:<id>`) in `launcher.hidden` and in `launcher.folders`' `apps`
     (PANELS.md § 6); `hidden` and `in_folder` may name them, and a tile
     hidden or shown again is only `hidden`, never also `removed` or
-    `added`. Everything else is unchanged.
+    `added`. Snapshots in format 8 may hold `launcher.ambient_off`
+    (written only while the launcher's idle screen is off), and
+    [HistoryChange](#historychange) has a kind for that switch (`ambient`,
+    with `on`). Everything else is unchanged.
   - `rusttv.v10`: [HistoryChange](#historychange) has new kinds for phones
     paired with RustTV Remote (`phone_paired`, `phone_removed`, each with
     `phone`, the phone's id, and `name`), and `history show`'s `state` may
@@ -581,7 +584,8 @@ out), `folder_added` / `folder_removed`
 built-in tile went into the folder, or out of it), `phone_paired` / `phone_removed` (`phone`: the
 phone's id, 32 hex digits; `name`), `hidden` (`tile`: an app or a
 built-in tile, `hidden`; a tile hidden or shown again is not also
-`removed` or `added`), `update_check` (`on`), `effects` (`reduced`), `setting` (`key`, `old`, `new`; null =
+`removed` or `added`), `update_check` (`on`), `effects` (`reduced`), `ambient` (`on`: the
+launcher's idle screen), `setting` (`key`, `old`, `new`; null =
 unset), `package` (`package`, `old`, `new`: `enabled` \| `disabled`, null =
 not observed), `firmware` (`old`, `new`), `takeover` (`active`).
 

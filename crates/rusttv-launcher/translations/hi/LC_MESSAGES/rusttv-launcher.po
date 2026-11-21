@@ -59,8 +59,8 @@ msgstr "छिपाए गए ऐप्लिकेशन"
 msgid "About"
 msgstr "जानकारी"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "OK दबाकर ऐप्लिकेशन को होम स्क्रीन पर वापस लाएं। लौटने के लिए 'वापस' दबाएं।"
+msgid "OK puts it back on Home. Back returns."
+msgstr "OK दबाकर इसे होम स्क्रीन पर वापस लाएं। लौटने के लिए 'वापस' दबाएं।"
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "वर्शन {} · MIT OR Apache-2.0"
@@ -536,3 +536,29 @@ msgid "{n} day ago"
 msgid_plural "{n} days ago"
 msgstr[0] "{n} दिन पहले"
 msgstr[1] "{n} दिन पहले"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "आराम स्क्रीन"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "होम पर 5 मिनट बाद, कोई बटन दबाने तक धीमी घड़ी"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "आराम स्क्रीन: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "RustTV अपडेट हुआ"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} कनेक्ट हुआ"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "कंप्यूटर ने {n} बदलाव लागू किया"
+msgstr[1] "कंप्यूटर ने {n} बदलाव लागू किए"

@@ -13,10 +13,11 @@ use crate::HistoryError;
 /// `reduced_effects`, 5 tile names of Linux desktop entries
 /// (`org.kde.dolphin.desktop`) and `remote`, 6 panel tiles' names
 /// (`panel:history`, PANELS.md § 6), 7 built-in and panel tiles hidden or
-/// in a folder (`hidden = ["about"]`). A snapshot is written in the oldest
+/// in a folder (`hidden = ["about"]`), 8 `ambient_off` (the idle screen
+/// turned off, PANELS.md § 9 Q6). A snapshot is written in the oldest
 /// format that holds it (no folders, no phones, full effects, only Android
 /// names: format 1), so older readers keep reading it until it needs more.
-pub const STATE_FORMAT: u32 = 7;
+pub const STATE_FORMAT: u32 = 8;
 
 /// The longest folder name, in characters (the launcher's limit).
 const FOLDER_NAME_MAX: usize = 40;
@@ -81,6 +82,10 @@ pub struct Launcher {
     /// for a weak GPU.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub reduced_effects: bool,
+    /// Whether the idle screen is off: Home never dims to its clock after
+    /// a while (format 8; on by default, so only written when off).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ambient_off: bool,
 }
 
 impl Launcher {
@@ -104,6 +109,7 @@ impl Default for Launcher {
             phones: BTreeMap::new(),
             update_check: true,
             reduced_effects: false,
+            ambient_off: false,
         }
     }
 }
@@ -219,7 +225,9 @@ impl State {
             .hidden
             .iter()
             .chain(launcher.folders.values().flat_map(|folder| &folder.apps));
-        if off_home.into_iter().any(|name| is_builtin_name(name)) {
+        if launcher.ambient_off {
+            8
+        } else if off_home.into_iter().any(|name| is_builtin_name(name)) {
             7
         } else if launcher.tile_names().any(|name| is_panel_name(name)) {
             6
@@ -502,8 +510,8 @@ mod tests {
     #[test]
     fn a_newer_format_says_so() {
         assert!(matches!(
-            State::parse("format = 8\nsomething_new = true\n"),
-            Err(HistoryError::FormatNewer(8))
+            State::parse("format = 9\nsomething_new = true\n"),
+            Err(HistoryError::FormatNewer(9))
         ));
     }
 
@@ -678,6 +686,29 @@ mod tests {
         }
     }
 
+    /// The idle screen turned off needs format 8; on (the default) is never
+    /// written, so a snapshot with it on stays in its older format.
+    #[test]
+    fn the_idle_screen_off_needs_format_eight() {
+        let mut off = sample();
+        off.launcher.ambient_off = true;
+        assert_eq!(off.needed_format(), 8);
+        let text = off.to_toml().unwrap();
+        assert!(text.starts_with("format = 8\n"), "{text}");
+        assert!(text.contains("ambient_off = true"), "{text}");
+        assert_eq!(State::parse(&text).unwrap().launcher, off.launcher);
+        // A build that reads up to format 7 must refuse it, not turn the
+        // idle screen back on when it writes the snapshot again.
+        let downgraded = text.replacen("format = 8", "format = 7", 1);
+        assert!(matches!(
+            State::parse(&downgraded),
+            Err(HistoryError::Invalid(_))
+        ));
+        let on = sample().to_toml().unwrap();
+        assert!(!on.contains("ambient_off"), "{on}");
+        assert!(on.starts_with("format = 1\n"), "{on}");
+    }
+
     /// Snapshots written by older builds still load in this one.
     #[test]
     fn older_snapshots_still_load() {
@@ -685,6 +716,7 @@ mod tests {
             "format = 1\n[launcher]\norder = [\"a.b/.M\", \"about\", \"settings\"]\nhidden = [\"c.d/.M\"]\n",
             "format = 5\n[launcher]\norder = [\"a.b/.M\", \"about\", \"settings\", \"remote\"]\n",
             "format = 6\n[launcher]\norder = [\"a.b/.M\", \"remote\", \"panel:history\"]\n\n[launcher.folders.\"folder:1\"]\nname = \"V\"\napps = [\"e.f/.M\"]\n",
+            "format = 7\n[launcher]\norder = [\"a.b/.M\", \"remote\"]\nhidden = [\"panel:history\"]\n",
         ] {
             let state = State::parse(text).unwrap_or_else(|error| panic!("{text}: {error}"));
             assert!(state.needed_format() <= state.format, "{text}");

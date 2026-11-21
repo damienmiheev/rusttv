@@ -17,6 +17,17 @@ import { RemoteListRow } from "remote_row.slint";
 import { RemotePage } from "remote_page.slint";
 import { HistoryTile } from "history_tile.slint";
 import { HistoryListRow } from "history_row.slint";
+// The status corner's glyphs, the banners and the idle screen's lines
+// (PANELS.md § 2), each a global of functions ui/faces_view.rs calls.
+import { AboutCorner } from "about_corner.slint";
+import { RemoteCorner } from "remote_corner.slint";
+import { HistoryCorner } from "history_corner.slint";
+import { AboutBanner } from "about_banner.slint";
+import { RemoteBanner } from "remote_banner.slint";
+import { HistoryBanner } from "history_banner.slint";
+import { AboutAmbient } from "about_ambient.slint";
+import { RemoteAmbient } from "remote_ambient.slint";
+import { HistoryAmbient } from "history_ambient.slint";
 import { MenuRow } from "blocks.slint";
 import { SettingsRow, ControlRow, QuickBar, QuickPanel, PowerMenu, TextPromptView, VolumeOsd } from "quick.slint";
 
@@ -48,6 +59,7 @@ export struct TileData {
 // One row of a Settings panel: `SettingsRow` in quick.slint.
 export { SettingsRow }
 export { Dir, Badges, Pictures, Hints, AboutListRow, HistoryListRow, RemoteListRow }
+export { AboutCorner, RemoteCorner, HistoryCorner, AboutBanner, RemoteBanner, HistoryBanner, AboutAmbient, RemoteAmbient, HistoryAmbient }
 
 // The About panel's values (src/panels.rs `about_view`), one source for
 // every face that shows them: the tile, its hero copy and the page. A name
@@ -151,6 +163,7 @@ export global Strings {
         if section == 3 { return @tr("Waiting for your computer"); }
         if section == 4 { return @tr("Effects"); }
         if section == 5 { return @tr("About"); }
+        if section == 6 { return @tr("Idle screen"); }
         return @tr("Animations");
     }
     // Settings' About tab (ui/settings_view.rs `AboutRow`): the Source row's
@@ -206,6 +219,11 @@ export global Strings {
     public pure function effects-detail(reduced: bool) -> string {
         return reduced ? @tr("No shadows or backdrop: smoother on a slow graphics chip") : @tr("Shadows and backdrop");
     }
+    // Settings' Idle screen section (settings.rs `Section::Ambient`): what
+    // On does (ui.rs AMBIENT_AFTER); Off needs no words.
+    public pure function ambient-detail(on: bool) -> string {
+        return on ? @tr("After 5 minutes on Home, a dim clock until you press a key") : "";
+    }
     // SETTING_KEYS order: animator, transition, window.
     public pure function setting-name(key: int) -> string {
         if key == 1 { return @tr("Transition animations"); }
@@ -244,7 +262,8 @@ export global Strings {
     // 4 setting, 5 package, 6 firmware, 7 Home takeover, 8 nothing,
     // 9 added to Home (installed), 10 removed from Home, 11 folder made,
     // 12 folder removed, 13 folder renamed (old → new), 14 app put in a
-    // folder (name; old: the folder), 15 app taken out of a folder.
+    // folder (name; old: the folder), 15 app taken out of a folder, 16
+    // phone paired, 17 phone removed, 18 effects, 19 idle screen.
     public pure function change-line(kind: int, name: string, old: string, new: string) -> string {
         if kind == 0 { return @tr("Apps reordered"); }
         if kind == 1 { return @tr("Hid {}", name); }
@@ -263,6 +282,7 @@ export global Strings {
         if kind == 16 { return @tr("Paired the phone {}", name); }
         if kind == 17 { return @tr("Removed the phone {}", name); }
         if kind == 18 { return @tr("Effects: {}", new); }
+        if kind == 19 { return @tr("Idle screen: {}", new); }
         return @tr("No change");
     }
     // 0 changed on the TV now, 1 applied by the computer later.
@@ -706,6 +726,184 @@ component HeroLayer inherits Rectangle {
     }
 }
 
+// Home's status corner (PANELS.md § 2, § 9 Q2): the clock, and before it
+// (on the start side) at most two glyphs of panels that need attention
+// (their `corner` templates' badges, ui/faces_view.rs). Not focusable; the
+// clock's text changes once a minute, nothing moves in between.
+component StatusCorner inherits Rectangle {
+    in property <length> u;
+    in property <string> clock;
+    in property <[image]> glyphs;
+
+    property <length> glyph: 40 * u;
+    property <length> gap: 20 * u;
+    height: 72 * u;
+    width: clock-text.preferred-width + glyphs.length * (glyph + gap);
+
+    for picture[i] in glyphs: Image {
+        x: Dir.x(i * (root.glyph + root.gap), root.glyph, root.width);
+        y: (root.height - root.glyph) / 2;
+        width: root.glyph;
+        height: root.glyph;
+        source: picture;
+        image-fit: contain;
+    }
+    clock-text := Text {
+        x: Dir.x(root.width - self.preferred-width, self.preferred-width, root.width);
+        width: self.preferred-width;
+        height: root.height;
+        text: clock;
+        font-size: 33 * u;
+        font-weight: 500;
+        color: Theme.text;
+        vertical-alignment: center;
+    }
+}
+
+// A panel's banner (PANELS.md § 9 Q4): a card that slides in at the top
+// end side under the status corner for about four seconds, one at a time
+// (ui/faces_view.rs queues them). Never focusable; no shadow and no slide
+// with reduced effects (it only fades).
+component BannerCard inherits Rectangle {
+    in property <length> u;
+    in property <bool> shown;
+    in property <string> title;
+    in property <string> detail;
+    in property <image> badge;
+
+    property <length> pad: 24 * u;
+    property <length> picture: 64 * u;
+    property <length> text-width: min(640 * u, max(title-text.preferred-width, detail-text.preferred-width));
+    width: self.pad * 2 + self.picture + 24 * u + self.text-width;
+    height: self.pad * 2 + self.picture;
+    border-radius: 24 * u;
+    background: Theme.surface;
+    drop-shadow-color: Effects.shadows ? #00000080 : transparent;
+    drop-shadow-blur: Effects.shadows ? 40 * u : 0;
+    drop-shadow-offset-y: Effects.shadows ? 16 * u : 0;
+    opacity: shown ? 1 : 0;
+    visible: self.opacity > 0;
+    animate opacity { duration: shown ? 300ms : 250ms; easing: ease-out; }
+
+    Image {
+        x: Dir.x(root.pad, root.picture, root.width);
+        y: root.pad;
+        width: root.picture;
+        height: root.picture;
+        source: badge;
+        image-fit: contain;
+    }
+    title-text := Text {
+        x: Dir.x(root.pad + root.picture + 24 * u, root.text-width, root.width);
+        y: root.pad + (detail == "" ? (root.picture - self.height) / 2 : 0);
+        width: root.text-width;
+        height: 36 * u;
+        horizontal-alignment: Dir.start;
+        vertical-alignment: center;
+        text: title;
+        font-size: 29 * u;
+        font-weight: 500;
+        color: Theme.text;
+        overflow: elide;
+    }
+    detail-text := Text {
+        visible: detail != "";
+        x: Dir.x(root.pad + root.picture + 24 * u, root.text-width, root.width);
+        y: root.pad + 36 * u;
+        width: root.text-width;
+        height: 30 * u;
+        horizontal-alignment: Dir.start;
+        vertical-alignment: center;
+        text: detail;
+        font-size: 25 * u;
+        color: Theme.text-dim;
+        overflow: elide;
+    }
+}
+
+// One panel's line on the idle screen (its `ambient` template).
+export struct AmbientLine {
+    badge: image,
+    text: string,
+}
+
+// The idle screen (PANELS.md § 9 Q6): black, a large dim clock and the
+// panels' lines under it. OLED care: nothing bright (the clock is dim
+// text, pictures half shown), and the whole face moves a little every
+// minute (`drift`, a step ui/faces_view.rs sets with the clock: a jump,
+// never an animation, so nothing is drawn between minutes). It takes the
+// pointer, so a move or a click wakes Home instead of reaching a tile.
+component AmbientFace inherits Rectangle {
+    in property <length> u;
+    in property <bool> shown;
+    in property <string> clock;
+    in property <[AmbientLine]> lines;
+    in property <int> drift;
+    callback woken();
+
+    // Five by five places around the centre, one a minute.
+    property <length> dx: (mod(drift, 5) - 2) * 20 * u;
+    property <length> dy: (mod(floor(drift / 5), 5) - 2) * 14 * u;
+    property <length> line-pitch: 56 * u;
+    property <length> group-height: 200 * u + lines.length * line-pitch;
+
+    background: #000000;
+    opacity: shown ? 1 : 0;
+    visible: self.opacity > 0;
+    // Home dims into it slowly; a key brings Home back at once.
+    animate opacity { duration: shown ? 1200ms : 0ms; easing: ease-in-out; }
+
+    TouchArea {
+        enabled: root.shown;
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.move || event.kind == PointerEventKind.down {
+                root.woken();
+            }
+        }
+        scroll-event(event) => {
+            root.woken();
+            accept
+        }
+    }
+    Text {
+        y: (root.height - root.group-height) / 2 + root.dy;
+        width: root.width;
+        height: 200 * u;
+        x: root.dx;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        text: clock;
+        font-size: 180 * u;
+        font-weight: 300;
+        color: Theme.text-dim;
+        opacity: 0.6;
+    }
+    for line[i] in lines: Rectangle {
+        property <length> line-width: 40 * u + 16 * u + line-text.preferred-width;
+        x: (root.width - self.line-width) / 2 + root.dx;
+        y: (root.height - root.group-height) / 2 + 200 * u + i * root.line-pitch + root.dy;
+        width: self.line-width;
+        height: 40 * u;
+        Image {
+            x: Dir.x(0, 40 * u, parent.width);
+            width: 40 * u;
+            height: 40 * u;
+            source: line.badge;
+            image-fit: contain;
+            opacity: 0.5;
+        }
+        line-text := Text {
+            x: Dir.x(56 * u, self.preferred-width, parent.width);
+            height: 40 * u;
+            vertical-alignment: center;
+            text: line.text;
+            font-size: 29 * u;
+            color: Theme.text-dim;
+            opacity: 0.6;
+        }
+    }
+}
+
 export component HomeWindow inherits Window {
     in property <[TileData]> tiles;
     in property <int> focused-index;
@@ -720,6 +918,22 @@ export component HomeWindow inherits Window {
     in property <Glow> hero-b-glow;
     in property <bool> hero-a-front: true;
     in property <string> toast;
+    // The status corner (ui/faces_view.rs): the clock ("14:05"), set once
+    // a minute while Home is on screen, and the glyphs of panels that need
+    // attention (at most two).
+    in property <string> clock-text;
+    in property <[image]> corner-glyphs;
+    // The banner over Home: shown while `banner-shown`; its words stay
+    // while it fades out.
+    in property <bool> banner-shown;
+    in property <string> banner-title;
+    in property <string> banner-detail;
+    in property <image> banner-badge;
+    // The idle screen, its panels' lines and its drift step.
+    in property <bool> ambient-shown;
+    in property <[AmbientLine]> ambient-lines;
+    in property <int> ambient-drift;
+    callback ambient-woken();
     // Whether an update waits to be installed (a dot on the Settings tile).
     in property <bool> update-available;
     // A slice of the licence notices from the line at the top of the panel
@@ -967,7 +1181,7 @@ export component HomeWindow inherits Window {
 
     // The top-right menu (quick.slint), shown with the hero; Up from the
     // first row reaches it. Its quick panel opens below it.
-    QuickBar {
+    quick-bar := QuickBar {
         x: Dir.x(root.width - 90 * u - self.width, self.width, root.width);
         y: 48 * u;
         u: root.u;
@@ -980,6 +1194,19 @@ export component HomeWindow inherits Window {
         animate opacity { duration: 250ms; }
         clicked(index) => { root.quick-clicked(index); }
         hovered(index) => { root.quick-hovered(index); }
+    }
+    // The status corner: at the top end like the top-right menu, before it
+    // where there is one, and shown with the hero, as the menu is.
+    StatusCorner {
+        property <length> end: 90 * u + (quick-bar.width > 0 ? quick-bar.width + 40 * u : 0);
+        x: Dir.x(root.width - self.end - self.width, self.width, root.width);
+        y: 48 * u;
+        u: root.u;
+        clock: clock-text;
+        glyphs: corner-glyphs;
+        opacity: shelf ? 1 : 0;
+        visible: self.opacity > 0;
+        animate opacity { duration: 250ms; }
     }
     if mode == Mode.quick && !quick-power: QuickPanel {
         x: Dir.x(root.width - 90 * u - self.width, self.width, root.width);
@@ -1311,7 +1538,7 @@ export component HomeWindow inherits Window {
             y: 176 * u;
             width: 1740 * u;
             horizontal-alignment: Dir.start;
-            text: @tr("OK puts the app back on Home. Back returns.");
+            text: @tr("OK puts it back on Home. Back returns.");
             font-size: 25 * u;
             color: Theme.text-dim;
         }
@@ -1360,6 +1587,20 @@ export component HomeWindow inherits Window {
             color: Theme.text;
             vertical-alignment: center;
         }
+    }
+
+    // A panel's banner, at the top end under the status corner; it slides
+    // in from the end edge (it only fades with reduced effects).
+    BannerCard {
+        property <length> slide: banner-shown || !Effects.shadows ? 0 : 48 * u;
+        animate slide { duration: banner-shown ? 300ms : 250ms; easing: cubic-bezier(0.2, 0.9, 0.3, 1); }
+        x: Dir.x(root.width - 90 * u - self.width + self.slide, self.width, root.width);
+        y: 150 * u;
+        u: root.u;
+        shown: banner-shown;
+        title: banner-title;
+        detail: banner-detail;
+        badge: banner-badge;
     }
 
     // About: who made RustTV on the left, the licence notices on the right
@@ -1848,6 +2089,18 @@ export component HomeWindow inherits Window {
         text <=> root.prompt-text;
         done(text) => { root.prompt-done(text); }
         cancelled => { root.prompt-cancelled(); }
+    }
+
+    // The idle screen, over Home (ui/faces_view.rs enters it only there).
+    AmbientFace {
+        width: root.width;
+        height: root.height;
+        u: root.u;
+        shown: ambient-shown;
+        clock: clock-text;
+        lines: ambient-lines;
+        drift: ambient-drift;
+        woken => { root.ambient-woken(); }
     }
 
     // The volume bar, over everything (ui/device_view.rs).

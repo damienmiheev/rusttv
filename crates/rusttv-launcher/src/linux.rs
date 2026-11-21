@@ -97,6 +97,29 @@ pub struct LinuxPlatform {
     overlay: Option<overlay::Overlay>,
     /// The volume bar over apps, once a volume key was pressed over one.
     volume_bar: Option<overlay::VolumeBar>,
+    /// The local time zone's offset from UTC as last read, and when: read
+    /// again after [`UTC_OFFSET_FOR`], so a summer-time change shows within
+    /// the hour without a `date` run for every clock tick or history row.
+    utc_offset: RefCell<Option<(SystemTime, i32)>>,
+}
+
+/// How long a read UTC offset is used ([`LinuxPlatform::utc_offset_secs`]).
+const UTC_OFFSET_FOR: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+
+/// The offset `date +%z` prints ("+0200", "-0330"), in seconds.
+fn parse_utc_offset(text: &str) -> Option<i32> {
+    let text = text.trim();
+    let (sign, digits) = match text.split_at_checked(1)? {
+        ("+", digits) => (1, digits),
+        ("-", digits) => (-1, digits),
+        _ => return None,
+    };
+    if digits.len() != 4 || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let hours: i32 = digits[..2].parse().ok()?;
+    let minutes: i32 = digits[2..].parse().ok()?;
+    Some(sign * (hours * 3600 + minutes * 60))
 }
 
 impl fmt::Debug for LinuxPlatform {
@@ -153,6 +176,7 @@ impl LinuxPlatform {
             sizes: None,
             overlay: None,
             volume_bar: None,
+            utc_offset: RefCell::default(),
         }
     }
 
@@ -326,6 +350,29 @@ impl LinuxPlatform {
 }
 
 impl Platform for LinuxPlatform {
+    /// The system's time zone, summer time included, through `date +%z`
+    /// (no time zone database of our own), kept for [`UTC_OFFSET_FOR`].
+    fn utc_offset_secs(&self) -> i32 {
+        let now = SystemTime::now();
+        if let Some((read, offset)) = *self.utc_offset.borrow()
+            && now
+                .duration_since(read)
+                .is_ok_and(|age| age < UTC_OFFSET_FOR)
+        {
+            return offset;
+        }
+        let offset = Command::new("date")
+            .arg("+%z")
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output()
+            .ok()
+            .and_then(|output| parse_utc_offset(&String::from_utf8_lossy(&output.stdout)))
+            .unwrap_or(0);
+        *self.utc_offset.borrow_mut() = Some((now, offset));
+        offset
+    }
+
     fn list_apps(&self) -> Result<Vec<AppEntry>, PlatformError> {
         *self.seen.borrow_mut() = self.stamps();
         let entries = self.scan();
@@ -1013,6 +1060,17 @@ fn decode_png(path: &Path) -> Result<Bitmap, String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn utc_offsets_parse_from_date() {
+        use super::parse_utc_offset;
+        assert_eq!(parse_utc_offset("+0200\n"), Some(7200));
+        assert_eq!(parse_utc_offset("-0330"), Some(-12_600));
+        assert_eq!(parse_utc_offset("+0000"), Some(0));
+        for bad in ["", "0200", "+02", "+02:00", "UTC", "+0a00"] {
+            assert_eq!(parse_utc_offset(bad), None, "{bad}");
+        }
+    }
+
     use super::*;
 
     fn entry(text: &str) -> Option<DesktopEntry> {

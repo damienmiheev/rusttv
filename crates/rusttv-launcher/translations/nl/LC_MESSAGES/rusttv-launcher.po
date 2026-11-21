@@ -59,8 +59,8 @@ msgstr "Verborgen apps"
 msgid "About"
 msgstr "Over"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "OK zet de app terug op het startscherm. Terug om terug te gaan."
+msgid "OK puts it back on Home. Back returns."
+msgstr "OK zet het terug op het startscherm. Terug om terug te gaan."
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "Versie {} · MIT OR Apache-2.0"
@@ -536,3 +536,29 @@ msgid "{n} day ago"
 msgid_plural "{n} days ago"
 msgstr[0] "{n} dag geleden"
 msgstr[1] "{n} dagen geleden"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "Rustscherm"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "Na 5 minuten op het startscherm een gedimde klok tot je een toets indrukt"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "Rustscherm: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "RustTV bijgewerkt"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} verbonden"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "Computer heeft {n} wijziging doorgevoerd"
+msgstr[1] "Computer heeft {n} wijzigingen doorgevoerd"

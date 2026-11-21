@@ -827,6 +827,9 @@ pub struct Home {
     quick_actions: Vec<QuickAction>,
     /// About and Settings are tiles: the platform has no top-right menu.
     settings_tiles: bool,
+    /// The folder a built-in tile's page was opened from: Back from the
+    /// page opens it again, as after an app launched from it.
+    page_folder: Option<OpenFolder>,
 }
 
 impl Home {
@@ -856,6 +859,7 @@ impl Home {
             app_sizes: false,
             quick_actions: Vec::new(),
             settings_tiles: false,
+            page_folder: None,
         }
     }
 
@@ -950,14 +954,46 @@ impl Home {
     }
 
     /// Replaces the app list, keeping focus on the same tile; returns whether the order changed.
+    ///
+    /// An empty list means the list couldn't be read (a TV always has
+    /// apps): the last list stays, and before any every app the order, a
+    /// folder or the hidden tiles name counts as installed. So a failed
+    /// read never drops an app from Home, a folder or the hidden apps, and
+    /// the next save writes them back as they were.
     pub fn set_apps(&mut self, apps: &[App]) -> bool {
         match self.mode {
             Mode::Moving { .. } => self.cancel_move(),
             Mode::Menu { folder, .. } => self.mode = folder.map_or(Mode::Browse, Mode::Folder),
             _ => {}
         }
-        self.apps = apps.to_vec();
+        if !apps.is_empty() {
+            self.apps = apps.to_vec();
+        } else if self.apps.is_empty() {
+            self.apps = self.stored_apps();
+        }
         self.refresh()
+    }
+
+    /// Stand-ins for every app the order, a folder or the hidden tiles
+    /// name, labelled by component, for when the app list couldn't be read.
+    fn stored_apps(&self) -> Vec<App> {
+        let order = self.order.keys().iter().filter_map(|(id, _)| match id {
+            TileId::App(component) => Some(component),
+            _ => None,
+        });
+        let members = self.folders.values().flat_map(|folder| &folder.apps);
+        let mut names: Vec<&String> = order.chain(members).chain(&self.hidden).collect();
+        names.retain(|name| matches!(tile_for_name((*name).clone()), TileId::App(_)));
+        names.sort();
+        names.dedup();
+        names
+            .into_iter()
+            .map(|name| App {
+                id: name.clone(),
+                label: name.clone(),
+                category: Category::Other,
+            })
+            .collect()
     }
 
     /// Rebuilds the tiles from the app list, folders, hidden tiles and order,
@@ -1487,7 +1523,7 @@ impl Home {
     /// Leaves the Settings page (it decides when: Back on its section list).
     pub fn close_settings(&mut self) {
         if matches!(self.mode, Mode::Settings { .. }) {
-            self.mode = Mode::Browse;
+            self.mode = self.back_from_page();
         }
     }
 
@@ -1527,7 +1563,23 @@ impl Home {
     /// Leaves the RustTV Remote page (it decides when: Back).
     pub fn close_remote(&mut self) {
         if matches!(self.mode, Mode::Remote) {
-            self.mode = Mode::Browse;
+            self.mode = self.back_from_page();
+        }
+    }
+
+    /// Where Back from a built-in tile's page goes: the folder it was
+    /// opened from if that folder is still there (its focus kept within
+    /// it), else Home.
+    fn back_from_page(&mut self) -> Mode {
+        let Some(open) = self.page_folder.take() else {
+            return Mode::Browse;
+        };
+        match self.folders.get(&open.id) {
+            Some(folder) if !folder.apps.is_empty() => Mode::Folder(OpenFolder {
+                id: open.id,
+                focus: open.focus.map(|focus| focus.min(folder.apps.len() - 1)),
+            }),
+            _ => Mode::Browse,
         }
     }
 
@@ -1605,6 +1657,7 @@ impl Home {
                     self.cancel_move();
                 }
                 self.mode = Mode::Browse;
+                self.page_folder = None;
                 None
             }
             (Mode::Launching { app, .. }, Input::LaunchFailed) => {
@@ -1624,7 +1677,7 @@ impl Home {
                 self.mode = if *from_settings {
                     Mode::Settings { history: false }
                 } else {
-                    Mode::Browse
+                    self.back_from_page()
                 };
                 None
             }
@@ -1704,10 +1757,12 @@ impl Home {
                         None
                     }
                     QuickAction::Settings => {
+                        self.page_folder = None;
                         self.mode = Mode::Settings { history: false };
                         Some(Effect::OpenSettings)
                     }
                     QuickAction::Network => {
+                        self.page_folder = None;
                         self.mode = Mode::Settings { history: false };
                         Some(Effect::OpenSettingsTab("network"))
                     }
@@ -2152,7 +2207,8 @@ impl Home {
     }
 
     /// Opens a built-in tile's page (from its tile, in a folder too, or
-    /// its row in the RustTV quick panel); Back from it returns Home.
+    /// its row in the RustTV quick panel); Back from it returns Home, or to
+    /// the folder it was opened from.
     fn open_builtin(&mut self, tile: &TileId) -> Option<Effect> {
         let (mode, effect) = match tile {
             TileId::About => (
@@ -2167,6 +2223,10 @@ impl Home {
                 (Mode::Settings { history: true }, Effect::OpenHistory)
             }
             TileId::App(_) | TileId::Hidden | TileId::Folder(_) => return None,
+        };
+        self.page_folder = match self.mode {
+            Mode::Folder(open) => Some(open),
+            _ => None,
         };
         self.mode = mode;
         Some(effect)
@@ -3841,6 +3901,48 @@ mod tests {
         assert_eq!(hidden_page(&home).len(), 2);
     }
 
+    /// An app list that couldn't be read (empty) drops nothing: not before
+    /// the first list (start-up), not after one; a save meanwhile writes
+    /// the order, folders and hidden apps as they were.
+    #[test]
+    fn an_unreadable_app_list_keeps_the_order_folders_and_hidden_apps() {
+        let order = Order::from_keys([
+            (id("a00"), 1000),
+            (TileId::Folder(1), 2000),
+            (id("a03"), 3000),
+        ]);
+        let folders = BTreeMap::from([(
+            1,
+            Folder {
+                name: "F".into(),
+                apps: vec!["a01".into(), "a02".into(), "remote".into()],
+            },
+        )]);
+        let hidden = BTreeSet::from(["a04".to_owned(), "panel:history".to_owned()]);
+        let mut home = Home::new(order, folders.clone(), hidden.clone(), false);
+        home.set_apps(&[]);
+        assert_eq!(
+            home.tiles(),
+            [id("a00"), TileId::Folder(1), id("a03"), TileId::Hidden]
+        );
+        assert_eq!(home.folders(), &folders);
+        assert_eq!(home.hidden(), &hidden);
+        // A change saved meanwhile keeps everyone else.
+        assert!(home.focus_on(&id("a00")));
+        assert_eq!(hide(&mut home), Some(Effect::SaveOrder));
+        assert_eq!(home.order().ids(), [TileId::Folder(1), id("a03")]);
+        assert_eq!(home.folders(), &folders);
+        assert!(home.hidden().contains("a04") && home.hidden().contains("a00"));
+        // The real list arrives; a failed read after it keeps that list.
+        home.set_apps(&apps(5));
+        let tiles = home.tiles().to_vec();
+        let kept = home.folders().clone();
+        assert!(!home.set_apps(&[]));
+        assert_eq!(home.tiles(), tiles);
+        assert_eq!(home.folders(), &kept);
+        assert_eq!(kept[&1].apps, ["a01", "a02", "remote"]);
+    }
+
     #[test]
     fn uninstalled_apps_leave_their_folder_and_an_empty_folder_goes() {
         let folders = BTreeMap::from([(
@@ -4159,10 +4261,19 @@ mod tests {
             Some(Effect::OpenRemote)
         );
         assert_eq!(home.state(), State::Remote);
+        assert_eq!(home.open_folder(), None, "the page covers the folder");
+        // Back from the page: the folder it was opened from, on Remote.
         home.close_remote();
         assert_eq!(home.focused(), Some(&TileId::Folder(1)));
+        assert_eq!(
+            home.open_folder(),
+            Some(OpenFolder {
+                id: 1,
+                focus: Some(1)
+            })
+        );
         // History from its folder (the first there) opens Settings on History.
-        press(&mut home, &[Input::OkPressed, Input::OkReleased]);
+        press(&mut home, &[Input::Left]);
         assert_eq!(home.open_folder().and_then(|open| open.focus), Some(0));
         assert_eq!(
             press(&mut home, &[Input::OkPressed, Input::OkReleased]),
@@ -4170,12 +4281,62 @@ mod tests {
         );
         home.close_settings();
         // Hidden from inside the folder: it leaves it; Remote stays there.
-        press(&mut home, &[Input::OkPressed, Input::OkReleased]);
         assert_eq!(home.state(), State::Folder);
+        assert_eq!(home.open_folder().and_then(|open| open.focus), Some(0));
         assert_eq!(hide(&mut home), Some(Effect::SaveOrder));
         assert_eq!(home.folders()[&1].apps, ["remote"]);
         assert!(home.is_hidden(&HISTORY));
         assert_eq!(home.tiles(), [id("a00"), TileId::Folder(1), TileId::Hidden]);
+    }
+
+    /// Back from a page opened in a folder returns to that folder: About's
+    /// page (OK on its tile there), and from Settings' About tab back to
+    /// Settings first; Home when the folder went meanwhile, or after the
+    /// launcher left the screen.
+    #[test]
+    fn back_from_a_page_opened_in_a_folder_returns_to_it() {
+        let folders = BTreeMap::from([(
+            1,
+            Folder {
+                name: "RustTV".into(),
+                apps: vec!["remote".into(), "about".into()],
+            },
+        )]);
+        let mut home = Home::new(Order::default(), folders, BTreeSet::new(), false);
+        home.set_settings_tiles(true);
+        home.set_apps(&apps(2));
+        assert!(home.focus_on(&TileId::Folder(1)));
+        press(&mut home, &[Input::OkPressed, Input::OkReleased]);
+        assert!(home.open_folder().is_some());
+        let about = 1;
+        for _ in 0..about {
+            press(&mut home, &[Input::Right]);
+        }
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed, Input::OkReleased]),
+            Some(Effect::OpenAbout)
+        );
+        press(&mut home, &[Input::Back]);
+        assert_eq!(home.state(), State::Folder);
+        assert_eq!(home.open_folder().and_then(|open| open.focus), Some(about));
+        // Left the screen with a page open: Home, not the folder.
+        press(&mut home, &[Input::OkPressed, Input::OkReleased]);
+        assert_eq!(home.state(), State::About);
+        home.handle(Input::Paused, ms(0));
+        assert_eq!(home.state(), State::Browse);
+        press(&mut home, &[Input::Back]);
+        assert_eq!(home.state(), State::Browse);
+        // The folder gone while its page was open: Back is Home.
+        press(&mut home, &[Input::OkPressed, Input::OkReleased]);
+        for _ in 0..about {
+            press(&mut home, &[Input::Right]);
+        }
+        press(&mut home, &[Input::OkPressed, Input::OkReleased]);
+        assert_eq!(home.state(), State::About);
+        let order = home.order().clone();
+        home.replace_order(order, BTreeMap::new(), BTreeSet::new());
+        press(&mut home, &[Input::Back]);
+        assert_eq!(home.state(), State::Browse);
     }
 
     #[test]

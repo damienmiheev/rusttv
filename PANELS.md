@@ -109,8 +109,10 @@ Added 2026-11-20:
 
 Not in v1: status corner, banner, ambient, toggles and change requests,
 data-only panels, the theme builder, Settings as a panel (History became
-one in step 4, § 10). The quick panel's rows and hide and folders for
-panel tiles came after v1 (§ 10, "Later"). Never:
+one in step 4, § 10). The quick panel's rows, hide and folders for panel
+tiles, the status corner, banners and the idle screen came after v1 (§ 10,
+"Later"); toggles and change requests, data-only panels and the theme
+builder belong to the later panel-studio design (§ 9 Q1). Never:
 two instances of one panel, panels running other people's code before level
 3 is approved.
 
@@ -121,12 +123,12 @@ two instances of one panel, panels running other people's code before level
 | **Page** | Full screen: a layout filled with blocks (§ 4) | yes | decided |
 | **Tile** | 1×1 on the Home grid; hidden and in folders like an app (§ 6) | yes | built |
 | **Row** | One line in a list (the Settings list, the quick panel) | yes | decided |
-| **Status corner** | Top-right of Home, not focusable | no | starts with a clock; the rest is open |
+| **Status corner** | Top-right of Home, not focusable | later | built: the clock and up to two glyphs (§ 9 Q2, § 10) |
 | **Quick panel** | The row face in the top-right menu's RustTV panel (decision 25) | later | built: About, RustTV Remote, History (§ 10) |
 | **Phone** | RustTV Remote page | partly | the Apps mirror already shows every tile (§ 6) |
-| **Banner** | Short message that slides in | no | open (§ 9) |
-| **Hero** | Area above the grid | partly | today's hero redraws the focused tile larger (§ 4) |
-| **Ambient** | Idle / screensaver | no | open (§ 9) |
+| **Banner** | Short message that slides in | later | built: over Home only, one at a time (§ 9 Q4, § 10) |
+| **Hero** | Area above the grid | partly | decided: the hero redraws the focused tile larger (§ 4, § 9 Q5) |
+| **Ambient** | Idle / screensaver | later | built: the idle screen after 5 minutes on Home (§ 9 Q6, § 10) |
 
 A panel lists the faces it implements. RustTV never shows a face that a
 panel doesn't list.
@@ -284,9 +286,9 @@ small JS renderer. One source, two surfaces, nothing to keep in sync by hand.
 Rules the schema enforces (unknown fields are errors):
 - **Version:** `"schema": 1`, required; a converter, loader or editor
   refuses a version it doesn't know.
-- **Faces:** `"face"` is `tile`, `row` or `page` and fixes the root. Both
-  are kept: the face says where the template is shown, the root which
-  node it is, and a later face (the status corner) may reuse a root kind.
+- **Faces:** `"face"` is `tile`, `row`, `page`, `corner`, `banner` or
+  `ambient` and fixes the root. Both are kept: the face says where the
+  template is shown, the root which node it is.
   - `tile`: a `column` (above), drawn as a component.
   - `row`: a `list-row` with `title`, optional `detail` (texts) and
     optional `attention` (a condition: the accent dot). Settings draws
@@ -298,6 +300,22 @@ Rules the schema enforces (unknown fields are errors):
     (`settings_view.rs`, one prop), and a second row template should
     pass the view's `Props` in order. `title`, `detail` and
     `attention` can't be a row's prop names.
+  - `corner` (*since 2026-11-21*): a `glyph` with `badge` (a built-in
+    badge) and `show` (a condition, required): the panel's picture in
+    Home's status corner while it needs attention. A global like a row's:
+    `shown(props)` and the `badge` picture (an `out` property). Home shows
+    at most two, in About, RustTV Remote, History order.
+  - `banner` (*since 2026-11-21*): a `banner` with `badge`, `title` and
+    optional `detail` (texts): a global with `title(props)`,
+    `detail(props)` and `badge`. A banner is an event, not a state, so its
+    values come from the change that makes it (`about_banner`,
+    `remote_banner`, `history_banner`, `panels.rs`), not from the view.
+  - `ambient` (*since 2026-11-21*): a `glance` with `badge`, `text` and
+    `show` (required): the panel's line on the idle screen, a global with
+    `shown(props)`, `text(props)` and `badge`.
+  - A function face's props can't take its functions' or `badge`'s
+    names; one convert.rs list (`FUNCTION_FACES`) names each face's root
+    and functions, which build.rs also calls for the test-only templates.
   - `page`: a `page` with `layout` (`one-column` or `two-columns`),
     `start` and, for two columns, `end`: arrays of the § 4 blocks. Keys:
     `title` (`value`, `size`: `large`/`medium`/`small`, default `medium`),
@@ -548,7 +566,9 @@ its own.
     a hidden one is on the Hidden apps page. Under a top-right menu the
     About section and the RustTV quick panel's About row are always there.
   - OK on a built-in tile in a folder opens its page; Back from it returns
-    to Home (an app launched from a folder comes back to the open folder).
+    to that folder, as an app launched from a folder comes back to it
+    (*since 2026-11-21*; Home if the folder went meanwhile, or after the
+    launcher left the screen).
   - **Phone mirror:** built-in tiles in a folder are listed with their
     folder and their caption, the hidden apps page's tiles too; the menu
     offers Hide for them (`menu { choice: hide }`), and a tap on the hidden
@@ -557,9 +577,9 @@ its own.
     Remote, Settings, Settings opened on History) `focused` names the
     tile that opened that page, wherever it was (`Home::page`; REMOTE.md
     § 4).
-  - The Hidden apps page keeps its name and its hint ("OK puts the app
-    back on Home"): built-in tiles are listed there as app-like tiles, so
-    no text changed and no translation is new.
+  - The Hidden apps page keeps its name; its hint says "OK puts it back
+    on Home. Back returns." (*since 2026-11-21*, in all 20 translations),
+    right for apps and built-in tiles alike.
   - CLI JSON stays `rusttv.v11` (unreleased): `launcher.hidden` and
     folders' `apps` may hold built-in names, `hidden` and `in_folder` may
     name them (CLI.md).
@@ -610,8 +630,9 @@ recording installs in History needs a snapshot field and a format bump.
 - a data-only panel never draws on the review screen, and a change it
   requests shows its source there.
 
-**Open:** where its live content comes from (§ 9 Q1). Until that is
-decided, this level stays a format sketch and nothing is built.
+**Out of this build:** where its live content comes from (§ 9 Q1) belongs
+to the later panel-studio editor design, with levels 2 and 3; until then
+this level stays a format sketch and nothing is built.
 
 ## 8. Performance and checks
 
@@ -631,6 +652,25 @@ Philips (30+ interleaved runs, medians with IQR). No measurable change in:
 Tests: `about_view` maps every `UpdateStatus`; an update-status change
 causes no `set_vec` or artwork request; old order files still load.
 
+**Home's own faces** (*since 2026-11-21*, § 10 "Later"): no per-frame work.
+The clock is one single-shot timer re-armed at each minute's start while
+Home is on screen (stopped while away); it sets one text property, and on
+the idle screen the drift step (a jump, no animation) and History's line.
+The idle screen starts from the sway's own idle timer, so nothing new runs
+between keys; it is opaque black, so Home under it draws nothing new.
+Glyphs and lines are two small models set only when they change, from the
+panels' existing events. A banner is one 4 s timer and a 300 ms fade/slide.
+The final on-TV pass also measures:
+
+- idle CPU on Home with the clock (no sway), against main: a minute tick
+  must stay in the noise;
+- idle CPU and frame count on the idle screen over 10 minutes (expect
+  ~0 frames between minutes);
+- the idle screen's 1.2 s fade-in and a banner's slide in `gfxinfo`
+  framestats (no jank on the Philips), with reduced effects too;
+- that the TV's own screensaver still starts (the launcher pauses and the
+  idle screen goes), and that a key on the idle screen only wakes it.
+
 ## 9. Open questions
 
 Recommendation first in each.
@@ -638,8 +678,22 @@ Recommendation first in each.
 1. **Data-only content source:** fixed built-in sources only (clock, date,
    phones, storage, network, History counts) / static only / a signed web
    feed (needs network trust, later). Owner: "don't know for now".
+   *Decided 2026-11-21 (orchestrator, owner delegated):* out of this build.
+   Data-only (level 2) and code (level 3) panels, their content sources,
+   toggles and change requests belong to the later panel-studio editor
+   design; nothing here is left open for them beyond § 7's sketch.
 2. **Status corner:** starts with the clock. Clock always on, at most two
    glyphs from panels in `Attention` / clock optional / no glyphs.
+   *Decided and built 2026-11-21:* the top end of Home, not focusable,
+   shown with the hero like the top-right menu. The clock is always on:
+   24 hours or 12 (no AM/PM, as on a phone's status bar) as the TV is set
+   (Android's `DateFormat.is24HourFormat`; elsewhere the language,
+   `i18n::uses_24_hours`), updated once a minute. Before it (start side),
+   at most two glyphs: the `corner` faces that show (About: an update
+   available; RustTV Remote: pairing open; History: an approval waiting).
+   With #40's top-right menu it sits before the menu, 40u from it, on the
+   same line, so the two never overlap (checked on both layouts, LTR and
+   Arabic).
 3. **Quick panel:** *answered by Q10:* #40's top-right menu; which panel
    rows go in it (About, Remote, Updates) is decided when it is built.
    *Built 2026-11-21:* a RustTV entry with About's, RustTV Remote's and
@@ -647,10 +701,39 @@ Recommendation first in each.
    separate Updates row.
 4. **Banner:** over Home only, one at a time, 4 s, no overlay permission /
    over other apps (`SYSTEM_ALERT_WINDOW`; not recommended).
+   *Decided and built 2026-11-21:* the first. A card at the top end under
+   the status corner (below the top-right menu where there is one), the
+   badge, a title and a dim detail, for 4 s with a 300 ms fade and slide
+   from the end edge (fade only, no shadow, with reduced effects). Queued
+   (four kept, the oldest waiting one dropped), never stacked; shown only
+   while plain Home is in front (not over a page, a folder, a menu, the
+   top-right menu, a prompt, the review or pairing screen, the idle screen
+   or another app); one cut short shows again, whole, when Home is plain
+   again; events from while the launcher is away are dropped. Never
+   focusable. Banners: an update that became available (not one already known at
+   start: the glyph shows it) or was installed (About), a paired
+   phone connected, once per phone per start (RustTV Remote; pairing itself
+   happens on its screen, which says so), the computer applied approvals
+   that waited for it (History: fewer wait and a newer entry; approvals that
+   ran out make none).
 5. **Hero:** the focused panel's tile larger (what exists today) / a pinned
-   panel.
+   panel. *Decided 2026-11-21:* the first; nothing else is needed (the
+   corner, banners and the idle screen carry the rest).
 6. **Ambient:** leave it to the TV's screensaver for now / Home dims after
    N minutes / a RustTV idle screen.
+   *Decided and built 2026-11-21:* Home dims to an idle screen after 5
+   minutes with no input on plain Home: pure black (the one colour outside
+   `Theme`, for OLED), the clock at 180u in the dim text colour at 60 %,
+   and under it the `ambient` faces that show (About: "Update available";
+   RustTV Remote: "Pairing"; History: "Waiting" or the last change's age),
+   pictures at half. The whole face jumps to one of 25 places (±40u, ±28u)
+   each minute, never animated. Any key, the pointer or a phone wakes Home
+   and does nothing else (the key's repeats and release neither). Never
+   over another app; the TV's own screensaver pauses the launcher, which
+   takes the idle screen away, and the launcher holds no wake lock, so the
+   TV's screensaver and sleep keep their own timing. Settings → Idle
+   screen (on by default), recorded in history (`ambient_off`, state
+   format 8; HISTORY.md § 1).
 7. **History tile:** *decided 2026-11-20 (step 4):* the caption is the
    last change's age ("2 hours ago") and "Waiting" in the accent while an
    approval waits for the computer. First run: at the very end, after
@@ -658,7 +741,9 @@ Recommendation first in each.
    upgrade put it in the same place and no tile moves; it moves like the
    other built-in tiles.
 8. **Crate layout:** modules in the launcher until a panel needs its own
-   dependencies / `rusttv-<name>` crates from the start.
+   dependencies / `rusttv-<name>` crates from the start. *Decided
+   2026-11-21:* the first (`panels.rs`, `ui/faces_view.rs` and the
+   templates stay in `rusttv-launcher`).
 9. **Remote's place in History** (§ 6): *decided 2026-11-20:* record it.
    Every new snapshot then needs format 5 (6 since step 4), so released
    builds (0.3.2 and older) and builds before #40 can't read new history;
@@ -952,7 +1037,9 @@ cheap "last entry + pending count" message exists.
 the faces left open in § 9 — status corner, banner, ambient. Panel rows in
 #40's quick panel (§ 9 Q10) and hide and folders for panel tiles (format
 7) are built (below), without a canvas: the owner asked for them to keep
-the existing look (2026-11-21).
+the existing look (2026-11-21). The status corner, banners and the idle
+screen are built too (below): the owner delegated the decisions, and they
+were checked by eye in desktop snapshots against the existing look.
 
 *Built 2026-11-21: panel rows in the top-right menu* (§ 9 Q3, Q10):
 - **A RustTV entry** (`QuickAction::Panels`, code 7 in `quick.slint`,
@@ -1008,6 +1095,50 @@ the existing look (2026-11-21).
   under a top-right menu, the phone's view and Hide, the order file and
   the history snapshot (format 7, older formats refused or kept), and the
   change list (only `hidden` / `in_folder`).
+
+*Built 2026-11-21: the status corner, banners and the idle screen*
+(§ 9 Q2, Q4, Q6; Q1, Q5, Q8 answered):
+- **Three template face kinds** (§ 4.1): `corner`, `banner`, `ambient`,
+  each a global of functions like a row; About, RustTV Remote and History
+  have all three (`templates/*_corner.json`, `*_banner.json`,
+  `*_ambient.json`), and test-only templates (`codegen/test_templates/
+  general_corner.json`, `general_banner.json`, `general_ambient.json`)
+  compile in every build. `PanelView` gains `corner` and `ambient`
+  (`PanelCorner`, `PanelAmbient`); banners are `PanelBanner`s from
+  `about_banner`, `remote_banner` and `history_banner`.
+- **Home** (`ui/faces_view.rs`): the clock (one minute timer while Home is
+  on screen), the glyph and line models (set from the panels' events: the
+  updater's status, pairing, History's summary), the banner queue and the
+  idle screen (from the sway's idle timer: the sway still stops at 20 s,
+  then 4 min 40 s later the idle screen). The Linux home screen reads its
+  time zone with `date +%z` every 15 minutes at most (history times used
+  UTC there); Android asks `TimeZone` and `DateFormat` as before.
+- **Settings → Idle screen** (`Section::Ambient`, after Effects): On
+  (with what it does) / Off, reviewed and recorded like Effects
+  (`ambient_off`, format 8, the `ambient-off` flag file; HISTORY.md § 1),
+  `ambient` in the change list and the CLI (CLI.md, still `rusttv.v11`).
+- **Leftovers of step 5 fixed:** Back from a page opened in a folder
+  returns to it (§ 6); the Hidden apps hint fits built-in tiles; an app
+  list that couldn't be read (an empty list: a TV always has apps) no
+  longer drops apps from the order, folders or hidden apps before the
+  next save (`Home::set_apps` keeps the last list, or stand-ins for every
+  stored app before the first).
+- **Texts:** "Idle screen", its On line, "Idle screen: {}", "RustTV
+  updated", "{} connected", "Your computer applied {n} change" (plural)
+  and the Hidden apps hint, in all 20 translations, measured at their
+  sizes (banner title 29u in 640u, Settings detail 25u in about 990u):
+  all fit. The phone shows none of them.
+- **Checked:** `--demo-faces <dir>` (desktop), with
+  `RUSTTV_UPDATE=available`, in English and Arabic, with and without
+  `RUSTTV_NO_DEVICE=1` (both layouts). Tests: the views and banners per
+  event, the templates' functions and conversion errors, the corner's at
+  most two glyphs, banners over plain Home only (a menu, a page, away), the
+  queue, the phone banner once per phone, History's banner and not for
+  approvals that ran out, the idle screen's rest, wake (key, release,
+  pointer, phone) and drift, never over a menu or while away, its
+  setting, the state format 8, the flag file, Back into a folder and the
+  unreadable app list.
+- **Measured on the TV at the end** (§ 8 "Home's own faces").
 
 **Review 2026-11-20 (fresh-eyes subagent, against main 1333a5a and #40's
 head):** fixed here: format numbers after #40, About's tile and row after

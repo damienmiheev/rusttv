@@ -59,8 +59,8 @@ msgstr "التطبيقات المخفية"
 msgid "About"
 msgstr "حول"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "اضغط OK لإعادة التطبيق إلى الشاشة الرئيسية، و«رجوع» للعودة."
+msgid "OK puts it back on Home. Back returns."
+msgstr "اضغط OK لإعادته إلى الشاشة الرئيسية، و«رجوع» للعودة."
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "الإصدار {} · MIT OR Apache-2.0"
@@ -548,3 +548,33 @@ msgstr[2] "قبل يومين"
 msgstr[3] "قبل {n} أيام"
 msgstr[4] "قبل {n} يومًا"
 msgstr[5] "قبل {n} يوم"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "شاشة الخمول"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "بعد 5 دقائق على الشاشة الرئيسية: ساعة خافتة حتى تضغط زرًا"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "شاشة الخمول: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "تم تحديث RustTV"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "تم توصيل {}"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "طبّق الكمبيوتر {n} تغيير"
+msgstr[1] "طبّق الكمبيوتر تغييرًا واحدًا"
+msgstr[2] "طبّق الكمبيوتر تغييرين"
+msgstr[3] "طبّق الكمبيوتر {n} تغييرات"
+msgstr[4] "طبّق الكمبيوتر {n} تغييرًا"
+msgstr[5] "طبّق الكمبيوتر {n} تغيير"

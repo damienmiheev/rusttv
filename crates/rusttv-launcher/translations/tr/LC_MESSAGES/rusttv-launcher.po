@@ -59,8 +59,8 @@ msgstr "Gizli uygulamalar"
 msgid "About"
 msgstr "Hakkında"
 
-msgid "OK puts the app back on Home. Back returns."
-msgstr "OK uygulamayı ana ekrana geri koyar. Geri: geri dön."
+msgid "OK puts it back on Home. Back returns."
+msgstr "OK ana ekrana geri koyar. Geri: geri dön."
 
 msgid "Version {} · MIT OR Apache-2.0"
 msgstr "Sürüm {} · MIT OR Apache-2.0"
@@ -536,3 +536,29 @@ msgid "{n} day ago"
 msgid_plural "{n} days ago"
 msgstr[0] "{n} gün önce"
 msgstr[1] "{n} gün önce"
+
+#: ui/home.slint
+msgid "Idle screen"
+msgstr "Bekleme ekranı"
+
+#: ui/home.slint
+msgid "After 5 minutes on Home, a dim clock until you press a key"
+msgstr "Ana ekranda 5 dakika sonra, bir tuşa basana dek soluk bir saat"
+
+#: ui/home.slint
+msgid "Idle screen: {}"
+msgstr "Bekleme ekranı: {}"
+
+#: templates/about_banner.json
+msgid "RustTV updated"
+msgstr "RustTV güncellendi"
+
+#: templates/remote_banner.json
+msgid "{} connected"
+msgstr "{} bağlandı"
+
+#: templates/history_banner.json
+msgid "Your computer applied {n} change"
+msgid_plural "Your computer applied {n} changes"
+msgstr[0] "Bilgisayar {n} değişikliği uyguladı"
+msgstr[1] "Bilgisayar {n} değişikliği uyguladı"
