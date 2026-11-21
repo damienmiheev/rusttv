@@ -8,6 +8,12 @@ field in `--json` output says which contract you get, CLI.md).
 
 ### Launcher
 
+- Less work in a frame: the hero glows of Home's tiles are made on a
+  worker thread after the first frame instead of on a tile's first focus;
+  opening or closing a page (About, Settings, …) no longer redraws the
+  panel tiles' cached faces; and a banner fades each of its parts instead
+  of the whole card, so no extra full-screen layer is drawn (its shadow is
+  a picture blurred at build time).
 - The About tile is the first panel (PANELS.md): the RustTV logo and
   version, and "Update available", "Downloading" or "Installing" in place
   of the update dot, drawn from a JSON template (`templates/about_tile.json`)

@@ -71,6 +71,86 @@ fn main() {
         std::fs::write(out.join(format!("badge-{name}.rgba")), rgba)
             .expect("OUT_DIR should be writable");
     }
+    std::fs::write(out.join("banner-shadow.rgba"), banner_shadow())
+        .expect("OUT_DIR should be writable");
+}
+
+/// The banner card's drop shadow (home.slint `BannerCard`), in pixels at
+/// u = 1: the blur, which is also the padding around the card (Slint's
+/// drop shadow texture), and the card's corner radius and size (a typical
+/// width: home.slint stretches the picture to the card's).
+const SHADOW_BLUR: usize = 40;
+const SHADOW_RADIUS: usize = 24;
+const SHADOW_CARD: (usize, usize) = (480, 112);
+
+/// The banner card's drop shadow, blurred here rather than by the renderer:
+/// RGBA, the card plus the blur on each side, black at #00000080 times a
+/// Gaussian blur of the card's rounded shape, the way Skia blurs a drop
+/// shadow. home.slint stretches it to the card and fades it with the card:
+/// a shadow Slint draws would need the whole card rendered into a layer on
+/// every frame of the fade.
+fn banner_shadow() -> Vec<u8> {
+    let (pad, radius, shape) = (SHADOW_BLUR, SHADOW_RADIUS as f32, SHADOW_CARD);
+    let (width, height) = (shape.0 + 2 * pad, shape.1 + 2 * pad);
+    // The rounded shape's coverage, 4 × 4 samples a pixel.
+    let inside = |x: f32, y: f32| {
+        let (left, top) = (pad as f32 + radius, pad as f32 + radius);
+        let (right, bottom) = (
+            (pad + shape.0) as f32 - radius,
+            (pad + shape.1) as f32 - radius,
+        );
+        let dx = x - x.clamp(left, right);
+        let dy = y - y.clamp(top, bottom);
+        dx * dx + dy * dy <= radius * radius
+            && x >= pad as f32
+            && x <= (pad + shape.0) as f32
+            && y >= pad as f32
+            && y <= (pad + shape.1) as f32
+    };
+    let mut mask: Vec<f32> = (0..width * height)
+        .map(|index| {
+            let (x, y) = ((index % width) as f32, (index / width) as f32);
+            let samples = (0..16)
+                .filter(|sample| {
+                    let (sx, sy) = ((sample % 4) as f32, (sample / 4) as f32);
+                    inside(x + (sx + 0.5) / 4.0, y + (sy + 0.5) / 4.0)
+                })
+                .count();
+            samples as f32 / 16.0
+        })
+        .collect();
+    // A separable Gaussian to three sigmas.
+    let sigma = SHADOW_BLUR as f32 / 2.0;
+    let reach = 3 * SHADOW_BLUR / 2;
+    let weights: Vec<f32> = (0..=2 * reach)
+        .map(|tap| {
+            let distance = tap as f32 - reach as f32;
+            (-distance * distance / (2.0 * sigma * sigma)).exp()
+        })
+        .collect();
+    let total: f32 = weights.iter().sum();
+    let blur = |mask: &[f32], step: (usize, usize)| -> Vec<f32> {
+        (0..width * height)
+            .map(|index| {
+                let (x, y) = (index % width, index / width);
+                weights
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(tap, weight)| {
+                        let sx = (x + tap * step.0).checked_sub(reach * step.0)?;
+                        let sy = (y + tap * step.1).checked_sub(reach * step.1)?;
+                        (sx < width && sy < height).then(|| weight * mask[sy * width + sx])
+                    })
+                    .sum::<f32>()
+                    / total
+            })
+            .collect()
+    };
+    mask = blur(&mask, (1, 0));
+    mask = blur(&mask, (0, 1));
+    mask.iter()
+        .flat_map(|coverage| [0, 0, 0, (128.0 * coverage).round() as u8])
+        .collect()
 }
 
 /// Test-only templates (codegen/test_templates/*.json) use the converter's
