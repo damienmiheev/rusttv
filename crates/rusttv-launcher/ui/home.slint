@@ -948,6 +948,14 @@ component AmbientFace inherits Rectangle {
 export component HomeWindow inherits Window {
     in property <[TileData]> tiles;
     in property <int> focused-index;
+    // The app being launched, for the splash; `launch-from-tile`: opened
+    // with its tile, which zooms (else from the top-right menu or again at
+    // a new size, and no tile moves).
+    in property <TileData> launch-app;
+    in property <bool> launch-from-tile: true;
+    // What the tiles take for the mode: a launch from elsewhere leaves them
+    // as they were.
+    property <int> tile-mode: root.mode == Mode.folder || (root.mode == Mode.launching && !root.launch-from-tile) ? Mode.browse : root.mode;
     in property <bool> shelf: true;
     in property <int> first-row;
     in property <int> mode;
@@ -1208,7 +1216,7 @@ export component HomeWindow inherits Window {
             index: i;
             // Focus is on the top-right menu or its panel instead.
             focused: i == focused-index && root.mode != Mode.bar && root.mode != Mode.quick;
-            mode: root.mode == Mode.folder ? Mode.browse : root.mode;
+            mode: root.tile-mode;
             pressed: root.pressed && !root.folder-open;
             idle-phase: root.folder-open ? 0 : root.idle-phase;
             // About is a tab of Settings, so Settings has the update dot;
@@ -1346,7 +1354,7 @@ export component HomeWindow inherits Window {
                     u: root.u;
                     index: i;
                     focused: root.folder-open && i == root.folder-focus;
-                    mode: root.mode == Mode.folder ? Mode.browse : root.mode;
+                    mode: root.tile-mode;
                     pressed: root.pressed;
                     idle-phase: root.idle-phase;
                     hovered => { root.tile-pointer(true, i, 0); }
@@ -1534,7 +1542,7 @@ export component HomeWindow inherits Window {
     // it is shown, so it costs no frames otherwise.
     splash := Rectangle {
         property <bool> shown: mode == Mode.launching;
-        property <TileData> app: folder-open ? folder-tiles[folder-focus] : tiles[focused-index];
+        property <TileData> app: root.launch-app;
         background: Theme.bg;
         opacity: shown ? 1 : 0;
         visible: self.opacity > 0;

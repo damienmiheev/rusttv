@@ -8,6 +8,12 @@ field in `--json` output says which contract you get, CLI.md).
 
 ### Launcher
 
+- An app opened other than with its tile (KDE Connect from the top-right
+  menu, an app started again at a new size) shows the launch splash with
+  its own picture too. Only a tile's launch zooms the tile.
+- Linux: Home while an app is still opening leaves it in the background.
+  Its window, when it comes, is minimized instead of covering Home, until
+  the app is opened again.
 - The About page opens with less work: the licence notices are read straight
   from the APK (no Java string conversions), ahead of time on a background
   thread after the first frame, and kept after the page closes instead of

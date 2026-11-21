@@ -88,10 +88,7 @@ fn deliver(signal: Signal) {
                     Signal::App(AppEvent::Started(_)) => {}
                     Signal::App(AppEvent::Exited(id)) => lifecycle.app_ended(id),
                     // Like Android's Home: leave every page, then come back.
-                    Signal::Home => {
-                        lifecycle.paused();
-                        lifecycle.resumed();
-                    }
+                    Signal::Home => lifecycle.home(),
                     Signal::AppMenu => lifecycle.app_menu(),
                     Signal::Volume(change) => lifecycle.volume(change),
                     Signal::Power => lifecycle.power_menu(),

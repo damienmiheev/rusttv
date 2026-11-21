@@ -741,10 +741,13 @@ enum Mode {
         made: Option<u32>,
     },
     /// `folder` is the open folder it was launched from, open again on return.
+    /// `from_tile`: opened with its tile (the tile zooms), else from
+    /// elsewhere (the top-right menu, an app started again at a new size).
     Launching {
         app: String,
         since: Duration,
         folder: Option<OpenFolder>,
+        from_tile: bool,
     },
     /// The About page (licence notices): from the About tile, Back returns
     /// Home; from Settings' About tab (`from_settings`), Back returns there.
@@ -1605,6 +1608,33 @@ impl Home {
         }
     }
 
+    /// Whether the launch in flight was started with the app's tile.
+    pub fn launching_from_tile(&self) -> bool {
+        matches!(
+            self.mode,
+            Mode::Launching {
+                from_tile: true,
+                ..
+            }
+        )
+    }
+
+    /// Starts the launch splash for app `app` opened other than with its
+    /// tile, from whatever is open; on return Home shows the tiles. The
+    /// caller starts the app.
+    pub fn begin_launch(&mut self, app: String, now: Duration) {
+        if matches!(self.mode, Mode::Moving { .. }) {
+            self.cancel_move();
+        }
+        self.page_folder = None;
+        self.mode = Mode::Launching {
+            app,
+            since: now,
+            folder: None,
+            from_tile: false,
+        };
+    }
+
     /// Current state.
     pub fn state(&self) -> State {
         match self.mode {
@@ -2189,6 +2219,7 @@ impl Home {
                     app: component.clone(),
                     since: now,
                     folder,
+                    from_tile: true,
                 };
                 Some(Effect::Launch(component))
             }
@@ -3022,6 +3053,36 @@ mod tests {
         press(&mut home, &[Input::Up, Input::Back]);
         assert_eq!(home.state(), State::Browse);
         assert_eq!(home.quick_selected(), None);
+    }
+
+    #[test]
+    fn a_launch_from_the_menu_shows_the_splash_and_returns_to_the_tiles() {
+        let mut home = home_with_bar(8);
+        press(&mut home, &[Input::Up, Input::Right]);
+        assert_eq!(home.state(), State::Bar);
+        home.begin_launch("a05".to_owned(), ms(0));
+        assert_eq!(home.state(), State::Launching);
+        assert_eq!(home.launching(), Some("a05"));
+        assert!(!home.launching_from_tile(), "no tile zooms");
+        assert_eq!(home.handle(Input::Paused, ms(10)), None);
+        assert_eq!(home.state(), State::Browse);
+        assert_eq!(home.quick_selected(), None);
+
+        // It fails like a launch from a tile.
+        home.begin_launch("a05".to_owned(), ms(20));
+        assert_eq!(
+            home.handle(Input::LaunchFailed, ms(30)),
+            Some(Effect::ShowLaunchError("a05".to_owned()))
+        );
+        assert_eq!(home.state(), State::Browse);
+    }
+
+    #[test]
+    fn a_launch_from_a_tile_says_so() {
+        let mut home = home(8);
+        press(&mut home, &[Input::OkPressed, Input::OkReleased]);
+        assert_eq!(home.state(), State::Launching);
+        assert!(home.launching_from_tile());
     }
 
     #[test]
