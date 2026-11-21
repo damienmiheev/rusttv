@@ -717,7 +717,8 @@ Recommendation first in each.
    menu, a prompt, the review or pairing screen, the idle screen or
    another app; it is drawn under all of them, so one fading out as they
    open is covered at once); one cut short shows again, whole, when Home
-   is plain again, and one that waited over 30 s is dropped as old news;
+   is plain again, and one that waited over 30 s is dropped as old news
+   (the wait restarts when Home wakes from the idle screen: nobody saw it);
    events from while the launcher is away are dropped. Never focusable. Banners: an update that became available (not one already known at
    start: the glyph shows it) or was installed (About), a paired
    phone connected, once per phone per start (RustTV Remote; pairing itself

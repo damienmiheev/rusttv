@@ -4977,6 +4977,8 @@ mod tests {
             .borrow_mut()
             .queue_banner(faces_view::Panel::Remote, &pixel());
         assert_eq!(screen.banner(), None, "never over the idle screen");
+        // However long the idle screen stays: it is news when Home wakes.
+        screen.wait(60_000);
         screen
             ._controller
             .borrow_mut()
@@ -4990,6 +4992,10 @@ mod tests {
         screen.wait(1);
         screen._controller.borrow_mut().enter_ambient();
         assert!(!screen.window.get_ambient_shown());
+        assert!(
+            !screen._controller.borrow().idle_timer.running(),
+            "no wait armed while away"
+        );
     }
 
     /// The key that woke the idle screen is swallowed with its repeats and

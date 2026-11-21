@@ -119,11 +119,9 @@ fn parse_utc_offset(text: &str) -> Option<i32> {
     }
     let hours: i32 = digits[..2].parse().ok()?;
     let minutes: i32 = digits[2..].parse().ok()?;
+    let offset = sign * (hours * 3600 + minutes * 60);
     // Real offsets run from -12:00 to +14:00.
-    if hours > 14 || minutes >= 60 {
-        return None;
-    }
-    Some(sign * (hours * 3600 + minutes * 60))
+    (minutes < 60 && (-12 * 3600..=14 * 3600).contains(&offset)).then_some(offset)
 }
 
 impl fmt::Debug for LinuxPlatform {
@@ -1082,6 +1080,8 @@ mod tests {
             "UTC",
             "+0a00",
             "+1500",
+            "+1459",
+            "-1201",
             "+0260",
             "+02000",
             "\u{e9}0200",

@@ -460,6 +460,12 @@ impl Controller {
     pub(super) fn wake_ambient(&mut self) {
         self.leave_ambient();
         self.restart_idle();
+        // Banners that came during the idle screen waited for no one: they
+        // are news from now, not old news (BANNER_FRESH).
+        let now = (self.clock)();
+        for banner in &mut self.faces.banners {
+            banner.since = now;
+        }
         self.show_banners();
     }
 
