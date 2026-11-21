@@ -2,7 +2,7 @@
 
 **Make every Android TV faster, safely, for free.**
 
-RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + Slint launcher, a safe ADB-based optimizer, and CLI/MCP tools for humans and AI agents. Local-first, no telemetry, and every performance claim backed by published benchmarks.
+RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + Slint launcher, a safe ADB-based optimizer, and CLI/MCP tools for humans and AI agents. The same launcher is also a TV home screen for Linux boxes (see [RustTV on Linux](#rusttv-on-linux)). Local-first, no telemetry, and every performance claim backed by published benchmarks.
 
 > **Status: 0.3.1.** Tested on one real TV, the Philips 65OLED818 (Google TV, Android 14); [compat/devices/](compat/devices/) lists what was tested there. The launcher is also developed on the Google TV emulator. Other TVs are untested: RustTV refuses changes a device's profile doesn't record as tested unless you pass `--allow-untested`. See [CHANGELOG.md](CHANGELOG.md) for what each version does and [ROADMAP.md](ROADMAP.md) for what comes next.
 
@@ -13,9 +13,30 @@ RustTV is an open-source, rootless toolkit for stock Android TVs: a fast Rust + 
 | Component | What it does | Runs on |
 |---|---|---|
 | `rusttv` CLI | Inspect devices, run benchmarks, install the launcher and make it your Home screen, disable telemetry and ads packages, reduce animations, sync and restore the TV's history, update RustTV: every change planned, approved and reversible | Your computer (macOS, Linux) |
-| RustTV Launcher | Minimal, fast home screen built with Rust + Slint: app row, D-pad navigation, move and hide apps, Settings with a history of changes approved on the TV, English and 20 other languages | The TV (Android 8+) |
+| RustTV Launcher | Minimal, fast home screen built with Rust + Slint: app row, D-pad navigation, move and hide apps, Settings with a history of changes approved on the TV, English and 20 other languages | The TV (Android 8+), or a Linux box in a Wayland compositor |
 | RustTV MCP | The CLI's capabilities as structured tools for AI agents | Your computer |
 | Compatibility data | Community-maintained, versioned device profiles | This repo |
+
+## RustTV on Linux
+
+With the `linux` feature, the launcher is the home screen of a Linux TV box: run `rusttv-launcher-linux` full screen as the first program of a Wayland session (labwc, cage or another wlroots compositor). It is experimental and developed on one ARM projector running Debian.
+
+- **Apps:** every `Type=Application` desktop entry (system packages and Flatpaks), with icons from the icon themes. Apps start as child processes and cover the home screen; when one ends, Home is back. At most `max_apps` run at once and background apps close when memory runs low (`~/.config/rusttv/linux.toml`; freezing background apps, `freeze_background`, is off unless turned on).
+- **Every input:** remote (IR or Bluetooth), mouse and air mouse (hover focuses, click is OK, the wheel scrolls), trackpad, keyboard, and game controllers over USB or Bluetooth (D-pad and left stick are the arrows, A is OK, B is Back, Guide is Home; while an app is in front only Home is taken, so games keep the pad).
+- **On-screen keyboard** for text fields in any app (`input-method-unstable-v2`); typing on a real keyboard, or a phone's, passes straight through.
+- **Top-right menu:** Modify, Settings and quick panels for what the device has: Audio, Network, KDE Connect, Power.
+- **Device settings** through the system's own tools, each only where it is installed: `wpctl` (PipeWire) for audio, `nmcli` (NetworkManager) for Wi-Fi and Ethernet, `bluetoothctl` for Bluetooth, `systemctl` to restart or power off. About shows facts from `/etc/os-release`, `/proc` and `/sys`.
+- **Over apps:** holding Home opens a panel at the right edge (app size, volume, close the app) and the volume keys show a volume bar, both as layer-shell overlays.
+- **Phone as remote:** `rusttv-portal`, a remote desktop portal backend for compositors without one, gives remote input only to KDE Connect (the phone as touchpad and keyboard) and refuses every other app.
+- **Updates** are the package manager's job: the launcher's updater does nothing on Linux.
+
+Build and run (on the Linux machine):
+
+```bash
+cargo build --release -p rusttv-launcher --features linux --bin rusttv-launcher-linux --bin rusttv-portal
+```
+
+Bind the remote's keys in the compositor: Home to `rusttv-launcher-linux --home` (plus raising the window titled `RustTV`), held Home (`XF86Launch1`) to `--app-menu`, Power to `--power`, and the volume keys to `--volume up|down|mute`. Tile order, hidden apps and history live in `$XDG_STATE_HOME/rusttv` (default `~/.local/state/rusttv`); `RUSTTV_LANG=<tag>` overrides the language. Details: [`src/bin/linux.rs`](crates/rusttv-launcher/src/bin/linux.rs) and [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Principles
 
