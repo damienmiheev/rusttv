@@ -790,8 +790,8 @@ component BannerCard inherits Rectangle {
     // opacity: with its parts (and a drop shadow) under it, that renders
     // the whole screen into an extra layer on every frame of the fade, as
     // HeroLayer says; each part alone fades by its own alpha. The shadow is
-    // three pictures for the same reason: one Slint draws would have to be
-    // in that layer to fade with the card.
+    // a picture for the same reason: one Slint draws would have to be in
+    // that layer to fade with the card.
     property <float> fade: shown ? 1 : 0;
     animate fade { duration: shown ? 300ms : 250ms; easing: ease-out; }
     // The shadow's blur, also its padding around the card.

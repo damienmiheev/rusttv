@@ -833,6 +833,12 @@ struct Controller {
     glow_generation: u64,
     /// A worker thread is making glows.
     glows_making: bool,
+    /// Every glow [`Controller::make_glows`] makes is made; cleared when
+    /// the app list, Home's tiles or their artwork change.
+    glows_complete: bool,
+    /// The glow thread could not start or failed: focus makes glows from
+    /// then on, as before.
+    glows_failed: bool,
     /// The About, Settings and Hidden apps tiles' banners and glows.
     builtins: Builtins,
     /// Tiles currently in the window's model, to rebuild it only when they change.
@@ -1063,6 +1069,8 @@ impl Controller {
                 glows: HashMap::new(),
                 glow_generation: 0,
                 glows_making: false,
+                glows_complete: false,
+                glows_failed: false,
                 builtins,
                 shown: Vec::new(),
                 tiles,
@@ -1210,6 +1218,7 @@ impl Controller {
                 let apps: Vec<App> = entries.iter().map(|entry| entry.app.clone()).collect();
                 self.glows.clear();
                 self.glow_generation += 1;
+                self.glows_complete = false;
                 self.apps = entries
                     .into_iter()
                     .map(|entry| (entry.app.id.clone(), AppView::new(entry)))
@@ -1321,6 +1330,7 @@ impl Controller {
             if was_pending {
                 self.platform.artwork_loaded();
                 // The banners that just arrived have glows to make.
+                self.glows_complete = false;
                 self.make_glows();
             }
         }
@@ -2073,6 +2083,7 @@ impl Controller {
         };
         if self.home.tiles() != self.shown {
             self.shown = self.home.tiles().to_vec();
+            self.glows_complete = false;
             let rows: Vec<TileData> = self.shown.iter().map(|id| self.tile_data(id)).collect();
             self.tiles.set_vec(rows);
             self.queue_artwork(&self.shown.clone());
@@ -2606,15 +2617,16 @@ impl Controller {
         Some(glow)
     }
 
-    /// Makes the hero glows not made yet, a few at a time on a worker
-    /// thread, so neither the first frame nor a tile's first focus waits
-    /// for them (~9 ms each on the Philips TV). Starts with the first hero,
-    /// which comes after the first frame, and again when banners arrive;
-    /// each batch's end starts the next until none is missing. A tile
-    /// focused before its glow is ready makes it then ([`Controller::glow`],
+    /// Makes the hero glows of Home's tiles and the built-in tiles not made
+    /// yet, a few at a time on a worker thread, so neither the first frame
+    /// nor a tile's first focus does that work in a frame. Starts with the
+    /// first hero, which comes after the first frame, and again when
+    /// banners arrive; each batch's end starts the next until none is
+    /// missing. Other apps (hidden, in folders) and a tile focused before
+    /// its glow is ready make theirs on focus ([`Controller::glow`],
     /// [`BuiltinView::glow`]).
     fn make_glows(&mut self) {
-        if self.glows_making {
+        if self.glows_making || self.glows_complete || self.glows_failed {
             return;
         }
         let missing = |id: &TileId| match id {
@@ -2630,22 +2642,16 @@ impl Controller {
                 view.glow_source.clone()
             }
         };
-        // Tiles on Home first, in their order; then the others (hidden, in
-        // folders).
-        let others = Builtins::IDS
-            .into_iter()
-            .chain(self.apps.keys().cloned().map(TileId::App));
-        let mut seen = std::collections::HashSet::new();
+        // Tiles on Home first, in their order; then the built-in tiles.
         let jobs: Vec<(TileId, Bitmap)> = self
             .shown
             .iter()
-            .cloned()
-            .chain(others)
-            .filter(|id| seen.insert(id.clone()))
-            .filter_map(|id| missing(&id).map(|source| (id, source)))
+            .chain(Builtins::IDS.iter())
+            .filter_map(|id| missing(id).map(|source| (id.clone(), source)))
             .take(GLOWS_PER_BATCH)
             .collect();
         if jobs.is_empty() {
+            self.glows_complete = true;
             return;
         }
         let (baked, right_to_left) = (self.platform.top_right_menu(), self.options.right_to_left);
@@ -2653,16 +2659,30 @@ impl Controller {
         let started = settings_view::in_background(
             "rusttv-glows",
             move || {
-                jobs.into_iter()
-                    .map(|(id, source)| (id, glow_parts(&source, baked, right_to_left)))
-                    .collect::<Vec<_>>()
+                // A panic is reported as `None`, so the UI stops waiting.
+                std::panic::catch_unwind(move || {
+                    jobs.into_iter()
+                        .map(|(id, source)| (id, glow_parts(&source, baked, right_to_left)))
+                        .collect::<Vec<_>>()
+                })
+                .ok()
             },
-            move |controller: &mut Controller, made| controller.glows_made(generation, made),
+            move |controller: &mut Controller, made| match made {
+                Some(made) => controller.glows_made(generation, made),
+                None => {
+                    log::warn!("the glow thread failed; glows are made on focus");
+                    controller.glows_making = false;
+                    controller.glows_failed = true;
+                }
+            },
         );
         match started {
             Ok(()) => self.glows_making = true,
             // Focus makes them instead, as before.
-            Err(error) => log::warn!("starting the glow thread failed: {error}"),
+            Err(error) => {
+                log::warn!("starting the glow thread failed: {error}");
+                self.glows_failed = true;
+            }
         }
     }
 
@@ -4328,6 +4348,22 @@ mod tests {
         let alpha = |x: u32, y: u32| BANNER_SHADOW[((y * width + x) * 4 + 3) as usize];
         assert_eq!(alpha(0, 0), 0);
         assert_eq!(alpha(width / 2, height / 2), 128);
+    }
+
+    /// Glows a batch made from an app list read since are dropped.
+    #[test]
+    fn glows_from_an_older_app_list_are_dropped() {
+        let screen = screen(None);
+        let mut controller = screen._controller.borrow_mut();
+        controller.glow_generation += 1;
+        let parts = glow_parts(
+            &Bitmap::new(1, 1, vec![200, 40, 40, 255]).expect("one pixel"),
+            false,
+            false,
+        );
+        let old = controller.glow_generation - 1;
+        controller.glows_made(old, vec![(TileId::App("a/.Main".to_owned()), parts)]);
+        assert!(controller.glows.is_empty());
     }
 
     /// The RustTV Remote page (templates/remote_page.json) takes the
