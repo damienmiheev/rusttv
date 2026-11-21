@@ -773,7 +773,7 @@ component BannerCard inherits Rectangle {
 
     property <length> pad: 24 * u;
     property <length> picture: 64 * u;
-    property <length> text-width: min(640 * u, max(title-text.preferred-width, detail-text.preferred-width));
+    property <length> text-width: min(720 * u, max(title-text.preferred-width, detail-text.preferred-width));
     width: self.pad * 2 + self.picture + 24 * u + self.text-width;
     height: self.pad * 2 + self.picture;
     border-radius: 24 * u;
@@ -851,7 +851,9 @@ component AmbientFace inherits Rectangle {
     opacity: shown ? 1 : 0;
     visible: self.opacity > 0;
     // Home dims into it slowly; a key brings Home back at once.
-    animate opacity { duration: shown ? 1200ms : 0ms; easing: ease-in-out; }
+    // With reduced effects it comes at once: a full-screen blend for over
+    // a second is the costliest frame on a weak GPU.
+    animate opacity { duration: shown && Effects.shadows ? 1200ms : 0ms; easing: ease-in-out; }
 
     TouchArea {
         enabled: root.shown;
@@ -1208,6 +1210,22 @@ export component HomeWindow inherits Window {
         visible: self.opacity > 0;
         animate opacity { duration: 250ms; }
     }
+    // A panel's banner, at the top end under the status corner; it slides
+    // in from the end edge (it only fades with reduced effects). Under
+    // everything that opens over Home (quick panels, folders, menus, pages),
+    // so one fading out as they open is covered at once.
+    BannerCard {
+        property <length> slide: banner-shown || !Effects.shadows ? 0 : 48 * u;
+        animate slide { duration: banner-shown ? 300ms : 250ms; easing: cubic-bezier(0.2, 0.9, 0.3, 1); }
+        x: Dir.x(root.width - 90 * u - self.width + self.slide, self.width, root.width);
+        y: 150 * u;
+        u: root.u;
+        shown: banner-shown;
+        title: banner-title;
+        detail: banner-detail;
+        badge: banner-badge;
+    }
+
     if mode == Mode.quick && !quick-power: QuickPanel {
         x: Dir.x(root.width - 90 * u - self.width, self.width, root.width);
         y: 190 * u;
@@ -1587,20 +1605,6 @@ export component HomeWindow inherits Window {
             color: Theme.text;
             vertical-alignment: center;
         }
-    }
-
-    // A panel's banner, at the top end under the status corner; it slides
-    // in from the end edge (it only fades with reduced effects).
-    BannerCard {
-        property <length> slide: banner-shown || !Effects.shadows ? 0 : 48 * u;
-        animate slide { duration: banner-shown ? 300ms : 250ms; easing: cubic-bezier(0.2, 0.9, 0.3, 1); }
-        x: Dir.x(root.width - 90 * u - self.width + self.slide, self.width, root.width);
-        y: 150 * u;
-        u: root.u;
-        shown: banner-shown;
-        title: banner-title;
-        detail: banner-detail;
-        badge: banner-badge;
     }
 
     // About: who made RustTV on the left, the licence notices on the right

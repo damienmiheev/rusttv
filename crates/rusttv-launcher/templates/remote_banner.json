@@ -5,6 +5,6 @@
   "props": ["phone"],
   "root": { "banner": {
     "badge": "rusttv-remote",
-    "title": { "tr": "{} connected", "args": ["phone"] },
+    "title": { "tr": "{} connected", "args": [{ "auto": "phone" }] },
     "detail": { "tr": "RustTV Remote" } } }
 }

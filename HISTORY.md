@@ -40,7 +40,7 @@ commands.
 `state.toml`, the only file in each commit's tree:
 
 ```toml
-format = 6                     # History's panel tile's name needs it (below)
+format = 8                     # the idle screen switch needs it (below)
 
 [launcher]                     # the launcher's own state; only the TV writes it
 order = ["com.netflix.ninja/.MainActivity", "folder:1", "about", "settings", "remote", "panel:history"]

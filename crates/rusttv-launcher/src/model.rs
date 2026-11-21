@@ -4324,6 +4324,7 @@ mod tests {
         assert_eq!(home.state(), State::About);
         home.handle(Input::Paused, ms(0));
         assert_eq!(home.state(), State::Browse);
+        assert!(home.page_folder.is_none());
         press(&mut home, &[Input::Back]);
         assert_eq!(home.state(), State::Browse);
         // The folder gone while its page was open: Back is Home.

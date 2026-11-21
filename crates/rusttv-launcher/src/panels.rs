@@ -147,21 +147,24 @@ pub(crate) fn about_view(version: &str, status: &UpdateStatus) -> PanelView {
 
 /// About's banner when the updater's status changes from `before` to
 /// `after`: an update became available (its version), or it was installed
-/// (`version`, the running one); `None` for any other change. The first
-/// status read since start (`before` is `Idle`) makes no "available"
-/// banner: that update is old news, and the status corner's glyph shows it.
+/// (`version`, the running one); `None` for any other change. `before` is
+/// `None` for the first status read since start: an update it names is old
+/// news (the status corner's glyph shows it), while "installed" then is the
+/// news of this start (Android restarts the launcher after an update).
 pub(crate) fn about_banner(
     version: &str,
-    before: &UpdateStatus,
+    before: Option<&UpdateStatus>,
     after: &UpdateStatus,
 ) -> Option<PanelBanner> {
-    let (event, version) = match after {
-        UpdateStatus::Available(new) | UpdateStatus::NeedsPermission(new)
-            if !before.is_available() && *before != UpdateStatus::Idle =>
+    let (event, version) = match (after, before) {
+        (UpdateStatus::Available(new) | UpdateStatus::NeedsPermission(new), Some(before))
+            if !before.is_available() =>
         {
             ("available", new.as_str())
         }
-        UpdateStatus::Installed if *before != UpdateStatus::Installed => ("installed", version),
+        (UpdateStatus::Installed, before) if before != Some(&UpdateStatus::Installed) => {
+            ("installed", version)
+        }
         _ => return None,
     };
     Some(PanelBanner {
@@ -178,26 +181,22 @@ pub(crate) fn about_banner(
 /// page has no values of its own: its rows are Home's (ui.rs), as is its
 /// status line.
 pub(crate) fn remote_view(phones: usize, pairing: bool) -> PanelView {
+    let status = if pairing { "pairing" } else { "" };
     let props = || {
         Props(vec![
             ("phones", phones.to_string()),
-            ("status", if pairing { "pairing" } else { "" }.to_owned()),
+            ("status", status.to_owned()),
         ])
     };
-    let status = || {
-        Props(vec![(
-            "status",
-            if pairing { "pairing" } else { "" }.to_owned(),
-        )])
-    };
+    let corner = || Props(vec![("status", status.to_owned())]);
     PanelView {
         tile: Some(PanelTile { props: props() }),
         row: Some(PanelRow { props: props() }),
         page: Some(PanelPage {
             props: Props(Vec::new()),
         }),
-        corner: Some(PanelCorner { props: status() }),
-        ambient: Some(PanelAmbient { props: status() }),
+        corner: Some(PanelCorner { props: corner() }),
+        ambient: Some(PanelAmbient { props: corner() }),
     }
 }
 
@@ -216,8 +215,8 @@ pub(crate) fn remote_banner(name: &str) -> PanelBanner {
 /// tile's plain state) before the history thread has read the history
 /// ([`Summary`], `None`), for an empty history, or when the TV's clock
 /// isn't set or is behind the entry. `now_unix` is the TV's clock: Home
-/// formats the age when it reads the summary (resume, focus changes),
-/// never on a timer (PANELS.md § 4).
+/// formats the age when it reads the summary (resume, focus changes, the
+/// status corner's minute tick), no timer of its own (PANELS.md § 4).
 pub(crate) fn history_view(summary: Option<&Summary>, now_unix: i64) -> PanelView {
     let (status, count) = match summary {
         Some(summary) if summary.pending > 0 => ("waiting", 0),
@@ -257,7 +256,12 @@ pub(crate) fn history_view(summary: Option<&Summary>, now_unix: i64) -> PanelVie
 /// History's banner when the summary changes from `before` to `after`: the
 /// computer applied approvals that waited for it (fewer wait, and a newer
 /// entry recorded them), with how many. Approvals that ran out (two hours)
-/// make no entry, so they make no banner either.
+/// make no entry, so they make no banner either. The summary has no count
+/// of applied approvals, so between two reads an approval that ran out
+/// next to one applied counts as applied, and one that ran out next to a
+/// change made on the TV reads as applied too; both are rare (two hours
+/// after the approval, within one read), and Home reads the summary at
+/// least once a minute while it is on screen.
 pub(crate) fn history_banner(
     before: Option<&Summary>,
     after: Option<&Summary>,
@@ -460,29 +464,33 @@ mod tests {
     fn about_banner_comes_once_for_a_new_update_and_for_an_install() {
         let available = UpdateStatus::Available("2.0.0".into());
         let banner =
-            about_banner("1.2.3", &UpdateStatus::Checking, &available).expect("a new update");
+            about_banner("1.2.3", Some(&UpdateStatus::Checking), &available).expect("a new update");
         assert_eq!(banner.props.get("event"), "available");
         assert_eq!(banner.props.get("version"), "2.0.0");
-        // Known at start already: no banner (the corner shows it).
-        assert_eq!(about_banner("1.2.3", &UpdateStatus::Idle, &available), None);
+        // Known at the first read since start: no banner (the corner shows
+        // it); an update found later from "nothing known yet" is news.
+        assert_eq!(about_banner("1.2.3", None, &available), None);
+        assert!(about_banner("1.2.3", Some(&UpdateStatus::Idle), &available).is_some());
         // Still available (or now needing permission): no second banner.
-        assert_eq!(about_banner("1.2.3", &available, &available), None);
+        assert_eq!(about_banner("1.2.3", Some(&available), &available), None);
         let permission = UpdateStatus::NeedsPermission("2.0.0".into());
-        assert_eq!(about_banner("1.2.3", &available, &permission), None);
-        let installed = about_banner("1.2.3", &UpdateStatus::Installing, &UpdateStatus::Installed)
-            .expect("installed");
+        assert_eq!(about_banner("1.2.3", Some(&available), &permission), None);
+        let installed = about_banner(
+            "1.2.3",
+            Some(&UpdateStatus::Installing),
+            &UpdateStatus::Installed,
+        )
+        .expect("installed");
         assert_eq!(installed.props.get("event"), "installed");
         assert_eq!(installed.props.get("version"), "1.2.3");
-        assert_eq!(
-            about_banner("1.2.3", &UpdateStatus::Installed, &UpdateStatus::Installed),
-            None
-        );
+        // Installed at the first read: the launcher restarted after it.
+        assert!(about_banner("1.2.3", None, &UpdateStatus::Installed).is_some());
+        let again = Some(&UpdateStatus::Installed);
+        assert_eq!(about_banner("1.2.3", again, &UpdateStatus::Installed), None);
         for before in &STATUSES {
             for after in &STATUSES {
-                let banner = about_banner("1.2.3", before, after);
-                let expected = (after.is_available()
-                    && !before.is_available()
-                    && *before != UpdateStatus::Idle)
+                let banner = about_banner("1.2.3", Some(before), after);
+                let expected = (after.is_available() && !before.is_available())
                     || (*after == UpdateStatus::Installed && *before != UpdateStatus::Installed);
                 assert_eq!(banner.is_some(), expected, "{before:?} -> {after:?}");
             }
@@ -583,10 +591,7 @@ mod tests {
             }
         }
         let banners = [
-            (
-                "about",
-                about_banner("1", &UpdateStatus::Checking, &UpdateStatus::Installed),
-            ),
+            ("about", about_banner("1", None, &UpdateStatus::Installed)),
             ("remote", Some(remote_banner("P"))),
             (
                 "history",
@@ -1086,7 +1091,8 @@ mod tests {
     /// Template texts reach translators (scripts/launcher-pot.sh) and every
     /// language translates them: generated Slint lives in OUT_DIR, where a
     /// plain extractor run over ui/ would miss it. A text with plural forms
-    /// has every form its language's header names, none empty.
+    /// has every form its language's header names, none empty. Every other
+    /// text of the .pot is translated too.
     #[test]
     fn template_texts_are_translated_everywhere() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -1127,6 +1133,18 @@ mod tests {
                 .find(|(code, _)| code == language)
                 .map(|(_, forms)| *forms);
             assert_eq!(Some(forms), want_forms, "{language}: Plural-Forms");
+            // Every text of the .pot (ui/*.slint's too) is translated.
+            for wanted in pot.iter().filter(|entry| !entry.id.is_empty()) {
+                let entry = po
+                    .iter()
+                    .find(|entry| entry.id == wanted.id)
+                    .unwrap_or_else(|| panic!("{language}: {:?} missing", wanted.id));
+                assert!(
+                    entry.strs.iter().all(|text| !text.is_empty()),
+                    "{language}: {:?} is not translated",
+                    wanted.id
+                );
+            }
             for (id, plural) in &ids {
                 let entry = po
                     .iter()

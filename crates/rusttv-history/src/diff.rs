@@ -415,6 +415,22 @@ mod tests {
         assert_eq!(summary(&changes), "Hid com.example.a and 6 more");
     }
 
+    /// The idle screen's switch, both ways, and its summary; off is not
+    /// the default.
+    #[test]
+    fn the_idle_screen_switch_is_one_change_each_way() {
+        assert!(!State::new().launcher.ambient_off);
+        let on = State::new();
+        let mut off = State::new();
+        off.launcher.ambient_off = true;
+        let changes = diff(&on, &off);
+        assert_eq!(changes, [Change::Ambient { on: false }]);
+        assert_eq!(summary(&changes), "Idle screen off");
+        let changes = diff(&off, &on);
+        assert_eq!(changes, [Change::Ambient { on: true }]);
+        assert_eq!(summary(&changes), "Idle screen on");
+    }
+
     /// Hiding a tile (an app or a built-in one) or showing it again is one
     /// `hidden` change, not also a removal or an addition; so is putting a
     /// built-in tile in a folder one `in_folder`.

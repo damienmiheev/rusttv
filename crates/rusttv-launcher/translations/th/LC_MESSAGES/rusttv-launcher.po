@@ -557,4 +557,4 @@ msgstr "เชื่อมต่อ {} แล้ว"
 #: templates/history_banner.json
 msgid "Your computer applied {n} change"
 msgid_plural "Your computer applied {n} changes"
-msgstr[0] "คอมพิวเตอร์ใช้ {n} การเปลี่ยนแปลงแล้ว"
+msgstr[0] "คอมพิวเตอร์ใช้การเปลี่ยนแปลง {n} รายการแล้ว"

@@ -196,17 +196,25 @@ impl Controller {
         let now = i64::try_from(crate::remote::now()).unwrap_or(i64::MAX);
         let before = self.history.0;
         self.history = (History::get().and_then(History::summary), now);
-        // A banner if the computer applied waiting approvals; the corner's
-        // glyph and the idle screen's line follow the summary.
-        self.history_summary_changed(before);
-        self.show_faces();
         let Some(window) = self.window.upgrade() else {
             return;
         };
+        let mut shown = false;
         if let Some(tile) = panels::history_view(self.history.0.as_ref(), self.history.1).tile {
             let panel = window.global::<HistoryPanel>();
-            panel.set_status(tile.props.get("status").into());
-            panel.set_count(tile.props.get("count").into());
+            let (status, count) = (tile.props.get("status"), tile.props.get("count"));
+            shown = panel.get_status() != status || panel.get_count() != count;
+            panel.set_status(status.into());
+            panel.set_count(count.into());
+        }
+        // A banner if the computer applied waiting approvals; the corner's
+        // glyph and the idle screen's line follow the summary. Only when
+        // something changed: this runs on every focus change.
+        if self.history.0 != before {
+            self.history_summary_changed(before);
+        }
+        if shown || self.history.0 != before {
+            self.show_faces();
         }
     }
 

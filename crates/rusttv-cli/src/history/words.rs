@@ -299,6 +299,15 @@ pub(crate) fn duration(seconds: u64) -> String {
 mod tests {
     use super::*;
 
+    /// The idle screen's change in JSON (`kind: ambient`) and in words.
+    #[test]
+    fn the_idle_screen_change_reads_in_json_and_words() {
+        let off = Change::Ambient { on: false };
+        let json = serde_json::to_value(ChangeView::new(&off)).unwrap();
+        assert_eq!(json, serde_json::json!({ "kind": "ambient", "on": false }));
+        assert_eq!(change(&off), "Idle screen: off");
+    }
+
     #[test]
     fn times_are_utc_dates_and_unset_clocks_say_so() {
         assert_eq!(time(1_792_843_149), "2026-10-24 11:59 UTC");

@@ -560,5 +560,5 @@ msgstr "{} verbonden"
 #: templates/history_banner.json
 msgid "Your computer applied {n} change"
 msgid_plural "Your computer applied {n} changes"
-msgstr[0] "Computer heeft {n} wijziging doorgevoerd"
-msgstr[1] "Computer heeft {n} wijzigingen doorgevoerd"
+msgstr[0] "Je computer heeft {n} wijziging doorgevoerd"
+msgstr[1] "Je computer heeft {n} wijzigingen doorgevoerd"

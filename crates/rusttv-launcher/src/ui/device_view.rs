@@ -337,7 +337,12 @@ impl Controller {
 
     /// A volume key (the remote's, or `--volume` on Linux): changes the
     /// volume and shows the volume bar. Nothing without volume control.
+    /// It also wakes the idle screen (the volume still changes: the key
+    /// says what it wants, unlike a key that only wakes).
     pub(super) fn volume_key(&mut self, change: VolumeChange) {
+        if self.faces.ambient {
+            self.wake_ambient();
+        }
         let Some(device) = self.device.clone() else {
             return;
         };

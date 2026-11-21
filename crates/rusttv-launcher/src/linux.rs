@@ -119,6 +119,10 @@ fn parse_utc_offset(text: &str) -> Option<i32> {
     }
     let hours: i32 = digits[..2].parse().ok()?;
     let minutes: i32 = digits[2..].parse().ok()?;
+    // Real offsets run from -12:00 to +14:00.
+    if hours > 14 || minutes >= 60 {
+        return None;
+    }
     Some(sign * (hours * 3600 + minutes * 60))
 }
 
@@ -1060,18 +1064,31 @@ fn decode_png(path: &Path) -> Result<Bitmap, String> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn utc_offsets_parse_from_date() {
-        use super::parse_utc_offset;
         assert_eq!(parse_utc_offset("+0200\n"), Some(7200));
         assert_eq!(parse_utc_offset("-0330"), Some(-12_600));
         assert_eq!(parse_utc_offset("+0000"), Some(0));
-        for bad in ["", "0200", "+02", "+02:00", "UTC", "+0a00"] {
+        assert_eq!(parse_utc_offset("+0545"), Some(20_700));
+        assert_eq!(parse_utc_offset("+1400"), Some(50_400));
+        assert_eq!(parse_utc_offset("-1200"), Some(-43_200));
+        for bad in [
+            "",
+            "0200",
+            "+02",
+            "+02:00",
+            "UTC",
+            "+0a00",
+            "+1500",
+            "+0260",
+            "+02000",
+            "\u{e9}0200",
+        ] {
             assert_eq!(parse_utc_offset(bad), None, "{bad}");
         }
     }
-
-    use super::*;
 
     fn entry(text: &str) -> Option<DesktopEntry> {
         DesktopEntry::parse(

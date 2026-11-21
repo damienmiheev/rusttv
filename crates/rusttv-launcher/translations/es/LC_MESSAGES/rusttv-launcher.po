@@ -543,7 +543,7 @@ msgstr "Pantalla en reposo"
 
 #: ui/home.slint
 msgid "After 5 minutes on Home, a dim clock until you press a key"
-msgstr "Tras 5 minutos en inicio, un reloj tenue hasta que pulses una tecla"
+msgstr "Tras 5 minutos en la pantalla de inicio, un reloj tenue hasta que pulses una tecla"
 
 #: ui/home.slint
 msgid "Idle screen: {}"

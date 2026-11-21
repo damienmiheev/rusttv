@@ -25,8 +25,13 @@ use crate::panels::{self, PanelBanner, Props};
 /// How long Home rests before it dims to the idle screen (owner's decision
 /// delegated, 2026-11-21): long enough never to start while someone reads
 /// Home, well before most TVs' own screensaver (which then takes over: the
-/// launcher pauses and the idle screen goes).
+/// launcher pauses and the idle screen goes). Settings says "5 minutes"
+/// (home.slint `ambient-detail`; a test keeps the two together).
 pub(super) const AMBIENT_AFTER: Duration = Duration::from_secs(5 * 60);
+
+/// A banner that waited longer than this (Home wasn't plain: a page, a
+/// folder, a menu was open) is dropped: by then it isn't news.
+const BANNER_FRESH: Duration = Duration::from_secs(30);
 
 /// How long a banner stays.
 const BANNER_TIME: Duration = Duration::from_secs(4);
@@ -49,12 +54,14 @@ pub(super) enum Panel {
     History,
 }
 
-/// A banner's words and picture, in the language at the time it came.
+/// A banner's words and picture, in the language at the time it came, and
+/// when it came (the controller's clock).
 #[derive(Debug, Clone)]
 struct Banner {
     title: SharedString,
     detail: SharedString,
     badge: Image,
+    since: Duration,
 }
 
 /// The faces' state in the controller.
@@ -129,8 +136,10 @@ fn arg(props: &Props, name: &str) -> SharedString {
 impl Controller {
     /// Sets the clock now and again at the next minute's start; the idle
     /// screen moves one step with it, and its History line gets its age.
-    /// Runs while Home is on screen ([`Controller::stop_clock`] when it
-    /// leaves).
+    /// History's tile, row and lines get their age too (a copy of the
+    /// history thread's summary, no history I/O), so a change the computer
+    /// applied makes its banner within the minute. Runs while Home is on
+    /// screen ([`Controller::faces_away`] stops it).
     pub(super) fn tick_clock(&mut self) {
         let since_epoch = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -147,11 +156,7 @@ impl Controller {
                 window.set_ambient_drift(self.faces.drift);
             }
         }
-        if self.faces.ambient {
-            // The age on the idle screen's History line, from the summary
-            // Home already has (no history I/O).
-            self.show_history_panel();
-        }
+        self.show_history_panel();
         let into_minute = u64::try_from(since_epoch.as_millis() % 60_000).unwrap_or_default();
         // A little after the minute starts, so the text is never a minute
         // behind.
@@ -171,6 +176,8 @@ impl Controller {
     pub(super) fn faces_away(&mut self) {
         self.faces.clock_timer.stop();
         self.leave_ambient();
+        // A release lost while away must not swallow the next press.
+        self.faces.ambient_key = None;
         self.faces.banners.clear();
         self.faces.banner_timer.stop();
         if std::mem::take(&mut self.faces.banner_up)
@@ -195,26 +202,26 @@ impl Controller {
         let mut lines = Vec::new();
         if let Some(corner) = about.corner {
             let face = window.global::<AboutCorner>();
-            if face.invoke_shown(arg(&corner.props, "status")) {
+            if face.invoke_show(arg(&corner.props, "status")) {
                 glyphs.push(face.get_badge());
             }
         }
         if let Some(corner) = remote.corner {
             let face = window.global::<RemoteCorner>();
-            if face.invoke_shown(arg(&corner.props, "status")) {
+            if face.invoke_show(arg(&corner.props, "status")) {
                 glyphs.push(face.get_badge());
             }
         }
         if let Some(corner) = history.corner {
             let face = window.global::<HistoryCorner>();
-            if face.invoke_shown(arg(&corner.props, "status")) {
+            if face.invoke_show(arg(&corner.props, "status")) {
                 glyphs.push(face.get_badge());
             }
         }
         if let Some(ambient) = about.ambient {
             let face = window.global::<AboutAmbient>();
             let status = arg(&ambient.props, "status");
-            if face.invoke_shown(status.clone()) {
+            if face.invoke_show(status.clone()) {
                 lines.push(AmbientLine {
                     badge: face.get_badge(),
                     text: face.invoke_text(status),
@@ -224,7 +231,7 @@ impl Controller {
         if let Some(ambient) = remote.ambient {
             let face = window.global::<RemoteAmbient>();
             let status = arg(&ambient.props, "status");
-            if face.invoke_shown(status.clone()) {
+            if face.invoke_show(status.clone()) {
                 lines.push(AmbientLine {
                     badge: face.get_badge(),
                     text: face.invoke_text(status),
@@ -234,7 +241,7 @@ impl Controller {
         if let Some(ambient) = history.ambient {
             let face = window.global::<HistoryAmbient>();
             let (status, count) = (arg(&ambient.props, "status"), arg(&ambient.props, "count"));
-            if face.invoke_shown(status.clone(), count.clone()) {
+            if face.invoke_show(status.clone(), count.clone()) {
                 lines.push(AmbientLine {
                     badge: face.get_badge(),
                     text: face.invoke_text(status, count),
@@ -261,6 +268,7 @@ impl Controller {
             return;
         };
         let props = &banner.props;
+        let since = (self.clock)();
         let banner = match panel {
             Panel::About => {
                 let face = window.global::<AboutBanner>();
@@ -269,6 +277,7 @@ impl Controller {
                     title: face.invoke_title(event.clone(), version.clone()),
                     detail: face.invoke_detail(event, version),
                     badge: face.get_badge(),
+                    since,
                 }
             }
             Panel::Remote => {
@@ -278,6 +287,7 @@ impl Controller {
                     title: face.invoke_title(phone.clone()),
                     detail: face.invoke_detail(phone),
                     badge: face.get_badge(),
+                    since,
                 }
             }
             Panel::History => {
@@ -287,6 +297,7 @@ impl Controller {
                     title: face.invoke_title(count.clone()),
                     detail: face.invoke_detail(count),
                     badge: face.get_badge(),
+                    since,
                 }
             }
         };
@@ -315,9 +326,12 @@ impl Controller {
 
     /// Whether Home can show a banner: plain Home in front, nothing open
     /// over it (a page, a folder, a menu, the top-right menu, a prompt, the
-    /// review or pairing screen) and not the idle screen.
+    /// review or pairing screen), on its first row (with the hero and the
+    /// status corner, never over the tiles) and not the idle screen.
     fn banner_allowed(&self) -> bool {
-        self.home_alone() && !self.faces.ambient
+        self.home_alone()
+            && !self.faces.ambient
+            && matches!(self.home.scroll(), crate::model::Scroll::Shelf)
     }
 
     /// Plain Home in front: browsing the tiles, with nothing over them.
@@ -349,6 +363,16 @@ impl Controller {
         }
         if !allowed || self.faces.banner_timer.running() {
             return;
+        }
+        // Banners that waited too long are old news.
+        let now = (self.clock)();
+        while self
+            .faces
+            .banners
+            .front()
+            .is_some_and(|banner| now.saturating_sub(banner.since) > BANNER_FRESH)
+        {
+            self.faces.banners.pop_front();
         }
         let Some(banner) = self.faces.banners.front() else {
             return;
@@ -398,9 +422,16 @@ impl Controller {
     }
 
     /// Dims Home to the idle screen if it is on and Home is alone in front
-    /// (never over another app, a page or the review screen).
+    /// (never over another app, a page or the review screen). When Home
+    /// isn't alone (a page stayed open), it waits another
+    /// [`AMBIENT_AFTER`]: a page or screen that closes without a key (a
+    /// phone, a time limit) still gets the idle screen later.
     pub(super) fn enter_ambient(&mut self) {
-        if !self.faces.ambient_on || !self.home_alone() || self.faces.ambient {
+        if !self.faces.ambient_on || self.faces.ambient || self.away {
+            return;
+        }
+        if !self.home_alone() {
+            self.arm_ambient(AMBIENT_AFTER);
             return;
         }
         self.faces.ambient = true;

@@ -35,6 +35,17 @@ fn isolated(prop: &str) -> String {
     format!(r#""\u{{2066}}" + {prop} + "\u{{2069}}""#)
 }
 
+/// The template without one field of its root face.
+fn without(json: &str, root: &str, key: &str) -> String {
+    let mut value: serde_json::Value = serde_json::from_str(json).expect("a template is JSON");
+    value["root"][root]
+        .as_object_mut()
+        .expect("the root face is an object")
+        .remove(key)
+        .expect("the field is there");
+    value.to_string()
+}
+
 fn run(json: &str) -> Result<String, String> {
     convert(json)
 }
@@ -196,9 +207,6 @@ fn a_general_tile_and_row_convert() {
     assert!(row.contains(&format!("@tr(\"Count {{}}\", {})", isolated("count"))));
 }
 
-/// A text with plural forms becomes Slint's `@tr("…" | "…" % n)`, its
-/// count read as a number, with other args after it; in a `select` too,
-/// on a tile, a row and a page block.
 /// The status corner's glyph, the banner and the idle screen's line are
 /// globals of functions of their props (PANELS.md § 4.1), with their badge
 /// as a picture property; Home calls them (ui/faces_view.rs).
@@ -216,7 +224,7 @@ fn corner_banner_and_ambient_faces_convert() {
     );
     assert!(
         corner.contains(
-            "public pure function shown(status: string) -> bool {\n        return (status == \"pairing\" ? true : false);"
+            "public pure function show(status: string) -> bool {\n        return (status == \"pairing\" ? true : false);"
         ),
         "{corner}"
     );
@@ -243,6 +251,12 @@ fn corner_banner_and_ambient_faces_convert() {
         general.contains(" | \"{n} things for {}\" % count.to-float()"),
         "{general}"
     );
+    // `{"auto": name}`: a first-strong isolate, so a name keeps its own
+    // direction.
+    assert!(
+        general.contains(r#", "\u{2068}" + name + "\u{2069}")"#),
+        "{general}"
+    );
 
     let ambient = run(HISTORY_AMBIENT).expect("ambient converts");
     assert!(
@@ -251,7 +265,7 @@ fn corner_banner_and_ambient_faces_convert() {
     );
     // `show` as a prop's name: shown while it isn't empty.
     assert!(
-        ambient.contains("public pure function shown(status: string, count: string) -> bool {\n        return status != \"\";"),
+        ambient.contains("public pure function show(status: string, count: string) -> bool {\n        return status != \"\";"),
         "{ambient}"
     );
     assert!(
@@ -306,7 +320,7 @@ fn rejects_corner_banner_and_ambient_outside_the_schema() {
             "is taken",
         ),
         (
-            REMOTE_CORNER.replace("[\"status\"]", "[\"status\", \"shown\"]"),
+            REMOTE_CORNER.replace("[\"status\"]", "[\"status\", \"show\"]"),
             "is taken",
         ),
         (
@@ -355,6 +369,39 @@ fn rejects_corner_banner_and_ambient_outside_the_schema() {
             HISTORY_AMBIENT.replace("\"show\": \"status\"", "\"show\": \"state\""),
             "\"state\" is not in props",
         ),
+        (
+            without(ABOUT_BANNER, "banner", "title"),
+            "missing \"title\"",
+        ),
+        (
+            without(HISTORY_AMBIENT, "glance", "text"),
+            "missing \"text\"",
+        ),
+        (
+            ABOUT_BANNER.replace(
+                "[\"event\", \"version\"]",
+                "[\"event\", \"version\", \"badge\"]",
+            ),
+            "is taken",
+        ),
+        (
+            HISTORY_AMBIENT.replace(
+                "[\"status\", \"count\"]",
+                "[\"status\", \"count\", \"show\"]",
+            ),
+            "is taken",
+        ),
+        (
+            ABOUT_BANNER.replace("{ \"ltr\": \"version\" }", "{ \"rtl\": \"version\" }"),
+            "unknown field \"rtl\"",
+        ),
+        (
+            ABOUT_BANNER.replace(
+                "{ \"ltr\": \"version\" }",
+                "{ \"ltr\": \"version\", \"auto\": \"version\" }",
+            ),
+            "an argument is a prop",
+        ),
     ];
     for (json, expected) in cases {
         assert!(
@@ -366,6 +413,9 @@ fn rejects_corner_banner_and_ambient_outside_the_schema() {
     }
 }
 
+/// A text with plural forms becomes Slint's `@tr("…" | "…" % n)`, its
+/// count read as a number, with other args after it; in a `select` too,
+/// on a tile, a row and a page block.
 #[test]
 fn plural_texts_convert_with_their_count() {
     let tile = run(GENERAL_PLURAL).expect("converts");
@@ -1040,19 +1090,37 @@ fn the_test_templates_compile_and_draw() {
     }
 
     // Empty properties: the count is an empty isolate, no detail, no dot.
+    pages.set_value("".into());
     assert_eq!(pages.get_general_row_title(), "Count \u{2066}\u{2069}");
     assert_eq!(pages.get_general_row_detail(), "");
     assert!(!pages.get_general_row_attention());
     // The corner's glyph, the banner and the ambient line with empty
-    // properties: hidden, a count of 0 and an empty isolate, the `else`
-    // text; each has its badge.
-    assert!(!pages.get_general_corner_shown());
+    // properties: hidden, a count of 0 and an empty first-strong isolate,
+    // the `else` text.
+    assert!(!pages.get_general_corner_show());
     assert_eq!(
         pages.get_general_banner_title(),
-        "0 things for \u{2066}\u{2069}"
+        "0 things for \u{2068}\u{2069}"
     );
     assert_eq!(pages.get_general_banner_detail(), "");
-    assert!(!pages.get_general_ambient_shown());
+    assert!(!pages.get_general_ambient_show());
+    assert_eq!(pages.get_general_ambient_text(), "Off");
+    // "on" in every prop: the true branches.
+    pages.set_value("on".into());
+    assert_eq!(pages.get_general_row_title(), "Count \u{2066}on\u{2069}");
+    assert_eq!(pages.get_general_row_detail(), "On");
+    assert!(pages.get_general_row_attention());
+    assert!(pages.get_general_corner_show());
+    assert!(pages.get_general_ambient_show());
+    assert_eq!(pages.get_general_ambient_text(), "On");
+    // A count of one picks the singular form; "off" hides the line.
+    pages.set_value("1".into());
+    assert_eq!(
+        pages.get_general_banner_title(),
+        "1 thing for \u{2068}1\u{2069}"
+    );
+    pages.set_value("off".into());
+    assert!(!pages.get_general_ambient_show());
     assert_eq!(pages.get_general_ambient_text(), "Off");
     // Badges are images Rust sets (none in this test): only their type
     // is checked by compiling.

@@ -852,6 +852,8 @@ struct Controller {
     saved_focus: Option<TileId>,
     /// The updater's status as last shown.
     update: UpdateStatus,
+    /// Whether the updater's status was read since start.
+    update_read: bool,
     update_timer: Timer,
     /// The Settings page while it is open (HISTORY.md § 8).
     settings: Option<crate::settings::SettingsPage>,
@@ -937,8 +939,9 @@ struct Controller {
     /// The platform tab Settings opens on once its tabs are read.
     settings_tab: Option<&'static str>,
     /// History's tile data as last read from the history thread, and the
-    /// TV's clock then (Unix seconds): its age is formatted on resume and
-    /// focus changes, never by a timer (PANELS.md § 4).
+    /// TV's clock then (Unix seconds): its age is formatted on resume,
+    /// focus changes and the clock's minute tick, no timer of its own
+    /// (PANELS.md § 4).
     history: (Option<crate::history::Summary>, i64),
     /// The focused tile when History's data was last read.
     history_focus: Option<TileId>,
@@ -1064,6 +1067,7 @@ impl Controller {
                 notices: None,
                 saved_focus,
                 update: UpdateStatus::Idle,
+                update_read: false,
                 update_timer: Timer::default(),
                 settings: None,
                 review: None,
@@ -1143,7 +1147,9 @@ impl Controller {
         self.show_history_panel();
         self.push_remote_view();
         self.pack_timer.stop();
-        // The clock runs again, and Home may dim after a rest from now.
+        // The clock runs again, and Home may dim after a rest from now (no
+        // sway until a key, as after a long time away before).
+        self.leave_ambient();
         self.tick_clock();
         self.set_idle_phase(0);
         self.arm_ambient(faces_view::AMBIENT_AFTER);
@@ -1170,6 +1176,12 @@ impl Controller {
     /// Re-reads the app list from the platform.
     fn reload_apps(&mut self) {
         match self.platform.list_apps() {
+            // A TV always has apps: an empty list is one that couldn't be
+            // read, so the apps shown stay (`Home::set_apps` keeps them too).
+            Ok(entries) if entries.is_empty() => {
+                log::warn!("the app list came back empty; keeping the last one");
+                self.home.set_apps(&[]);
+            }
             Ok(entries) => {
                 let apps: Vec<App> = entries.iter().map(|entry| entry.app.clone()).collect();
                 self.glows.clear();
@@ -1297,6 +1309,25 @@ impl Controller {
         if self.prompt.is_some() {
             return false;
         }
+        // The idle screen: the key that wakes it does nothing else, its
+        // repeats and release neither (PANELS.md § 9 Q6). Any other key
+        // ends that, so a lost release can't swallow a later press.
+        if let Some(held) = &self.faces.ambient_key {
+            if held.as_str() == text {
+                if !pressed {
+                    self.faces.ambient_key = None;
+                }
+                return true;
+            }
+            self.faces.ambient_key = None;
+        }
+        if self.faces.ambient {
+            if pressed {
+                self.faces.ambient_key = Some(text.into());
+                self.wake_ambient();
+            }
+            return true;
+        }
         // The Menu key (keyboards; a controller's top button): the focused
         // tile's menu, as a long OK. Not while the pairing, trust or review
         // screen is open: those take only their own keys.
@@ -1305,23 +1336,6 @@ impl Controller {
                 self.hide_pointer();
                 self.home.long_press();
                 self.after_pointer(None);
-            }
-            return true;
-        }
-        // The idle screen: the key that wakes it does nothing else, its
-        // repeats and release neither (PANELS.md § 9 Q6).
-        if let Some(held) = &self.faces.ambient_key
-            && held.as_str() == text
-        {
-            if !pressed {
-                self.faces.ambient_key = None;
-            }
-            return true;
-        }
-        if self.faces.ambient {
-            if pressed {
-                self.faces.ambient_key = Some(text.into());
-                self.wake_ambient();
             }
             return true;
         }
@@ -1732,6 +1746,9 @@ impl Controller {
     /// tile's caption (on the TV and the phones) and Settings' dot; an
     /// unchanged one costs nothing.
     fn show_update(&mut self, status: UpdateStatus) {
+        // The first read since start: an update it names is old news (no
+        // banner; the status corner shows it).
+        let first = !std::mem::replace(&mut self.update_read, true);
         if status == self.update {
             return;
         }
@@ -1743,7 +1760,8 @@ impl Controller {
         // and only while RustTV is in front.
         let caption_changed =
             crate::remote::about_caption(&status) != crate::remote::about_caption(&self.update);
-        let banner = panels::about_banner(env!("CARGO_PKG_VERSION"), &self.update, &status);
+        let before = (!first).then_some(&self.update);
+        let banner = panels::about_banner(env!("CARGO_PKG_VERSION"), before, &status);
         self.update = status;
         self.show_faces();
         if let Some(banner) = banner {
@@ -2323,9 +2341,19 @@ impl Controller {
     }
 
     fn phone_input(&mut self, message: PhoneMessage) {
-        // On the idle screen a phone's key, tap or drag wakes Home and does
-        // nothing else, like the remote's.
-        if self.faces.ambient && !self.away {
+        // On the idle screen a phone's key, tap, menu choice or drag wakes
+        // Home and does nothing else, like the remote's; its page's other
+        // messages (typing, text) aren't someone at the TV.
+        if self.faces.ambient
+            && !self.away
+            && matches!(
+                message,
+                PhoneMessage::Key { .. }
+                    | PhoneMessage::Tile { .. }
+                    | PhoneMessage::Menu { .. }
+                    | PhoneMessage::Drag { .. }
+            )
+        {
             self.wake_ambient();
             return;
         }
@@ -4714,7 +4742,10 @@ mod tests {
         screen.wait(500);
         assert_eq!(
             screen.banner(),
-            Some(("Pixel connected".into(), "RustTV Remote".into()))
+            Some((
+                "\u{2068}Pixel\u{2069} connected".into(),
+                "RustTV Remote".into()
+            ))
         );
         screen.wait(4_100);
         screen.wait(500);
@@ -4818,7 +4849,10 @@ mod tests {
         event(RemoteEvent::Connected(phone));
         assert_eq!(
             screen.banner(),
-            Some(("Pixel connected".into(), "RustTV Remote".into()))
+            Some((
+                "\u{2068}Pixel\u{2069} connected".into(),
+                "RustTV Remote".into()
+            ))
         );
         screen.wait(4_100);
         screen.wait(500);
@@ -4925,6 +4959,149 @@ mod tests {
         screen.tap(LEFT);
         screen.rest();
         assert!(screen.window.get_ambient_shown());
+    }
+
+    /// A banner that comes while the idle screen is up waits for Home to
+    /// wake; the idle screen never comes while the launcher is away; a
+    /// volume key wakes it and still changes the volume.
+    #[test]
+    fn the_idle_screen_holds_banners_and_a_volume_key_wakes_it() {
+        let platform = abc().with_device();
+        let device = platform.device().unwrap();
+        let screen = screen_with(platform, None);
+        screen.rest();
+        assert!(screen.window.get_ambient_shown());
+        let pixel = || panels::remote_banner("Pixel");
+        screen
+            ._controller
+            .borrow_mut()
+            .queue_banner(faces_view::Panel::Remote, &pixel());
+        assert_eq!(screen.banner(), None, "never over the idle screen");
+        screen
+            ._controller
+            .borrow_mut()
+            .volume_key(crate::device::VolumeChange::Up);
+        assert!(!screen.window.get_ambient_shown());
+        assert!(screen.banner().is_some(), "it shows once Home is awake");
+        settle(&screen);
+        assert_eq!(device.changes(), ["volume Up"]);
+        // Away: entering it does nothing.
+        screen.lifecycle.paused();
+        screen.wait(1);
+        screen._controller.borrow_mut().enter_ambient();
+        assert!(!screen.window.get_ambient_shown());
+    }
+
+    /// The key that woke the idle screen is swallowed with its repeats and
+    /// release; a different key acts.
+    #[test]
+    fn a_held_key_that_wakes_the_idle_screen_does_nothing_else() {
+        let screen = screen(None);
+        screen.rest();
+        let focus = screen._controller.borrow().home.focus();
+        screen.key(RIGHT, true);
+        for _ in 0..3 {
+            screen
+                .window
+                .window()
+                .dispatch_event(WindowEvent::KeyPressRepeated { text: RIGHT.into() });
+        }
+        screen.key(RIGHT, false);
+        assert_eq!(screen._controller.borrow().home.focus(), focus);
+        assert!(screen._controller.borrow().faces.ambient_key.is_none());
+        screen.tap(RIGHT);
+        assert_eq!(screen._controller.borrow().home.focus(), focus + 1);
+    }
+
+    /// At most four banners wait (the oldest waiting one goes), and one
+    /// that waited over half a minute is old news.
+    #[test]
+    fn the_banner_queue_keeps_four_and_drops_old_news() {
+        let screen = screen(None);
+        let queue = |name| {
+            screen
+                ._controller
+                .borrow_mut()
+                .queue_banner(faces_view::Panel::Remote, &panels::remote_banner(name));
+        };
+        click_settings(&screen.window);
+        for name in ["A", "B", "C", "D", "E"] {
+            queue(name);
+        }
+        screen.tap(BACK);
+        for name in ["B", "C", "D", "E"] {
+            let title = format!("\u{2068}{name}\u{2069} connected");
+            assert_eq!(screen.banner().map(|b| b.0), Some(title));
+            screen.wait(4_100);
+            screen.wait(500);
+        }
+        assert_eq!(screen.banner(), None);
+        // One that waited over 30 s behind a page: dropped.
+        click_settings(&screen.window);
+        queue("F");
+        screen.wait(31_000);
+        screen.tap(BACK);
+        assert_eq!(screen.banner(), None);
+        screen.wait(5_000);
+        assert_eq!(screen.banner(), None);
+    }
+
+    /// The count in History's banner is the number of approvals the
+    /// computer applied.
+    #[test]
+    fn history_banner_says_how_many_changes() {
+        let screen = screen(None);
+        let before = crate::history::Summary {
+            last_unix: Some(panels::CLOCK_SET_AFTER),
+            pending: 3,
+        };
+        {
+            let mut controller = screen._controller.borrow_mut();
+            controller.history.0 = Some(crate::history::Summary {
+                last_unix: Some(panels::CLOCK_SET_AFTER + 60),
+                pending: 1,
+            });
+            controller.history_summary_changed(Some(before));
+        }
+        assert_eq!(
+            screen.banner().map(|b| b.0),
+            Some("Your computer applied 2 changes".into())
+        );
+    }
+
+    /// An update already known when the launcher starts makes no banner;
+    /// only the glyph and the idle screen's line say it.
+    #[test]
+    fn an_update_known_at_start_makes_no_banner() {
+        let mut platform = abc();
+        platform.set_update_status(UpdateStatus::Available("9.9.9".into()));
+        let screen = screen_with(platform, None);
+        screen.come_back();
+        assert_eq!(screen.banner(), None);
+        assert_eq!(screen.glyphs(), 1);
+    }
+
+    /// The Settings page's Idle screen texts; its detail names the wait
+    /// the timer uses, so the two can't drift apart.
+    #[test]
+    fn the_idle_screen_setting_says_its_wait() {
+        let screen = screen(None);
+        let strings = screen.window.global::<Strings>();
+        assert_eq!(strings.invoke_section_name(6), "Idle screen");
+        assert_eq!(
+            strings.invoke_change_line(19, "".into(), "".into(), strings.invoke_on_off(false)),
+            "Idle screen: Off"
+        );
+        let minutes = faces_view::AMBIENT_AFTER.as_secs() / 60;
+        assert_eq!(faces_view::AMBIENT_AFTER.as_secs() % 60, 0);
+        assert!(
+            strings
+                .invoke_ambient_detail(true)
+                .starts_with(&format!("After {minutes} minutes ")),
+            "{}",
+            strings.invoke_ambient_detail(true)
+        );
+        assert_eq!(strings.invoke_ambient_detail(false), "");
     }
 
     // --- the pointer (REMOTE.md § 5) ---

@@ -1,9 +1,9 @@
 # Panels — design
 
 Status (2026-11-21): **being built** on the `panels` branch: steps 1
-to 4 (About, RustTV Remote and History as panels) are done, and of the
-"Later" items the panel rows in the top-right menu and hide and folders
-for panel tiles (§ 10). Written from the owner's answers on 2026-10-25 (§ Owner
+to 4 (About, RustTV Remote and History as panels) are done, and so are
+the "Later" items: the panel rows in the top-right menu, hide and folders
+for panel tiles, the status corner, banners and the idle screen (§ 10). Written from the owner's answers on 2026-10-25 (§ Owner
 decisions), checked against the code by an independent review (§ Review
 log), and re-checked against main on 2026-11-20 (§ 10 has the build
 plan). Replaces ROADMAP.md § Parked
@@ -12,8 +12,8 @@ design later; this doc only says how panels sit in a theme.
 
 A **panel** is one RustTV feature (About first, then History, later Clock, …)
 that can show itself on several surfaces, called **faces**: a full page, a
-tile on Home, a row in a list, and later the status corner, a quick panel,
-the phone. "Panels" is the word for people; "add-ons" is the word in code.
+tile on Home, a row in a list, a status-corner glyph, a row in the quick
+panel, a banner, a line on the idle screen, the phone. "Panels" is the word for people; "add-ons" is the word in code.
 "Widgets" is not used: it clashes with Android's App Widgets.
 
 ## Owner decisions (2026-10-25)
@@ -303,7 +303,7 @@ Rules the schema enforces (unknown fields are errors):
   - `corner` (*since 2026-11-21*): a `glyph` with `badge` (a built-in
     badge) and `show` (a condition, required): the panel's picture in
     Home's status corner while it needs attention. A global like a row's:
-    `shown(props)` and the `badge` picture (an `out` property). Home shows
+    `show(props)` and the `badge` picture (an `out` property). Home shows
     at most two, in About, RustTV Remote, History order.
   - `banner` (*since 2026-11-21*): a `banner` with `badge`, `title` and
     optional `detail` (texts): a global with `title(props)`,
@@ -312,10 +312,13 @@ Rules the schema enforces (unknown fields are errors):
     `remote_banner`, `history_banner`, `panels.rs`), not from the view.
   - `ambient` (*since 2026-11-21*): a `glance` with `badge`, `text` and
     `show` (required): the panel's line on the idle screen, a global with
-    `shown(props)`, `text(props)` and `badge`.
-  - A function face's props can't take its functions' or `badge`'s
-    names; one convert.rs list (`FUNCTION_FACES`) names each face's root
-    and functions, which build.rs also calls for the test-only templates.
+    `show(props)`, `text(props)` and `badge`.
+  - Each field of a function face is a function of the same name (the
+    picture the `badge` property); its props can't take those names, and
+    `badge` is reserved on every face. One convert.rs list
+    (`FUNCTION_FACES`) names each face's root, fields, their kinds and
+    the defaults of the optional ones; build.rs calls them for the
+    test-only templates.
   - `page`: a `page` with `layout` (`one-column` or `two-columns`),
     `start` and, for two columns, `end`: arrays of the § 4 blocks. Keys:
     `title` (`value`, `size`: `large`/`medium`/`small`, default `medium`),
@@ -376,7 +379,9 @@ Rules the schema enforces (unknown fields are errors):
 - **Images** are built-in badge names only; nothing decodes a panel's image.
 - **Text** is `@tr` with a literal string and property arguments, or a
   choice between such strings by a property's value. An argument is a
-  property's name, or `{"ltr": name}`: that value as a left-to-right
+  property's name, `{"auto": name}` (*since 2026-11-21*: a first-strong
+  isolate, U+2068 … U+2069, so a name in any script keeps its own
+  direction; a phone's name in a banner), or `{"ltr": name}`: that value as a left-to-right
   isolate (U+2066 … U+2069), so a version inside Arabic or Hebrew text
   keeps its order. The literal itself never holds bidi characters. So
   every string stays translatable: `slint-tr-extractor` runs on the
@@ -477,7 +482,8 @@ What step 1 must add because of it:
   tile needs a cheap "last entry time + pending count" from the history
   thread. Until it arrives (the first Settings open or a change) the tile
   shows its plain state. "2 h ago" is formatted by Home on resume and on
-  focus changes, not by a timer.
+  focus changes, and (*since 2026-11-21*) at the status corner's minute
+  tick, which exists for the clock: no timer of its own.
 
 ## 5. Actions
 
@@ -706,11 +712,13 @@ Recommendation first in each.
    badge, a title and a dim detail, for 4 s with a 300 ms fade and slide
    from the end edge (fade only, no shadow, with reduced effects). Queued
    (four kept, the oldest waiting one dropped), never stacked; shown only
-   while plain Home is in front (not over a page, a folder, a menu, the
-   top-right menu, a prompt, the review or pairing screen, the idle screen
-   or another app); one cut short shows again, whole, when Home is plain
-   again; events from while the launcher is away are dropped. Never
-   focusable. Banners: an update that became available (not one already known at
+   while plain Home is in front on its first row, with the hero and the
+   corner (not over the tiles, a page, a folder, a menu, the top-right
+   menu, a prompt, the review or pairing screen, the idle screen or
+   another app; it is drawn under all of them, so one fading out as they
+   open is covered at once); one cut short shows again, whole, when Home
+   is plain again, and one that waited over 30 s is dropped as old news;
+   events from while the launcher is away are dropped. Never focusable. Banners: an update that became available (not one already known at
    start: the glyph shows it) or was installed (About), a paired
    phone connected, once per phone per start (RustTV Remote; pairing itself
    happens on its screen, which says so), the computer applied approvals
@@ -728,7 +736,11 @@ Recommendation first in each.
    RustTV Remote: "Pairing"; History: "Waiting" or the last change's age),
    pictures at half. The whole face jumps to one of 25 places (±40u, ±28u)
    each minute, never animated. Any key, the pointer or a phone wakes Home
-   and does nothing else (the key's repeats and release neither). Never
+   and does nothing else (the key's repeats and release neither; a phone's
+   page typing doesn't wake it; a volume key wakes it and still changes the
+   volume). It fades in over 1.2 s (at once with
+   reduced effects). If a page or screen is open when the time comes, it
+   waits another 5 minutes. Never
    over another app; the TV's own screensaver pauses the launcher, which
    takes the idle screen away, and the launcher holds no wake lock, so the
    TV's screensaver and sleep keep their own timing. Settings → Idle
@@ -979,7 +991,7 @@ cheap "last entry + pending count" message exists.
   the launcher is away) and before it answers; Home copies it under a lock
   on resume, on focus changes and when the Settings page's data or an
   approval's answer arrives, and formats the age with the clock then (never
-  a timer). Until the thread has read the history (the first Settings open
+  a timer; *since 2026-11-21* also at the status corner's minute tick). Until the thread has read the history (the first Settings open
   or change after start) the tile shows its plain state: the badge and
   "History". The history isn't opened for the tile.
 - **Faces:** `history_view(summary, now)` gives the tile and the row the
@@ -1110,7 +1122,9 @@ were checked by eye in desktop snapshots against the existing look.
   on screen), the glyph and line models (set from the panels' events: the
   updater's status, pairing, History's summary), the banner queue and the
   idle screen (from the sway's idle timer: the sway still stops at 20 s,
-  then 4 min 40 s later the idle screen). The Linux home screen reads its
+  then 4 min 40 s later the idle screen; back from another app the sway
+  waits for a key, as before, and the idle screen for 5 minutes). Banners
+  wait 400 ms between them and drop one that waited over 30 s. The Linux home screen reads its
   time zone with `date +%z` every 15 minutes at most (history times used
   UTC there); Android asks `TimeZone` and `DateFormat` as before.
 - **Settings → Idle screen** (`Section::Ambient`, after Effects): On
@@ -1126,7 +1140,7 @@ were checked by eye in desktop snapshots against the existing look.
 - **Texts:** "Idle screen", its On line, "Idle screen: {}", "RustTV
   updated", "{} connected", "Your computer applied {n} change" (plural)
   and the Hidden apps hint, in all 20 translations, measured at their
-  sizes (banner title 29u in 640u, Settings detail 25u in about 990u):
+  sizes (banner title 29u in 720u, Settings detail 25u in about 990u):
   all fit. The phone shows none of them.
 - **Checked:** `--demo-faces <dir>` (desktop), with
   `RUSTTV_UPDATE=available`, in English and Arabic, with and without

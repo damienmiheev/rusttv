@@ -544,7 +544,7 @@ msgstr "ホーム画面で5分たつと、ボタンを押すまで暗い時計�
 
 #: ui/home.slint
 msgid "Idle screen: {}"
-msgstr "アイドル画面：{}"
+msgstr "アイドル画面: {}"
 
 #: templates/about_banner.json
 msgid "RustTV updated"
