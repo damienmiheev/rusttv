@@ -2544,7 +2544,7 @@ impl Controller {
             .unwrap_or_default();
         let glow = match &focused {
             Some(TileId::App(component)) => self.glow(component),
-            Some(builtin) => self.builtins.view(builtin).map(|view| view.glow.clone()),
+            Some(builtin) => self.builtins.view(builtin).map(BuiltinView::glow),
             None => None,
         }
         .unwrap_or_default();
@@ -2802,11 +2802,17 @@ impl AppView {
     }
 }
 
-/// The banner and hero glow of one of the launcher's own tiles.
+/// The banner and hero glow of one of the launcher's own tiles. The glow
+/// is made the first time the tile is in the hero, not in `Builtins::new`,
+/// to keep it off the cold start (the hero comes after the first frame).
 #[derive(Default)]
 struct BuiltinView {
     image: slint::Image,
-    glow: generated::Glow,
+    /// The banner shrunk for [`hero_glow`]; `None` if it had the wrong size.
+    glow_source: Option<Bitmap>,
+    baked: bool,
+    right_to_left: bool,
+    glow: std::cell::OnceCell<generated::Glow>,
 }
 
 impl BuiltinView {
@@ -2820,12 +2826,24 @@ impl BuiltinView {
         };
         Self {
             image: image(&bitmap),
-            glow: hero_glow(
-                &bitmap.shrink(GLOW_SOURCE_SIZE.0, GLOW_SOURCE_SIZE.1),
-                baked,
-                right_to_left,
-            ),
+            glow_source: Some(bitmap.shrink(GLOW_SOURCE_SIZE.0, GLOW_SOURCE_SIZE.1)),
+            baked,
+            right_to_left,
+            glow: std::cell::OnceCell::new(),
         }
+    }
+
+    /// The hero glow, made on the first call.
+    fn glow(&self) -> generated::Glow {
+        self.glow
+            .get_or_init(|| {
+                self.glow_source
+                    .as_ref()
+                    .map_or_else(generated::Glow::default, |source| {
+                        hero_glow(source, self.baked, self.right_to_left)
+                    })
+            })
+            .clone()
     }
 }
 
@@ -4106,6 +4124,27 @@ mod tests {
             assert!(builtins.page_picture(name).size().width > 0, "{name}");
         }
         assert_eq!(builtins.page_picture("nope").size().width, 0);
+    }
+
+    /// A built-in tile's hero glow waits for its first use (cold start),
+    /// then is the one made from its banner, once.
+    #[test]
+    fn builtin_glow_is_made_when_first_needed() {
+        let view = BuiltinView::new(HISTORY_BANNER, false, false);
+        assert!(view.glow.get().is_none());
+        let expected = hero_glow(
+            view.glow_source.as_ref().expect("the banner has its size"),
+            false,
+            false,
+        );
+        let glow = view.glow();
+        assert!(view.glow.get().is_some());
+        assert_eq!(glow.color, expected.color);
+        assert_eq!(glow.base, expected.base);
+        assert_eq!(
+            (glow.x, glow.y, glow.strength),
+            (expected.x, expected.y, expected.strength)
+        );
     }
 
     /// The RustTV Remote page (templates/remote_page.json) takes the
