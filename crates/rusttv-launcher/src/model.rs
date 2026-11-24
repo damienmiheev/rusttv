@@ -2410,6 +2410,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn user_packages_cant_take_a_built_in_tiles_name() {
+        let names = [ABOUT, HIDDEN, SETTINGS, REMOTE]
+            .into_iter()
+            .chain(PanelId::ALL.map(PanelId::id));
+        for name in names {
+            assert!(
+                rusttv_panels::RESERVED_NAMES.contains(&name),
+                "{name} must be reserved"
+            );
+        }
+    }
+
+    #[test]
     fn app_sizes_step_and_cycle() {
         assert_eq!(SizeStep::Bigger.apply(100), 110);
         assert_eq!(SizeStep::Smaller.apply(100), 90);

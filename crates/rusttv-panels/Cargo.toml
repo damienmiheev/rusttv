@@ -1,0 +1,22 @@
+[package]
+name = "rusttv-panels"
+description = "RustTV panel and theme packages, format 2: parsing and validation (PANEL_STUDIO.md § 5)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# Read by the TV, the CLI and the studio alike, so no rusttv-core dependency
+# (the TV doesn't link the device layer; like rusttv-history, D21).
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true
