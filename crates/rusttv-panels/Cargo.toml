@@ -11,6 +11,8 @@ publish.workspace = true
 # Read by the TV, the CLI and the studio alike, so no rusttv-core dependency
 # (the TV doesn't link the device layer; like rusttv-history, D21).
 [dependencies]
+crc32fast.workspace = true
+miniz_oxide.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
