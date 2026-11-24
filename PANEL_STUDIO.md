@@ -115,6 +115,47 @@ crates, and doesn't depend on the editor. The spike answers pass/fail:
   binary and CLI only, never in a FigCraft plugin (§ 13.4).
 - Otherwise C (fork, pinned by commit, vendored with notices) or A.
 
+### 3.1 Spike 0 result (2026-11-24)
+
+FigCraft at commit `c01d391` (2026-11-23, workspace 0.18.1), checked
+against the pass/fail list above; plus a docking and text prototype on
+stock egui 0.37 and egui_dock 0.22. Nothing ran on the TV.
+
+| Item | Result |
+|---|---|
+| Add our export, checks and components without forking | **Partial.** The command registry is a fixed list inside `figcraft-engine` (`crates/engine/src/cmd.rs`); outside code can't add commands to menus, palette or MCP. Plugins (wasmi, no WASI) can edit the document and report problems, but write files only through a save dialog, one file ≤ 16 MiB. Our exporter works as a library that depends on `figcraft-engine`/`figcraft-format` (git dependencies). Enforcing "never offer what the TV can't draw" needs a fork. |
+| Document format versioned and stable | **Weak.** `VERSION = 1`, newer files refused, no migrations; about 430 commits touched the document and format crates in the last month. A mapping needs a pinned commit. |
+| Headless export (CI) | **Passes** on macOS with an empty environment: export to SVG in 2 s, scripted render to PNG. Linux without a display not tried. |
+| Our preview beside it | **Passes** as a separate process. Embedding is possible (`FigApp::ui(&mut egui::Ui)`) but draws the whole app and needs FigCraft's patched egui and winit. |
+| Text | **Mostly passes.** The canvas shapes with harfrust plus `unicode-bidi`: mixed English, Hebrew and Arabic come out in the right order; CJK fine; Devanagari correct with a Devanagari font, boxes with the default one. Its egui fork adds bidi to the UI. |
+| Network | An update check is switched on unconditionally in the desktop app (`apps/figcraft/src/main.rs:243`); font downloads are opt-in; collaboration only in live sessions; no telemetry found. |
+| Health | Created 2026-10-09, releases every 1–3 days, 652 commands, about 60k lines in the UI crate, 273 open issues, edition 2024, MSRV 1.95. |
+| Docking | Not there (no egui_dock); it already opens extra OS windows through egui viewports. |
+
+**Docking prototype** (stock egui 0.37 + egui_dock 0.22): split, tabs,
+a tab floated into a **separate OS window** and docked back when that
+window closes — all pass. egui_dock's own "windows" are drawn inside the
+main window, so the OS-window part is about 30 lines of ours on egui
+viewports.
+
+**Text on stock egui 0.37**: shaping passes (Arabic joining, Devanagari
+conjuncts, CJK), but there is no bidi yet (egui's source has a TODO):
+mixed right-to-left and left-to-right text comes out with its runs in
+the wrong order. Putting whole runs in visual order (a small helper over
+`unicode-bidi`) fixes labels; editing mixed text in a text field stays
+weak until egui adds bidi. FigCraft's egui fork already has it.
+
+**Recommendation: C — fork FigCraft, pinned by commit**, with our layer
+(exporter, checks, component library, preview, install) in our own
+crates that depend on its engine, so the fork's own changes stay small:
+docking, the "can't draw on the TV" limits, our commands in the
+registry, and the update check off. Reasons: the closed registry and
+plugin sandbox rule out B; the unstable v1 format means pinning anyway;
+its engine, headless CLI and bidi text are strong and would take long to
+rebuild (A). Main risk: merge cost — upstream moves every few days and
+carries its own egui and winit forks, so we rebase on our schedule, not
+theirs. **Owner decision 2026-11-24: C** (§ 16 Q1).
+
 ## 4. Locked surfaces and safety rules
 
 These hold for every option, format version and theme.
@@ -1254,7 +1295,9 @@ the measurement APK) starts with the owner's go-ahead in that session.
 
 ## 16. Open questions for the owner
 
-1. **Editor (§ 3):** A, B or C, after the step 0 spike.
+1. **Editor (§ 3):** A, B or C, after the step 0 spike. — Spike done
+   (§ 3.1); **recommended: C**, a pinned fork of FigCraft. — **Decided
+   2026-11-24: C.**
 2. **Name and home:** "Panel Studio"? In this repository until it has its
    own release cycle?
 3. **One click for look settings** (from the PR #59 discussion): may knob
