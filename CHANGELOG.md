@@ -8,6 +8,10 @@ field in `--json` output says which contract you get, CLI.md).
 
 ### Launcher
 
+- Launcher settings (effects, idle screen, update check) now apply on one
+  click and are recorded in History; Animations and restores without
+  packages ask for Approve on the review screen; only package changes
+  still ask for the 4-arrow code and 2 s hold.
 - An app opened other than with its tile (KDE Connect from the top-right
   menu, an app started again at a new size) shows the launch splash with
   its own picture too. Only a tile's launch zooms the tile.

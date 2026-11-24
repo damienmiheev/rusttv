@@ -1,6 +1,7 @@
 //! The review and confirmation screen (HISTORY.md § 6.2, § 8.5): read the
-//! changes, choose Approve, press the 4-arrow code shown on screen, then hold
-//! OK for 2 s. No UI or platform code.
+//! changes and choose Approve. With a code, then press the 4-arrow code shown
+//! on screen and hold OK for 2 s; without one, OK on Approve applies. No UI
+//! or platform code.
 
 use std::time::Duration;
 
@@ -72,15 +73,15 @@ pub(crate) enum Outcome {
 pub(crate) struct Review {
     draft: Draft,
     lines: usize,
-    code: [Arrow; 4],
+    code: Option<[Arrow; 4]>,
     phase: Phase,
     opened: Duration,
 }
 
 impl Review {
     /// Opens at time `now` for `draft`, shown as `lines` lines, with `code`
-    /// (from the OS random source).
-    pub fn new(draft: Draft, lines: usize, code: [Arrow; 4], now: Duration) -> Self {
+    /// (from the OS random source), or without one: OK on Approve applies.
+    pub fn new(draft: Draft, lines: usize, code: Option<[Arrow; 4]>, now: Duration) -> Self {
         Self {
             draft,
             lines,
@@ -93,6 +94,11 @@ impl Review {
     /// What is being approved.
     pub fn draft(&self) -> &Draft {
         &self.draft
+    }
+
+    /// Whether this review asks for the 4-arrow code and 2 s hold after Approve.
+    pub fn needs_code(&self) -> bool {
+        self.code.is_some()
     }
 
     /// Where the screen is.
@@ -117,15 +123,21 @@ impl Review {
                         row: (row + 1).min(self.lines),
                     }
                 }
-                Input::OkReleased if row == self.lines => self.phase = Phase::Code { entered: 0 },
+                Input::OkReleased if row == self.lines => {
+                    if self.code.is_none() {
+                        return Some(Outcome::Confirmed);
+                    }
+                    self.phase = Phase::Code { entered: 0 };
+                }
                 _ => {}
             },
             Phase::Code { entered } => {
+                let code = self.code?;
                 if let Some(arrow) = Arrow::of(input) {
-                    if arrow != self.code[entered] {
+                    if arrow != code[entered] {
                         return Some(Outcome::WrongCode);
                     }
-                    self.phase = if entered + 1 == self.code.len() {
+                    self.phase = if entered + 1 == code.len() {
                         Phase::Hold { since: None }
                     } else {
                         Phase::Code {
@@ -177,7 +189,8 @@ mod tests {
 
     #[test]
     fn approve_then_code_then_hold_confirms() {
-        let mut review = Review::new(Draft::default(), 2, CODE, at(0));
+        let mut review = Review::new(Draft::default(), 2, Some(CODE), at(0));
+        assert!(review.needs_code());
         to_code(&mut review);
         for input in [Input::Left, Input::Up, Input::Right, Input::Down] {
             assert_eq!(review.handle(input, at(100)), None);
@@ -194,7 +207,7 @@ mod tests {
 
     #[test]
     fn arrows_scroll_until_approve_then_count_as_the_code() {
-        let mut review = Review::new(Draft::default(), 5, CODE, at(0));
+        let mut review = Review::new(Draft::default(), 5, Some(CODE), at(0));
         for _ in 0..3 {
             review.handle(Input::Down, at(0));
         }
@@ -207,7 +220,7 @@ mod tests {
 
     #[test]
     fn a_wrong_arrow_ends_the_review() {
-        let mut review = Review::new(Draft::default(), 2, CODE, at(0));
+        let mut review = Review::new(Draft::default(), 2, Some(CODE), at(0));
         to_code(&mut review);
         review.handle(Input::Left, at(0));
         assert_eq!(review.handle(Input::Left, at(0)), Some(Outcome::WrongCode));
@@ -215,7 +228,7 @@ mod tests {
 
     #[test]
     fn an_early_or_released_hold_does_not_confirm() {
-        let mut review = Review::new(Draft::default(), 2, CODE, at(0));
+        let mut review = Review::new(Draft::default(), 2, Some(CODE), at(0));
         to_code(&mut review);
         for input in [Input::Left, Input::Up, Input::Right, Input::Down] {
             review.handle(input, at(0));
@@ -236,8 +249,25 @@ mod tests {
 
     #[test]
     fn back_cancels_at_any_time() {
-        let mut review = Review::new(Draft::default(), 2, CODE, at(0));
+        let mut review = Review::new(Draft::default(), 2, Some(CODE), at(0));
         to_code(&mut review);
         assert_eq!(review.handle(Input::Back, at(0)), Some(Outcome::Cancelled));
+    }
+
+    #[test]
+    fn without_a_code_ok_on_approve_applies() {
+        let mut review = Review::new(Draft::default(), 2, None, at(0));
+        assert!(!review.needs_code());
+        assert_eq!(
+            review.handle(Input::OkReleased, at(10)),
+            None,
+            "not on Approve yet"
+        );
+        review.handle(Input::Down, at(20));
+        review.handle(Input::Down, at(30));
+        assert_eq!(
+            review.handle(Input::OkReleased, at(40)),
+            Some(Outcome::Confirmed)
+        );
     }
 }

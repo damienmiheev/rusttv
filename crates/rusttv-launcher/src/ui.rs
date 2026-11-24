@@ -5766,21 +5766,20 @@ mod tests {
         crate::history::History::get().unwrap().launcher_edited();
         click_settings(&screen.window);
         settle(&screen);
-        screen.tap(RIGHT); // focus on Normal, the current choice
-        screen.tap(UP);
-        screen.tap(UP);
-        screen.tap(OK); // Faster
+        // Only package changes ask for the code; open one directly as a restore would.
+        screen._controller.borrow_mut().review_package_change();
         assert_eq!(screen.window.get_mode(), 7, "the review screen opens");
+        let approve = i32::try_from(screen.window.get_review_lines().row_count()).unwrap();
         // The wheel reads the list; a click on Approve asks for the code.
         let row = screen.window.get_review_row();
         screen.window.invoke_scrolled(SCROLL_STEP);
         assert_eq!(screen.window.get_review_row(), row + 1);
-        screen.window.invoke_list_pointer(4, 4, 1);
+        screen.window.invoke_list_pointer(4, approve, 1);
         assert_eq!(screen.window.get_review_phase(), 1);
         // Now neither the wheel (Down, a wrong first arrow), a click nor a
         // tile under the screen counts.
         screen.window.invoke_scrolled(SCROLL_STEP);
-        screen.window.invoke_list_pointer(4, 4, 1);
+        screen.window.invoke_list_pointer(4, approve, 1);
         screen.window.invoke_tile_pointer(false, 0, 1);
         assert_eq!(screen.window.get_review_phase(), 1);
         // FakePlatform's code: left, up, right, down.
@@ -5798,7 +5797,7 @@ mod tests {
     }
 
     #[test]
-    fn faster_animations_are_reviewed_approved_with_the_code_and_recorded() {
+    fn faster_animations_are_reviewed_approved_and_recorded() {
         let (dir, _history) = history_dir();
         let screen = screen(Some(dir.join("order.toml")));
         // An entry to compare the change with, whether or not another test
@@ -5816,28 +5815,12 @@ mod tests {
         screen.tap(UP);
         screen.tap(OK); // Faster
         assert_eq!(screen.window.get_mode(), 7, "the review screen opens");
-        // A header and the three scales, then Approve.
+        // A header and the three scales, then Approve (no code).
         assert_eq!(screen.window.get_review_lines().row_count(), 4);
         for _ in 0..4 {
             screen.tap(DOWN);
         }
         screen.tap(OK);
-        assert_eq!(screen.window.get_review_phase(), 1);
-        // FakePlatform's code: left, up, right, down.
-        for key in [LEFT, UP, RIGHT, DOWN] {
-            screen.tap(key);
-        }
-        assert_eq!(
-            (screen.window.get_review_phase(), screen.window.get_mode()),
-            (2, 7),
-            "{}",
-            screen.window.get_settings_status()
-        );
-        screen.wait(1_000);
-        screen.key(OK, true);
-        assert!(screen.window.get_review_holding());
-        screen.wait(2_100);
-        screen.key(OK, false);
         settle_apply(&screen);
         assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
         assert_eq!(screen.window.get_settings_status(), "Applied.");
@@ -5849,6 +5832,29 @@ mod tests {
         let newest = &overview.entries[0];
         assert_eq!(newest.author, rusttv_history::Author::Tv);
         assert_eq!(newest.changes.len(), 3);
+    }
+
+    #[test]
+    fn launcher_settings_apply_on_one_click_and_are_recorded() {
+        let (dir, _history) = history_dir();
+        let screen = screen(Some(dir.join("order.toml")));
+        let history = crate::history::History::get().unwrap();
+        history.launcher_edited();
+        let was_reduced = history.overview().launcher.reduced_effects;
+        click_settings(&screen.window);
+        settle(&screen);
+        screen.tap(DOWN); // Effects
+        screen.tap(RIGHT); // current choice
+        screen.tap(if was_reduced { UP } else { DOWN }); // the other choice
+        screen.tap(OK);
+        // Applied directly without opening the review screen.
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        settle_apply(&screen);
+        assert_eq!(screen.window.get_settings_status(), "Applied.");
+
+        let overview = history.overview();
+        assert_eq!(overview.launcher.reduced_effects, !was_reduced);
+        assert_eq!(overview.entries[0].author, rusttv_history::Author::Tv);
     }
 
     /// History's tile: once the history thread has read the history, a
@@ -5996,11 +6002,10 @@ mod tests {
         let screen = screen(Some(dir.join("order.toml")));
         click_settings(&screen.window);
         settle(&screen);
-        screen.tap(RIGHT);
-        screen.tap(UP);
-        screen.tap(UP);
-        screen.tap(OK);
-        for _ in 0..4 {
+        // Only package changes ask for the code; open one directly as a restore would.
+        screen._controller.borrow_mut().review_package_change();
+        let lines = screen.window.get_review_lines().row_count();
+        for _ in 0..lines {
             screen.tap(DOWN);
         }
         screen.tap(OK);

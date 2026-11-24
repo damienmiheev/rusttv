@@ -167,11 +167,22 @@ RustTV-Approved-By: tv-code sha256:… | terminal | delegation | upgrade | none
 
 ### What needs the code on the TV
 
+*Owner decision 2026-11-24* (updates the 2026-10-24 rule): the 4-arrow
+code and 2 s hold are too much for RustTV's own reversible settings.
+
 | Change | On the TV |
 |---|---|
 | Move, hide, unhide, folders (make, rename, apps in and out; the launcher's direct edits, as today) | recorded as `tv` entries without a code |
-| Settings, the update switch, any restore | review + code + hold OK (§ 6) |
-| Packages | review + code + hold OK → pending for the Mac |
+| Launcher settings (effects, idle screen, the update switch) | applied on OK, recorded as a `tv` entry; another OK undoes it |
+| Animations (`WRITE_SECURE_SETTINGS`) and restores without packages | review, then OK on Approve |
+| Packages (in a restore) | review + code + hold OK (§ 6) → pending for the Mac |
+
+One click applies what one click undoes. Animations write system settings
+and a restore changes many things at once, so both ask for Approve. Only
+package changes keep the 4-arrow code and the 2 s hold: the Mac carries
+them out because a person approved them on the TV, and only the code on a
+`FLAG_SECURE` screen proves a person (§ 6.1); adb can inject any other
+key.
 
 ## 3. The store
 

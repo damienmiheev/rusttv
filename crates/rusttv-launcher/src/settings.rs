@@ -94,6 +94,8 @@ pub(crate) const NORMAL_ANIMATIONS: usize = 4;
 pub(crate) enum Action {
     /// Leave Settings.
     Close,
+    /// Apply a reversible launcher setting directly (one click; HISTORY.md § 2).
+    Apply(Draft),
     /// Review these changes (HISTORY.md § 8.5).
     Review(Draft),
     /// Restore the state of this entry: ui.rs asks the history thread for
@@ -500,7 +502,7 @@ impl SettingsPage {
                 }
                 let mut launcher = self.overview.launcher.clone();
                 launcher.reduced_effects = reduced;
-                Some(Action::Review(Draft {
+                Some(Action::Apply(Draft {
                     changes: Vec::new(),
                     launcher: Some(launcher),
                 }))
@@ -512,7 +514,7 @@ impl SettingsPage {
                 }
                 let mut launcher = self.overview.launcher.clone();
                 launcher.ambient_off = off;
-                Some(Action::Review(Draft {
+                Some(Action::Apply(Draft {
                     changes: Vec::new(),
                     launcher: Some(launcher),
                 }))
@@ -524,7 +526,7 @@ impl SettingsPage {
                 }
                 let mut launcher = self.overview.launcher.clone();
                 launcher.update_check = on;
-                Some(Action::Review(Draft {
+                Some(Action::Apply(Draft {
                     changes: Vec::new(),
                     launcher: Some(launcher),
                 }))
@@ -593,19 +595,19 @@ mod tests {
     }
 
     #[test]
-    fn reducing_effects_reviews_the_launcher_state() {
+    fn reducing_effects_applies_the_launcher_state_on_one_click() {
         let mut page = page();
         page.handle(Input::Down);
         page.handle(Input::Right);
         page.handle(Input::Down);
-        let Some(Action::Review(draft)) = page.handle(Input::OkReleased) else {
-            panic!("expected a review");
+        let Some(Action::Apply(draft)) = page.handle(Input::OkReleased) else {
+            panic!("expected one-click apply");
         };
         assert_eq!(draft.launcher.map(|l| l.reduced_effects), Some(true));
     }
 
     #[test]
-    fn turning_the_idle_screen_off_reviews_the_launcher_state() {
+    fn turning_the_idle_screen_off_applies_the_launcher_state_on_one_click() {
         let mut page = page();
         page.handle(Input::Down);
         page.handle(Input::Down);
@@ -614,14 +616,14 @@ mod tests {
         assert_eq!(page.panel_row(), Some(0), "focus starts on On, the default");
         assert_eq!(page.handle(Input::OkReleased), None, "On is already on");
         page.handle(Input::Down);
-        let Some(Action::Review(draft)) = page.handle(Input::OkReleased) else {
-            panic!("expected a review");
+        let Some(Action::Apply(draft)) = page.handle(Input::OkReleased) else {
+            panic!("expected one-click apply");
         };
         assert_eq!(draft.launcher.map(|l| l.ambient_off), Some(true));
     }
 
     #[test]
-    fn turning_updates_off_reviews_the_launcher_state() {
+    fn turning_updates_off_applies_the_launcher_state_on_one_click() {
         let mut page = page();
         page.handle(Input::Down);
         page.handle(Input::Down);
@@ -629,8 +631,8 @@ mod tests {
         assert_eq!(page.section(), Section::Updates);
         page.handle(Input::Right);
         page.handle(Input::Down);
-        let Some(Action::Review(draft)) = page.handle(Input::OkReleased) else {
-            panic!("expected a review");
+        let Some(Action::Apply(draft)) = page.handle(Input::OkReleased) else {
+            panic!("expected one-click apply");
         };
         assert_eq!(draft.launcher.map(|l| l.update_check), Some(false));
     }

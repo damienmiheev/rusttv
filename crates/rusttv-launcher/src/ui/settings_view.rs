@@ -269,6 +269,7 @@ impl Controller {
                 self.settings_status = (status::NONE, String::new());
                 self.home.close_settings();
             }
+            Some(Action::Apply(draft)) => self.apply_now(draft),
             Some(Action::Review(draft)) => self.open_review(draft),
             Some(Action::Restore(id)) => {
                 let Some(history) = History::get() else {
@@ -311,7 +312,15 @@ impl Controller {
             self.settings_status = (status::TEST_BUILD, String::new());
             return;
         }
-        if overview.locked_ms > 0 {
+        // Package changes go on to the computer, which carries them out
+        // because a person approved them here: only the code shown on a
+        // FLAG_SECURE screen proves that (SECURITY.md § Approval on the
+        // TV), so they still ask for it. Otherwise Approve confirms.
+        let has_packages = draft
+            .changes
+            .iter()
+            .any(|change| matches!(change, ApprovedChange::Package { .. }));
+        if has_packages && overview.locked_ms > 0 {
             self.settings_status = (status::LOCKED, self.duration_text(overview.locked_ms));
             return;
         }
@@ -319,18 +328,62 @@ impl Controller {
             return;
         };
         let lines = self.review_lines_for(&window, &draft, overview);
-        let code = self.platform.random_code().map(Arrow::from_random);
+        let code = has_packages.then(|| self.platform.random_code().map(Arrow::from_random));
         let count = lines.len();
         self.review_lines.set_vec(lines);
         self.review_code.set_vec(
             code.iter()
+                .flatten()
                 .map(|arrow| arrow_value(*arrow))
                 .collect::<Vec<_>>(),
         );
         // Secure before the code can ever be drawn (it appears after Approve).
-        self.platform.set_secure(true);
+        self.platform.set_secure(code.is_some());
         self.review = Some(Review::new(draft, count, code, (self.clock)()));
         self.settings_status = (status::NONE, String::new());
+    }
+
+    /// Opens the review for one package change, as a restore with one
+    /// would: the screen that still asks for the code.
+    #[cfg(test)]
+    pub(super) fn review_package_change(&mut self) {
+        self.open_review(Draft {
+            changes: vec![ApprovedChange::Package {
+                name: "com.example.app".into(),
+                old: Some(rusttv_history::PackageState::Enabled),
+                new: rusttv_history::PackageState::Disabled,
+            }],
+            launcher: None,
+        });
+        self.render();
+    }
+
+    /// Applies a reversible launcher setting directly without a review.
+    fn apply_now(&mut self, draft: Draft) {
+        let Some(page) = &self.settings else {
+            return;
+        };
+        if page.overview().test_build {
+            self.settings_status = (status::TEST_BUILD, String::new());
+            return;
+        }
+        self.start_apply(draft);
+    }
+
+    /// Hands `draft` to the history thread; [`Self::applied`] reports.
+    fn start_apply(&mut self, draft: Draft) {
+        let Some(history) = History::get() else {
+            return;
+        };
+        self.settings_status = (status::BUSY, String::new());
+        let started = in_background(
+            "rusttv-apply",
+            move || history.apply(draft),
+            Controller::applied,
+        );
+        if let Err(error) = started {
+            self.settings_status = (status::NOTHING_CHANGED, error.to_string());
+        }
     }
 
     fn review_input(&mut self, input: Input) {
@@ -365,22 +418,18 @@ impl Controller {
                 self.refresh_settings_data();
             }
             Some(Outcome::Confirmed) => {
+                let needs_code = review.needs_code();
                 let draft = review.draft().clone();
                 self.close_review();
-                self.swallow_ok_release = true;
-                let Some(history) = History::get() else {
-                    return;
-                };
-                history.correct_code();
-                self.settings_status = (status::BUSY, String::new());
-                let started = in_background(
-                    "rusttv-apply",
-                    move || history.apply(draft),
-                    Controller::applied,
-                );
-                if let Err(error) = started {
-                    self.settings_status = (status::NOTHING_CHANGED, error.to_string());
+                if needs_code {
+                    // Holding OK confirmed on a tick; swallow the release that follows.
+                    self.swallow_ok_release = true;
+                    // Clears a lockout's count of wrong codes.
+                    if let Some(history) = History::get() {
+                        history.correct_code();
+                    }
                 }
+                self.start_apply(draft);
             }
         }
     }
