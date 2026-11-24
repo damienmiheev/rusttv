@@ -1,0 +1,41 @@
+[package]
+name = "tv-renderer-spike"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Throwaway Panel Studio step 1 spike (PANEL_STUDIO.md § 15): JSON-driven generic Slint components vs compiled ones, on the TV. Not product code."
+
+# Not part of the main workspace: a throwaway, nothing here ships.
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[features]
+default = ["png-decode"]
+# The runtime PNG decoder (PANEL_STUDIO.md Q15); build without it to measure its size.
+png-decode = ["dep:png"]
+
+[dependencies]
+slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "backend-android-activity-06"] }
+android-activity = { version = "0.6.1", features = ["native-activity"] }
+android_logger = "0.15.1"
+log = "0.4.34"
+jni = "0.21.1"
+serde_json = "1.0.154"
+png = { version = "0.18.1", optional = true }
+
+[build-dependencies]
+slint-build = "=1.18.1"
+png = "0.18.1"
+
+[profile.android-release]
+inherits = "release"
+lto = "fat"
+opt-level = "z"
+panic = "abort"
+
+[patch.crates-io]
+i-slint-backend-android-activity = { path = "../../third_party/i-slint-backend-android-activity-1.18.1" }
+i-slint-renderer-skia = { path = "../../third_party/i-slint-renderer-skia-1.18.1" }

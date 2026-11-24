@@ -1,0 +1,69 @@
+// Throwaway spike UI: a generic renderer fed by a flat node list (from JSON at
+// runtime) next to a hand-written "compiled" tile with the same 10 nodes.
+
+export struct Node {
+    kind: int,          // 0 rect, 1 text, 2 image
+    x: float, y: float, w: float, h: float,   // in u (1920 u = window width)
+    bg: color, radius: float, border: float, border-color: color, shadow: float,
+    text: string, size: float, fg: color, weight: int, center: bool,
+    img: image, label: string,
+}
+
+component Generic {
+    in property <[Node]> nodes;
+    in property <float> u;
+    for n in nodes: Rectangle {
+        x: n.x * u * 1px; y: n.y * u * 1px; width: n.w * u * 1px; height: n.h * u * 1px;
+        background: n.bg; border-radius: n.radius * u * 1px;
+        border-width: n.border * u * 1px; border-color: n.border-color;
+        drop-shadow-blur: n.shadow * u * 1px; drop-shadow-color: n.shadow > 0 ? #00000090 : transparent;
+        accessible-role: text; accessible-label: n.label;
+        if n.kind == 1: Text {
+            width: parent.width; height: parent.height; text: n.text; color: n.fg;
+            font-size: n.size * u * 1px; font-weight: n.weight; vertical-alignment: center;
+            horizontal-alignment: n.center ? center : left; overflow: elide;
+        }
+        if n.kind == 2: Image { width: parent.width; height: parent.height; source: n.img; image-fit: cover; }
+    }
+}
+
+component CompiledTile {
+    in property <float> u;
+    width: 250 * u * 1px; height: 141 * u * 1px;
+    Rectangle { background: #1e2633; border-radius: 16 * u * 1px; drop-shadow-blur: 12 * u * 1px; drop-shadow-color: #00000090; }
+    Rectangle { x: 16 * u * 1px; y: 16 * u * 1px; width: 48 * u * 1px; height: 48 * u * 1px; background: #e8572a; border-radius: 12 * u * 1px; }
+    Text { x: 76 * u * 1px; y: 16 * u * 1px; width: 158 * u * 1px; height: 26 * u * 1px; text: "RustTV"; font-size: 20 * u * 1px; color: #ffffff; font-weight: 700; vertical-alignment: center; overflow: elide; }
+    Text { x: 76 * u * 1px; y: 42 * u * 1px; width: 158 * u * 1px; height: 22 * u * 1px; text: "0.4.0"; font-size: 15 * u * 1px; color: #9aa4b2; vertical-alignment: center; overflow: elide; }
+    Rectangle { x: 16 * u * 1px; y: 96 * u * 1px; width: 218 * u * 1px; height: 8 * u * 1px; background: #2c3644; border-radius: 4 * u * 1px; }
+    Rectangle { x: 16 * u * 1px; y: 96 * u * 1px; width: 140 * u * 1px; height: 8 * u * 1px; background: #4caf50; border-radius: 4 * u * 1px; }
+    Text { x: 16 * u * 1px; y: 110 * u * 1px; width: 218 * u * 1px; height: 20 * u * 1px; text: "Update available"; font-size: 14 * u * 1px; color: #c8d0da; vertical-alignment: center; overflow: elide; }
+    Rectangle { x: 214 * u * 1px; y: 12 * u * 1px; width: 24 * u * 1px; height: 24 * u * 1px; background: #e53935; border-radius: 12 * u * 1px; }
+    Text { x: 214 * u * 1px; y: 12 * u * 1px; width: 24 * u * 1px; height: 24 * u * 1px; text: "1"; font-size: 13 * u * 1px; color: #ffffff; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+    Rectangle { border-radius: 16 * u * 1px; border-width: 2 * u * 1px; border-color: #ffffff40; }
+}
+
+export component Spike inherits Window {
+    background: #101418;
+    in property <int> mode;          // 0 generic, 1 compiled
+    in property <[Node]> nodes;
+    in property <int> compiled-tiles;
+    in property <bool> animate;
+    in property <string> status;
+    property <float> u: self.width / 1920px;
+    property <float> t;
+    init => { t = 1; }
+    animate t { duration: 2s; iteration-count: -1; }
+
+    stage := Rectangle {
+        x: t * 40 * u * 1px; y: 0; width: root.width; height: root.height;
+        if mode == 0: Generic { x: 0; y: 0; width: root.width; height: root.height; nodes: root.nodes; u: root.u; }
+        if mode == 1: Rectangle {
+            for i in compiled-tiles: CompiledTile {
+                u: root.u;
+                x: (100 + mod(i, 6) * 280 + floor(i / 30) * 9) * root.u * 1px;
+                y: (200 + mod(floor(i / 6), 5) * 170 + floor(i / 30) * 9) * root.u * 1px;
+            }
+        }
+    }
+    Text { x: 20px; y: 10px; text: status; color: #9aa4b2; font-size: 14px; }
+}

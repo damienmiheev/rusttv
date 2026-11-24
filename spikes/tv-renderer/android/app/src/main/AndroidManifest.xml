@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <application android:label="RustTV spike" android:hasCode="true" android:allowBackup="false" android:extractNativeLibs="false">
+        <profileable android:shell="true" />
+        <!-- No MAIN/HOME/LEANBACK filters: started only by explicit component name. -->
+        <activity android:name="android.app.NativeActivity" android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode|density">
+            <meta-data android:name="android.app.lib_name" android:value="tv_renderer_spike" />
+        </activity>
+        <!-- Staging test: accepts bytes from `content write` (shell uid only). -->
+        <provider android:name=".StageProvider" android:authorities="ai.rusttv.spike.stage" android:exported="true" />
+    </application>
+</manifest>
