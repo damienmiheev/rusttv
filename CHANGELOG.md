@@ -19,6 +19,12 @@ field in `--json` output says which contract you get, CLI.md).
   thread after the first frame, and kept after the page closes instead of
   being read again at every open.
 
+### CLI
+
+- `rusttv update cli` tries the new `rusttv --version` a few more times
+  when Linux says the file is still busy ("Text file busy"), instead of
+  rolling the update back.
+
 ### Dependencies
 
 - `url` 2.5.9 for RUSTSEC-2026-0592 (a stack overflow in `Url::origin()`
