@@ -58,6 +58,7 @@ Report actual results. If a check fails or was skipped, say so.
 | Structure, crates, bridge, decision log | ARCHITECTURE.md |
 | Safety engine, risk classes, recovery | SECURITY.md |
 | Safe optimizer design (Phase 4) | OPTIMIZER.md |
+| Panel Studio plan (user panels, themes, studio) | PANEL_STUDIO.md |
 | TV history, Settings page, approvals on the TV | HISTORY.md |
 | RustTV Remote (phone remote, touchpad, pairing) | REMOTE.md |
 | How to measure | BENCHMARK_PLAN.md |
