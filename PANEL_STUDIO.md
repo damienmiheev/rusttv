@@ -126,9 +126,12 @@ These hold for every option, format version and theme.
   confirmation, the Panels page's install review. A test renders each
   under a hostile theme and checks it is unchanged. For low vision they
   have large-text and high-contrast variants driven only by a
-  launcher-owned accessibility setting (never by a package or theme); an
-  accessible alternative to the 2 s hold is designed with SECURITY.md
-  (§ 16 Q13).
+  launcher-owned accessibility setting (never by a package or theme).
+  **Accessible approvals** (owner decision Q13, 2026-11-24), both opt-in
+  in that setting: pressing OK 3 times within 2 s replaces the 2 s hold,
+  and the TV speaks the code through Android's text-to-speech, only while
+  the `FLAG_SECURE` review is in front. Both go into SECURITY.md with the
+  approval rules.
 - **Safe look** (one name for the blind reset and safe mode). A key
   chord the launcher can actually see — Android never delivers Home to
   an app as a key, so the candidate is holding Back for 5 s or Back plus
@@ -502,9 +505,10 @@ PNG within the image limits.
 
 ### 6.3 Fonts and text fit
 
-- The launcher's own font set covers its 21 languages (today the system
-  fonts plus fallback; step 3 decides whether RustTV bundles a set).
-  Packages pick a family from that set.
+- **System fonts** (owner decision Q6, 2026-11-24): RustTV uses the TV's
+  own fonts with fallback and bundles none; packages never carry fonts and
+  pick a family by role (regular, bold, mono) from what the TV has. Looks
+  may differ slightly per TV, which is why fit is measured on the target.
 - **Fit**: the TV truncates and clips every text; the studio checks fit
   using **metrics captured from the target TV** (a one-off read of the
   real fonts' widths), so the check is advice, not a guarantee.
@@ -634,8 +638,8 @@ a removed one is deprecated for one release first.
 - **Theme tweaks**: on top of the active theme, a small user layer —
   accent colour, text scale, corner radius, grid columns, reduced effects,
   and for low vision: focus-frame thickness and colour, focus zoom, bold
-  text, how long banners stay (or until dismissed), and a font choice from
-  the font set if one is bundled (§ 16 Q6) — that survives
+  text, how long banners stay (or until dismissed), and a font choice
+  among the TV's own fonts where it has more than one (§ 16 Q6) — that survives
   switching themes where it still applies.
 
 ## 8. Placement: every face is the person's choice
@@ -1158,9 +1162,9 @@ the measurement APK) starts with the owner's go-ahead in that session.
    **Owner decisions before step 2**: Q4 (lift "parked"), Q7 (open an
    app), Q14 (instances) and Q15 (decoded images) change the format and
    the renderer, so they are answered and dated before 2a starts
-   (all four answered 2026-11-24); Q6
-   (fonts), Q13 (accessible approvals), Q17 and Q18 before step 3; Q3,
-   Q11 and Q16 before step 4; Q12 before 4e; Q5 before step 7.
+   (all four answered 2026-11-24); Q6 (fonts), Q13 (accessible
+   approvals), Q17 and Q18 before step 3 (answered 2026-11-24); Q3, Q11
+   and Q16 before step 4; Q12 before 4e; Q5 before step 7.
    - 2a `rusttv-panels`: types, validator, JSON Schema, expressions,
      message tables, zip reader, fuzz targets (no UI); `rusttv panel
      pack` for people, so packages can be made and tested before the
@@ -1206,7 +1210,7 @@ the measurement APK) starts with the owner's go-ahead in that session.
    test, the safe look with its key chord proven on the Philips and one
    other remote; then colours → type scale and radii → spacing and sizes → motion →
    Home layout tokens; `Theme` driven from Rust; the default theme as a
-   package; the font-set decision.
+   package (system fonts, Q6).
 4. **Install and placement**:
    - 4a the remaining SECURITY.md sections (§ 14) not already written in
      2c and 3, with the owner's dated decisions.
@@ -1259,7 +1263,8 @@ the measurement APK) starts with the owner's go-ahead in that session.
 5. **Preview transport:** adb first (no new network surface), the
    RustTV Remote preview role, or both?
 6. **Fonts:** keep the system fonts, or bundle a RustTV font set covering
-   the 21 languages (APK size)? Fonts in packages: never (recommended).
+   the 21 languages (APK size)? Fonts in packages: never (recommended). —
+   **Decided 2026-11-24: system fonts; no fonts in packages.**
 7. **"Open an app" from a panel** (reverses PANELS.md § 5): allowed, from
    the launcher's visible app list only, after a key press, excluding
    Settings, SystemUI, installers and the launcher itself (§ 5.5)? —
@@ -1274,7 +1279,9 @@ the measurement APK) starts with the owner's go-ahead in that session.
     second renderer, no package JSON on the phone)?
 13. **Accessible approvals**, designed with SECURITY.md: an alternative to
     the 2 s hold for people who can't hold a key, and a non-visual way to
-    get the code (spoken by the TV) for blind people?
+    get the code (spoken by the TV) for blind people? — **Decided
+    2026-11-24: both, opt-in (OK three times; code spoken by TTS on the
+    secure screen).**
 14. **Panel instances** (amends PANELS.md decision 9): allow up to 4 per
     panel, each with its own knobs and placement? — **Decided 2026-11-24:
     unlimited, within the shared budget.**
@@ -1285,10 +1292,12 @@ the measurement APK) starts with the owner's go-ahead in that session.
     in the first install release, or later?
 17. **Safe-look exception**: may the safe-look key chord apply without
     plan and Approve (it only takes things away, is recorded in History,
-    and can be undone), as a dated SECURITY.md exception?
+    and can be undone), as a dated SECURITY.md exception? — **Decided
+    2026-11-24: allowed.**
 18. **Approve-only tier**: may remove, disable and the safe-look CLI
     take a plain Approve with no code, since they only take things away
-    and can be undone (a new SECURITY.md tier)?
+    and can be undone (a new SECURITY.md tier)? — **Decided 2026-11-24:
+    plain Approve.**
 
 ## 17. Research
 
