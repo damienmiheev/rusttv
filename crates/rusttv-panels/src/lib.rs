@@ -1,9 +1,8 @@
 //! RustTV panel and theme packages, format 2 (PANEL_STUDIO.md § 5).
 //!
-//! One reader for the TV, the CLI and the studio: `package.json` (its
-//! `meta` and document) and the message tables (`strings/<lang>.json`,
-//! [`parse_messages`] and [`check_messages`]). Expressions and the zip
-//! reader follow in later slices of step 2a (§ 15).
+//! One reader for the TV, the CLI and the studio: [`read_package`] reads a
+//! package zip whole; [`parse_package`] reads `package.json` (its `meta`
+//! and document), [`parse_messages`] one message table.
 //!
 //! [`parse_package`] runs in a fixed order, each step refusing with a
 //! [`Code`] and a [`Position`] and never with the package's own text:
@@ -31,6 +30,7 @@ macro_rules! deserialize_via {
     };
 }
 
+mod archive;
 mod document;
 mod error;
 mod expr;
@@ -39,7 +39,9 @@ mod messages;
 mod meta;
 mod plural;
 mod text;
+mod zip;
 
+pub use archive::{Asset, AssetMode, AssetVariant, Contents, read_package};
 pub use document::{
     Align, AssetName, Bindings, Color, Document, Fit, Node, NodeId, NodeKind, Shadow, SizeClass,
     Stroke, Variant, features,
@@ -59,6 +61,7 @@ pub use meta::{
 };
 pub use plural::{PluralCategory, plural_categories, plural_category};
 pub use text::{LANGUAGES, Language, Text, clean_text};
+pub use zip::{MAX_ENTRIES, MAX_INFLATED, MAX_RATIO, MAX_ZIP};
 
 use serde::Deserialize;
 

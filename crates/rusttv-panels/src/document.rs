@@ -480,27 +480,21 @@ pub(crate) fn check(document: &Document, meta: &Meta) -> Result<(), PackageError
     Ok(())
 }
 
-/// Calls `f` with every binding's position and expression, depth-first.
-pub(crate) fn each_binding<'a>(
+/// Calls `f` with every node, its variant's index and its depth-first
+/// index, in the order the validator counts them.
+pub(crate) fn each_node<'a>(
     document: &'a Document,
-    f: &mut dyn FnMut(Position, &'a Expr) -> Result<(), PackageError>,
+    f: &mut dyn FnMut(usize, usize, &'a Node) -> Result<(), PackageError>,
 ) -> Result<(), PackageError> {
     fn walk<'a>(
         node: &'a Node,
         variant: usize,
         count: &mut usize,
-        f: &mut dyn FnMut(Position, &'a Expr) -> Result<(), PackageError>,
+        f: &mut dyn FnMut(usize, usize, &'a Node) -> Result<(), PackageError>,
     ) -> Result<(), PackageError> {
         let index = *count;
         *count += 1;
-        for (property, _, expr) in node.bindings.iter() {
-            let at = Position::Binding {
-                variant,
-                node: index,
-                property,
-            };
-            f(at, expr)?;
-        }
+        f(variant, index, node)?;
         node.children
             .iter()
             .try_for_each(|child| walk(child, variant, count, f))
@@ -509,6 +503,25 @@ pub(crate) fn each_binding<'a>(
         walk(&v.root, variant, &mut 0, f)?;
     }
     Ok(())
+}
+
+/// Calls `f` with every binding's position and expression, depth-first.
+pub(crate) fn each_binding<'a>(
+    document: &'a Document,
+    f: &mut dyn FnMut(Position, &'a Expr) -> Result<(), PackageError>,
+) -> Result<(), PackageError> {
+    each_node(document, &mut |variant, node, n| {
+        n.bindings.iter().try_for_each(|(property, _, expr)| {
+            f(
+                Position::Binding {
+                    variant,
+                    node,
+                    property,
+                },
+                expr,
+            )
+        })
+    })
 }
 
 /// A depth-first walk of one variant, counting against its limits.

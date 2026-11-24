@@ -301,10 +301,35 @@ assets/<lang>/<name>.png, assets/<mode>/<name>.png   locale or mode variants
 thumbnail.png         for the studio and the Panels page (never on locked surfaces)
 ```
 
+- **As built (step 2a, zip slice, 2026-11-24)**: our own strict reader
+  of the central directory (the `zip` crate is lenient about exactly what
+  this list forbids); inflate by `miniz_oxide` and CRCs by `crc32fast`,
+  both already in the launcher's build (Slint → `image` → `png` →
+  `flate2`), so no new crates ship.
+  Entries are read only as `rusttv panel pack` writes them: back to back
+  from byte 0, then the directory, then the end record as the last 22
+  bytes; stored or deflate; no encryption, data descriptors, zip64,
+  comments or extra disks; local and central headers agree (flags,
+  method, CRC, sizes, name); each entry inflates to exactly its declared
+  size with all its data used; declared sizes are checked against 16 MiB
+  and 20:1 (over the whole zip) before anything is inflated; per-file caps (`package.json`
+  2 MiB, tables 1 MiB). Names: only the list above (languages spelled as
+  the launcher's folders, modes `light`, `dark`, `high-contrast`,
+  `night`), no other folders, unique also ignoring case; names and
+  per-file caps are checked before anything is inflated (an image at most
+  4 MiB). A package needs `package.json` (an empty zip is
+  `MISSING_FILE`); PNGs must start with the signature and end with the
+  `IEND` chunk, so no archive hides behind one (`BAD_IMAGE`), and are
+  decoded by the renderer; every image node's asset and every variant's
+  base image must be there; tables are checked against each other and the document.
+  Codes: `NOT_ZIP`, `BAD_ZIP`, `ZIP_UNSUPPORTED`, `BAD_CRC`,
+  `TOO_MUCH_INFLATED`, `BAD_ENTRY_NAME`, `DUPLICATE_ENTRY`,
+  `MISSING_FILE`, `MISSING_ASSET`, `BAD_IMAGE`.
 - **Images on the TV are PNG only**, decoded by the memory-safe `png`
-  crate. On Android that is a **new runtime dependency** (today `png` is
-  only used at build time; PANELS.md § 7's "no decoded images" was
-  reversed by the owner on 2026-11-24, § 16 Q15): images are in v2 either
+  crate. On Android `png` already ships inside the launcher through
+  Slint's image loading (`i-slint-core` → `image` → `png`, checked
+  2026-11-24), so using it directly adds no new code (PANELS.md § 7's "no
+  decoded images" was reversed by the owner on 2026-11-24, § 16 Q15): images are in v2 either
   way; its size and cold-start cost on armv7 are measured in step 1 to set
   the limits, and justified in its PR. Width and height are checked
   before decoding, one frame, metadata and ICC stripped, decoded lazily with a
@@ -1364,7 +1389,7 @@ the measurement APK) starts with the owner's go-ahead in that session.
    (all answered 2026-11-24); Q12 before 4e; Q5 before step 7.
    - 2a `rusttv-panels`: types, validator, JSON Schema, expressions,
      message tables, zip reader, fuzz targets (no UI; meta, document and
-     message tables and expressions done 2026-11-24); `rusttv panel
+     message tables, expressions and the zip reader done 2026-11-24); `rusttv panel
      pack` for people, so packages can be made and tested before the
      studio (unsigned until 4b). Until 4b a package reaches only the
      desktop launcher, or a debug-build TV loader that is compiled out of

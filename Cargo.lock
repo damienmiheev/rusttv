@@ -5203,6 +5203,8 @@ dependencies = [
 name = "rusttv-panels"
 version = "0.4.0"
 dependencies = [
+ "crc32fast",
+ "miniz_oxide 0.9.1",
  "proptest",
  "serde",
  "serde_json",

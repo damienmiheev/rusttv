@@ -138,6 +138,32 @@ codes! {
     ExpressionTooLarge => "EXPRESSION_TOO_LARGE",
     /// More bindings in a variant than [`crate::limits::BINDINGS`].
     TooManyBindings => "TOO_MANY_BINDINGS",
+    /// Not a zip (no end record as the file's last 22 bytes).
+    NotZip => "NOT_ZIP",
+    /// A zip that doesn't hold together: headers that disagree, gaps,
+    /// overlaps, bytes before the first entry, sizes that don't match.
+    BadZip => "BAD_ZIP",
+    /// A zip feature packages don't use: encryption, zip64, data
+    /// descriptors, comments, several disks, a method other than stored or
+    /// deflate.
+    ZipUnsupported => "ZIP_UNSUPPORTED",
+    /// An entry's data doesn't match its CRC.
+    BadCrc => "BAD_CRC",
+    /// Entries that would inflate past [`crate::MAX_INFLATED`] or
+    /// [`crate::MAX_RATIO`] times the zip.
+    TooMuchInflated => "TOO_MUCH_INFLATED",
+    /// An entry name a package can't have (only `package.json`,
+    /// `strings/<lang>.json`, `assets/…png` and `thumbnail.png`).
+    BadEntryName => "BAD_ENTRY_NAME",
+    /// Two entries with the same name, also ignoring case.
+    DuplicateEntry => "DUPLICATE_ENTRY",
+    /// A file the package must have (`package.json`) is missing.
+    MissingFile => "MISSING_FILE",
+    /// An image node's asset, or a variant's base image, isn't in the
+    /// package.
+    MissingAsset => "MISSING_ASSET",
+    /// An image that isn't a PNG.
+    BadImage => "BAD_IMAGE",
 }
 
 impl Code {
@@ -186,6 +212,11 @@ pub enum Position {
         /// The property, e.g. `text`.
         property: &'static str,
     },
+    /// An entry in the zip, by its place in the central directory (from 0).
+    Entry {
+        /// Its place.
+        index: usize,
+    },
     /// A message in a strings table, by its place in the file (from 0).
     Message {
         /// Its place in the file.
@@ -222,6 +253,7 @@ impl fmt::Display for Position {
                 "document.variants[{variant}] node {node} bindings.{property}"
             ),
             Self::Message { index } => write!(f, "message {index}"),
+            Self::Entry { index } => write!(f, "entry {index}"),
             Self::Field { path, index: None } => f.write_str(path),
             Self::Field {
                 path,
@@ -239,6 +271,8 @@ pub enum PackageFile {
     PackageJson,
     /// `strings/<language>.json`.
     Strings(crate::Language),
+    /// The zip itself.
+    Zip,
 }
 
 impl fmt::Display for PackageFile {
@@ -246,6 +280,7 @@ impl fmt::Display for PackageFile {
         match self {
             Self::PackageJson => f.write_str("package.json"),
             Self::Strings(language) => write!(f, "strings/{}.json", language.code()),
+            Self::Zip => f.write_str("package zip"),
         }
     }
 }
