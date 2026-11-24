@@ -402,11 +402,31 @@ impl Platform for LinuxPlatform {
         LAUNCH_TIMEOUT
     }
 
+    fn leave_launch(&mut self, id: &str) {
+        let Some(windows) = &self.windows else {
+            return;
+        };
+        let Some(keys) = self
+            .entries
+            .borrow()
+            .get(id)
+            .map(|entry| entry.window_keys(id))
+        else {
+            return;
+        };
+        log::info!("Home while {id} opens: its window stays behind Home");
+        windows.hold_back(keys, std::time::Instant::now() + LAUNCH_TIMEOUT);
+    }
+
     fn launch(&mut self, id: &str) -> Result<(), PlatformError> {
         let entries = self.entries.borrow();
         let entry = entries
             .get(id)
             .ok_or_else(|| PlatformError::not_launchable(id))?;
+        // Opened again after Home left it: it may come to the front.
+        if let Some(windows) = &self.windows {
+            windows.release(&entry.window_keys(id));
+        }
         // Running, but not started by this launcher (e.g. before a restart
         // of the launcher): it becomes one of the launcher's apps, raised
         // below. Without its process found, its window is still raised.

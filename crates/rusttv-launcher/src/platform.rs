@@ -47,6 +47,12 @@ pub trait Platform {
     /// app opened when it is paused.
     fn launch(&mut self, id: &str) -> Result<(), PlatformError>;
 
+    /// Home was pressed while app `id` was still opening: when its window
+    /// comes, it stays in the background instead of covering Home, until
+    /// the app is opened again. Platforms whose system handles Home itself
+    /// (Android) do nothing.
+    fn leave_launch(&mut self, _id: &str) {}
+
     /// How long an app may take to open before the launch counts as failed.
     /// The launch splash shows until then.
     fn launch_timeout(&self) -> std::time::Duration {
@@ -757,6 +763,8 @@ pub struct FakePlatform {
     pointer_moves: Vec<(i16, i16, PointerAction)>,
     pointer_stops: usize,
     pointer_settings: usize,
+    /// The apps [`Platform::leave_launch`] left, in order.
+    left: Vec<String>,
     pointer_keys: Vec<Key>,
     pointer_edits: Vec<TextEdit>,
     searches: Vec<(String, String)>,
@@ -956,6 +964,11 @@ impl FakePlatform {
     pub fn pointer_settings(&self) -> usize {
         self.pointer_settings
     }
+
+    /// The apps left while opening ([`Platform::leave_launch`]), in order.
+    pub fn left(&self) -> &[String] {
+        &self.left
+    }
 }
 
 #[cfg(any(test, feature = "test-util"))]
@@ -985,6 +998,10 @@ impl Platform for FakePlatform {
             self.running.insert(id.to_owned());
         }
         Ok(())
+    }
+
+    fn leave_launch(&mut self, id: &str) {
+        self.left.push(id.to_owned());
     }
 
     fn take_apps_changed(&mut self) -> Result<bool, PlatformError> {

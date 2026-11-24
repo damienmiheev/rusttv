@@ -136,17 +136,10 @@ impl Controller {
         let Some(id) = self.platform.quick_action_app(action) else {
             return;
         };
-        // Not a launch from a tile: no splash, Home stays as it is under
-        // the app.
-        if let Err(error) = self.platform.launch(&id) {
-            log::warn!("opening {id} for {action:?} failed: {error}");
-            let label = self.apps.get(&id).map_or(id.as_str(), |app| &app.label);
-            let text = self
-                .window
-                .upgrade()
-                .map(|window| window.global::<Strings>().invoke_couldnt_open(label.into()));
-            self.show_toast(text.unwrap_or_default());
-        }
+        // The splash shows the app until its window is up; a launch that
+        // fails says so, as from a tile.
+        log::info!("opening {id} for {action:?}");
+        self.launch_elsewhere(&id);
     }
 
     /// Reads the open quick panel's controls again; they arrive later.

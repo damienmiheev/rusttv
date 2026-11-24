@@ -3,6 +3,7 @@
 //! one is in front, and bringing one to the front.
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Instant;
 
 use wayland_client::globals::{GlobalListContents, registry_queue_init};
 use wayland_client::protocol::{wl_registry, wl_seat::WlSeat};
@@ -35,6 +36,34 @@ impl std::fmt::Debug for Toplevels {
 #[derive(Default)]
 struct Shared {
     windows: Vec<Window>,
+    /// Apps left while they were starting (Home): the first window of one
+    /// that comes to the front before `until` is minimized instead.
+    held: Vec<Held>,
+}
+
+/// An app whose window must not cover Home ([`Toplevels::hold_back`]).
+struct Held {
+    /// App IDs of its window, lower case.
+    keys: Vec<String>,
+    until: Instant,
+}
+
+impl Shared {
+    /// Whether a window of `app_id` coming to the front is held back; it is
+    /// so only once.
+    fn take_held(&mut self, app_id: &str, now: Instant) -> bool {
+        self.held.retain(|held| held.until > now);
+        let app_id = app_id.to_lowercase();
+        let Some(index) = self
+            .held
+            .iter()
+            .position(|held| held.keys.contains(&app_id))
+        else {
+            return false;
+        };
+        self.held.remove(index);
+        true
+    }
 }
 
 struct Window {
@@ -125,6 +154,23 @@ impl Toplevels {
     }
 }
 
+impl Toplevels {
+    /// Keeps the next window of the app with these `keys` (lower case) from
+    /// covering Home: it is minimized when it comes to the front, until
+    /// `until` or [`Toplevels::release`].
+    pub fn hold_back(&self, keys: Vec<String>, until: Instant) {
+        let mut shared = lock(&self.shared);
+        shared.held.retain(|held| held.keys != keys);
+        shared.held.push(Held { keys, until });
+    }
+
+    /// The app with these `keys` was opened again: its window may come to
+    /// the front.
+    pub fn release(&self, keys: &[String]) {
+        lock(&self.shared).held.retain(|held| held.keys != keys);
+    }
+}
+
 fn lock(shared: &Mutex<Shared>) -> MutexGuard<'_, Shared> {
     shared.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -189,7 +235,7 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for State {
         proxy: &ZwlrForeignToplevelHandleV1,
         event: handle::Event,
         _: &(),
-        _: &Connection,
+        connection: &Connection,
         _: &QueueHandle<Self>,
     ) {
         let mut shared = lock(&state.shared);
@@ -221,11 +267,22 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for State {
                     window.app_id = app_id;
                 }
                 if let Some(activated) = window.pending_activated.take() {
-                    if activated && !window.activated {
-                        log::info!("window of {} activated", window.app_id);
-                        activated_app = Some(window.app_id.clone());
-                    }
+                    let came_up = activated && !window.activated;
                     window.activated = activated;
+                    if came_up {
+                        let app_id = window.app_id.clone();
+                        if shared.take_held(&app_id, Instant::now()) {
+                            // Home was pressed while it started: Home stays.
+                            log::info!("window of {app_id} kept behind Home");
+                            shared.windows[index].handle.set_minimized();
+                            if let Err(error) = connection.flush() {
+                                log::warn!("minimizing {app_id} failed: {error}");
+                            }
+                        } else {
+                            log::info!("window of {app_id} activated");
+                            activated_app = Some(app_id);
+                        }
+                    }
                 }
             }
             handle::Event::Closed => {
@@ -238,5 +295,49 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for State {
         if let Some(app_id) = activated_app {
             (state.on_activated)(&app_id);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    fn held(keys: &[&str], until: Instant) -> Held {
+        Held {
+            keys: keys.iter().map(|key| (*key).to_owned()).collect(),
+            until,
+        }
+    }
+
+    #[test]
+    fn a_held_app_is_kept_back_once() {
+        let now = Instant::now();
+        let mut shared = Shared::default();
+        shared.held.push(held(
+            &["org.kde.kdeconnect.app", "kdeconnect-app"],
+            now + Duration::from_secs(30),
+        ));
+        assert!(!shared.take_held("firefox", now), "another app comes up");
+        assert!(
+            shared.take_held("org.kde.kdeconnect.App", now),
+            "app IDs in any case"
+        );
+        assert!(
+            !shared.take_held("org.kde.kdeconnect.app", now),
+            "only its first window"
+        );
+    }
+
+    #[test]
+    fn a_hold_ends_with_the_launch_timeout() {
+        let now = Instant::now();
+        let mut shared = Shared::default();
+        shared
+            .held
+            .push(held(&["kodi"], now + Duration::from_secs(30)));
+        assert!(!shared.take_held("kodi", now + Duration::from_secs(31)));
+        assert!(shared.held.is_empty());
     }
 }

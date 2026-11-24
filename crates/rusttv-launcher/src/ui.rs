@@ -228,6 +228,26 @@ impl Lifecycle {
         self.deliver(Controller::resume);
     }
 
+    /// Home was pressed: every page and menu closes and the tiles show. An
+    /// app still starting is left in the background: its window, when it
+    /// comes, does not cover Home (as on Android).
+    #[cfg_attr(
+        not(all(target_os = "linux", feature = "linux")),
+        allow(dead_code, reason = "called by the Linux binary")
+    )]
+    pub fn home(&self) {
+        // One delivery with the pause, so the launch is still known here.
+        self.deliver(|controller| {
+            if let Some(id) = controller.home.launching().map(str::to_owned) {
+                controller.platform.leave_launch(&id);
+            }
+            controller.close_overlay(true);
+            controller.away = true;
+            controller.input(Input::Paused);
+        });
+        self.resumed();
+    }
+
     /// The process of app `id` ended. If that app was being launched (it
     /// ended before its window came up), the launch splash closes. For
     /// platforms that start apps as their own processes (Linux); there the
@@ -241,7 +261,7 @@ impl Lifecycle {
             // Closed for a new size in the app overlay: it starts again.
             if controller.restart.as_deref() == Some(id.as_str()) {
                 controller.restart = None;
-                controller.launch(&id);
+                controller.launch_elsewhere(&id);
                 return;
             }
             // Closed for a new size: it starts again at that size.
@@ -1954,6 +1974,16 @@ impl Controller {
         }
     }
 
+    /// Opens app `id` other than with its tile (the top-right menu, a new
+    /// size): the launch splash shows it until its window is up.
+    pub(super) fn launch_elsewhere(&mut self, id: &str) {
+        let now = (self.clock)();
+        self.home.begin_launch(id.to_owned(), now);
+        self.launch(id);
+        self.schedule_tick();
+        self.render();
+    }
+
     fn launch(&mut self, id: &str) {
         // Resized while it ran: close it first; it opens again when it has
         // ended (`Lifecycle::app_ended`), at the new size.
@@ -2154,6 +2184,11 @@ impl Controller {
                 window.set_shelf(false);
                 window.set_first_row(i32::try_from(first_row).unwrap_or(i32::MAX));
             }
+        }
+        if let Some(app) = self.home.launching() {
+            let data = self.tile_data(&TileId::App(app.to_owned()));
+            window.set_launch_app(data);
+            window.set_launch_from_tile(self.home.launching_from_tile());
         }
         window.set_mode(if self.review.is_some() {
             7
@@ -3306,6 +3341,10 @@ mod tests {
 
         fn launch(&mut self, id: &str) -> Result<(), PlatformError> {
             self.platform.borrow_mut().launch(id)
+        }
+
+        fn leave_launch(&mut self, id: &str) {
+            self.platform.borrow_mut().leave_launch(id);
         }
 
         fn take_apps_changed(&mut self) -> Result<bool, PlatformError> {
@@ -6732,7 +6771,7 @@ mod tests {
     }
 
     #[test]
-    fn kde_connect_opens_its_app_without_a_splash() {
+    fn kde_connect_opens_its_app_with_the_splash() {
         let screen = screen_with(abc().with_device(), None);
         screen.tap(UP);
         for _ in 0..3 {
@@ -6740,7 +6779,31 @@ mod tests {
         }
         screen.tap(OK);
         assert_eq!(screen.launched(), ["a/.Main"]);
-        assert_eq!(screen.window.get_mode(), mode_value(State::Bar));
+        assert_eq!(screen.window.get_mode(), mode_value(State::Launching));
+        assert_eq!(screen.window.get_launch_app().label, "A");
+        assert!(!screen.window.get_launch_from_tile(), "no tile zooms");
+        screen.lifecycle.paused();
+        screen.lifecycle.resumed();
+        screen.wait(1);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+    }
+
+    #[test]
+    fn home_while_an_app_opens_leaves_it_in_the_background() {
+        let screen = screen(None);
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Launching));
+        assert!(screen.window.get_launch_from_tile());
+        let app = screen.launched()[0].clone();
+        screen.lifecycle.home();
+        screen.wait(1);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert_eq!(screen.shared.platform.borrow().left(), [app]);
+
+        // Home with nothing opening leaves nothing.
+        screen.lifecycle.home();
+        screen.wait(1);
+        assert_eq!(screen.shared.platform.borrow().left().len(), 1);
     }
 
     #[test]
