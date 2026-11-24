@@ -19,6 +19,12 @@ field in `--json` output says which contract you get, CLI.md).
   thread after the first frame, and kept after the page closes instead of
   being read again at every open.
 
+### Dependencies
+
+- `url` 2.5.9 for RUSTSEC-2026-0592 (a stack overflow in `Url::origin()`
+  on nested `blob:` URLs). Only Slint uses `url` (its compiler at build
+  time, its desktop backend to open links); RustTV never calls `origin()`.
+
 ## 0.4.0 (2026-11-21)
 
 Panels: About, RustTV Remote and History are panel tiles drawn from
