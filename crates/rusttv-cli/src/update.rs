@@ -525,10 +525,8 @@ fn replace_and_verify(
         done.push(file);
     }
     let expected = format!("rusttv {version}");
-    let reported = Command::new(exe)
-        .arg("--version")
-        .output()
-        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned());
+    let reported =
+        version_output(exe).map(|output| String::from_utf8_lossy(&output.stdout).trim().to_owned());
     match reported {
         Ok(reported) if reported == expected => Ok(()),
         Ok(reported) => Err(roll_back(
@@ -539,6 +537,26 @@ fn replace_and_verify(
             &done,
             format!("the new rusttv didn't run: {error}"),
         )),
+    }
+}
+
+/// Runs `exe --version`. Linux refuses to run a file another process still
+/// has open for writing ("Text file busy"): a process forked elsewhere just
+/// after the file was written holds it until it execs, and an antivirus or
+/// indexer may too. That passes in moments, so it is tried a few times.
+fn version_output(exe: &Path) -> std::io::Result<std::process::Output> {
+    const TRIES: u32 = 10;
+    let mut tries = 1;
+    loop {
+        match Command::new(exe).arg("--version").output() {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::ExecutableFileBusy && tries < TRIES =>
+            {
+                tries += 1;
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            result => return result,
+        }
     }
 }
 
