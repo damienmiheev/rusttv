@@ -1,8 +1,9 @@
 //! RustTV panel and theme packages, format 2 (PANEL_STUDIO.md § 5).
 //!
-//! One reader for the TV, the CLI and the studio. This first slice reads
-//! `package.json`'s `meta`; the document, message tables, expressions and the
-//! zip reader follow in later slices of step 2a (§ 15).
+//! One reader for the TV, the CLI and the studio: `package.json` (its
+//! `meta` and document) and the message tables (`strings/<lang>.json`,
+//! [`parse_messages`] and [`check_messages`]). Expressions and the zip
+//! reader follow in later slices of step 2a (§ 15).
 //!
 //! [`parse_package`] runs in a fixed order, each step refusing with a
 //! [`Code`] and a [`Position`] and never with the package's own text:
@@ -33,18 +34,25 @@ macro_rules! deserialize_via {
 mod document;
 mod error;
 mod json;
+mod messages;
 mod meta;
+mod plural;
 mod text;
 
 pub use document::{
     Align, AssetName, Color, Document, Fit, Node, NodeId, NodeKind, Shadow, SizeClass, Stroke,
     Variant, features,
 };
-pub use error::{Code, PackageError, Position};
+pub use error::{Code, PackageError, PackageFile, Position};
+pub use messages::{
+    Arg, Message, MessageId, Messages, Piece, PlaceholderName, Template, check_messages,
+    fallback_chain, lookup, parse_messages,
+};
 pub use meta::{
     Capabilities, FORMAT, Face, HomepageUrl, Kind, List, MAX_LIST, Meta, Name, PackageId,
     RESERVED_NAMES, Version, limits,
 };
+pub use plural::{PluralCategory, plural_categories, plural_category};
 pub use text::{LANGUAGES, Language, Text, clean_text};
 
 use serde::Deserialize;
@@ -83,7 +91,7 @@ pub fn parse_package(text: &str, can: &Capabilities) -> Result<Package, PackageE
     if text.len() > MAX_PACKAGE_JSON {
         return Err(PackageError::new(Code::TooLarge, Position::File));
     }
-    json::check(text, MAX_JSON_DEPTH, limits::DOCUMENT_OBJECTS)?;
+    json::check(text, MAX_JSON_DEPTH, limits::DOCUMENT_OBJECTS, true)?;
     meta::check_head(text, can)?;
     let raw: RawPackage =
         serde_json::from_str(text).map_err(|e| PackageError::from_typed_json(&e))?;

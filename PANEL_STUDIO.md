@@ -321,7 +321,8 @@ thumbnail.png         for the studio and the Panels page (never on locked surfac
   launcher reports its own, lower on small devices, in its capability set,
   § 12.3, and the validator and studio check against them); ≤ 500 nodes per face variant (one variant draws at a time) counted after `repeat`
   expansion (nested repeats are refused), depth ≤ 8; ≤ 2 000
-  strings of ≤ 500 characters; ≤ 32 variants, and a total ceiling of
+  strings of ≤ 500 characters per language table (each plural form
+  counts; ≤ 16 placeholders a string; `strings/<lang>.json` ≤ 1 MiB); ≤ 32 variants, and a total ceiling of
   8 192 JSON objects (nodes, strokes, shadows) across the whole document,
   counted before parsing so a 2 MiB file can't build a large tree (so not
   every variant can use its full node budget); per-variant caps on shadows (4), blur layers
@@ -549,6 +550,24 @@ too; each is its own later decision (§ 15 step 8).
 - **Fallback**: TV language → its base language → the package's default
   language → English. A missing translation is a warning for user
   packages (built-ins keep the "always translated" rule).
+- **As built (step 2a, strings slice, 2026-11-24)**: a table is
+  `{"messages": {id: text | {"plural": name, zero…other: text}}}`, its
+  shape governed by `meta.format`, no notes (those live in the studio
+  project). Ids `[a-z0-9_.-]{1,64}`, placeholders `{[a-z0-9_]{1,32}}`,
+  `{{` and `}}` for braces; texts cleaned like every package text. Plural
+  forms must be ones the table's language has (CLDR cardinal rules for
+  the 21 languages, whole numbers; fractions use `other`), and `other` is
+  required. A translation may leave out messages and placeholders and may
+  be plural where the default is plain, but may not add a message or a
+  placeholder. A filled-in text is cut to 500 characters, cleaned and
+  isolated; counts are ASCII digits until expressions bring locale
+  formatting. None of the 21 languages is another's base, so the chain is
+  TV (or panel) language → default → English; the caller maps the TV
+  locale first. Codes: `BAD_MESSAGE_ID`, `BAD_PLACEHOLDER`, `BAD_PLURAL`,
+  `UNKNOWN_MESSAGE`, `PLACEHOLDER_MISMATCH`, `NO_DEFAULT_STRINGS`;
+  missing translations are listed for a warning. The size limits are
+  § 5.1's (2 000 strings, 16 placeholders a string, 1 MiB a table;
+  `TOO_MANY`, `BAD_PLACEHOLDER`, `TOO_LARGE`).
 
 ## 6. The TV side
 
@@ -1315,7 +1334,8 @@ the measurement APK) starts with the owner's go-ahead in that session.
    approvals), Q17 and Q18 before step 3; Q3, Q11 and Q16 before step 4
    (all answered 2026-11-24); Q12 before 4e; Q5 before step 7.
    - 2a `rusttv-panels`: types, validator, JSON Schema, expressions,
-     message tables, zip reader, fuzz targets (no UI); `rusttv panel
+     message tables, zip reader, fuzz targets (no UI; meta, document and
+     message tables done 2026-11-24); `rusttv panel
      pack` for people, so packages can be made and tested before the
      studio (unsigned until 4b). Until 4b a package reaches only the
      desktop launcher, or a debug-build TV loader that is compiled out of
