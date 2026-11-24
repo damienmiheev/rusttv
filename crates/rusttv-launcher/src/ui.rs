@@ -4409,10 +4409,10 @@ mod tests {
                     .is_some_and(|view| view.glow.get().is_some())
             }) && !controller.glows_making
         };
-        for _ in 0..500 {
-            if all_made() {
-                break;
-            }
+        // Real time for the worker thread: a busy CI machine running the
+        // whole suite in parallel can take well over a second.
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        while !all_made() && std::time::Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(2));
             screen.wait(16);
         }
