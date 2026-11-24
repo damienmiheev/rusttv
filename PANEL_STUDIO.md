@@ -221,7 +221,9 @@ These hold for every option, format version and theme.
   document uses anything its `meta` doesn't declare (the runtime refuses
   it again).
 - **Names** (every translation of a package's name), in order:
-  1. cleaned (§ 5.1 "Text") and NFC-normalised;
+  1. cleaned (§ 5.1 "Text") and NFC-normalised (NFC, with the script and
+     confusable checks below, lands in the name-rules slice of step 2a;
+     until then names are only cleaned and length-checked);
   2. at most 24 characters after that;
   3. every word in one script, the whole name in at most two scripts
      plus common digits and punctuation (Latin with one other — "Київ
@@ -321,21 +323,35 @@ thumbnail.png         for the studio and the Panels page (never on locked surfac
   expansion (nested repeats are refused), depth ≤ 8; ≤ 2 000
   strings of ≤ 500 characters; per-face caps on shadows (4), blur layers
   (0 on TV v2, § 6.2), running animations (2), bindings (100); installed
-  packages ≤ 32 and ≤ 64 MiB in total. Over a limit = refused with a code.
+  packages ≤ 32 and ≤ 64 MiB in total; `package.json` ≤ 2 MiB, JSON
+  nested ≤ 32 deep; meta lists (`requires`, `faces`, `sources`,
+  `actions`) ≤ 32 entries, no duplicates; texts after cleaning: name 24,
+  author 40, licence 64, description 280 characters, homepage 200 bytes.
+  Over a limit = refused with a code.
 - **Strict parsing after a version check**: `format`, `min_launcher` and
   the `requires` feature list are read first; a package needing a newer
-  launcher is refused with `PACKAGE_TOO_NEW` and the version it needs.
-  Then strict parsing: unknown fields and duplicate keys are errors. A
+  launcher is refused with `PACKAGE_TOO_NEW` and the version it needs, and
+  one needing a renderer feature the launcher lacks with
+  `REQUIRES_FEATURE` and its index. Every later format keeps
+  `meta.format` where it is, so this check can always read it. Then strict
+  parsing: unknown fields and duplicate keys are errors, and the file and
+  its `meta` must be JSON objects (no array spelling of the same data). A
   JSON Schema is published, generated from the Rust types.
 - **Numbers** are finite and range-checked per property (no NaN,
   infinity, or 1e30 sizes reaching layout or allocation).
-- **Text** from packages (names, strings, knob labels) is cleaned: the
-  bidi embedding and override characters (LRE, RLE, LRO, RLO, PDF),
-  zero-width and tag characters, U+2028/2029 and other controls removed —
-  the marks and isolates (LRM, RLM, ALM, LRI, RLI, FSI, PDI) are kept,
-  because Arabic and Hebrew text with Latin names and numbers needs them;
-  the host wraps source values in isolates; combining marks per cluster capped; length capped; every text
-  node clipped to its box (the folder-name rules, extended).
+- **Text** from packages (names, strings, knob labels) is cleaned
+  (`rusttv_panels::clean_text`): tabs and line breaks become spaces, other
+  controls go; the bidi embeddings and overrides (LRE, RLE, LRO, RLO, PDF)
+  go; the isolates (LRI, RLI, FSI, PDI) stay only in matched pairs and the
+  marks (LRM, RLM, ALM) stay, because Arabic and Hebrew text with Latin
+  names and numbers needs them; invisible characters go (zero-width space,
+  word joiner, soft hyphen, Hangul fillers, tags, most variation
+  selectors, U+2028/2029); the zero-width non-joiner and joiner stay only
+  between two letters or emoji, where Persian, Indic scripts and emoji
+  need them; runs of combining marks are capped at four; a text with
+  nothing visible left is refused (`EMPTY_TEXT`); length is counted after
+  cleaning. The host wraps source values in isolates, and every text node
+  is clipped to its box (the folder-name rules, extended).
 - **Errors** are codes with positions, never echoes of package content
   (they reach the CLI, MCP and History).
 - **Fuzz targets** (zip reader, JSON, message tables, expressions,
@@ -349,9 +365,17 @@ thumbnail.png         for the studio and the Panels page (never on locked surfac
 `faces` it implements (only the Home tile starts on, § 8.2), `sources` it
 reads, `actions` it uses, `knobs` (§ 7), `default_language`.
 
-- **Ids**: `[a-z0-9-]{1,32}` within `user.` — e.g. `user.weather-tiles`;
-  `panel:<built-in>`, the `rusttv` prefix and every built-in name are
-  reserved.
+- **Ids**: `user.` + `[a-z0-9-]{1,32}`, not starting or ending with `-`
+  — e.g. `user.weather-tiles`. User ids can't collide with
+  `panel:<built-in>`; the `rusttv` prefix and every built-in tile's name
+  (`about`, `settings`, `remote`, `history`, `hidden-apps`, plus `themes`
+  and `panels`) are reserved, and a launcher test keeps that list in step
+  with the built-in tiles.
+- **Versions** (`version`, `min_launcher`): `<major>.<minor>.<patch>`,
+  plain numbers without leading zeros, no pre-release or build part (the
+  release-version rule, RELEASE.md), not full semver.
+- **Homepage**: an `https://` link with a plain ASCII host and no spaces,
+  quotes, angle brackets or backslashes; shown as text, never opened.
 - **Author key**: the studio makes each author an ed25519 key (kept in
   the OS keychain) and signs every package's content; the launcher pins
   the key on first install (trust on first use, like SSH). An update
@@ -488,8 +512,9 @@ too; each is its own later decision (§ 15 step 8).
   runtime plural expressions.
 - **Namespaced per package**: a package's messages are never consulted by
   RustTV's own UI, so a package can't rewrite "Approve".
-- Languages: the launcher's 21; placeholders checked against the default
-  language; isolates for user text as today.
+- Languages: the launcher's 21, spelled like its translation folders
+  (`pt_BR`, `zh_CN`, not `pt-BR`), kept in step by a test; placeholders
+  checked against the default language; isolates for user text as today.
 - **Formatting** follows the person's locale: numbers and digit shapes
   (Arabic-Indic digits), dates, week start, calendar (Gregorian, Hijri
   and others the platform offers), units chosen by a knob (°C/°F).

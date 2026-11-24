@@ -88,6 +88,8 @@ jni.workspace = true
 
 [dev-dependencies]
 i-slint-backend-testing.workspace = true
+# Checks that user packages can't take a built-in tile's name (model.rs tests).
+rusttv-panels.workspace = true
 # Checks views against their templates (src/panels.rs). Already in the workspace.
 serde_json.workspace = true
 
