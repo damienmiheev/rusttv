@@ -76,6 +76,37 @@ codes! {
     TooMany => "TOO_MANY",
     /// The name has no text in the default language.
     NoDefaultName => "NO_DEFAULT_NAME",
+    /// A number outside the range its property allows.
+    OutOfRange => "OUT_OF_RANGE",
+    /// A colour that isn't `#rrggbb` or `#rrggbbaa`.
+    BadColor => "BAD_COLOR",
+    /// A node id that isn't `[a-z0-9_-]{1,32}`.
+    BadNodeId => "BAD_NODE_ID",
+    /// An image name that isn't `[a-z0-9_-]{1,40}`.
+    BadAssetName => "BAD_ASSET_NAME",
+    /// Two nodes in one variant with the same id.
+    DuplicateId => "DUPLICATE_ID",
+    /// A property this kind of node doesn't have.
+    NotForKind => "NOT_FOR_KIND",
+    /// A property this kind of node needs is missing.
+    MissingProperty => "MISSING_PROPERTY",
+    /// More nodes in a variant than [`crate::limits::NODES`], or more
+    /// objects in the document than [`crate::limits::DOCUMENT_OBJECTS`].
+    TooManyNodes => "TOO_MANY_NODES",
+    /// More shadows in a variant than [`crate::limits::SHADOWS`].
+    TooManyShadows => "TOO_MANY_SHADOWS",
+    /// Two variants with the same face, size and state.
+    DuplicateVariant => "DUPLICATE_VARIANT",
+    /// A variant for a face `meta.faces` doesn't list, or a listed face with
+    /// no default variant.
+    FaceMismatch => "FACE_MISMATCH",
+    /// A root whose size doesn't fit its face and size class.
+    BadSize => "BAD_SIZE",
+    /// A root that isn't an unrotated frame at 0,0.
+    BadRoot => "BAD_ROOT",
+    /// The document uses a renderer feature `meta.requires` doesn't list
+    /// (unlike [`Code::RequiresFeature`], a feature this launcher lacks).
+    UndeclaredFeature => "UNDECLARED_FEATURE",
 }
 
 impl Code {
@@ -107,6 +138,14 @@ pub enum Position {
         /// Column, from 1.
         column: usize,
     },
+    /// A node in the document: the variant's index in `document.variants`
+    /// and the node's index in depth-first order from its root (0).
+    Node {
+        /// Index in `document.variants`.
+        variant: usize,
+        /// Depth-first index from the variant's root.
+        node: usize,
+    },
     /// A field path built only from this format's own field names, e.g.
     /// `meta.requires`, and an index into a list; never a key from the package.
     Field {
@@ -128,6 +167,7 @@ impl fmt::Display for Position {
         match self {
             Self::File => f.write_str("file"),
             Self::Line { line, column } => write!(f, "line {line} column {column}"),
+            Self::Node { variant, node } => write!(f, "document.variants[{variant}] node {node}"),
             Self::Field { path, index: None } => f.write_str(path),
             Self::Field {
                 path,
@@ -209,6 +249,9 @@ fn data_code(message: &str) -> Code {
         Code::UnknownField
     } else if head.starts_with("missing field") {
         Code::MissingField
+    } else if head.starts_with("invalid value: integer") {
+        // An integer that doesn't fit its field's type (`"weight": 70000`).
+        Code::OutOfRange
     } else if head.starts_with("invalid type") || head.starts_with("invalid length") {
         Code::WrongType
     } else {

@@ -319,9 +319,12 @@ thumbnail.png         for the studio and the Panels page (never on locked surfac
   ratio ≤ 20:1, ≤ 64 entries; each image ≤ 1920×1080 and the package's
   decoded images ≤ 24 MiB (the limits are the Philips numbers; each
   launcher reports its own, lower on small devices, in its capability set,
-  § 12.3, and the validator and studio check against them); ≤ 500 nodes per face counted after `repeat`
+  § 12.3, and the validator and studio check against them); ≤ 500 nodes per face variant (one variant draws at a time) counted after `repeat`
   expansion (nested repeats are refused), depth ≤ 8; ≤ 2 000
-  strings of ≤ 500 characters; per-face caps on shadows (4), blur layers
+  strings of ≤ 500 characters; ≤ 32 variants, and a total ceiling of
+  8 192 JSON objects (nodes, strokes, shadows) across the whole document,
+  counted before parsing so a 2 MiB file can't build a large tree (so not
+  every variant can use its full node budget); per-variant caps on shadows (4), blur layers
   (0 on TV v2, § 6.2), running animations (2), bindings (100); installed
   packages ≤ 32 and ≤ 64 MiB in total; `package.json` ≤ 2 MiB, JSON
   nested ≤ 32 deep; meta lists (`requires`, `faces`, `sources`,
@@ -444,6 +447,28 @@ bindings survive).
   placement. The only limits are the shared ones: the user-face memory
   and node budget (§ 6.5) and the watchdog; an instance that doesn't fit
   isn't added, and the Panels page says why.
+- **As built (step 2a, document slice, 2026-11-24)**: a document is
+  `{"variants": [{face, size, state, root}]}`; `size` defaults to
+  `regular` and `state` to `default`; each listed face needs a
+  regular/default variant, and no variant may name an unlisted face or
+  repeat a face+size+state (`FACE_MISMATCH`, `DUPLICATE_VARIANT`). The root
+  is an unrotated frame at 0,0 (`BAD_ROOT`). Root sizes (`BAD_SIZE`): tile
+  and phone 250×141 u, page and ambient 1920×1080 u exactly at `regular`;
+  `compact` no larger and `large` no smaller than that, up to the window;
+  other faces more than 0 and up to the window. Node kinds so far: frame,
+  group, rectangle, ellipse, line, text, image, progress. `x` is measured
+  from the parent's start edge (mirrored in RTL), which is how the format
+  stays logical. Ranges (`OUT_OF_RANGE`): x −1920…3840, y −1080…2160,
+  w 0…1920, h 0…1080, opacity 0…1, rotation ±360°, radius 0…960, stroke
+  width 0…20, shadow x/y ±200 and blur 0…100, text size 6…200, weight
+  100…900, max_lines 1…10, progress value 0…1; text ≤ 500 and label ≤ 200
+  characters. A property of another kind is `NOT_FOR_KIND`; text needs
+  text and size, image an asset, progress a value, line a stroke
+  (`MISSING_PROPERTY`). Shadows and rotation must be listed in
+  `meta.requires` (`UNDECLARED_FEATURE`; unlike `REQUIRES_FEATURE`, which
+  is a feature the launcher lacks). Later slices add `role`, `decorative`,
+  `reading_order`, `mirror`, vectors, instances, slots, `repeat`, widgets
+  and bindings; the error codes go into CLI.md with `rusttv panel`.
 - **Four kinds of value** (one table in the format docs): **token**
   (from the theme), **source** (live data, § 6.4), **knob** (a setting the
   person chose, persisted), **local** (panel state, not persisted). Literal

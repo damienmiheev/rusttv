@@ -181,6 +181,12 @@ impl<const MAX: usize> Text<MAX> {
     /// [`Code::EmptyText`] if nothing visible is left, [`Code::TextTooLong`]
     /// if more than `MAX` characters are.
     pub fn new(raw: &str) -> Result<Self, Code> {
+        // Cleaning only removes characters, and none is wider than 4 bytes;
+        // 16 bytes a character leaves room for the removed ones without
+        // cleaning megabytes for a 500-character field.
+        if raw.len() > MAX.saturating_mul(16) {
+            return Err(Code::TextTooLong);
+        }
         let text = clean_text(raw);
         if !text
             .chars()
@@ -360,6 +366,12 @@ mod tests {
             Ok("abc".into())
         );
         assert_eq!(Text::<3>::new("abcd"), Err(Code::TextTooLong));
+        // A huge field is refused before cleaning; removed characters still fit.
+        assert_eq!(Text::<3>::new(&"a".repeat(49)), Err(Code::TextTooLong));
+        assert_eq!(
+            Text::<3>::new(&format!("ab{}c", "\u{200b}".repeat(10))).map(|t| t.as_str().len()),
+            Ok(3)
+        );
         assert!(Text::<4>::new("київ").is_ok());
         for blank in [
             " \u{202E} ",
