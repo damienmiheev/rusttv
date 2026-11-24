@@ -33,6 +33,7 @@ macro_rules! deserialize_via {
 
 mod document;
 mod error;
+mod expr;
 mod json;
 mod messages;
 mod meta;
@@ -40,13 +41,17 @@ mod plural;
 mod text;
 
 pub use document::{
-    Align, AssetName, Color, Document, Fit, Node, NodeId, NodeKind, Shadow, SizeClass, Stroke,
-    Variant, features,
+    Align, AssetName, Bindings, Color, Document, Fit, Node, NodeId, NodeKind, Shadow, SizeClass,
+    Stroke, Variant, features,
 };
 pub use error::{Code, PackageError, PackageFile, Position};
+pub use expr::{
+    Expr, Function, Inputs, Moment, SourceField, Type, Value, eval, is_source_group, source_tier,
+    sources,
+};
 pub use messages::{
-    Arg, Message, MessageId, Messages, Piece, PlaceholderName, Template, check_messages,
-    fallback_chain, lookup, parse_messages,
+    Arg, Message, MessageId, Messages, Piece, PlaceholderName, Template, check_document_messages,
+    check_messages, fallback_chain, lookup, parse_messages,
 };
 pub use meta::{
     Capabilities, FORMAT, Face, HomepageUrl, Kind, List, MAX_LIST, Meta, Name, PackageId,
@@ -61,7 +66,12 @@ use serde::Deserialize;
 pub const MAX_PACKAGE_JSON: usize = 2 << 20;
 
 /// Deepest nesting of JSON objects and arrays.
-pub const MAX_JSON_DEPTH: usize = 32;
+///
+/// A node 8 levels down with an expression 8 levels deep sits 36
+/// deep. Typed parsing recurses with the nesting, so read packages on a
+/// thread with at least 1 MiB of stack (512 KiB is enough in release
+/// builds).
+pub const MAX_JSON_DEPTH: usize = 40;
 
 /// A parsed `package.json`.
 #[derive(Debug, Clone, PartialEq)]
@@ -96,6 +106,17 @@ pub fn parse_package(text: &str, can: &Capabilities) -> Result<Package, PackageE
     let raw: RawPackage =
         serde_json::from_str(text).map_err(|e| PackageError::from_typed_json(&e))?;
     let meta = meta::check_meta(raw.meta)?;
+    for (index, group) in meta.sources.iter().enumerate() {
+        if !expr::is_source_group(group.as_str()) {
+            return Err(PackageError::new(
+                Code::UnknownSource,
+                Position::Field {
+                    path: "meta.sources",
+                    index: Some(index),
+                },
+            ));
+        }
+    }
     let at_document = Position::field("document");
     match (meta.kind, &raw.document) {
         (Kind::Panel, Some(document)) => document::check(document, &meta)?,

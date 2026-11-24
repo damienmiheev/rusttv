@@ -17,6 +17,7 @@
 //! count is one of the default's placeholders. The shape is governed by
 //! `meta.format`; tables carry no notes (those live in the studio project).
 
+use crate::document::Document;
 use crate::error::{Code, PackageError, PackageFile, Position};
 use crate::meta::{Meta, limits};
 use crate::plural::{PluralCategory, plural_categories, plural_category};
@@ -471,6 +472,47 @@ pub fn check_messages(
     Ok(())
 }
 
+/// Checks the messages a panel's bindings use against its default
+/// language table: each must exist there, and each placeholder a binding
+/// fills must be one the message has.
+///
+/// # Errors
+///
+/// [`Code::NoDefaultStrings`] if bindings use messages and there is no
+/// default table, [`Code::UnknownMessage`] or [`Code::PlaceholderMismatch`]
+/// at the binding.
+pub fn check_document_messages(
+    meta: &Meta,
+    document: &Document,
+    tables: &BTreeMap<Language, Messages>,
+) -> Result<(), PackageError> {
+    let default = tables.get(&meta.default_language);
+    crate::document::each_binding(document, &mut |at, expr| {
+        let mut found = Ok(());
+        crate::expr::each_message(expr, &mut |id, args| {
+            if found.is_err() {
+                return;
+            }
+            let Some(default) = default else {
+                found = Err(Code::NoDefaultStrings);
+                return;
+            };
+            found = match default.get(id.as_str()) {
+                None => Err(Code::UnknownMessage),
+                Some(message) => {
+                    let names = message.names();
+                    if args.iter().all(|(name, _)| names.contains(name)) {
+                        Ok(())
+                    } else {
+                        Err(Code::PlaceholderMismatch)
+                    }
+                }
+            };
+        });
+        found.map_err(|code| PackageError::new(code, at))
+    })
+}
+
 /// The languages to try, in order: the TV's (or the panel's own), the
 /// package's default, then English. The caller maps the TV's locale to one
 /// of RustTV's languages first (as the launcher does for its own UI). None
@@ -811,6 +853,45 @@ mod tests {
             check_messages(&meta("en"), &all).unwrap_err().code,
             Code::PlaceholderMismatch
         );
+    }
+
+    #[test]
+    fn bindings_use_messages_the_default_table_has() {
+        let package = |args: &str| {
+            format!(
+                r#"{{"meta": {{"format": 2, "min_launcher": "0.5.0", "id": "user.test", "kind": "panel",
+                   "version": "1.0.0", "default_language": "en", "name": {{"en": "Test"}}, "faces": ["tile"],
+                   "sources": ["history"]}},
+                  "document": {{"variants": [{{"face": "tile", "root": {{"id": "root", "type": "frame", "w": 250, "h": 141,
+                   "children": [{{"id": "t", "type": "text", "w": 10, "h": 10, "text": "…", "size": 10,
+                   "bindings": {{"text": {{"msg": "unread", "args": {args}}}}}}}]}}}}]}}}}"#
+            )
+        };
+        let can = crate::Capabilities::new(crate::Version::new(0, 5, 0), [""; 0]);
+        let read = |args: &str| crate::parse_package(&package(args), &can).unwrap();
+        let en = r#""unread": {"plural": "count", "one": "one", "other": "{count}"}"#;
+        let check = |args: &str, list: &[(&str, &str)]| {
+            let p = read(args);
+            check_document_messages(&p.meta, p.document.as_ref().unwrap(), &tables(list))
+                .err()
+                .map(|e| (e.code, e.at))
+        };
+        let at = Position::Binding {
+            variant: 0,
+            node: 1,
+            property: "text",
+        };
+        let count = r#"{"count": {"source": "history.waiting"}}"#;
+        assert_eq!(check(count, &[("en", en)]), None);
+        assert_eq!(
+            check(r#"{"other": 1}"#, &[("en", en)]),
+            Some((Code::PlaceholderMismatch, at))
+        );
+        assert_eq!(
+            check(count, &[("en", r#""read": "x""#)]),
+            Some((Code::UnknownMessage, at))
+        );
+        assert_eq!(check(count, &[]), Some((Code::NoDefaultStrings, at)));
     }
 
     #[test]

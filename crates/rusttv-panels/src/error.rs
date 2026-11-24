@@ -122,6 +122,22 @@ codes! {
     PlaceholderMismatch => "PLACEHOLDER_MISMATCH",
     /// Translations without a table for the default language.
     NoDefaultStrings => "NO_DEFAULT_STRINGS",
+    /// An expression of a shape this format doesn't have, or a function
+    /// with the wrong number of arguments.
+    BadExpression => "BAD_EXPRESSION",
+    /// A function this format doesn't have.
+    UnknownFunction => "UNKNOWN_FUNCTION",
+    /// An expression whose type doesn't fit where it is used.
+    TypeMismatch => "TYPE_MISMATCH",
+    /// A source (or source field) RustTV doesn't have.
+    UnknownSource => "UNKNOWN_SOURCE",
+    /// An expression reads a source group `meta.sources` doesn't list.
+    UndeclaredSource => "UNDECLARED_SOURCE",
+    /// An expression deeper than [`crate::limits::EXPR_DEPTH`] or larger
+    /// than [`crate::limits::EXPR_NODES`].
+    ExpressionTooLarge => "EXPRESSION_TOO_LARGE",
+    /// More bindings in a variant than [`crate::limits::BINDINGS`].
+    TooManyBindings => "TOO_MANY_BINDINGS",
 }
 
 impl Code {
@@ -161,6 +177,15 @@ pub enum Position {
         /// Depth-first index from the variant's root.
         node: usize,
     },
+    /// A node's binding, by the property it sets.
+    Binding {
+        /// Index in `document.variants`.
+        variant: usize,
+        /// Depth-first index from the variant's root.
+        node: usize,
+        /// The property, e.g. `text`.
+        property: &'static str,
+    },
     /// A message in a strings table, by its place in the file (from 0).
     Message {
         /// Its place in the file.
@@ -188,6 +213,14 @@ impl fmt::Display for Position {
             Self::File => f.write_str("file"),
             Self::Line { line, column } => write!(f, "line {line} column {column}"),
             Self::Node { variant, node } => write!(f, "document.variants[{variant}] node {node}"),
+            Self::Binding {
+                variant,
+                node,
+                property,
+            } => write!(
+                f,
+                "document.variants[{variant}] node {node} bindings.{property}"
+            ),
             Self::Message { index } => write!(f, "message {index}"),
             Self::Field { path, index: None } => f.write_str(path),
             Self::Field {

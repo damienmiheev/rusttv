@@ -33,6 +33,7 @@ pub(crate) fn check(
         max_depth,
         must_be_object: true,
         in_document: false,
+        in_expression: false,
         objects: &objects,
         max_objects,
         package,
@@ -51,6 +52,9 @@ struct Node<'a> {
     must_be_object: bool,
     /// Inside `document`.
     in_document: bool,
+    /// Inside a node's `bindings`: expressions, whose lists hold values
+    /// and whose own reader refuses other spellings.
+    in_expression: bool,
     /// Objects seen inside `document` so far.
     objects: &'a Cell<usize>,
     max_objects: usize,
@@ -59,7 +63,12 @@ struct Node<'a> {
 }
 
 impl Node<'_> {
-    fn child<E: de::Error>(self, must_be_object: bool, in_document: bool) -> Result<Self, E> {
+    fn child<E: de::Error>(
+        self,
+        must_be_object: bool,
+        in_document: bool,
+        in_expression: bool,
+    ) -> Result<Self, E> {
         if self.depth >= self.max_depth {
             return Err(E::custom(Code::TooDeep.as_str()));
         }
@@ -67,8 +76,21 @@ impl Node<'_> {
             depth: self.depth + 1,
             must_be_object,
             in_document,
+            in_expression,
             ..self
         })
+    }
+
+    /// Counts a value inside `document`: every object, and in expressions
+    /// every value (an expression's lists hold values, not objects).
+    fn count<E: de::Error>(self, object: bool) -> Result<(), E> {
+        if self.in_document && (object || self.in_expression) {
+            self.objects.set(self.objects.get() + 1);
+            if self.objects.get() > self.max_objects {
+                return Err(E::custom(Code::TooManyNodes.as_str()));
+            }
+        }
+        Ok(())
     }
 
     fn not_object<E: de::Error>(self) -> Result<(), E> {
@@ -96,49 +118,55 @@ impl<'de> Visitor<'de> for Node<'_> {
     }
 
     fn visit_bool<E: de::Error>(self, _: bool) -> Result<(), E> {
+        self.count(false)?;
         self.not_object()
     }
     fn visit_i64<E: de::Error>(self, _: i64) -> Result<(), E> {
+        self.count(false)?;
         self.not_object()
     }
     fn visit_u64<E: de::Error>(self, _: u64) -> Result<(), E> {
+        self.count(false)?;
         self.not_object()
     }
     fn visit_f64<E: de::Error>(self, _: f64) -> Result<(), E> {
+        self.count(false)?;
         self.not_object()
     }
     fn visit_str<E: de::Error>(self, _: &str) -> Result<(), E> {
+        self.count(false)?;
         self.not_object()
     }
     fn visit_unit<E: de::Error>(self) -> Result<(), E> {
+        self.count(false)?;
         // `null` is how an optional struct (`"stroke": null`) says "none";
         // where a struct is required, typed parsing refuses it.
         Ok(())
     }
 
     fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
+        self.count(false)?;
         self.not_object()?;
-        // Every list in the document is a list of structs.
-        let child = self.child(self.in_document, self.in_document)?;
+        // Every list in the document is a list of structs, except in
+        // expressions.
+        let structs = self.in_document && !self.in_expression;
+        let child = self.child(structs, self.in_document, self.in_expression)?;
         while seq.next_element_seed(child)?.is_some() {}
         Ok(())
     }
 
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
-        if self.in_document {
-            self.objects.set(self.objects.get() + 1);
-            if self.objects.get() > self.max_objects {
-                return Err(de::Error::custom(Code::TooManyNodes.as_str()));
-            }
-        }
+        self.count(true)?;
         let mut keys = HashSet::new();
         let at_root = self.package && self.depth == 0;
         while let Some(key) = map.next_key::<String>()? {
             let document = at_root && key == "document";
             let in_document = self.in_document || document;
-            let struct_field = self.in_document && (key == "root" || key == "stroke");
+            let structs = self.in_document && !self.in_expression;
+            let struct_field = structs && (key == "root" || key == "stroke" || key == "bindings");
+            let in_expression = self.in_expression || (structs && key == "bindings");
             let must_be_object = (at_root && key == "meta") || document || struct_field;
-            let child = self.child(must_be_object, in_document)?;
+            let child = self.child(must_be_object, in_document, in_expression)?;
             if !keys.insert(key) {
                 return Err(de::Error::custom(Code::DuplicateKey.as_str()));
             }
@@ -206,6 +234,15 @@ mod tests {
         assert_eq!(code(r#"{"document":{"variants":[{"root":{}}]}}"#), None);
         assert_eq!(code(r#"{"other":{"root":[1]}}"#), None);
         assert_eq!(code(r#"{"document":{"stroke":null}}"#), None);
+        let deep = |text| check(text, 8, 99, true).err().map(|e| e.code);
+        assert_eq!(
+            deep(r#"{"document":{"bindings":{"t":{"if":[true,1,"a"]}}}}"#),
+            None
+        );
+        assert_eq!(
+            deep(r#"{"document":{"bindings":[1]}}"#),
+            Some(Code::WrongType)
+        );
     }
 
     #[test]
@@ -224,6 +261,18 @@ mod tests {
             Some(Code::TooManyNodes)
         );
         assert_eq!(code(r#"{"meta":{"a":{"b":{}}},"x":[{},{},{},{}]}"#), None);
+        // In expressions every value counts, so a long list stops here.
+        let wide = |n| {
+            format!(
+                r#"{{"document":{{"bindings":{{"t":[{}]}}}}}}"#,
+                vec!["1"; n].join(",")
+            )
+        };
+        assert_eq!(check(&wide(5), 8, 9, true).err().map(|e| e.code), None);
+        assert_eq!(
+            check(&wide(7), 8, 9, true).err().map(|e| e.code),
+            Some(Code::TooManyNodes)
+        );
     }
 
     #[test]

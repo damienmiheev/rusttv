@@ -265,6 +265,12 @@ pub mod limits {
     pub const ARG: usize = 500;
     /// Largest `strings/<lang>.json`, in bytes.
     pub const STRINGS_JSON: usize = 1 << 20;
+    /// Bindings in a variant.
+    pub const BINDINGS: usize = 100;
+    /// Nesting of one expression.
+    pub const EXPR_DEPTH: usize = 8;
+    /// Parts of one expression (literals, sources, calls…).
+    pub const EXPR_NODES: usize = 64;
     /// Variants in a document.
     pub const VARIANTS: usize = 32;
     /// JSON objects inside `document` (nodes, variants, strokes, shadows),
@@ -384,7 +390,7 @@ pub struct Meta {
     pub homepage: Option<HomepageUrl>,
     /// The faces it implements.
     pub faces: List<Face>,
-    /// The sources it reads (checked against the source list in a later slice).
+    /// The source groups it reads (see [`crate::SOURCES`]).
     pub sources: List<Name>,
     /// The actions it uses (checked against the action list in a later slice).
     pub actions: List<Name>,
