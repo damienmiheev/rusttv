@@ -608,6 +608,58 @@ a removed one is deprecated for one release first.
   reports cold start, PSS, first draw and frame times on the Philips. No
   claim without that data.
 
+### 6.6 Spike 1 result (2026-11-24)
+
+Measured on the Philips with a throwaway APK (own applicationId, debug key,
+no HOME filter, uninstalled afterwards); code and full numbers in
+`spikes/tv-renderer/`. The stage moved every frame, so every node was
+redrawn each frame.
+
+| nodes | generic (JSON) render p50 | compiled render p50 | PSS generic / compiled |
+|---|---|---|---|
+| 180 (Home, 18 tiles) | 7.4 ms | 6.3 ms | 41.5 / 41.1 MB |
+| 500 | 17.5 ms | 14.8 ms | 43.3 / 42.2 MB |
+| 1000 | 34.4 ms | 28.7 ms | 45.9 / 43.5 MB |
+
+What it settles:
+
+- **Renderer route: generic Slint components fed by JSON.** They cost
+  about 18–20% more per frame than hand-written Slint (≈ 0.031 vs
+  0.026 ms per node), with the same cold start (`am start -W` 212–246 vs
+  208–219 ms) and about 0.4–2.4 MB more memory. Parsing is cheap (0.5 ms
+  for 180 nodes). The slint-interpreter route wasn't built: the generic
+  route is close enough, and the interpreter would put a compiler in the
+  APK.
+- **Node budget.** A full redraw passes 16.7 ms at about 450 generic
+  nodes, so the per-face cap of 500 (§ 5.1) stays, and a new **visible
+  total** for user faces is added: about 250 nodes on screen at once,
+  tuned in step 2b against BENCHMARK_PLAN.md; the watchdog (§ 6.5) works
+  from this cost per node.
+- **Images.** Decoding a 1080p PNG takes about 290 ms on this TV, so
+  decoding always runs off the UI thread (a placeholder until it's done),
+  and a single image is capped at 1280×720 decoded (tile art needs far
+  less). The decoder adds about 16 KB.
+- **Phone mirror.** `Window::take_snapshot` of the whole window takes
+  33–45 ms; a face's image is cropped from it, so no second renderer is
+  needed (§ 8.1, Q12).
+- **TalkBack: no.** Slint 1.18's `accessible-label` doesn't reach
+  Android's accessibility tree on this TV, so screen-reader support for
+  panels waits for Slint (§ 5.3 already doesn't promise it); spoken
+  approvals (Q13) use Android's text-to-speech directly, not TalkBack.
+- **Staging over `content write` works**: 1 MiB and 4 MiB arrive byte
+  exact in about 2 s, and the cap stops a larger file. The shell closes its
+  end of the pipe without a clean status, so the CLI first sends the
+  expected size and SHA-256 (§ 9.1), and the provider keeps the bytes only
+  if both match.
+- **No file picker on the Philips**: no DocumentsUI, nothing handles
+  "open a document". The USB route (Q11) can't use the system picker here;
+  on such TVs it would need our own browser and a storage permission, so
+  it is offered only where a picker exists, and the Panels page says so
+  (§ 9.1). Phone and computer installs are unaffected.
+- **Not settled here**: the studio preview route (§ 6.1, Skia helper vs
+  "approximate") is checked with the studio in step 6; the safe-look chord
+  in step 3.
+
 ## 7. Knobs and settings (no canvas needed)
 
 - A package declares **knobs**: typed settings with a label, default and
@@ -769,7 +821,9 @@ Panels page says so elsewhere.
   command stages the bytes, streamed through the content provider's file
   descriptor (no pushed path, so no SELinux or shared-storage questions;
   new risk class, § 14). The provider checks the caller is the shell uid,
-  enforces the size cap while streaming and drops partial writes. Whether
+  enforces the size cap while streaming, and keeps the bytes only if their
+  length and SHA-256 match what the command sent first (the shell doesn't
+  report a clean close, § 6.6). Whether
   `content write` over `adb exec-in` (binary-safe stdin) works on the
   Philips is checked in the step 1 spike; the fallback is the same typed
   command sending numbered chunks (under the binder size limit) through
