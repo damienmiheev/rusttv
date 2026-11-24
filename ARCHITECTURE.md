@@ -125,7 +125,7 @@ LauncherActivity (Kotlin, extends NativeActivity, D11)
    │ loads librusttv_launcher.so (android-activity + Slint)
    │
    ├─ Bridge.kt  (object with @JvmStatic methods, called from Rust via `jni`)
-   │     listApps(context): Array<String>          "component\nlabel", LEANBACK_LAUNCHER, without itself
+   │     listApps(context): Array<String>          "component\nlabel\ncategory\nphone", LEANBACK_LAUNCHER, then phone-only LAUNCHER apps (start hidden), without itself
    │     banner/icon(context, component, w, h): IntArray?   ARGB pixels, null if none
    │     launch(context, component): Boolean       false if the activity is gone
    │     takeAppsChanged(): Boolean                set by the package receiver; cleared on read
@@ -149,7 +149,7 @@ Rust: trait Platform { list_apps(), launch(), take_apps_changed(), update_status
 ```
 
 - Apps are identified by component name (`package/activity`). Banner (320×180, Leanback) preferred; icon (96×96) as fallback.
-- Manifest: `MAIN`+`LEANBACK_LAUNCHER` and `MAIN`+`HOME`+`DEFAULT`; `<queries>` for `LEANBACK_LAUNCHER` (no `QUERY_ALL_PACKAGES`); `leanback` and `touchscreen` features `required="false"`; `allowBackup="false"`. `INTERNET` and `REQUEST_INSTALL_PACKAGES` for launcher updates only.
+- Manifest: `MAIN`+`LEANBACK_LAUNCHER` and `MAIN`+`HOME`+`DEFAULT`; `<queries>` for `LEANBACK_LAUNCHER` and `LAUNCHER` (no `QUERY_ALL_PACKAGES`); `leanback` and `touchscreen` features `required="false"`; `allowBackup="false"`. `INTERNET` and `REQUEST_INSTALL_PACKAGES` for launcher updates only.
 - Updates (D18, SECURITY.md § Launcher updates): `Updater.kt` reads GitHub's latest release on resume when the last check is over a day old, and on OK in About; the APK and `SHA256SUMS` are downloaded only when the user installs. Network work runs on one background thread; Rust polls a coarse status string (`UpdateStatus`) every 500 ms only while About is open or a step runs, so the home screen gets no extra work.
 - Lifecycle: Slint's Android event listener forwards `Pause`/`Resume` to `Lifecycle`. `LauncherActivity` registers a runtime receiver for package added/changed/removed/replaced (manifest receivers no longer get these since Android 8); it sets a flag in `Bridge`, and resume re-reads the app list only when `Platform::take_apps_changed` reports it.
 - ABIs: `arm64-v8a`, `armeabi-v7a` (32-bit userspace TVs) and `x86_64` (emulator), one APK per ABI (Gradle ABI splits, `app-<abi>-release.apk`).

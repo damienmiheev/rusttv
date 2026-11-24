@@ -394,6 +394,7 @@ mod tests {
             id: "com.example.b/.Main".to_owned(),
             label: "B".to_owned(),
             category: crate::model::Category::Other,
+            start_hidden: false,
         }]);
         assert_eq!(
             home.tiles()[1..],
@@ -502,6 +503,7 @@ mod tests {
             id: "com.example.b/.Main".to_owned(),
             label: "B".to_owned(),
             category: crate::model::Category::Other,
+            start_hidden: false,
         }]);
         assert_eq!(
             home.tiles(),
@@ -529,6 +531,7 @@ mod tests {
             id: "com.example.b/.Main".to_owned(),
             label: "B".to_owned(),
             category: crate::model::Category::Other,
+            start_hidden: false,
         }]);
         assert!(
             !home

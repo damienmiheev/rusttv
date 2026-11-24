@@ -14,6 +14,10 @@ field in `--json` output says which contract you get, CLI.md).
 - Linux: Home while an app is still opening leaves it in the background.
   Its window, when it comes, is minimized instead of covering Home, until
   the app is opened again.
+- Apps that only have a phone launcher entry (no TV entry) are now found
+  and start hidden in the Hidden apps tile so a fresh Home stays clean;
+  unhide any you want to put on Home. An app with a TV entry still shows
+  only that one.
 - The About page opens with less work: the licence notices are read straight
   from the APK (no Java string conversions), ahead of time on a background
   thread after the first frame, and kept after the page closes instead of

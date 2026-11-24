@@ -3490,6 +3490,7 @@ mod tests {
             id: format!("{name}/.Main"),
             label: name.to_uppercase(),
             category: Category::Other,
+            start_hidden: false,
         }))
     }
 

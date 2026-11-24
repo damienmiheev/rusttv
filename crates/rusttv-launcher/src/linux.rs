@@ -385,6 +385,7 @@ impl Platform for LinuxPlatform {
                     id: id.clone(),
                     label: entry.name.clone(),
                     category: entry.category,
+                    start_hidden: false,
                 },
                 artwork: if entry.icon.is_some() {
                     Artwork::Later
