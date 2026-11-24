@@ -154,7 +154,7 @@ plugin sandbox rule out B; the unstable v1 format means pinning anyway;
 its engine, headless CLI and bidi text are strong and would take long to
 rebuild (A). Main risk: merge cost — upstream moves every few days and
 carries its own egui and winit forks, so we rebase on our schedule, not
-theirs. Decision: § 16 Q1.
+theirs. **Owner decision 2026-11-24: C** (§ 16 Q1).
 
 ## 4. Locked surfaces and safety rules
 
@@ -1296,7 +1296,8 @@ the measurement APK) starts with the owner's go-ahead in that session.
 ## 16. Open questions for the owner
 
 1. **Editor (§ 3):** A, B or C, after the step 0 spike. — Spike done
-   (§ 3.1); **recommended: C**, a pinned fork of FigCraft.
+   (§ 3.1); **recommended: C**, a pinned fork of FigCraft. — **Decided
+   2026-11-24: C.**
 2. **Name and home:** "Panel Studio"? In this repository until it has its
    own release cycle?
 3. **One click for look settings** (from the PR #59 discussion): may knob
