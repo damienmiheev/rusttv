@@ -41,7 +41,10 @@ panel, a banner, a line on the idle screen, the phone. "Panels" is the word for 
    step 4: on resume and focus changes only; there is no clock yet.)
 9. **One instance, many faces.** A panel can show as a tile, a row and a
    corner glyph at once, all from one data source. **Never** two copies of
-   one panel (no "Weather for Kyiv and for Lviv").
+   one panel (no "Weather for Kyiv and for Lviv"). *Amended 2026-11-24
+   (PANEL_STUDIO.md Q14):* a panel may be added any number of times, each
+   copy with its own knobs and placement, within the memory and node
+   budget.
 10. **Rendering, one generic contract:** a panel returns typed data. RustTV
     draws every face, the page included, from a small fixed set of shared
     templates and blocks (§ 4). Panels bring no Slint of their own, built-in
@@ -51,7 +54,9 @@ panel, a banner, a line on the idle screen, the phone. "Panels" is the word for 
     review:* data-only panels (level 2) are parked like level 3 until their
     data source (§ 9 Q1) is decided; § 7 keeps their safety rules as notes.
     Code from other people (level 3) stays parked behind a SECURITY.md
-    decision.
+    decision. *Amended 2026-11-24 (PANEL_STUDIO.md Q4):* level 2 is lifted;
+    user packages are built per PANEL_STUDIO.md, always installed through
+    the review and code on the TV.
 12. **Actions:** a fixed list (§ 5). Nothing else, ever.
 13. **No off switch**, except panels that use the network or share data
     (*after review*): those get one, like "Check for updates automatically",
@@ -505,7 +510,10 @@ input is already dropped on the review screen (SECURITY.md § RustTV
 Remote). Long press on a panel tile shows the tile's usual menu (Move today;
 § 6), with up to two panel actions above it once a panel has some. A panel
 can't launch apps, open links, reach the network, or talk to the phone on
-its own.
+its own. *Amended 2026-11-24 (PANEL_STUDIO.md Q7):* a user panel may open
+an app after a key press, only an app named on its install review and in
+the launcher's visible app list (never Settings, SystemUI, installers or
+the launcher).
 
 ## 6. Home, the order file and the phone
 
@@ -632,7 +640,9 @@ recording installs in History needs a snapshot field and a format bump.
 "No code" is not "no risk". Rules any format must keep:
 - text follows the folder-name rules (`is_folder_name`) plus bidi stripping
   (HISTORY.md § 8.5), so a panel can't spoof "Press OK to approve";
-- icons come from a built-in set only; no decoded images;
+- icons come from a built-in set only; no decoded images (*amended
+  2026-11-24, PANEL_STUDIO.md Q15:* PNG images are allowed in user
+  packages under PANEL_STUDIO.md § 5.1's limits);
 - a data-only panel never draws on the review screen, and a change it
   requests shows its source there.
 
