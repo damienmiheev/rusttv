@@ -328,7 +328,9 @@ thumbnail.png         for the studio and the Panels page (never on locked surfac
   every variant can use its full node budget); per-variant caps on shadows (4), blur layers
   (0 on TV v2, § 6.2), running animations (2), bindings (100); installed
   packages ≤ 32 and ≤ 64 MiB in total; `package.json` ≤ 2 MiB, JSON
-  nested ≤ 32 deep; meta lists (`requires`, `faces`, `sources`,
+  nested ≤ 40 deep (a node 8 levels down with an expression 8 deep fits;
+  readers need a 1 MiB stack); expressions ≤ 8 deep and ≤ 64 parts, every
+  value inside them counted in the document's 8 192; meta lists (`requires`, `faces`, `sources`,
   `actions`) ≤ 32 entries, no duplicates; texts after cleaning: name 24,
   author 40, licence 64, description 280 characters, homepage 200 bytes.
   Over a limit = refused with a code.
@@ -659,6 +661,33 @@ a removed one is deprecated for one release first.
   are total functions with fuel per evaluation and per frame, depth and
   output-length caps, cycle detection at validation, no panics, evaluated
   off the UI thread when they get large.
+- **As built (step 2a, expressions slice, 2026-11-24; owner chose a JSON
+  tree over a text language)**: an expression is a literal (string,
+  number, yes/no) or one of `{"source": "group.field"}`,
+  `{"msg": id, "args": {name: expr}}`, `{"if": [c, a, b]}`,
+  `{"call": f, "args": [...]}`, with `f` one of not, and, or, eq, ne, lt,
+  le, gt, ge, add, sub, mul, div, min, max, round, concat, text,
+  format_time (numeric patterns `HH H hh h mm ss dd d MM M yyyy a`; `'`
+  reserved for quoting; day and month names come with locale formatting).
+  Types (yes/no, number, text, colour, time) are checked when the package
+  is read; a string literal is a colour only where one is wanted. A node's
+  `bindings` set text, color, fill, tint, value, opacity or visible, each
+  where its literal property is allowed, and the literal property is the
+  fallback while a binding has no value (≤ 100 bindings a variant).
+  `meta.sources` lists groups (clock, theme, updater, device, storage,
+  network, phones, history); an expression may read only listed groups,
+  and a group's tier is shown on review. Evaluation is total: a missing
+  source, a division by 0, an out-of-range number or spent fuel gives no
+  value; the host passes one fuel budget per frame. Texts an expression
+  makes are cut to 500 characters and cleaned again. No variables, so no
+  cycles. Messages bindings use must exist in the default table with the
+  placeholders they fill. Binding states beyond value/no value, `stale`,
+  variant switching on state, knobs, tokens and locals come with later
+  slices. Number literals are at most 2^53 in size (`OUT_OF_RANGE`); a
+  colour literal that doesn't parse is `BAD_COLOR`. Codes:
+  `BAD_EXPRESSION`, `UNKNOWN_FUNCTION`, `TYPE_MISMATCH`,
+  `UNKNOWN_SOURCE`, `UNDECLARED_SOURCE`, `EXPRESSION_TOO_LARGE`,
+  `TOO_MANY_BINDINGS`.
 - **Later sources**, each with its own SECURITY.md section: web data
   through one RustTV fetcher with fixed endpoints and no package-supplied
   parameters; data from an app's content provider the person allows; data
@@ -1335,7 +1364,7 @@ the measurement APK) starts with the owner's go-ahead in that session.
    (all answered 2026-11-24); Q12 before 4e; Q5 before step 7.
    - 2a `rusttv-panels`: types, validator, JSON Schema, expressions,
      message tables, zip reader, fuzz targets (no UI; meta, document and
-     message tables done 2026-11-24); `rusttv panel
+     message tables and expressions done 2026-11-24); `rusttv panel
      pack` for people, so packages can be made and tested before the
      studio (unsigned until 4b). Until 4b a package reaches only the
      desktop launcher, or a debug-build TV loader that is compiled out of

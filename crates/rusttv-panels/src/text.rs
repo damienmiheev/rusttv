@@ -28,6 +28,17 @@ const ZWJ: char = '\u{200D}';
 /// - runs of combining marks are capped at four;
 /// - the ends are trimmed.
 pub fn clean_text(text: &str) -> String {
+    let mut out = clean_keeping_ends(text);
+    let end = out.trim_end().len();
+    out.truncate(end);
+    let start = out.len() - out.trim_start().len();
+    out.drain(..start);
+    out
+}
+
+/// [`clean_text`] without trimming the ends, for pieces that are joined
+/// with others (an expression's `" · "`).
+pub(crate) fn clean_keeping_ends(text: &str) -> String {
     let normalised: Vec<char> = text
         .chars()
         .filter_map(|c| match c {
@@ -60,10 +71,6 @@ pub fn clean_text(text: &str) -> String {
             out.push(c);
         }
     }
-    let end = out.trim_end().len();
-    out.truncate(end);
-    let start = out.len() - out.trim_start().len();
-    out.drain(..start);
     out
 }
 

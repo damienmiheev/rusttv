@@ -3,10 +3,12 @@
 //!
 //! This slice has the node kinds that need no bindings or components:
 //! frame, group, rectangle, ellipse, line, text, image and progress, with literal
-//! values. Bindings, `repeat`, components, vectors and widgets come with the
-//! expression and component slices of step 2a.
+//! values, and bindings: a node's `bindings` set some of its properties from
+//! expressions, with the literal property as the fallback. `repeat`,
+//! components, vectors and widgets come with the component slice of step 2a.
 
 use crate::error::{Code, PackageError, Position};
+use crate::expr::{self, Expr, Type};
 use crate::meta::{Face, Meta, Name, limits};
 use crate::text::Text;
 use serde::Deserialize;
@@ -300,6 +302,57 @@ pub struct Node {
     /// Progress: how full, 0 to 1.
     #[serde(default)]
     pub value: Option<f32>,
+
+    /// Properties set from expressions; the literal property above is the
+    /// fallback while a binding has no value.
+    #[serde(default)]
+    pub bindings: Bindings,
+}
+
+/// A node's bound properties. Each is allowed where its literal property
+/// is; `opacity` and `visible` on every kind.
+#[derive(Debug, Clone, PartialEq, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[non_exhaustive]
+pub struct Bindings {
+    /// Text: the text.
+    #[serde(default)]
+    pub text: Option<Expr>,
+    /// Text, progress: the colour.
+    #[serde(default)]
+    pub color: Option<Expr>,
+    /// Frame, rectangle, ellipse, progress: the fill.
+    #[serde(default)]
+    pub fill: Option<Expr>,
+    /// Image: the tint.
+    #[serde(default)]
+    pub tint: Option<Expr>,
+    /// Progress: how full, 0 to 1 (clamped).
+    #[serde(default)]
+    pub value: Option<Expr>,
+    /// Any kind: 0 to 1 (clamped).
+    #[serde(default)]
+    pub opacity: Option<Expr>,
+    /// Any kind: whether it is drawn (fallback: yes).
+    #[serde(default)]
+    pub visible: Option<Expr>,
+}
+
+impl Bindings {
+    /// Each bound property with its name and the type it wants.
+    pub fn iter(&self) -> impl Iterator<Item = (&'static str, Type, &Expr)> {
+        [
+            ("text", Type::Text, &self.text),
+            ("color", Type::Color, &self.color),
+            ("fill", Type::Color, &self.fill),
+            ("tint", Type::Color, &self.tint),
+            ("value", Type::Number, &self.value),
+            ("opacity", Type::Number, &self.opacity),
+            ("visible", Type::Bool, &self.visible),
+        ]
+        .into_iter()
+        .filter_map(|(name, want, expr)| expr.as_ref().map(|expr| (name, want, expr)))
+    }
 }
 
 const fn one() -> f32 {
@@ -372,6 +425,7 @@ fn root_fits(face: Face, size: SizeClass, w: f32, h: f32) -> bool {
 /// Checks the document against itself and against `meta`.
 pub(crate) fn check(document: &Document, meta: &Meta) -> Result<(), PackageError> {
     let declared: BTreeSet<&str> = meta.requires.iter().map(Name::as_str).collect();
+    let sources: BTreeSet<&str> = meta.sources.iter().map(Name::as_str).collect();
     if document.variants.len() > limits::VARIANTS {
         return Err(PackageError::new(
             Code::TooMany,
@@ -405,8 +459,10 @@ pub(crate) fn check(document: &Document, meta: &Meta) -> Result<(), PackageError
             variant: variant_index,
             count: 0,
             shadows: 0,
+            bindings: 0,
             ids: BTreeSet::new(),
             declared: &declared,
+            sources: &sources,
         };
         walk.node(&variant.root, 1)?;
     }
@@ -424,13 +480,46 @@ pub(crate) fn check(document: &Document, meta: &Meta) -> Result<(), PackageError
     Ok(())
 }
 
+/// Calls `f` with every binding's position and expression, depth-first.
+pub(crate) fn each_binding<'a>(
+    document: &'a Document,
+    f: &mut dyn FnMut(Position, &'a Expr) -> Result<(), PackageError>,
+) -> Result<(), PackageError> {
+    fn walk<'a>(
+        node: &'a Node,
+        variant: usize,
+        count: &mut usize,
+        f: &mut dyn FnMut(Position, &'a Expr) -> Result<(), PackageError>,
+    ) -> Result<(), PackageError> {
+        let index = *count;
+        *count += 1;
+        for (property, _, expr) in node.bindings.iter() {
+            let at = Position::Binding {
+                variant,
+                node: index,
+                property,
+            };
+            f(at, expr)?;
+        }
+        node.children
+            .iter()
+            .try_for_each(|child| walk(child, variant, count, f))
+    }
+    for (variant, v) in document.variants.iter().enumerate() {
+        walk(&v.root, variant, &mut 0, f)?;
+    }
+    Ok(())
+}
+
 /// A depth-first walk of one variant, counting against its limits.
 struct Walk<'a> {
     variant: usize,
     count: usize,
     shadows: usize,
+    bindings: usize,
     ids: BTreeSet<&'a str>,
     declared: &'a BTreeSet<&'a str>,
+    sources: &'a BTreeSet<&'a str>,
 }
 
 impl<'a> Walk<'a> {
@@ -452,6 +541,18 @@ impl<'a> Walk<'a> {
         }
         if let Err(code) = check_node(node) {
             return fail(code);
+        }
+        for (property, want, expr) in node.bindings.iter() {
+            let at = Position::Binding {
+                variant: self.variant,
+                node: self.count - 1,
+                property,
+            };
+            self.bindings += 1;
+            if self.bindings > limits::BINDINGS {
+                return Err(PackageError::new(Code::TooManyBindings, at));
+            }
+            expr::check(expr, want, self.sources).map_err(|code| PackageError::new(code, at))?;
         }
         self.shadows += node.shadows.len();
         if self.shadows > limits::SHADOWS {
@@ -489,9 +590,13 @@ fn check_node(node: &Node) -> Result<(), Code> {
     range(node.value.is_none_or(|v| in_range(v, 0.0..=1.0)))?;
 
     let k = node.kind;
+    let b = &node.bindings;
     let allowed = |set: &[NodeKind]| set.contains(&k);
     let present: [(bool, &[NodeKind]); 14] = [
-        (node.fill.is_some(), &[Frame, Rectangle, Ellipse, Progress]),
+        (
+            node.fill.is_some() || b.fill.is_some(),
+            &[Frame, Rectangle, Ellipse, Progress],
+        ),
         (node.radius.is_some(), &[Frame, Rectangle, Progress]),
         (node.stroke.is_some(), &[Frame, Rectangle, Ellipse, Line]),
         (
@@ -500,17 +605,20 @@ fn check_node(node: &Node) -> Result<(), Code> {
         ),
         (node.clip, &[Frame, Group]),
         (!node.children.is_empty(), &[Frame, Group]),
-        (node.text.is_some(), &[Text]),
+        (node.text.is_some() || b.text.is_some(), &[Text]),
         (node.size.is_some(), &[Text]),
         (node.weight.is_some(), &[Text]),
-        (node.color.is_some(), &[Text, Progress]),
+        (node.color.is_some() || b.color.is_some(), &[Text, Progress]),
         (
             node.align.is_some() || node.max_lines.is_some() || node.italic,
             &[Text],
         ),
         (node.asset.is_some(), &[Image]),
-        (node.fit.is_some() || node.tint.is_some(), &[Image]),
-        (node.value.is_some(), &[Progress]),
+        (
+            node.fit.is_some() || node.tint.is_some() || b.tint.is_some(),
+            &[Image],
+        ),
+        (node.value.is_some() || b.value.is_some(), &[Progress]),
     ];
     if present.iter().any(|(has, kinds)| *has && !allowed(kinds)) {
         return Err(Code::NotForKind);
@@ -890,6 +998,87 @@ mod tests {
         };
         assert_eq!(at.to_string(), "document.variants[2] node 7");
         assert_eq!(AssetName::parse("Logo"), Err(Code::BadAssetName));
+    }
+
+    fn bound(child: &str) -> Result<(), PackageError> {
+        let text = package(r#""tile""#, "", &tile(child)).replace(
+            r#""faces""#,
+            r#""sources": ["network", "history"], "faces""#,
+        );
+        let can = Capabilities::new(Version::new(0, 5, 0), ["shadow"]);
+        parse_package(&text, &can).map(|_| ())
+    }
+
+    #[test]
+    fn bindings_are_checked_with_their_node() {
+        let ok = r##"{"id": "t", "type": "text", "w": 100, "h": 20, "text": "…", "size": 14,
+            "bindings": {"text": {"call": "text", "args": [{"source": "history.waiting"}]},
+                         "color": {"if": [{"source": "network.connected"}, "#ffffff", "#888888"]},
+                         "visible": {"call": "gt", "args": [{"source": "history.waiting"}, 0]}}}"##;
+        assert_eq!(bound(ok), Ok(()));
+        let wrong_kind =
+            r#"{"id": "e", "type": "ellipse", "w": 1, "h": 1, "bindings": {"text": "x"}}"#;
+        assert_eq!(bound(wrong_kind).unwrap_err().code, Code::NotForKind);
+        let undeclared = r#"{"id": "e", "type": "ellipse", "w": 1, "h": 1, "bindings": {"visible": {"source": "clock.hour24"}}}"#;
+        let error = bound(undeclared).unwrap_err();
+        assert_eq!(
+            (error.code, error.at),
+            (
+                Code::UndeclaredSource,
+                Position::Binding {
+                    variant: 0,
+                    node: 1,
+                    property: "visible"
+                }
+            )
+        );
+        assert_eq!(
+            error.to_string(),
+            "UNDECLARED_SOURCE at document.variants[0] node 1 bindings.visible"
+        );
+        let wrong_type =
+            r#"{"id": "e", "type": "ellipse", "w": 1, "h": 1, "bindings": {"opacity": true}}"#;
+        assert_eq!(bound(wrong_type).unwrap_err().code, Code::TypeMismatch);
+        let unknown = r#"{"id": "e", "type": "ellipse", "w": 1, "h": 1, "bindings": {"size": 3}}"#;
+        assert_eq!(bound(unknown).unwrap_err().code, Code::UnknownField);
+    }
+
+    #[test]
+    fn bindings_are_capped_per_variant() {
+        let node = |i| {
+            format!(
+                r#"{{"id": "n{i}", "type": "ellipse", "w": 1, "h": 1, "bindings": {{"opacity": 1, "visible": true}}}}"#
+            )
+        };
+        let half = limits::BINDINGS / 2;
+        assert_eq!(
+            bound(&(0..half).map(node).collect::<Vec<_>>().join(",")),
+            Ok(())
+        );
+        assert_eq!(
+            bound(&(0..=half).map(node).collect::<Vec<_>>().join(","))
+                .unwrap_err()
+                .code,
+            Code::TooManyBindings
+        );
+    }
+
+    #[test]
+    fn meta_sources_must_be_known_groups() {
+        let text = package(r#""tile""#, "", &tile(""))
+            .replace(r#""faces""#, r#""sources": ["clock", "ssid"], "faces""#);
+        let can = Capabilities::new(Version::new(0, 5, 0), ["shadow"]);
+        let error = parse_package(&text, &can).unwrap_err();
+        assert_eq!(
+            (error.code, error.at),
+            (
+                Code::UnknownSource,
+                Position::Field {
+                    path: "meta.sources",
+                    index: Some(1)
+                }
+            )
+        );
     }
 
     #[test]
