@@ -245,6 +245,11 @@ impl Language {
             .ok_or(Code::BadLanguage)
     }
 
+    /// English, the last fallback.
+    pub const fn english() -> Self {
+        Self("en")
+    }
+
     /// The code, e.g. `pt_BR`.
     pub const fn code(self) -> &'static str {
         self.0

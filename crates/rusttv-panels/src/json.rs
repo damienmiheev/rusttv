@@ -17,8 +17,15 @@ use std::fmt;
 
 /// Checks `text`: an object whose `meta` (if present) is an object, no
 /// duplicate keys, nesting no deeper than `max_depth`, structs in
-/// `document` as objects and no more than `max_objects` of them.
-pub(crate) fn check(text: &str, max_depth: usize, max_objects: usize) -> Result<(), PackageError> {
+/// `document` as objects and no more than `max_objects` of them. With
+/// `package` false (a strings table) the root keys `meta` and `document`
+/// mean nothing special.
+pub(crate) fn check(
+    text: &str,
+    max_depth: usize,
+    max_objects: usize,
+    package: bool,
+) -> Result<(), PackageError> {
     let mut reader = serde_json::Deserializer::from_str(text);
     let objects = Cell::new(0);
     Node {
@@ -28,6 +35,7 @@ pub(crate) fn check(text: &str, max_depth: usize, max_objects: usize) -> Result<
         in_document: false,
         objects: &objects,
         max_objects,
+        package,
     }
     .deserialize(&mut reader)
     .and_then(|()| reader.end())
@@ -46,6 +54,8 @@ struct Node<'a> {
     /// Objects seen inside `document` so far.
     objects: &'a Cell<usize>,
     max_objects: usize,
+    /// `package.json`, whose root `meta` and `document` have rules.
+    package: bool,
 }
 
 impl Node<'_> {
@@ -122,7 +132,7 @@ impl<'de> Visitor<'de> for Node<'_> {
             }
         }
         let mut keys = HashSet::new();
-        let at_root = self.depth == 0;
+        let at_root = self.package && self.depth == 0;
         while let Some(key) = map.next_key::<String>()? {
             let document = at_root && key == "document";
             let in_document = self.in_document || document;
@@ -144,7 +154,7 @@ mod tests {
     use crate::error::Position;
 
     fn code(text: &str) -> Option<Code> {
-        check(text, 4, 3).err().map(|e| e.code)
+        check(text, 4, 3, true).err().map(|e| e.code)
     }
 
     #[test]
@@ -154,7 +164,7 @@ mod tests {
 
     #[test]
     fn a_duplicate_key_is_refused_with_its_line() {
-        let error = check("{\n\"a\": 1,\n\"a\": 2\n}", 4, 3).unwrap_err();
+        let error = check("{\n\"a\": 1,\n\"a\": 2\n}", 4, 3, true).unwrap_err();
         assert_eq!(error.code, Code::DuplicateKey);
         assert!(matches!(error.at, Position::Line { line: 3, .. }));
     }
@@ -199,6 +209,14 @@ mod tests {
     }
 
     #[test]
+    fn a_table_has_no_package_keys() {
+        assert_eq!(
+            check(r#"{"meta":[],"document":{"a":{}}}"#, 4, 0, false),
+            Ok(())
+        );
+    }
+
+    #[test]
     fn objects_in_the_document_are_counted() {
         assert_eq!(code(r#"{"document":{"v":[{},{}]}}"#), None);
         assert_eq!(
@@ -223,7 +241,7 @@ mod tests {
 
     #[test]
     fn the_error_never_contains_the_packages_text() {
-        let error = check(r#"{"secret-key":1,"secret-key":2}"#, 4, 3).unwrap_err();
+        let error = check(r#"{"secret-key":1,"secret-key":2}"#, 4, 3, true).unwrap_err();
         assert!(!error.to_string().contains("secret"));
     }
 }

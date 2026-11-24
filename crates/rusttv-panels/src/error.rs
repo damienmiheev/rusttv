@@ -107,6 +107,21 @@ codes! {
     /// The document uses a renderer feature `meta.requires` doesn't list
     /// (unlike [`Code::RequiresFeature`], a feature this launcher lacks).
     UndeclaredFeature => "UNDECLARED_FEATURE",
+    /// A message id that isn't `[a-z0-9_.-]{1,64}`.
+    BadMessageId => "BAD_MESSAGE_ID",
+    /// A `{placeholder}` that isn't `[a-z0-9_]{1,32}`, or a lone `{` or `}`
+    /// (write `{{` and `}}` for braces), or more than
+    /// [`crate::limits::PLACEHOLDERS`] in one text.
+    BadPlaceholder => "BAD_PLACEHOLDER",
+    /// A plural form the language doesn't have, or no `other` form.
+    BadPlural => "BAD_PLURAL",
+    /// A translation of a message the default language doesn't have.
+    UnknownMessage => "UNKNOWN_MESSAGE",
+    /// A translation that uses a placeholder (or plural count) its default
+    /// language message doesn't have.
+    PlaceholderMismatch => "PLACEHOLDER_MISMATCH",
+    /// Translations without a table for the default language.
+    NoDefaultStrings => "NO_DEFAULT_STRINGS",
 }
 
 impl Code {
@@ -146,6 +161,11 @@ pub enum Position {
         /// Depth-first index from the variant's root.
         node: usize,
     },
+    /// A message in a strings table, by its place in the file (from 0).
+    Message {
+        /// Its place in the file.
+        index: usize,
+    },
     /// A field path built only from this format's own field names, e.g.
     /// `meta.requires`, and an index into a list; never a key from the package.
     Field {
@@ -168,11 +188,31 @@ impl fmt::Display for Position {
             Self::File => f.write_str("file"),
             Self::Line { line, column } => write!(f, "line {line} column {column}"),
             Self::Node { variant, node } => write!(f, "document.variants[{variant}] node {node}"),
+            Self::Message { index } => write!(f, "message {index}"),
             Self::Field { path, index: None } => f.write_str(path),
             Self::Field {
                 path,
                 index: Some(index),
             } => write!(f, "{path}[{index}]"),
+        }
+    }
+}
+
+/// Which file of the package.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum PackageFile {
+    /// `package.json`.
+    PackageJson,
+    /// `strings/<language>.json`.
+    Strings(crate::Language),
+}
+
+impl fmt::Display for PackageFile {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::PackageJson => f.write_str("package.json"),
+            Self::Strings(language) => write!(f, "strings/{}.json", language.code()),
         }
     }
 }
@@ -183,7 +223,9 @@ impl fmt::Display for Position {
 pub struct PackageError {
     /// What is wrong.
     pub code: Code,
-    /// Where.
+    /// In which file.
+    pub file: PackageFile,
+    /// Where in it.
     pub at: Position,
     /// For [`Code::PackageTooNew`], the launcher version the package asks
     /// for, when it says so; a version is ours to print, not free text.
@@ -194,9 +236,14 @@ impl PackageError {
     pub(crate) const fn new(code: Code, at: Position) -> Self {
         Self {
             code,
+            file: PackageFile::PackageJson,
             at,
             needs: None,
         }
+    }
+
+    pub(crate) const fn in_file(self, file: PackageFile) -> Self {
+        Self { file, ..self }
     }
 
     /// Turns a serde_json error from the raw pass into a code and a line,
@@ -228,7 +275,11 @@ impl PackageError {
 
 impl fmt::Display for PackageError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} at {}", self.code, self.at)?;
+        write!(f, "{} at ", self.code)?;
+        if self.file != PackageFile::PackageJson {
+            write!(f, "{} ", self.file)?;
+        }
+        write!(f, "{}", self.at)?;
         if let Some(version) = self.needs {
             write!(f, " (needs RustTV {version})")?;
         }

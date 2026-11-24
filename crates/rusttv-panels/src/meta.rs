@@ -257,6 +257,14 @@ pub mod limits {
     pub const DEPTH: usize = 8;
     /// Drop shadows in one variant.
     pub const SHADOWS: usize = 4;
+    /// Strings in one message table (each plural form counts).
+    pub const STRINGS: usize = 2000;
+    /// Placeholders in one text.
+    pub const PLACEHOLDERS: usize = 16;
+    /// Characters of a value filled into a placeholder; longer ones are cut.
+    pub const ARG: usize = 500;
+    /// Largest `strings/<lang>.json`, in bytes.
+    pub const STRINGS_JSON: usize = 1 << 20;
     /// Variants in a document.
     pub const VARIANTS: usize = 32;
     /// JSON objects inside `document` (nodes, variants, strokes, shadows),
