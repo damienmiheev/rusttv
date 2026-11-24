@@ -583,7 +583,7 @@ a removed one is deprecated for one release first.
   the TV each time they change, and are never set from the phone. Over the MCP an
   agent edits a project's knob defaults, never live values on a TV. Changing a knob on the TV is
   RustTV's own look: one click, undone by another, recorded in History
-  (§ 16 Q3).
+  (owner decision Q3, 2026-11-24).
 - **Look lock** (optional, for families): with it on, knob, placement,
   theme and named-look changes, schedules, quiet hours and instances, the
   Panels and Themes pages, and every write in § 9 (install, update,
@@ -686,8 +686,8 @@ dim after a set time.
   Image, text, app and list knob values come back at their defaults
   unless listed on that review. Under the look lock the PIN is needed too. After
   that, switching it off and on again, reordering, one-click knob values
-  and picks among installed themes are look settings (one click or code —
-  § 16 Q3). A placement listed on the install review is approved with the
+  and picks among installed themes are look settings: one click (owner
+  decision Q3, 2026-11-24). A placement listed on the install review is approved with the
   install.
 - Placement survives theme changes (the Home order is a flat list; the
   theme only decides how it wraps). The order file and History keep it
@@ -715,8 +715,12 @@ slot, so a peer can't keep the slot busy. The person opens it
 in Settings → Panels, which runs the validator **under a crash marker**
 (§ 9.6) and shows the review.
 
-The first install release (step 4b) serves people with a computer; the
-phone and TV-file routes (4e) make it work without one (§ 16 Q11).
+The first install release ships every route at once (owner decision Q11,
+2026-11-24): the computer (4b), the phone and a file on the TV (4e), so
+people without a computer can install from day one. Steps 4b–4e are
+released together, not one by one; if the step 1 spike finds no file
+picker on the Philips, the USB route ships where a picker exists and the
+Panels page says so elsewhere.
 
 - **From the computer**: `rusttv panel install <file>` / `rusttv theme
   install <file>` (also the studio's Install button and the MCP's plan
@@ -1163,8 +1167,8 @@ the measurement APK) starts with the owner's go-ahead in that session.
    app), Q14 (instances) and Q15 (decoded images) change the format and
    the renderer, so they are answered and dated before 2a starts
    (all four answered 2026-11-24); Q6 (fonts), Q13 (accessible
-   approvals), Q17 and Q18 before step 3 (answered 2026-11-24); Q3, Q11
-   and Q16 before step 4; Q12 before 4e; Q5 before step 7.
+   approvals), Q17 and Q18 before step 3; Q3, Q11 and Q16 before step 4
+   (all answered 2026-11-24); Q12 before 4e; Q5 before step 7.
    - 2a `rusttv-panels`: types, validator, JSON Schema, expressions,
      message tables, zip reader, fuzz targets (no UI); `rusttv panel
      pack` for people, so packages can be made and tested before the
@@ -1256,7 +1260,8 @@ the measurement APK) starts with the owner's go-ahead in that session.
 3. **One click for look settings** (from the PR #59 discussion): may knob
    changes, placement switches of installed panels and theme picks apply
    on one click (undone by another, recorded in History)? Install,
-   update, remove and anything new keep the code and hold.
+   update, remove and anything new keep the code and hold. — **Decided
+   2026-11-24: one click.**
 4. **Level 2:** lift PANELS.md decision 11 ("parked") with a dated
    decision, so user packages can be built? — **Decided 2026-11-24: lift
    it.**
@@ -1274,7 +1279,8 @@ the measurement APK) starts with the owner's go-ahead in that session.
 9. **Code panels (level 3) and settings actions:** later, each its own decision?
 10. **Web data sources** (weather…): later, each its own review?
 11. **Install from the phone and from a file on the TV:** in the first
-    install release (step 4e) or later?
+    install release (step 4e) or later? — **Decided 2026-11-24: in the
+    first install release.**
 12. **Phone mirror of user tiles as an image** rendered by the TV (no
     second renderer, no package JSON on the phone)?
 13. **Accessible approvals**, designed with SECURITY.md: an alternative to
@@ -1289,7 +1295,8 @@ the measurement APK) starts with the owner's go-ahead in that session.
     new runtime decoder, after the step 1 measurements? — **Decided
     2026-11-24: PNG now; the measurements only tune the limits.**
 16. **Look lock** for families (a PIN over look changes and installs):
-    in the first install release, or later?
+    in the first install release, or later? — **Decided 2026-11-24: in
+    the first install release (off by default).**
 17. **Safe-look exception**: may the safe-look key chord apply without
     plan and Approve (it only takes things away, is recorded in History,
     and can be undone), as a dated SECURITY.md exception? — **Decided
