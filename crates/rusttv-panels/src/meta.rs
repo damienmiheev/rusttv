@@ -87,18 +87,6 @@ impl fmt::Display for Version {
     }
 }
 
-/// Deserializes through a validating constructor that returns a [`Code`].
-macro_rules! deserialize_via {
-    ($type:ty, $parse:path) => {
-        impl<'de> Deserialize<'de> for $type {
-            fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-                let raw = String::deserialize(deserializer)?;
-                $parse(&raw).map_err(|code: Code| serde::de::Error::custom(code.as_str()))
-            }
-        }
-    };
-}
-
 deserialize_via!(Version, Version::parse);
 
 /// `true` for `[a-z0-9-]{1,32}` that neither starts nor ends with `-`.
@@ -133,6 +121,14 @@ impl Name {
     /// The name.
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+
+    /// `default`, a variant's state when it names none.
+    /// The state a variant has when it names none.
+    pub(crate) const DEFAULT_STATE: &str = "default";
+
+    pub(crate) fn default_state() -> Self {
+        Self(Self::DEFAULT_STATE.to_owned())
     }
 }
 
@@ -251,6 +247,21 @@ pub mod limits {
     pub const DESCRIPTION: usize = 280;
     /// The homepage URL.
     pub const URL: usize = 200;
+    /// A text node's text.
+    pub const TEXT: usize = 500;
+    /// A node's accessibility label.
+    pub const LABEL: usize = 200;
+    /// Nodes in one variant.
+    pub const NODES: usize = 500;
+    /// Nesting of nodes in one variant (the root is 1).
+    pub const DEPTH: usize = 8;
+    /// Drop shadows in one variant.
+    pub const SHADOWS: usize = 4;
+    /// Variants in a document.
+    pub const VARIANTS: usize = 32;
+    /// JSON objects inside `document` (nodes, variants, strokes, shadows),
+    /// counted before parsing so a large file can't build a large tree.
+    pub const DOCUMENT_OBJECTS: usize = 8192;
 }
 
 /// The homepage: an `https://` link with a plain host (ASCII letters,

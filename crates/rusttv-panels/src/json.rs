@@ -5,21 +5,29 @@
 //! § 5.1: duplicate keys are errors). Derived structs also accept a JSON array
 //! in place of an object, which would give a package a second spelling. This
 //! pass walks the whole document once before typed parsing and refuses all
-//! three: the file and its `meta` must be objects.
+//! three: the file, its `meta` and every struct in `document` (the document,
+//! each list entry, `root`, `stroke`) must be objects. It also counts the
+//! objects in `document`, so a large file can't build a large tree.
 
 use crate::error::{Code, PackageError};
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
+use std::cell::Cell;
 use std::collections::HashSet;
 use std::fmt;
 
 /// Checks `text`: an object whose `meta` (if present) is an object, no
-/// duplicate keys, nesting no deeper than `max_depth`.
-pub(crate) fn check(text: &str, max_depth: usize) -> Result<(), PackageError> {
+/// duplicate keys, nesting no deeper than `max_depth`, structs in
+/// `document` as objects and no more than `max_objects` of them.
+pub(crate) fn check(text: &str, max_depth: usize, max_objects: usize) -> Result<(), PackageError> {
     let mut reader = serde_json::Deserializer::from_str(text);
+    let objects = Cell::new(0);
     Node {
         depth: 0,
         max_depth,
         must_be_object: true,
+        in_document: false,
+        objects: &objects,
+        max_objects,
     }
     .deserialize(&mut reader)
     .and_then(|()| reader.end())
@@ -28,22 +36,28 @@ pub(crate) fn check(text: &str, max_depth: usize) -> Result<(), PackageError> {
 
 /// One JSON value at a given depth.
 #[derive(Clone, Copy)]
-struct Node {
+struct Node<'a> {
     depth: usize,
     max_depth: usize,
-    /// The file itself and its `meta`.
+    /// The file itself, its `meta` and the structs in `document`.
     must_be_object: bool,
+    /// Inside `document`.
+    in_document: bool,
+    /// Objects seen inside `document` so far.
+    objects: &'a Cell<usize>,
+    max_objects: usize,
 }
 
-impl Node {
-    fn child<E: de::Error>(self, must_be_object: bool) -> Result<Self, E> {
+impl Node<'_> {
+    fn child<E: de::Error>(self, must_be_object: bool, in_document: bool) -> Result<Self, E> {
         if self.depth >= self.max_depth {
             return Err(E::custom(Code::TooDeep.as_str()));
         }
         Ok(Self {
             depth: self.depth + 1,
-            max_depth: self.max_depth,
             must_be_object,
+            in_document,
+            ..self
         })
     }
 
@@ -56,7 +70,7 @@ impl Node {
     }
 }
 
-impl<'de> DeserializeSeed<'de> for Node {
+impl<'de> DeserializeSeed<'de> for Node<'_> {
     type Value = ();
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<(), D::Error> {
@@ -64,7 +78,7 @@ impl<'de> DeserializeSeed<'de> for Node {
     }
 }
 
-impl<'de> Visitor<'de> for Node {
+impl<'de> Visitor<'de> for Node<'_> {
     type Value = ();
 
     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -87,21 +101,34 @@ impl<'de> Visitor<'de> for Node {
         self.not_object()
     }
     fn visit_unit<E: de::Error>(self) -> Result<(), E> {
-        self.not_object()
+        // `null` is how an optional struct (`"stroke": null`) says "none";
+        // where a struct is required, typed parsing refuses it.
+        Ok(())
     }
 
     fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
         self.not_object()?;
-        let child = self.child(false)?;
+        // Every list in the document is a list of structs.
+        let child = self.child(self.in_document, self.in_document)?;
         while seq.next_element_seed(child)?.is_some() {}
         Ok(())
     }
 
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
+        if self.in_document {
+            self.objects.set(self.objects.get() + 1);
+            if self.objects.get() > self.max_objects {
+                return Err(de::Error::custom(Code::TooManyNodes.as_str()));
+            }
+        }
         let mut keys = HashSet::new();
         let at_root = self.depth == 0;
         while let Some(key) = map.next_key::<String>()? {
-            let child = self.child(at_root && key == "meta")?;
+            let document = at_root && key == "document";
+            let in_document = self.in_document || document;
+            let struct_field = self.in_document && (key == "root" || key == "stroke");
+            let must_be_object = (at_root && key == "meta") || document || struct_field;
+            let child = self.child(must_be_object, in_document)?;
             if !keys.insert(key) {
                 return Err(de::Error::custom(Code::DuplicateKey.as_str()));
             }
@@ -117,7 +144,7 @@ mod tests {
     use crate::error::Position;
 
     fn code(text: &str) -> Option<Code> {
-        check(text, 4).err().map(|e| e.code)
+        check(text, 4, 3).err().map(|e| e.code)
     }
 
     #[test]
@@ -127,7 +154,7 @@ mod tests {
 
     #[test]
     fn a_duplicate_key_is_refused_with_its_line() {
-        let error = check("{\n\"a\": 1,\n\"a\": 2\n}", 4).unwrap_err();
+        let error = check("{\n\"a\": 1,\n\"a\": 2\n}", 4, 3).unwrap_err();
         assert_eq!(error.code, Code::DuplicateKey);
         assert!(matches!(error.at, Position::Line { line: 3, .. }));
     }
@@ -152,6 +179,36 @@ mod tests {
     }
 
     #[test]
+    fn structs_in_the_document_must_be_objects() {
+        assert_eq!(code(r#"{"document":[[]]}"#), Some(Code::WrongType));
+        assert_eq!(
+            code(r#"{"document":{"variants":[["tile"]]}}"#),
+            Some(Code::WrongType)
+        );
+        assert_eq!(
+            code(r#"{"document":{"root":["r","frame"]}}"#),
+            Some(Code::WrongType)
+        );
+        assert_eq!(
+            code(r#"{"document":{"stroke":[1]}}"#),
+            Some(Code::WrongType)
+        );
+        assert_eq!(code(r#"{"document":{"variants":[{"root":{}}]}}"#), None);
+        assert_eq!(code(r#"{"other":{"root":[1]}}"#), None);
+        assert_eq!(code(r#"{"document":{"stroke":null}}"#), None);
+    }
+
+    #[test]
+    fn objects_in_the_document_are_counted() {
+        assert_eq!(code(r#"{"document":{"v":[{},{}]}}"#), None);
+        assert_eq!(
+            code(r#"{"document":{"v":[{},{},{}]}}"#),
+            Some(Code::TooManyNodes)
+        );
+        assert_eq!(code(r#"{"meta":{"a":{"b":{}}},"x":[{},{},{},{}]}"#), None);
+    }
+
+    #[test]
     fn nesting_past_the_limit_is_refused() {
         assert_eq!(code(r#"{"a":[[[1]]]}"#), None);
         assert_eq!(code(r#"{"a":[[[[1]]]]}"#), Some(Code::TooDeep));
@@ -166,7 +223,7 @@ mod tests {
 
     #[test]
     fn the_error_never_contains_the_packages_text() {
-        let error = check(r#"{"secret-key":1,"secret-key":2}"#, 4).unwrap_err();
+        let error = check(r#"{"secret-key":1,"secret-key":2}"#, 4, 3).unwrap_err();
         assert!(!error.to_string().contains("secret"));
     }
 }

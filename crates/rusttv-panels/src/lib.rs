@@ -16,11 +16,30 @@
 //! 4. strict parsing: unknown fields are errors, every value checked;
 //! 5. checks across fields.
 
+/// Deserializes a type from a JSON string through its validating `parse`,
+/// which returns a [`Code`]; the code becomes serde's error text, which
+/// [`PackageError`] reads back.
+macro_rules! deserialize_via {
+    ($type:ty, $parse:path) => {
+        impl<'de> serde::Deserialize<'de> for $type {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let raw = String::deserialize(deserializer)?;
+                $parse(&raw).map_err(|code: crate::Code| serde::de::Error::custom(code.as_str()))
+            }
+        }
+    };
+}
+
+mod document;
 mod error;
 mod json;
 mod meta;
 mod text;
 
+pub use document::{
+    Align, AssetName, Color, Document, Fit, Node, NodeId, NodeKind, Shadow, SizeClass, Stroke,
+    Variant, features,
+};
 pub use error::{Code, PackageError, Position};
 pub use meta::{
     Capabilities, FORMAT, Face, HomepageUrl, Kind, List, MAX_LIST, Meta, Name, PackageId,
@@ -37,17 +56,21 @@ pub const MAX_PACKAGE_JSON: usize = 2 << 20;
 pub const MAX_JSON_DEPTH: usize = 32;
 
 /// A parsed `package.json`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct Package {
     /// Who and what it is.
     pub meta: Meta,
+    /// A panel's faces; `None` for a theme.
+    pub document: Option<Document>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawPackage {
     meta: meta::RawMeta,
+    #[serde(default)]
+    document: Option<Document>,
 }
 
 /// Reads `package.json` for a launcher that can do `can`.
@@ -60,12 +83,21 @@ pub fn parse_package(text: &str, can: &Capabilities) -> Result<Package, PackageE
     if text.len() > MAX_PACKAGE_JSON {
         return Err(PackageError::new(Code::TooLarge, Position::File));
     }
-    json::check(text, MAX_JSON_DEPTH)?;
+    json::check(text, MAX_JSON_DEPTH, limits::DOCUMENT_OBJECTS)?;
     meta::check_head(text, can)?;
     let raw: RawPackage =
         serde_json::from_str(text).map_err(|e| PackageError::from_typed_json(&e))?;
+    let meta = meta::check_meta(raw.meta)?;
+    let at_document = Position::field("document");
+    match (meta.kind, &raw.document) {
+        (Kind::Panel, Some(document)) => document::check(document, &meta)?,
+        (Kind::Panel, None) => return Err(PackageError::new(Code::MissingField, at_document)),
+        (Kind::Theme, Some(_)) => return Err(PackageError::new(Code::NotForKind, at_document)),
+        (Kind::Theme, None) => {}
+    }
     Ok(Package {
-        meta: meta::check_meta(raw.meta)?,
+        meta,
+        document: raw.document,
     })
 }
 
@@ -74,10 +106,10 @@ mod tests {
     use super::*;
 
     fn can() -> Capabilities {
-        Capabilities::new(Version::new(0, 5, 0), ["shadow"])
+        Capabilities::new(Version::new(0, 5, 0), ["shadow", "rotation"])
     }
 
-    const GOOD: &str = r#"{
+    const GOOD: &str = r##"{
       "meta": {
         "format": 2,
         "min_launcher": "0.5.0",
@@ -94,8 +126,18 @@ mod tests {
         "faces": ["tile", "page"],
         "sources": ["clock"],
         "actions": ["open-page"]
+      },
+      "document": {
+        "variants": [
+          { "face": "tile", "root": { "id": "root", "type": "frame", "w": 250, "h": 141, "fill": "#1e2633", "radius": 16,
+              "shadows": [{ "y": 4, "blur": 12, "color": "#00000090" }],
+              "children": [
+                { "id": "time", "type": "text", "x": 16, "y": 16, "w": 218, "h": 40, "text": "12:00", "size": 32, "weight": 700, "color": "#ffffff" }
+              ] } },
+          { "face": "page", "root": { "id": "root", "type": "frame", "w": 1920, "h": 1080, "fill": "#101418" } }
+        ]
       }
-    }"#;
+    }"##;
 
     /// `GOOD` with `from` replaced by `to`; fails if `from` isn't there, so a
     /// test can't pass by changing nothing.
@@ -118,6 +160,19 @@ mod tests {
             "Годинник Київ"
         );
         assert_eq!(*meta.faces, [Face::Tile, Face::Page]);
+    }
+
+    #[test]
+    fn a_panel_needs_a_document_and_a_theme_has_none() {
+        let meta_end = GOOD
+            .find(r#""document""#)
+            .and_then(|at| GOOD[..at].rfind(','));
+        let without = GOOD[..meta_end.unwrap()].to_owned() + "}";
+        assert_eq!(error(&without).code, Code::MissingField);
+        assert_eq!(
+            error(&edit(r#""kind": "panel""#, r#""kind": "theme""#)).code,
+            Code::NotForKind
+        );
     }
 
     #[test]
