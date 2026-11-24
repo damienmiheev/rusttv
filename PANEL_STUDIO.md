@@ -257,9 +257,10 @@ thumbnail.png         for the studio and the Panels page (never on locked surfac
 
 - **Images on the TV are PNG only**, decoded by the memory-safe `png`
   crate. On Android that is a **new runtime dependency** (today `png` is
-  only used at build time, and PANELS.md § 7 says "no decoded images", so
-  § 16 Q15 reverses it): its size and cold-start cost on armv7 are
-  measured in step 1 and justified in its PR. Width and height are checked
+  only used at build time; PANELS.md § 7's "no decoded images" was
+  reversed by the owner on 2026-11-24, § 16 Q15): images are in v2 either
+  way; its size and cold-start cost on armv7 are measured in step 1 to set
+  the limits, and justified in its PR. Width and height are checked
   before decoding, one frame, metadata and ICC stripped, decoded lazily with a
   memory budget. SVG, WebP and others are converted at export by the
   studio or the CLI; SVG becomes path nodes; EXIF, GPS and text chunks
@@ -370,8 +371,11 @@ bindings survive).
   the contrast floor, the host remaps a panel's literal colours to theme
   tokens, and applies the minimum text size (themes and panels alike).
 - **Instances**: a panel can be added more than once (a home clock and a
-  Kyiv clock), each instance with its own knobs and placement, up to 4 per
-  panel. This amends PANELS.md decision 9 ("never two copies"), § 16 Q14.
+  Kyiv clock), any number of times (owner decision Q14, 2026-11-24,
+  amending PANELS.md decision 9), each instance with its own knobs and
+  placement. The only limits are the shared ones: the user-face memory
+  and node budget (§ 6.5) and the watchdog; an instance that doesn't fit
+  isn't added, and the Panels page says why.
 - **Four kinds of value** (one table in the format docs): **token**
   (from the theme), **source** (live data, § 6.4), **knob** (a setting the
   person chose, persisted), **local** (panel state, not persisted). Literal
@@ -412,12 +416,14 @@ timer or a source):
   text, app or list knob, and always under the look lock and the
   first-activation rule (§ 8.2);
 - open a RustTV page (Settings, History, Remote, Themes, Panels);
-- open an app: a package id resolved through the launcher's own app list,
-  only apps in the launcher's visible app list, and never Settings,
+- open an app (owner decision Q7): a package id **named on the install
+  review** (each one listed; an update adding one shows it in red),
+  resolved through the launcher's own app list, only apps in the
+  launcher's visible app list, and never Settings,
   SystemUI, package installers or the launcher itself (YouTube, Netflix
   and the Play Store stay allowed even though Android marks them as
-  system apps; no intents, URLs or extras). This reverses PANELS.md § 5 ("a panel
-  can't launch apps") and needs the owner's decision (§ 16 Q7).
+  system apps; no intents, URLs or extras). This reverses PANELS.md § 5,
+  decided by the owner on 2026-11-24 (§ 16 Q7).
 
 Pages may map remote keys (colour keys, Play/Pause, Menu, numbers) to
 these actions. Back, Home and long-press Home are reserved. Built-in-only
@@ -1151,7 +1157,8 @@ the measurement APK) starts with the owner's go-ahead in that session.
 2. **Format and renderer**, in slices:
    **Owner decisions before step 2**: Q4 (lift "parked"), Q7 (open an
    app), Q14 (instances) and Q15 (decoded images) change the format and
-   the renderer, so they are answered and dated before 2a starts; Q6
+   the renderer, so they are answered and dated before 2a starts
+   (all four answered 2026-11-24); Q6
    (fonts), Q13 (accessible approvals), Q17 and Q18 before step 3; Q3,
    Q11 and Q16 before step 4; Q12 before 4e; Q5 before step 7.
    - 2a `rusttv-panels`: types, validator, JSON Schema, expressions,
@@ -1247,14 +1254,17 @@ the measurement APK) starts with the owner's go-ahead in that session.
    on one click (undone by another, recorded in History)? Install,
    update, remove and anything new keep the code and hold.
 4. **Level 2:** lift PANELS.md decision 11 ("parked") with a dated
-   decision, so user packages can be built?
+   decision, so user packages can be built? — **Decided 2026-11-24: lift
+   it.**
 5. **Preview transport:** adb first (no new network surface), the
    RustTV Remote preview role, or both?
 6. **Fonts:** keep the system fonts, or bundle a RustTV font set covering
    the 21 languages (APK size)? Fonts in packages: never (recommended).
 7. **"Open an app" from a panel** (reverses PANELS.md § 5): allowed, from
    the launcher's visible app list only, after a key press, excluding
-   Settings, SystemUI, installers and the launcher itself (§ 5.5)?
+   Settings, SystemUI, installers and the launcher itself (§ 5.5)? —
+   **Decided 2026-11-24: allowed, and only apps named on the install
+   review.**
 8. **Tiles bigger than 1×1** (PANELS.md decision 3): stay 1×1 in v2?
 9. **Code panels (level 3) and settings actions:** later, each its own decision?
 10. **Web data sources** (weather…): later, each its own review?
@@ -1266,9 +1276,11 @@ the measurement APK) starts with the owner's go-ahead in that session.
     the 2 s hold for people who can't hold a key, and a non-visual way to
     get the code (spoken by the TV) for blind people?
 14. **Panel instances** (amends PANELS.md decision 9): allow up to 4 per
-    panel, each with its own knobs and placement?
+    panel, each with its own knobs and placement? — **Decided 2026-11-24:
+    unlimited, within the shared budget.**
 15. **Decoded images on the TV** (reverses PANELS.md § 7): PNG only, with a
-    new runtime decoder, after the step 1 measurements?
+    new runtime decoder, after the step 1 measurements? — **Decided
+    2026-11-24: PNG now; the measurements only tune the limits.**
 16. **Look lock** for families (a PIN over look changes and installs):
     in the first install release, or later?
 17. **Safe-look exception**: may the safe-look key chord apply without
