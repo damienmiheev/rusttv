@@ -1,0 +1,53 @@
+# Reference theme: Cinema Ribbon
+# Single horizontal coverflow ribbon centered on the focused app, framed under
+# a bold centered showcase and vivid ambient hero glow.
+schema_version = 1
+name = "Cinema Ribbon"
+author = "RustTV"
+description = "Single horizontal coverflow ribbon with centered showcase and glow focus"
+
+[colors]
+bg = "#0C0E14"
+surface = "#1B1F2A"
+dock_bg = "#141822CC"
+text = "#F4F6FA"
+text_dim = "#9BA3B5"
+accent = "#F59E0B"
+focus_ring = "#FBBF24"
+icon_card_tint = 0.22
+
+[layout]
+style = "carousel"
+tile_aspect = "poster"
+tile_style = "poster"
+tile_dim_unfocused = 0.30
+tile_gap = 44
+hero = "full"
+hero_align = "center"
+hero_artwork = true
+hero_title_size = 76
+focus_style = "glow"
+dock_surface = false
+top_bar_style = "minimal"
+clock_position = "top-start"
+tile_radius = 18
+panel_radius = 24
+focus_scale = 1.18
+focus_ring_width = 3
+show_labels = "focused"
+sway = false
+glow_strength = 1.15
+
+[surfaces]
+panel_style = "tinted"
+panel_opacity = 0.90
+panel_border_width = 1.5
+panel_border_color = "#F59E0B38"
+scrim_opacity = 0.82
+selection_style = "accent"
+
+[background]
+gradient_top = "#171B26"
+gradient_bottom = "#090B10"
+scrim = "vignette"
+scrim_strength = 0.55

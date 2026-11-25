@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1C1426"/>
+      <stop offset="48%" stop-color="#2D1B30"/>
+      <stop offset="100%" stop-color="#0E0F12"/>
+    </linearGradient>
+    <radialGradient id="key-light" cx="0.72" cy="0.34" r="0.52">
+      <stop offset="0%" stop-color="#D94B4B" stop-opacity="0.58"/>
+      <stop offset="42%" stop-color="#7B2D52" stop-opacity="0.36"/>
+      <stop offset="100%" stop-color="#0E0F12" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="rim-light" cx="0.52" cy="0.22" r="0.38">
+      <stop offset="0%" stop-color="#F29F67" stop-opacity="0.32"/>
+      <stop offset="100%" stop-color="#0E0F12" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="left-fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0E0F12" stop-opacity="0.92"/>
+      <stop offset="42%" stop-color="#0E0F12" stop-opacity="0.45"/>
+      <stop offset="78%" stop-color="#0E0F12" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="bottom-fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0E0F12" stop-opacity="0"/>
+      <stop offset="52%" stop-color="#0E0F12" stop-opacity="0.18"/>
+      <stop offset="78%" stop-color="#0E0F12" stop-opacity="0.88"/>
+      <stop offset="100%" stop-color="#0E0F12" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#base)"/>
+  <rect width="1280" height="720" fill="url(#key-light)"/>
+  <rect width="1280" height="720" fill="url(#rim-light)"/>
+  <!-- Soft cinematic bokeh accents on the right showcase side -->
+  <circle cx="940" cy="240" r="140" fill="#E85A4F" opacity="0.14"/>
+  <circle cx="1090" cy="310" r="95" fill="#F4A261" opacity="0.12"/>
+  <circle cx="790" cy="180" r="110" fill="#9B5DE5" opacity="0.10"/>
+  <!-- Left + bottom legibility fades into #0E0F12 -->
+  <rect width="1280" height="720" fill="url(#left-fade)"/>
+  <rect width="1280" height="720" fill="url(#bottom-fade)"/>
+</svg>

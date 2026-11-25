@@ -1,0 +1,31 @@
+# Reference theme: Classic
+# Standard RustTV shelf layout with subtle icon card tinting and crisp framing.
+schema_version = 1
+name = "Classic"
+author = "RustTV"
+description = "Standard shelf layout with subtle icon card tinting"
+
+[colors]
+bg = "#0E1014"
+surface = "#1A1E26"
+dock_bg = "#1A1E26D8"
+text = "#F2F3F5"
+text_dim = "#A4A9B4"
+accent = "#F5A524"
+focus_ring = "#F2F3F5"
+icon_card_tint = 0.18
+
+[layout]
+style = "shelf"
+columns = 6
+tile_aspect = "wide"
+hero = "full"
+hero_align = "start"
+focus_style = "ring"
+tile_radius = 12
+panel_radius = 16
+focus_scale = 1.15
+focus_ring_width = 4
+show_labels = "focused"
+sway = true
+glow_strength = 1.0

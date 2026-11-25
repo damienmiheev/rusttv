@@ -1,0 +1,57 @@
+# Reference theme: Glass Dock
+# Five large rounded cards inside a floating frosted bottom dock, borderless
+# focus lift, airy graphite gradient, and top-start header clock.
+schema_version = 1
+name = "Glass Dock"
+author = "RustTV"
+description = "Floating frosted bottom dock with 5 large rounded cards and borderless lift"
+
+[colors]
+bg = "#12141A"
+surface = "#23262F"
+dock_bg = "#2A2E39B8"
+text = "#FFFFFF"
+text_dim = "#AEAEB2"
+accent = "#3B82F6"
+focus_ring = "#FFFFFF"
+icon_card_tint = 0.24
+
+[layout]
+style = "dock"
+columns = 5
+tile_aspect = "wide"
+tile_style = "glass"
+tile_border_width = 1.5
+tile_border_color = "#FFFFFF28"
+tile_dim_unfocused = 0.14
+tile_gap = 40
+grid_margin_x = 110
+hero = "full"
+hero_align = "start"
+hero_title_size = 72
+focus_style = "lift"
+dock_surface = true
+top_bar_style = "floating"
+clock_position = "top-start"
+tile_radius = 22
+panel_radius = 30
+focus_scale = 1.18
+focus_ring_width = 0
+show_labels = "focused"
+sway = true
+glow_strength = 0.72
+
+[surfaces]
+panel_style = "tinted"
+panel_opacity = 0.88
+panel_border_width = 1.5
+panel_border_color = "#FFFFFF28"
+scrim_opacity = 0.76
+selection_style = "invert"
+
+[background]
+gradient_top = "#242834"
+gradient_bottom = "#0D0F14"
+gradient_angle = 165
+scrim = "bottom"
+scrim_strength = 0.45

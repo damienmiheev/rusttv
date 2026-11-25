@@ -1,0 +1,607 @@
+// Standalone Level 3 Programmable Skin: Horizon Frame Pro (.slint + .rhai).
+// 1920x1080 photographic glass-dock & vertical photo-list launcher skin.
+import { RustTV } from "@rusttv/skin.slint";
+import "Geist-Variable.ttf";
+
+component QuietIconButton inherits Rectangle {
+    in property <length> u;
+    in property <string> path-data;
+    in property <bool> focused;
+    in property <bool> awake;
+    callback clicked();
+
+    width: 64 * u;
+    height: 64 * u;
+    border-radius: 32 * u;
+    background: focused ? #FFFFFF28 : transparent;
+    border-width: focused ? 1 * u : 0px;
+    border-color: #FFFFFF44;
+    opacity: focused ? 1.0 : (awake ? 0.46 : 0.66);
+    animate opacity { duration: 140ms; easing: linear; }
+    animate background { duration: 140ms; easing: linear; }
+
+    // Dark contrast underlay stroke (rgba(14,10,6,0.38), 3.2px)
+    Path {
+        x: 14 * u;
+        y: 14 * u;
+        width: 36 * u;
+        height: 36 * u;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: root.path-data;
+        stroke: #0E0A0661;
+        stroke-width: 3.2 * u;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+        fill: transparent;
+    }
+    // Crisp warm-white icon stroke (#F6F1E7, 1.8px)
+    Path {
+        x: 14 * u;
+        y: 14 * u;
+        width: 36 * u;
+        height: 36 * u;
+        viewbox-width: 24;
+        viewbox-height: 24;
+        commands: root.path-data;
+        stroke: #F6F1E7;
+        stroke-width: 1.8 * u;
+        stroke-line-cap: round;
+        stroke-line-join: round;
+        fill: transparent;
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+export component SkinHome inherits Window {
+    // Exactly "RustTV": the compositor raises that window on Home (labwc rc.xml).
+    title: "RustTV";
+    background: #1D2A30;
+    default-font-family: "Geist";
+    preferred-width: 1280px;
+    preferred-height: 720px;
+
+    property <length> u: min(root.width / 1920, root.height / 1080);
+    property <int> mode: RustTV.i0;       // 0 = Glass Dock, 1 = Photo List, 2 = All Apps
+    property <bool> util-awake: RustTV.i1 == 1;
+
+    FocusScope {
+        init => { self.focus(); }
+        key-pressed(event) => {
+            RustTV.key(event.text, true, event.repeat) ? accept : reject
+        }
+        key-released(event) => {
+            RustTV.key(event.text, false, false) ? accept : reject
+        }
+    }
+
+    // 1. Full-bleed 1920x1080 coastal cliff photographic wallpaper (GPU-cached).
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        cache-rendering-hint: true;
+
+        Image {
+            width: parent.width;
+            height: parent.height;
+            source: @image-url("cove.jpg");
+            image-fit: cover;
+        }
+        // .scrim: bottom legibility gradient (top: 560, height: 520)
+        if mode == 0: Rectangle {
+            y: 560 * u;
+            width: parent.width;
+            height: 520 * u;
+            background: @linear-gradient(180deg, #040A0C00 0%, #040A0C6B 70%, #040A0C85 100%);
+        }
+        // .shade: top legibility gradient (top: 0, height: 300)
+        Rectangle {
+            y: 0;
+            width: parent.width;
+            height: 300 * u;
+            background: @linear-gradient(180deg, #040A0C52 0%, #040A0C24 50%, #040A0C00 100%);
+        }
+    }
+    // Photo List mode: left-weighted editorial dim + column scrim
+    if mode == 1: Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: @linear-gradient(90deg, #0A080642 0%, #0A080629 50%, #0A080614 100%);
+    }
+    if mode == 1: Rectangle {
+        y: 600 * u;
+        width: parent.width;
+        height: 480 * u;
+        background: @linear-gradient(180deg, #0A080600 0%, #0A080642 55%, #0A080666 100%);
+    }
+
+    // 2. Top-left Clock (.caption .clock: left 140, top 72, 48px weight 500, -1.5px tracking)
+    if mode != 2: Rectangle {
+        x: mode == 1 ? parent.width - 360 * u : 140 * u;
+        y: mode == 1 ? 112 * u : 72 * u;
+        width: 220 * u;
+        height: 64 * u;
+
+        // Subtle text-shadow underlay (0 1px 3px rgba(0,0,0,.22))
+        Text {
+            x: 0;
+            y: 1.5 * u;
+            width: parent.width;
+            height: parent.height;
+            text: RustTV.clock-text;
+            font-size: 48 * u;
+            font-weight: 500;
+            letter-spacing: -1.5 * u;
+            color: #00000038;
+            horizontal-alignment: mode == 1 ? right : left;
+            vertical-alignment: center;
+        }
+        Text {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            text: RustTV.clock-text;
+            font-size: 48 * u;
+            font-weight: 500;
+            letter-spacing: -1.5 * u;
+            color: #F4F4F1;
+            horizontal-alignment: mode == 1 ? right : left;
+            vertical-alignment: center;
+        }
+    }
+
+    // 3. Top-right Quiet Utility Icons (.quiet-utils.is-icons: right 122.1, top 72, gap 16)
+    HorizontalLayout {
+        x: parent.width - self.preferred-width - 122 * u;
+        y: 72 * u;
+        width: self.preferred-width;
+        height: 64 * u;
+        spacing: 16 * u;
+
+        // Art / Layout toggle (Dock <-> Photo List)
+        QuietIconButton {
+            u: root.u;
+            focused: root.util-awake && RustTV.i2 == 0;
+            awake: root.util-awake;
+            path-data: "M 5 3 L 19 3 Q 21 3 21 5 L 21 19 Q 21 21 19 21 L 5 21 Q 3 21 3 19 L 3 5 Q 3 3 5 3 Z M 8 6.5 A 1.5 1.5 0 1 0 8 9.5 A 1.5 1.5 0 1 0 8 6.5 Z M 3 17 L 9 11 L 13 15 L 16 12 L 21 17";
+            clicked => { RustTV.action("util0", ""); }
+        }
+        // All apps grid sheet
+        QuietIconButton {
+            u: root.u;
+            focused: root.util-awake && RustTV.i2 == 1;
+            awake: root.util-awake;
+            path-data: "M 4.5 3 L 8.5 3 Q 10 3 10 4.5 L 10 8.5 Q 10 10 8.5 10 L 4.5 10 Q 3 10 3 8.5 L 3 4.5 Q 3 3 4.5 3 Z M 15.5 3 L 19.5 3 Q 21 3 21 4.5 L 21 8.5 Q 21 10 19.5 10 L 15.5 10 Q 14 10 14 8.5 L 14 4.5 Q 14 3 15.5 3 Z M 4.5 14 L 8.5 14 Q 10 14 10 15.5 L 10 19.5 Q 10 21 8.5 21 L 4.5 21 Q 3 21 3 19.5 L 3 15.5 Q 3 14 4.5 14 Z M 15.5 14 L 19.5 14 Q 21 14 21 15.5 L 21 19.5 Q 21 21 19.5 21 L 15.5 21 Q 14 21 14 19.5 L 14 15.5 Q 14 14 15.5 14 Z";
+            clicked => { RustTV.action("util1", ""); }
+        }
+        // Settings
+        QuietIconButton {
+            u: root.u;
+            focused: root.util-awake && RustTV.i2 == 2;
+            awake: root.util-awake;
+            path-data: "M 9 3 L 8.4 5.4 L 6.4 6.6 L 4 6 L 2 9.5 L 3.8 11 L 3.8 13 L 2 14.5 L 4 18 L 6.4 17.4 L 8.4 18.6 L 9 21 L 15 21 L 15.6 18.6 L 17.6 17.4 L 20 18 L 22 14.5 L 20.2 13 L 20.2 11 L 22 9.5 L 20 6 L 17.6 6.6 L 15.6 5.4 L 15 3 Z M 12 8.8 A 3.2 3.2 0 1 0 12 15.2 A 3.2 3.2 0 1 0 12 8.8 Z";
+            clicked => { RustTV.action("util2", ""); }
+        }
+    }
+
+    // Floating utility focus label (.util-focus-label: top 140, 28px #F6F1E7)
+    Text {
+        x: parent.width - 346 * u;
+        y: 142 * u;
+        width: 224 * u;
+        height: 36 * u;
+        text: RustTV.s0;
+        font-size: 28 * u;
+        font-weight: 500;
+        letter-spacing: -0.2 * u;
+        color: #F6F1E7;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+        opacity: root.util-awake ? 1.0 : 0.0;
+        animate opacity { duration: 120ms; easing: linear; }
+    }
+
+    // 4. MODE 0: Floating Frosted Glass Dock (left 100, top 676, width 1720, height 232 -> 5 full + peeking 6th)
+    if mode == 0: Rectangle {
+        x: 100 * u;
+        y: 676 * u;
+        width: 1720 * u;
+        height: 232 * u;
+
+        // .mat: pre-baked optical frosted-glass backdrop cropped to exact dock rect (GPU-cached)
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            border-radius: 48 * u;
+            clip: true;
+            cache-rendering-hint: true;
+
+            Image {
+                x: -100 * u;
+                y: -676 * u;
+                width: root.width;
+                height: root.height;
+                source: @image-url("cove-frost.jpg");
+                image-fit: cover;
+            }
+            // .m-frost .mat-veil: rgba(12,10,8,0.12)
+            Rectangle {
+                width: parent.width;
+                height: parent.height;
+                background: #0C0A081F;
+            }
+            // .mat::after: single crisp top specular hairline (rgba(255,255,255,0.24))
+            Rectangle {
+                width: parent.width;
+                height: parent.height;
+                border-radius: 48 * u;
+                border-width: 1 * u;
+                border-color: #FFFFFF3D;
+                background: transparent;
+            }
+        }
+
+        // .shelf: left 16, width 1688, height 232, clip (5 full 288px tiles + 248px peeking 6th)
+        Rectangle {
+            x: 16 * u;
+            y: 0;
+            width: 1688 * u;
+            height: 232 * u;
+            clip: true;
+
+            // .track: smooth horizontal slide (180ms cubic-bezier(0.2, 0.7, 0.2, 1))
+            Rectangle {
+                x: -RustTV.i4 * 288 * u;
+                y: 0;
+                width: 6000 * u;
+                height: 232 * u;
+                animate x { duration: 180ms; easing: cubic-bezier(0.2, 0.7, 0.2, 1.0); }
+
+                // .plate: sliding frosted glass focus plate (288x200, radius 32)
+                Rectangle {
+                    x: RustTV.focused-index * 288 * u;
+                    y: 16 * u;
+                    width: 288 * u;
+                    height: 200 * u;
+                    border-radius: 32 * u;
+                    background: @linear-gradient(170deg, #FFFFFF42 0%, #FFFFFF14 58%, #FFFFFF1A 100%);
+                    border-width: 1 * u;
+                    border-color: #FFFFFF57;
+                    opacity: root.util-awake ? 0.0 : 1.0;
+                    animate x { duration: 180ms; easing: cubic-bezier(0.2, 0.7, 0.2, 1.0); }
+                    animate opacity { duration: 120ms; easing: linear; }
+                }
+
+                // .tile: 288x200 tiles on 288px pitch
+                for tile[i] in RustTV.tiles: Rectangle {
+                    property <bool> is-focused: !root.util-awake && i == RustTV.focused-index;
+                    x: i * 288 * u;
+                    y: 16 * u;
+                    width: 288 * u;
+                    height: 200 * u;
+                    border-radius: 32 * u;
+
+                    // .mark: icon centered, lifts -3px and scales 1.04 on focus
+                    Rectangle {
+                        property <float> sc: parent.is-focused ? 1.04 : 1.0;
+                        width: (tile.kind == 1 ? 82 * u : 132 * u) * sc;
+                        height: 76 * u * sc;
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.is-focused ? 31 * u : 34 * u) - (self.height - 76 * u) / 2;
+                        border-radius: tile.kind == 1 ? 0px : 14 * u;
+                        clip: tile.kind != 1;
+                        opacity: parent.is-focused ? 1.0 : 0.84;
+                        animate y, width, height { duration: 180ms; easing: cubic-bezier(0.2, 0.7, 0.2, 1.0); }
+                        animate opacity { duration: 160ms; easing: linear; }
+
+                        Image {
+                            width: parent.width;
+                            height: parent.height;
+                            source: tile.mono-image;
+                            image-fit: tile.kind == 1 ? contain : cover;
+                        }
+                    }
+
+                    // .label: top 128, 36px weight 500, letter-spacing -0.8px
+                    Text {
+                        x: 8 * u;
+                        y: 128 * u;
+                        width: parent.width - 16 * u;
+                        height: 44 * u;
+                        text: tile.label;
+                        font-size: 36 * u;
+                        font-weight: 500;
+                        letter-spacing: -0.8 * u;
+                        color: #F4F4F1;
+                        opacity: parent.is-focused ? 1.0 : 0.84;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        animate opacity { duration: 160ms; easing: linear; }
+                    }
+                    TouchArea { clicked => { RustTV.tile-clicked(i, false); } }
+                }
+            }
+
+            // Optical 132px left/right edge-fade overlays (mathematically equivalent to
+            // CSS mask-image fading peeking tiles into the exact frosted glass behind them).
+            if RustTV.i4 > 0: Image {
+                x: 0;
+                y: 0;
+                width: 132 * u;
+                height: 232 * u;
+                source: @image-url("fade-left.png");
+                image-fit: fill;
+            }
+            if RustTV.tiles.length > RustTV.i4 + 5: Image {
+                x: 1556 * u;
+                y: 0;
+                width: 132 * u;
+                height: 232 * u;
+                source: @image-url("fade-right.png");
+                image-fit: fill;
+            }
+        }
+    }
+
+    // Left / Right scroll cues (.cue: top 768, 48x48 radius 24, rgba(8,14,18,0.28))
+    if mode == 0 && RustTV.i4 > 0: Rectangle {
+        x: 36 * u;
+        y: 768 * u;
+        width: 48 * u;
+        height: 48 * u;
+        border-radius: 24 * u;
+        background: #080E1247;
+        Path {
+            x: 9 * u;
+            y: 9 * u;
+            width: 30 * u;
+            height: 30 * u;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: "M 15 6 L 9 12 L 15 18";
+            stroke: #FFFFFFCC;
+            stroke-width: 2 * u;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            fill: transparent;
+        }
+    }
+    if mode == 0 && RustTV.tiles.length > RustTV.i4 + 5: Rectangle {
+        x: 1836 * u;
+        y: 768 * u;
+        width: 48 * u;
+        height: 48 * u;
+        border-radius: 24 * u;
+        background: #080E1247;
+        Path {
+            x: 9 * u;
+            y: 9 * u;
+            width: 30 * u;
+            height: 30 * u;
+            viewbox-width: 24;
+            viewbox-height: 24;
+            commands: "M 9 6 L 15 12 L 9 18";
+            stroke: #FFFFFFCC;
+            stroke-width: 2 * u;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            fill: transparent;
+        }
+    }
+
+    // 5. MODE 1: Editorial Vertical Photo List (.ph-list: left 112, 88px bold typography)
+    if mode == 1: Rectangle {
+        x: 112 * u;
+        y: 168 * u;
+        width: 1200 * u;
+        height: 768 * u;
+        clip: true;
+
+        Rectangle {
+            x: 0;
+            y: -RustTV.i4 * 128 * u;
+            width: 1200 * u;
+            height: 4000 * u;
+            animate y { duration: 180ms; easing: cubic-bezier(0.2, 0.7, 0.2, 1.0); }
+
+            // Frosted focus plate behind the active list row (.ph-plate: radius 38)
+            Rectangle {
+                x: 0;
+                y: RustTV.focused-index * 128 * u;
+                width: 920 * u;
+                height: 124 * u;
+                border-radius: 38 * u;
+                background: #FFFFFF26;
+                border-width: 1 * u;
+                border-color: #FFFBF03D;
+                opacity: root.util-awake ? 0.0 : 1.0;
+                animate y { duration: 180ms; easing: cubic-bezier(0.2, 0.7, 0.2, 1.0); }
+                animate opacity { duration: 160ms; easing: linear; }
+            }
+
+            for tile[i] in RustTV.tiles: Rectangle {
+                property <bool> is-focused: !root.util-awake && i == RustTV.focused-index;
+                x: 0;
+                y: i * 128 * u;
+                width: 1200 * u;
+                height: 128 * u;
+                opacity: is-focused ? 1.0 : 0.74;
+                animate opacity { duration: 160ms; easing: linear; }
+
+                Rectangle {
+                    x: 28 * u;
+                    y: 30 * u;
+                    width: 64 * u;
+                    height: 64 * u;
+                    border-radius: 14 * u;
+                    clip: true;
+                    Image {
+                        width: parent.width;
+                        height: parent.height;
+                        source: tile.mono-image;
+                        image-fit: tile.kind == 1 ? contain : cover;
+                    }
+                }
+                Text {
+                    x: 120 * u;
+                    y: 8 * u;
+                    width: 980 * u;
+                    height: 108 * u;
+                    text: tile.label;
+                    font-size: 76 * u;
+                    font-weight: 600;
+                    letter-spacing: -1.8 * u;
+                    color: #F4F4F1;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+                TouchArea { clicked => { RustTV.tile-clicked(i, false); } }
+            }
+        }
+    }
+
+    // 6. MODE 2: Matte All-Apps Sheet (.sheet: #0F1416 + frosted photo + 5-column grid)
+    if mode == 2: Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: #0F1416;
+
+        Image {
+            width: parent.width;
+            height: parent.height;
+            source: @image-url("cove-frost.jpg");
+            image-fit: cover;
+        }
+        Rectangle {
+            width: parent.width;
+            height: parent.height;
+            background: #080C0E6B;
+        }
+
+        Text {
+            x: 140 * u;
+            y: 72 * u;
+            text: "All apps";
+            font-size: 56 * u;
+            font-weight: 500;
+            letter-spacing: -1.6 * u;
+            color: #F4F4F1;
+        }
+
+        // .grid-view: left 112, top 232, width 1696, height 720, 5 columns of 320x216
+        Rectangle {
+            x: 112 * u;
+            y: 232 * u;
+            width: 1696 * u;
+            height: 720 * u;
+            clip: true;
+
+            Rectangle {
+                x: 0;
+                y: -RustTV.i4 * 240 * u;
+                width: 1696 * u;
+                height: 3000 * u;
+                animate y { duration: 220ms; easing: cubic-bezier(0.2, 0.7, 0.2, 1.0); }
+
+                for tile[i] in RustTV.tiles: Rectangle {
+                    property <bool> is-focused: !root.util-awake && i == RustTV.focused-index;
+                    property <int> gcol: mod(i, 5);
+                    property <int> grow: floor(i / 5);
+                    x: gcol * 344 * u;
+                    y: grow * 240 * u;
+                    width: 320 * u;
+                    height: 216 * u;
+                    border-radius: 32 * u;
+                    background: is-focused ? @linear-gradient(170deg, #FFFFFF4D 0%, #FFFFFF29 58%, #FFFFFF38 100%) : transparent;
+                    border-width: is-focused ? 1 * u : 0px;
+                    border-color: #FFFFFF57;
+                    animate background { duration: 140ms; easing: linear; }
+
+                    Rectangle {
+                        x: 100 * u;
+                        y: is-focused ? 27 * u : 30 * u;
+                        width: 120 * u;
+                        height: 76 * u;
+                        border-radius: tile.kind == 1 ? 0px : 14 * u;
+                        clip: tile.kind != 1;
+                        opacity: is-focused ? 1.0 : 0.88;
+                        animate y { duration: 180ms; easing: cubic-bezier(0.2, 0.7, 0.2, 1.0); }
+                        Image {
+                            width: parent.width;
+                            height: parent.height;
+                            source: tile.mono-image;
+                            image-fit: tile.kind == 1 ? contain : cover;
+                        }
+                    }
+                    Text {
+                        x: 12 * u;
+                        y: 122 * u;
+                        width: parent.width - 24 * u;
+                        height: 44 * u;
+                        text: tile.label;
+                        font-size: 34 * u;
+                        font-weight: 500;
+                        letter-spacing: -0.6 * u;
+                        color: #F4F4F1;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    TouchArea { clicked => { RustTV.tile-clicked(i, false); } }
+                }
+            }
+        }
+    }
+
+    // 7. Native in-skin long-press context menu overlay (frosted glass sheet).
+    if RustTV.menu-open: Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: #080C0EB8;
+
+        Rectangle {
+            width: 540 * u;
+            height: 116 * u + RustTV.menu-items.length * 76 * u;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            border-radius: 36 * u;
+            background: #141A20EB;
+            border-width: 1 * u;
+            border-color: #FFFFFF3D;
+
+            Text {
+                x: 36 * u;
+                y: 28 * u;
+                width: parent.width - 72 * u;
+                text: RustTV.menu-title;
+                font-size: 32 * u;
+                font-weight: 500;
+                letter-spacing: -0.6 * u;
+                color: #F4F4F1;
+                overflow: elide;
+            }
+            for item[idx] in RustTV.menu-items: Rectangle {
+                property <bool> sel: idx == RustTV.menu-selected;
+                x: 20 * u;
+                y: 92 * u + idx * 76 * u;
+                width: parent.width - 40 * u;
+                height: 64 * u;
+                border-radius: 24 * u;
+                background: sel ? #F3F3EF : transparent;
+                Text {
+                    x: 24 * u;
+                    width: parent.width - 48 * u;
+                    height: parent.height;
+                    text: item;
+                    font-size: 28 * u;
+                    font-weight: 500;
+                    color: sel ? #141618 : #F4F4F1D8;
+                    vertical-alignment: center;
+                }
+                TouchArea { clicked => { RustTV.menu-clicked(idx); } }
+            }
+        }
+    }
+}

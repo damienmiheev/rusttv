@@ -1,8 +1,8 @@
-// The launcher's colours and reading direction, shared by home.slint,
-// quick.slint and the files generated from panel templates (build.rs,
-// PANELS.md § 4.1; the templates' pictures are in the generated
-// badges.slint). One file, imported everywhere, so there is one
-// `Dir.rtl` and one copy of each colour.
+// The launcher's colours, skin surfaces, typography and reading direction,
+// shared by home.slint, quick.slint, blocks.slint and the files generated from
+// panel templates (build.rs, PANELS.md § 4.1). One file, imported everywhere,
+// so a user theme skins the entire launcher — Home, Settings, Quick Panels,
+// Power Menu, Folders and Context Menus — with zero extra per-frame cost.
 
 // Layout direction (set from ui.rs). For Arabic and Hebrew the layout is
 // mirrored: tiles run from the right, text aligns right. Pictures and the
@@ -18,11 +18,102 @@ export global Dir {
 }
 
 export global Theme {
-    out property <color> bg: #0E1014;
-    out property <color> surface: #1C1F26;
-    out property <color> text: #F2F3F5;
-    out property <color> text-dim: #A4A9B4;
-    out property <color> accent: #F5A524;
+    // Palette
+    in-out property <color> bg: #0E1014;
+    in-out property <color> surface: #1C1F26;
+    in-out property <color> dock-bg: #1C1F26D8;
+    in-out property <color> text: #F2F3F5;
+    in-out property <color> text-dim: #A4A9B4;
+    in-out property <color> accent: #F5A524;
+    in-out property <color> accent-text: #0E1014;
+    in-out property <color> focus-ring: #F2F3F5;
+
+    // Layout archetype:
+    // 0 shelf (default), 1 dock, 2 sidebar, 3 grid, 4 carousel, 5 blade, 6 zen.
+    in-out property <int> layout-style: 0;
+    // Tiles per row on Home (1..=8; ignored in carousel).
+    in-out property <int> columns: 6;
+    // Tile shape: 0 wide (16:9), 1 square (1:1), 2 poster (4:3), 3 row (list item), 4 circle (1:1 round).
+    in-out property <int> tile-aspect: 0;
+    // Tile card skin: 0 card, 1 glass, 2 outline, 3 poster (overlay title), 4 minimal, 5 dock-icon.
+    in-out property <int> tile-style: 0;
+    // Resting tile border (0 = none) and dimming of unfocused tiles (0..=0.55).
+    in-out property <float> tile-border-width: 0.0;
+    in-out property <color> tile-border-color: #FFFFFF24;
+    in-out property <float> tile-dim-unfocused: 0.0;
+    // Spacing and outer horizontal margin in reference pixels.
+    in-out property <float> tile-gap: 48.0;
+    in-out property <float> grid-margin-x: 90.0;
+
+    // Hero presentation: alignment (0 start, 1 center, 2 end), artwork card, title size/weight/position.
+    in-out property <int> hero-align: 0;
+    in-out property <bool> hero-artwork: true;
+    in-out property <float> hero-title-size: 68.0;
+    in-out property <int> hero-title-weight: 600;
+    // 0 default, 1 above-dock, 2 top-start (tvOS bold top-left display title).
+    in-out property <int> hero-title-position: 0;
+
+    // Focus treatment:
+    // 0 ring, 1 glow, 2 bar, 3 lift, 4 fill (accent inversion), 5 underline, 6 glass-pill.
+    in-out property <int> focus-style: 0;
+    // Optional rounded container behind the dock shelf or sidebar rail.
+    in-out property <bool> dock-surface: false;
+    // Optical frosted glass blur inside the dock container (uses pre-baked blurred backdrop).
+    in-out property <bool> dock-blur: false;
+    // Optional dock corner radius override (0 = inherit panel-radius).
+    in-out property <float> dock-radius: 0.0;
+    // Optional section label above row 0 (e.g. "Your apps").
+    in-out property <string> section-label: "";
+    // Top bar style: 0 floating, 1 strip, 2 minimal, 3 inline-labels, 4 bare-icons, 5 glass-pills, 6 google-tv.
+    in-out property <int> top-bar-style: 0;
+    // Clock placement & typography:
+    // 0 top-end, 1 top-start, 2 top-center, 3 bottom-end, 4 hidden, 5 center-hero, 6 greeting-header.
+    in-out property <int> clock-position: 0;
+    in-out property <float> clock-size: 34.0;
+    in-out property <int> clock-weight: 400;
+
+    // Global skin surfaces (Settings, Quick Panels, Folders, Context Menus):
+    // 0 solid, 1 tinted (translucent glass), 2 outline (flat framed), 3 elevated.
+    in-out property <int> panel-style: 0;
+    in-out property <float> panel-opacity: 1.0;
+    in-out property <float> panel-border-width: 0.0;
+    in-out property <color> panel-border-color: #FFFFFF22;
+    in-out property <float> scrim-opacity: 0.78;
+    // Selection style in menus/Settings: 0 invert (light pill), 1 accent fill, 2 accent bar.
+    in-out property <int> selection-style: 0;
+    // Optional system font family override (empty = default sans).
+    in-out property <string> font-family: "";
+    // Animation duration multiplier (0 = instant, 1 = standard, 1.5 = cinematic).
+    in-out property <float> motion-scale: 1.0;
+
+    // Reference-pixel radii and focus geometry (multiplied by `u` in UI).
+    in-out property <float> tile-radius: 12.0;
+    in-out property <float> panel-radius: 16.0;
+    in-out property <float> focus-scale: 1.15;
+    in-out property <float> focus-ring-width: 4.0;
+    // 0 full (default), 1 compact (2 rows visible), 2 off (grid-only).
+    in-out property <int> hero-mode: 0;
+    // 0 focused only, 1 always, 2 never.
+    in-out property <int> show-labels: 0;
+    // Whether the focused tile gently sways while idle.
+    in-out property <bool> sway: true;
+    // Multiplier for the hero colour glow intensity (0..=1.5).
+    in-out property <float> glow-strength: 1.0;
+
+    // Optional static background gradient, scrim, and/or wallpaper (PNG or SVG).
+    in-out property <bool> has-gradient: false;
+    in-out property <color> bg-top: #0E1014;
+    in-out property <color> bg-bottom: #0E1014;
+    in-out property <float> bg-gradient-angle: 180.0;
+    // Scrim over background: 0 none, 1 bottom, 2 left/start, 3 vignette (top+bottom).
+    in-out property <int> bg-scrim: 0;
+    in-out property <float> bg-scrim-strength: 0.55;
+    in-out property <image> bg-image;
+    in-out property <bool> has-bg-image: false;
+    in-out property <float> bg-image-opacity: 0.35;
+    // Pre-baked Gaussian-blurred backdrop for optical frosted-glass docks.
+    in-out property <image> bg-blurred-image;
+    in-out property <bool> has-bg-blurred: false;
 }
 
 // Hints that only say which keys move around (Back returns, Up and Down

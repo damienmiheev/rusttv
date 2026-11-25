@@ -415,6 +415,10 @@ pub enum MenuItem {
     /// Left and Right make it smaller or bigger. Only where the platform can
     /// scale apps ([`Home::set_app_sizes`]).
     Size,
+    /// Close a background running app (only shown for apps currently running).
+    Close,
+    /// Delete / uninstall the app (only shown for apps the platform can remove).
+    Delete,
 }
 
 /// The sizes an app can have on screen, in percent.
@@ -487,6 +491,10 @@ pub enum Effect {
     ShowLaunchError(String),
     /// Change this app's size on screen; the menu stays open.
     ResizeApp(String, SizeStep),
+    /// Close this running app (component name).
+    CloseApp(String),
+    /// Delete / uninstall this app (component name), after confirmation.
+    DeleteApp(String),
 }
 
 /// Vertical scroll state of the grid.
@@ -773,6 +781,7 @@ enum Mode {
     Menu {
         selected: usize,
         folder: Option<OpenFolder>,
+        confirm_delete: bool,
     },
     /// `focus` indexes `Home::hidden_apps`.
     Hidden {
@@ -783,13 +792,50 @@ enum Mode {
 
 /// What the long-press menu offers for a tile; empty means no menu.
 /// `sizes`: apps can be scaled ([`Home::set_app_sizes`]).
-fn menu_items(tile: Option<&TileId>, sizes: bool) -> &'static [MenuItem] {
+/// `running`: the app is currently running in the background.
+/// `deletable`: the platform can delete / uninstall the app.
+fn menu_items(
+    tile: Option<&TileId>,
+    sizes: bool,
+    running: bool,
+    deletable: bool,
+) -> &'static [MenuItem] {
     match tile {
-        Some(TileId::App(_)) if sizes => &[MenuItem::Move, MenuItem::Hide, MenuItem::Size],
+        Some(TileId::App(_)) => match (sizes, running, deletable) {
+            (true, true, true) => &[
+                MenuItem::Move,
+                MenuItem::Hide,
+                MenuItem::Size,
+                MenuItem::Close,
+                MenuItem::Delete,
+            ],
+            (true, true, false) => &[
+                MenuItem::Move,
+                MenuItem::Hide,
+                MenuItem::Size,
+                MenuItem::Close,
+            ],
+            (true, false, true) => &[
+                MenuItem::Move,
+                MenuItem::Hide,
+                MenuItem::Size,
+                MenuItem::Delete,
+            ],
+            (true, false, false) => &[MenuItem::Move, MenuItem::Hide, MenuItem::Size],
+            (false, true, true) => &[
+                MenuItem::Move,
+                MenuItem::Hide,
+                MenuItem::Close,
+                MenuItem::Delete,
+            ],
+            (false, true, false) => &[MenuItem::Move, MenuItem::Hide, MenuItem::Close],
+            (false, false, true) => &[MenuItem::Move, MenuItem::Hide, MenuItem::Delete],
+            (false, false, false) => &[MenuItem::Move, MenuItem::Hide],
+        },
         // Built-in tiles hide like apps (PANELS.md § 6).
-        Some(
-            TileId::App(_) | TileId::About | TileId::Settings | TileId::Remote | TileId::Panel(_),
-        ) => &[MenuItem::Move, MenuItem::Hide],
+        Some(TileId::About | TileId::Settings | TileId::Remote | TileId::Panel(_)) => {
+            &[MenuItem::Move, MenuItem::Hide]
+        }
         Some(TileId::Folder(_)) => &[MenuItem::Move],
         Some(TileId::Hidden) | None => &[],
     }
@@ -826,6 +872,10 @@ pub struct Home {
     launch_timeout: Duration,
     /// Whether app menus have a Size entry.
     app_sizes: bool,
+    /// Apps currently running in the background (for the Close app menu item).
+    running: BTreeSet<String>,
+    /// Apps the platform can delete directly from the long-press menu.
+    deletable: BTreeSet<String>,
     /// The top-right menu's entries; empty hides it.
     quick_actions: Vec<QuickAction>,
     /// About and Settings are tiles: the platform has no top-right menu.
@@ -833,6 +883,13 @@ pub struct Home {
     /// The folder a built-in tile's page was opened from: Back from the
     /// page opens it again, as after an app launched from it.
     page_folder: Option<OpenFolder>,
+    /// Tiles per row on the Home grid (default [`COLUMNS`], overridden by themes).
+    columns: usize,
+    /// Visible rows kept in view before scrolling (default [`FOCUS_SLOTS`]).
+    focus_slots: usize,
+    /// Single-row horizontal ribbon mode (carousel themes): Left/Right walk
+    /// every tile on one row and Up always reaches the top bar.
+    carousel: bool,
 }
 
 impl Home {
@@ -860,9 +917,33 @@ impl Home {
             folder_names: FolderNames::default(),
             launch_timeout: LAUNCH_TIMEOUT,
             app_sizes: false,
+            running: BTreeSet::new(),
+            deletable: BTreeSet::new(),
             quick_actions: Vec::new(),
             settings_tiles: false,
             page_folder: None,
+            columns: COLUMNS,
+            focus_slots: FOCUS_SLOTS,
+            carousel: false,
+        }
+    }
+
+    /// Updates Home's grid geometry for the active theme layout: `columns`
+    /// tiles per row (clamped `1..=8`), `focus_slots` visible rows before
+    /// scrolling (`1..=12`), or single-row horizontal `carousel` mode.
+    pub fn set_layout(&mut self, columns: usize, focus_slots: usize, carousel: bool) {
+        self.columns = columns.clamp(1, 8);
+        self.focus_slots = focus_slots.clamp(1, 12);
+        self.carousel = carousel;
+        self.update_scroll();
+    }
+
+    /// Effective column count for D-pad navigation on Home.
+    fn nav_columns(&self) -> usize {
+        if self.carousel {
+            self.tiles.len().max(1)
+        } else {
+            self.columns
         }
     }
 
@@ -939,6 +1020,80 @@ impl Home {
         self.app_sizes = on;
     }
 
+    /// Updates whether app `id` is currently running in the background (for
+    /// the Close app menu entry). Returns whether its running state changed.
+    pub fn set_app_running(&mut self, id: &str, running: bool) -> bool {
+        let changed = if running {
+            self.running.insert(id.to_owned())
+        } else {
+            self.running.remove(id)
+        };
+        if changed && matches!(self.mode, Mode::Menu { .. }) {
+            let max = self.items().len().saturating_sub(1);
+            if let Mode::Menu { selected, .. } = &mut self.mode {
+                *selected = (*selected).min(max);
+            }
+        }
+        changed
+    }
+
+    /// Replaces the set of currently running app ids; returns whether the
+    /// set changed.
+    pub fn sync_running_apps(&mut self, running: BTreeSet<String>) -> bool {
+        if self.running == running {
+            return false;
+        }
+        self.running = running;
+        if matches!(self.mode, Mode::Menu { .. }) {
+            let max = self.items().len().saturating_sub(1);
+            if let Mode::Menu { selected, .. } = &mut self.mode {
+                *selected = (*selected).min(max);
+            }
+        }
+        true
+    }
+
+    /// Whether app `id` is currently marked as running.
+    pub fn is_app_running(&self, id: &str) -> bool {
+        self.running.contains(id)
+    }
+
+    /// Sets the apps that can be deleted directly from the long-press menu.
+    pub fn set_deletable_apps(&mut self, deletable: BTreeSet<String>) {
+        self.deletable = deletable;
+        if matches!(self.mode, Mode::Menu { .. }) {
+            let max = self.items().len().saturating_sub(1);
+            if let Mode::Menu {
+                selected,
+                confirm_delete,
+                ..
+            } = &mut self.mode
+            {
+                *selected = (*selected).min(max);
+                *confirm_delete = false;
+            }
+        }
+    }
+
+    /// Whether the long-press menu's Delete item is awaiting a second OK press.
+    pub fn menu_confirm_delete(&self) -> bool {
+        matches!(
+            self.mode,
+            Mode::Menu {
+                confirm_delete: true,
+                ..
+            }
+        )
+    }
+
+    /// Keeps a move alive when pointer hover moves a tile, so the idle
+    /// timeout counts from the last mouse motion.
+    pub fn touch_move(&mut self, now: Duration) {
+        if let Mode::Moving { last_input, .. } = &mut self.mode {
+            *last_input = now;
+        }
+    }
+
     /// The tile the open menu is for.
     pub fn menu_tile(&self) -> Option<TileId> {
         matches!(self.mode, Mode::Menu { .. })
@@ -948,7 +1103,12 @@ impl Home {
 
     /// The menu entries of the tile OK acts on.
     fn items(&self) -> &'static [MenuItem] {
-        menu_items(self.current().as_ref(), self.app_sizes)
+        let current = self.current();
+        let (running, deletable) = match current.as_ref() {
+            Some(TileId::App(id)) => (self.running.contains(id), self.deletable.contains(id)),
+            _ => (false, false),
+        };
+        menu_items(current.as_ref(), self.app_sizes, running, deletable)
     }
 
     /// Sets the first names of new folders (in the UI's language).
@@ -1127,6 +1287,16 @@ impl Home {
                 self.mode = Mode::Hidden { focus };
                 return self.handle_hidden(Input::OkPressed);
             }
+            // While moving a tile with the pointer, left-click drops it and
+            // right-click cancels the move.
+            Mode::Moving { .. } => {
+                if long {
+                    self.cancel_move();
+                    return None;
+                }
+                self.hover(id);
+                return self.drop_tile();
+            }
             _ => return None,
         }
         self.ok_since = None;
@@ -1171,6 +1341,51 @@ impl Home {
                 });
                 open.focus != Some(index)
             }
+            Mode::Moving { place, .. } => match place {
+                Place::Home { .. } => {
+                    let movable = self.movable();
+                    let Some(to) = self.tiles[..movable].iter().position(|tile| tile == id) else {
+                        return false;
+                    };
+                    if to == self.focus {
+                        return false;
+                    }
+                    let tile = self.tiles.remove(self.focus);
+                    self.tiles.insert(to, tile);
+                    self.focus = to;
+                    self.update_scroll();
+                    if let Mode::Moving { place, .. } = &mut self.mode {
+                        *place = Place::Home { over: None };
+                    }
+                    true
+                }
+                Place::Folder {
+                    id: folder_id,
+                    index,
+                } => {
+                    let Some(name) = member_name(id) else {
+                        return false;
+                    };
+                    let Some(folder) = self.folders.get_mut(&folder_id) else {
+                        return false;
+                    };
+                    let Some(to) = folder.apps.iter().position(|app| *app == name) else {
+                        return false;
+                    };
+                    if to == index {
+                        return false;
+                    }
+                    let app = folder.apps.remove(index);
+                    folder.apps.insert(to, app);
+                    if let Mode::Moving { place, .. } = &mut self.mode {
+                        *place = Place::Folder {
+                            id: folder_id,
+                            index: to,
+                        };
+                    }
+                    true
+                }
+            },
             _ => false,
         }
     }
@@ -1473,11 +1688,12 @@ impl Home {
 
     /// Current scroll state.
     pub fn scroll(&self) -> Scroll {
-        match self.focus / COLUMNS {
-            0 => Scroll::Shelf,
-            _ => Scroll::Grid {
+        if self.carousel || self.focus / self.columns == 0 {
+            Scroll::Shelf
+        } else {
+            Scroll::Grid {
                 first_row: self.first_row,
-            },
+            }
         }
     }
 
@@ -1520,6 +1736,17 @@ impl Home {
                 true
             }
             _ => false,
+        }
+    }
+
+    /// Opens the Settings page directly (e.g. from a programmable skin).
+    pub fn open_settings(&mut self) -> Option<Effect> {
+        if matches!(self.mode, Mode::Browse | Mode::Bar { .. }) {
+            self.page_folder = None;
+            self.mode = Mode::Settings { history: false };
+            Some(Effect::OpenSettings)
+        } else {
+            None
         }
     }
 
@@ -1740,21 +1967,26 @@ impl Home {
     fn handle_browse(&mut self, input: Input, now: Duration) -> Option<Effect> {
         if let Some(direction) = self.direction(input) {
             self.ok_since = None;
-            if let Some(target) = neighbour(self.focus, self.tiles.len(), direction) {
+            let cols = self.nav_columns();
+            if let Some(target) = neighbour_in(self.focus, self.tiles.len(), cols, direction) {
                 self.focus = target;
                 self.update_scroll();
             } else if matches!(direction, Direction::Up)
-                && self.focus < COLUMNS
+                && (self.carousel || self.focus < self.columns)
                 && !self.quick_actions.is_empty()
             {
-                // Up from the first row: into the top-right menu.
+                // Up from the first row (or any carousel tile): into the top-right menu.
                 self.mode = Mode::Bar { selected: 0 };
             }
             return None;
         }
         match input {
             Input::Back => {
-                self.focus %= COLUMNS;
+                self.focus = if self.carousel {
+                    0
+                } else {
+                    self.focus % self.columns
+                };
                 self.update_scroll();
                 None
             }
@@ -1904,7 +2136,8 @@ impl Home {
 
     /// Moves the app on Home one tile in `direction`, onto that tile.
     fn move_on_home(&mut self, direction: Direction, now: Duration) {
-        let over = neighbour(self.focus, self.movable(), direction).map(|target| {
+        let cols = self.nav_columns();
+        let over = neighbour_in(self.focus, self.movable(), cols, direction).map(|target| {
             let tile = self.tiles.remove(self.focus);
             self.tiles.insert(target, tile);
             // The tile that was there moved one step towards the gap.
@@ -2068,11 +2301,24 @@ impl Home {
     /// that opened the menu is ignored), Back closes the menu.
     fn handle_menu(&mut self, input: Input, now: Duration) -> Option<Effect> {
         let items = self.items();
-        let Mode::Menu { selected, folder } = self.mode else {
+        let Mode::Menu {
+            selected,
+            folder,
+            confirm_delete,
+        } = self.mode
+        else {
             return None;
         };
         let select = |this: &mut Self, index: usize| {
-            if let Mode::Menu { selected, .. } = &mut this.mode {
+            if let Mode::Menu {
+                selected,
+                confirm_delete,
+                ..
+            } = &mut this.mode
+            {
+                if *selected != index {
+                    *confirm_delete = false;
+                }
                 *selected = index;
             }
         };
@@ -2084,6 +2330,27 @@ impl Home {
                 Some(MenuItem::Move) => self.start_move(now),
                 Some(MenuItem::Hide) => return self.hide_current(),
                 Some(MenuItem::Size) => return self.resize_current(SizeStep::Cycle),
+                Some(MenuItem::Close) => {
+                    let app = match self.current() {
+                        Some(TileId::App(id)) => Some(id),
+                        _ => None,
+                    };
+                    self.mode = folder.map_or(Mode::Browse, Mode::Folder);
+                    return app.map(Effect::CloseApp);
+                }
+                Some(MenuItem::Delete) => {
+                    if confirm_delete {
+                        let app = match self.current() {
+                            Some(TileId::App(id)) => Some(id),
+                            _ => None,
+                        };
+                        self.mode = folder.map_or(Mode::Browse, Mode::Folder);
+                        return app.map(Effect::DeleteApp);
+                    }
+                    if let Mode::Menu { confirm_delete, .. } = &mut self.mode {
+                        *confirm_delete = true;
+                    }
+                }
                 None => self.mode = folder.map_or(Mode::Browse, Mode::Folder),
             },
             Input::Left | Input::Right if item == Some(MenuItem::Size) => {
@@ -2268,6 +2535,7 @@ impl Home {
             self.mode = Mode::Menu {
                 selected: 0,
                 folder: self.open_folder(),
+                confirm_delete: false,
             };
         }
     }
@@ -2333,13 +2601,17 @@ impl Home {
         self.update_scroll();
     }
 
-    /// Keeps the focused row within the first [`FOCUS_SLOTS`] visible rows, scrolling as little as possible.
+    /// Keeps the focused row within the visible focus slots, scrolling as little as possible.
     fn update_scroll(&mut self) {
-        let row = self.focus / COLUMNS;
+        if self.carousel {
+            self.first_row = 0;
+            return;
+        }
+        let row = self.focus / self.columns;
         if row == 0 || row < self.first_row {
             self.first_row = row;
-        } else if row >= self.first_row + FOCUS_SLOTS {
-            self.first_row = row + 1 - FOCUS_SLOTS;
+        } else if row >= self.first_row + self.focus_slots {
+            self.first_row = row + 1 - self.focus_slots;
         }
     }
 }
@@ -2787,7 +3059,7 @@ mod tests {
             assert_eq!(home.focused(), Some(&HISTORY));
         }
         assert_eq!(
-            menu_items(Some(&HISTORY), true),
+            menu_items(Some(&HISTORY), true, false, true),
             [MenuItem::Move, MenuItem::Hide]
         );
         let mut home = home(2);
@@ -3339,13 +3611,16 @@ mod tests {
         assert_eq!(home.state(), State::Moving);
         for tile in [TileId::About, TileId::Settings, TileId::Remote, HISTORY] {
             assert_eq!(
-                menu_items(Some(&tile), true),
+                menu_items(Some(&tile), true, false, true),
                 [MenuItem::Move, MenuItem::Hide],
                 "{tile:?}"
             );
         }
-        assert_eq!(menu_items(Some(&TileId::Folder(1)), true), [MenuItem::Move]);
-        assert!(menu_items(Some(&TileId::Hidden), true).is_empty());
+        assert_eq!(
+            menu_items(Some(&TileId::Folder(1)), true, false, true),
+            [MenuItem::Move]
+        );
+        assert!(menu_items(Some(&TileId::Hidden), true, false, true).is_empty());
     }
 
     #[test]
@@ -4574,5 +4849,31 @@ mod tests {
                 TileId::Remote
             ]
         );
+    }
+    #[test]
+    fn custom_theme_layouts_change_navigation_and_scrolling() {
+        // Sidebar (1-column vertical rail, 7 visible rows): Down steps 1 tile at a time.
+        let mut rail = home(10);
+        rail.set_layout(1, 7, false);
+        press(&mut rail, &[Input::Down, Input::Down]);
+        assert_eq!(rail.focus(), 2);
+        assert_eq!(rail.scroll(), Scroll::Grid { first_row: 0 });
+        for _ in 0..6 {
+            press(&mut rail, &[Input::Down]);
+        }
+        assert_eq!(rail.focus(), 8);
+        assert_eq!(rail.scroll(), Scroll::Grid { first_row: 2 });
+
+        // Carousel (single horizontal ribbon): Right walks past 6 tiles on one row.
+        let mut ribbon = home(9);
+        ribbon.set_quick_actions(vec![QuickAction::Settings]);
+        ribbon.set_layout(6, 3, true);
+        for _ in 0..7 {
+            press(&mut ribbon, &[Input::Right]);
+        }
+        assert_eq!(ribbon.focus(), 7);
+        assert_eq!(ribbon.scroll(), Scroll::Shelf);
+        press(&mut ribbon, &[Input::Up]);
+        assert_eq!(ribbon.state(), State::Bar);
     }
 }

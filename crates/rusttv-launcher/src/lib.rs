@@ -21,12 +21,15 @@ mod remote;
 mod remote_page;
 mod review;
 mod settings;
+#[cfg(feature = "skins")]
+mod skin_runtime;
 /// The panel template converter build.rs runs, compiled here for its tests.
 #[cfg(test)]
 #[path = "../codegen/convert.rs"]
 mod template_convert;
 #[cfg(test)]
 mod template_convert_tests;
+mod theme;
 mod ui;
 
 #[cfg(any(test, feature = "test-util"))]

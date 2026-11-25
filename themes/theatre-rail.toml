@@ -1,0 +1,43 @@
+# Reference theme: Theatre Rail
+# Vertical media-center app list on the start side with a cyan bar highlight,
+# full top header strip, and a large live showcase preview on the end side.
+schema_version = 1
+name = "Theatre Rail"
+author = "RustTV"
+description = "Vertical media-center sidebar rail with live showcase preview and header strip"
+
+[colors]
+bg = "#0A141E"
+surface = "#152638"
+dock_bg = "#0F1D2CE0"
+text = "#F0F6FA"
+text_dim = "#8FAAC0"
+accent = "#12B2E7"
+focus_ring = "#12B2E7"
+icon_card_tint = 0.26
+
+[layout]
+style = "sidebar"
+columns = 1
+tile_aspect = "row"
+tile_gap = 12
+grid_margin_x = 56
+hero = "full"
+hero_align = "end"
+hero_artwork = true
+hero_title_size = 64
+focus_style = "bar"
+dock_surface = true
+top_bar_style = "strip"
+clock_position = "top-start"
+tile_radius = 10
+panel_radius = 14
+focus_scale = 1.02
+focus_ring_width = 0
+show_labels = "always"
+sway = false
+glow_strength = 0.65
+
+[background]
+gradient_top = "#13293D"
+gradient_bottom = "#070E16"

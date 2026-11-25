@@ -40,22 +40,36 @@ export component ControlRow inherits Rectangle {
     in property <bool> tall;
     property <bool> one-line: detail == "" && !slider && !tall;
     height: (one-line ? 64 : 96) * u;
-    border-radius: 10 * u;
-    background: selected ? Theme.text : Theme.text.with-alpha(0);
-    animate background { duration: 120ms; }
+    border-radius: min(Theme.tile-radius, 12.0) * u;
+    background: !selected ? Theme.text.with-alpha(0)
+        : Theme.selection-style == 1 ? Theme.accent
+        : Theme.selection-style == 2 ? Theme.text.with-alpha(0.12)
+        : Theme.text;
+    animate background { duration: 120ms * Theme.motion-scale; }
 
     pure function place-x(x: length, width: length) -> length {
         return rtl ? self.width - x - width : x;
     }
     property <TextHorizontalAlignment> start: rtl ? TextHorizontalAlignment.right : TextHorizontalAlignment.left;
+    property <color> sel-fg: Theme.selection-style == 1 ? Theme.accent-text
+        : Theme.selection-style == 2 ? Theme.text
+        : Theme.bg;
 
+    if selected && Theme.selection-style == 2: Rectangle {
+        x: root.place-x(6 * u, 6 * u);
+        y: 12 * u;
+        width: 6 * u;
+        height: parent.height - 24 * u;
+        border-radius: 3 * u;
+        background: Theme.accent;
+    }
     if current: Rectangle {
         x: root.place-x(18 * u, 10 * u);
         y: (root.one-line ? (parent.height - self.height) / 2 : 28 * u);
         width: 10 * u;
         height: 10 * u;
         border-radius: self.width / 2;
-        background: Theme.accent;
+        background: selected && Theme.selection-style == 1 ? Theme.accent-text : Theme.accent;
     }
     Text {
         x: root.place-x(44 * u, self.width);
@@ -64,12 +78,12 @@ export component ControlRow inherits Rectangle {
         height: root.one-line ? parent.height : 34 * u;
         text: root.text;
         font-size: 27 * u;
-        font-weight: 500;
-        color: selected ? Theme.bg : dim ? Theme.text-dim : Theme.text;
+        font-weight: selected ? 600 : 500;
+        color: selected ? root.sel-fg : dim ? Theme.text-dim : Theme.text;
         horizontal-alignment: root.start;
         vertical-alignment: center;
         overflow: elide;
-        animate color { duration: 120ms; }
+        animate color { duration: 120ms * Theme.motion-scale; }
     }
     if detail != "" || slider: Text {
         x: root.place-x(44 * u, self.width);
@@ -78,11 +92,11 @@ export component ControlRow inherits Rectangle {
         height: 32 * u;
         text: root.detail;
         font-size: 25 * u;
-        color: selected ? Theme.bg.with-alpha(0.7) : Theme.text-dim;
+        color: selected ? root.sel-fg.with-alpha(0.75) : Theme.text-dim;
         horizontal-alignment: root.start;
         vertical-alignment: center;
         overflow: elide;
-        animate color { duration: 120ms; }
+        animate color { duration: 120ms * Theme.motion-scale; }
     }
     if slider: Rectangle {
         x: root.place-x(170 * u, self.width);
@@ -90,13 +104,13 @@ export component ControlRow inherits Rectangle {
         width: parent.width - 214 * u;
         height: 8 * u;
         border-radius: self.height / 2;
-        background: selected ? Theme.bg.with-alpha(0.2) : #FFFFFF26;
+        background: selected ? root.sel-fg.with-alpha(0.22) : #FFFFFF26;
         Rectangle {
             x: rtl ? parent.width - self.width : 0;
             width: parent.width * clamp(level, 0, 1);
             height: parent.height;
             border-radius: parent.border-radius;
-            background: selected ? Theme.bg : Theme.accent;
+            background: selected ? (Theme.selection-style == 2 ? Theme.accent : root.sel-fg) : Theme.accent;
         }
     }
 }
@@ -119,17 +133,24 @@ export component QuickBar inherits Rectangle {
     // before Network have a lower code and those after it a higher one
     // (model.rs `QuickAction::ALL`).
     in property <[int]> links;
+    // Softens unfocused buttons when `top_bar_style = "minimal"` without
+    // setting container `opacity < 1.0` (which allocates a Skia FBO layer).
+    in property <bool> dimmed: false;
     // A click on entry `index`.
     callback clicked(int);
     // The pointer moved onto entry `index`.
     callback hovered(int);
 
-    property <length> size: 72 * u;
-    property <length> gap: 18 * u;
-    property <length> link-width: 44 * u;
+    property <bool> labeled-bar: Theme.top-bar-style == 3 || Theme.top-bar-style == 5;
+    property <bool> bare-icons: Theme.top-bar-style == 4;
+    property <bool> google-tv-bar: Theme.top-bar-style == 6;
+    property <length> size: bare-icons || google-tv-bar ? 56 * u : 72 * u;
+    property <length> gap: bare-icons || google-tv-bar ? 14 * u : 18 * u;
+    property <length> link-width: bare-icons || google-tv-bar ? 36 * u : 44 * u;
     // How much wider the Network entry is than a round one.
     property <length> net-extra: max(0px, links.length * link-width + 28 * u - size);
-    property <length> bar-width: max(0px, actions.length * (size + gap) - gap + net-extra);
+    property <length> brand-w: google-tv-bar ? 116 * u : 0px;
+    property <length> icon-bar-width: max(0px, actions.length * (size + gap) - gap + net-extra) + brand-w;
 
     // Left edge of entry `i` (code `code`) in left-to-right order, and its width.
     pure function start(i: int, code: int) -> length {
@@ -172,79 +193,162 @@ export component QuickBar inherits Rectangle {
         return "M 12 2.5 L 12 11 M 6.5 5.5 A 8 8 0 1 0 17.5 5.5";
     }
 
-    width: bar-width;
-    height: size;
+    width: labeled-bar ? labeled-row.preferred-width : icon-bar-width;
+    height: labeled-bar ? (Theme.top-bar-style == 5 ? 46 : 52) * u : size;
 
-    for code[i] in actions: button := Rectangle {
-        property <bool> focused: i == selected;
-        property <color> ink: focused ? Theme.bg : Theme.text;
-        width: root.span(code);
-        x: rtl ? root.width - root.start(i, code) - self.width : root.start(i, code);
-        height: size;
-        border-radius: self.height / 2;
-        background: focused ? Theme.text : #0000005C;
-        animate background { duration: 120ms; }
-        if code != 3 || links.length == 0: Path {
-            x: (parent.width - parent.height * 0.5) / 2;
-            y: parent.height * 0.25;
-            width: parent.height * 0.5;
-            height: parent.height * 0.5;
-            viewbox-width: 24;
-            viewbox-height: 24;
-            commands: root.icon(code);
-            stroke: parent.ink;
-            stroke-width: 2.6 * u;
-            fill: transparent;
-        }
-        // Network: one icon per interface; the dim full icon under a Wi-Fi's
-        // bars, a dim socket for an unplugged cable.
-        if code == 3: Rectangle {
-            x: 14 * u;
-            width: parent.width - 28 * u;
-            for link[j] in links: Rectangle {
-                property <bool> is-wifi: link < 200;
-                property <bool> up: is-wifi ? link > 100 : link == 201;
-                x: rtl ? parent.width - (j + 1) * root.link-width : j * root.link-width;
-                width: root.link-width;
-                Path {
-                    x: (parent.width - 36 * u) / 2;
-                    y: (root.size - 36 * u) / 2;
-                    width: 36 * u;
-                    height: 36 * u;
-                    viewbox-width: 24;
-                    viewbox-height: 24;
-                    commands: parent.is-wifi ? root.wifi(4) : root.wired;
-                    stroke: button.ink;
-                    stroke-width: 2.6 * u;
-                    fill: transparent;
-                    opacity: parent.up && !parent.is-wifi ? 1 : 0.35;
+    // Inline-labels (`top_bar_style = "inline-labels"`, Projectivy Glass) and
+    // stadium glass pills (`top_bar_style = "glass-pills"`, Ambient Pills).
+    labeled-row := HorizontalLayout {
+        visible: root.labeled-bar;
+        spacing: (Theme.top-bar-style == 5 ? 10 : 28) * u;
+        for code[i] in actions: pill := Rectangle {
+            property <bool> focused: i == selected;
+            property <bool> is-glass-pill: Theme.top-bar-style == 5;
+            property <color> ink: focused && is-glass-pill ? Theme.bg : Theme.text;
+            height: (is-glass-pill ? 46 : 52) * u;
+            width: inner.preferred-width;
+            border-radius: self.height / 2;
+            background: is-glass-pill
+                ? (focused ? Theme.text : #FFFFFF18)
+                : (focused ? #FFFFFF2E : transparent);
+            border-width: is-glass-pill ? 1.5 * u : (focused ? 1.5 * u : 0px);
+            border-color: is-glass-pill
+                ? (focused ? Theme.text : #FFFFFF48)
+                : #FFFFFF66;
+            animate background { duration: 120ms * Theme.motion-scale; }
+
+            inner := HorizontalLayout {
+                padding-left: (pill.is-glass-pill ? 18 : 12) * u;
+                padding-right: (pill.is-glass-pill ? 20 : 12) * u;
+                height: parent.height;
+                spacing: (pill.is-glass-pill ? 8 : 10) * u;
+                alignment: center;
+                Rectangle {
+                    width: (pill.is-glass-pill ? 20 : 24) * u;
+                    height: parent.height;
+                    Path {
+                        x: 0;
+                        y: (parent.height - parent.width) / 2;
+                        width: parent.width;
+                        height: parent.width;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: root.icon(code);
+                        stroke: pill.ink;
+                        stroke-width: 2.2 * u;
+                        fill: transparent;
+                    }
                 }
-                if is-wifi && up: Path {
-                    x: (parent.width - 36 * u) / 2;
-                    y: (root.size - 36 * u) / 2;
-                    width: 36 * u;
-                    height: 36 * u;
-                    viewbox-width: 24;
-                    viewbox-height: 24;
-                    commands: root.wifi(link - 100);
-                    stroke: button.ink;
-                    stroke-width: 2.6 * u;
-                    fill: transparent;
+                Text {
+                    text: root.name(code);
+                    font-size: (pill.is-glass-pill ? 18 : 22) * u;
+                    font-weight: pill.focused ? 600 : 400;
+                    color: pill.ink;
+                    vertical-alignment: center;
                 }
             }
-        }
-        TouchArea {
-            mouse-cursor: pointer;
-            pointer-event(event) => {
-                if event.kind == PointerEventKind.move {
-                    root.hovered(i);
+            TouchArea {
+                mouse-cursor: pointer;
+                pointer-event(event) => {
+                    if event.kind == PointerEventKind.move {
+                        root.hovered(i);
+                    }
                 }
+                clicked => { root.clicked(i); }
             }
-            clicked => { root.clicked(i); }
         }
     }
-    if selected >= 0: Text {
-        property <length> centre: (rtl ? root.width - root.start(selected, actions[selected]) - root.span(actions[selected]) : root.start(selected, actions[selected])) + root.span(actions[selected]) / 2;
+
+    // Round icon buttons (floating, strip, minimal, bare-icons, google-tv).
+    if !root.labeled-bar: Rectangle {
+        width: parent.width;
+        height: parent.height;
+        for code[i] in actions: button := Rectangle {
+            property <bool> focused: i == selected;
+            property <color> ink: focused ? Theme.bg : (root.dimmed ? Theme.text.with-alpha(0.58) : Theme.text);
+            width: root.span(code);
+            x: rtl ? root.width - root.start(i, code) - self.width - root.brand-w : root.start(i, code);
+            height: size;
+            border-radius: self.height / 2;
+            background: focused ? Theme.text
+                : root.bare-icons ? transparent
+                : root.google-tv-bar ? #FFFFFF1E
+                : (root.dimmed ? #00000038 : #0000005C);
+            animate background { duration: 120ms * Theme.motion-scale; }
+            if code != 3 || links.length == 0: Path {
+                x: (parent.width - parent.height * 0.5) / 2;
+                y: parent.height * 0.25;
+                width: parent.height * 0.5;
+                height: parent.height * 0.5;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: root.icon(code);
+                stroke: parent.ink;
+                stroke-width: (root.bare-icons || root.google-tv-bar ? 2.2 : 2.6) * u;
+                fill: transparent;
+            }
+            // Network: one icon per interface; the dim full icon under a Wi-Fi's
+            // bars, a dim socket for an unplugged cable.
+            if code == 3: Rectangle {
+                x: 14 * u;
+                width: parent.width - 28 * u;
+                for link[j] in links: Rectangle {
+                    property <bool> is-wifi: link < 200;
+                    property <bool> up: is-wifi ? link > 100 : link == 201;
+                    x: rtl ? parent.width - (j + 1) * root.link-width : j * root.link-width;
+                    width: root.link-width;
+                    Path {
+                        x: (parent.width - 32 * u) / 2;
+                        y: (root.size - 32 * u) / 2;
+                        width: 32 * u;
+                        height: 32 * u;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: parent.is-wifi ? root.wifi(4) : root.wired;
+                        stroke: button.ink;
+                        stroke-width: 2.4 * u;
+                        fill: transparent;
+                        opacity: parent.up && !parent.is-wifi ? 1 : 0.35;
+                    }
+                    if is-wifi && up: Path {
+                        x: (parent.width - 32 * u) / 2;
+                        y: (root.size - 32 * u) / 2;
+                        width: 32 * u;
+                        height: 32 * u;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: root.wifi(link - 100);
+                        stroke: button.ink;
+                        stroke-width: 2.4 * u;
+                        fill: transparent;
+                    }
+                }
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                pointer-event(event) => {
+                    if event.kind == PointerEventKind.move {
+                        root.hovered(i);
+                    }
+                }
+                clicked => { root.clicked(i); }
+            }
+        }
+        // Google TV trailing wordmark ("RustTV") next to the circular buttons.
+        if root.google-tv-bar: Text {
+            x: rtl ? 0px : parent.width - root.brand-w + 20 * u;
+            width: root.brand-w - 20 * u;
+            height: parent.height;
+            text: "RustTV";
+            font-size: 24 * u;
+            font-weight: 500;
+            color: Theme.text.with-alpha(0.72);
+            vertical-alignment: center;
+            horizontal-alignment: rtl ? left : right;
+        }
+    }
+    if !root.labeled-bar && selected >= 0: Text {
+        property <length> centre: (rtl ? root.width - root.start(selected, actions[selected]) - root.span(actions[selected]) - root.brand-w : root.start(selected, actions[selected])) + root.span(actions[selected]) / 2;
         x: rtl ? max(self.centre - 160 * u, -60 * u) : min(self.centre - 160 * u, root.width + 60 * u - 320 * u);
         y: size + 14 * u;
         width: 320 * u;
@@ -278,8 +382,10 @@ export component QuickPanel inherits Rectangle {
 
     width: 720 * u;
     height: self.list-y + self.shown * self.pitch + 16 * u;
-    border-radius: 16 * u;
-    background: Theme.surface;
+    border-radius: Theme.panel-radius * u;
+    background: Theme.surface.with-alpha(Theme.panel-opacity);
+    border-width: Theme.panel-border-width * u;
+    border-color: Theme.panel-border-color;
     drop-shadow-color: #00000080;
     drop-shadow-blur: 40 * u;
     drop-shadow-offset-y: 16 * u;
@@ -362,7 +468,7 @@ export component PowerMenu inherits Rectangle {
     property <length> button-width: 640 * u;
     property <length> list-height: rows.length * pitch;
 
-    background: #000000D8;
+    background: Theme.bg.with-alpha(max(Theme.scrim-opacity, 0.80));
 
     TouchArea {
         clicked => { root.dismissed(); }
@@ -394,13 +500,39 @@ export component PowerMenu inherits Rectangle {
         width: button-width;
         height: pitch - 28 * u;
         border-radius: self.height / 2;
-        background: focused ? Theme.text : Theme.surface;
-        animate background { duration: 120ms; }
+        background: !focused ? Theme.surface.with-alpha(Theme.panel-opacity)
+            : Theme.selection-style == 1 ? Theme.accent
+            : Theme.selection-style == 2 ? Theme.surface
+            : Theme.text;
+        border-width: focused && Theme.selection-style == 2 ? 3 * u : Theme.panel-border-width * u;
+        border-color: focused && Theme.selection-style == 2 ? Theme.accent : Theme.panel-border-color;
+        animate background { duration: 120ms * Theme.motion-scale; }
+        property <color> fg: !focused ? Theme.text
+            : Theme.selection-style == 1 ? Theme.accent-text
+            : Theme.selection-style == 2 ? Theme.text
+            : Theme.bg;
         Text {
+            y: data.detail == "" ? 0 : 12 * u;
+            width: parent.width;
+            height: data.detail == "" ? parent.height : 46 * u;
+            horizontal-alignment: center;
+            vertical-alignment: center;
             text: data.title;
-            font-size: 38 * u;
+            font-size: (data.detail == "" ? 38 : 32) * u;
             font-weight: 500;
-            color: parent.focused ? Theme.bg : Theme.text;
+            color: parent.fg;
+        }
+        if data.detail != "": Text {
+            y: 56 * u;
+            width: parent.width - 48 * u;
+            x: 24 * u;
+            height: 32 * u;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            text: data.detail;
+            font-size: 22 * u;
+            color: parent.focused ? parent.fg.with-alpha(0.75) : Theme.text-dim;
+            overflow: elide;
         }
         TouchArea {
             mouse-cursor: pointer;

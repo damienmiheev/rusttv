@@ -1,0 +1,231 @@
+// Standalone Level 3 skin: Ambient Pills Pro (.slint + .rhai).
+// Completely independent UI sharing zero elements with the built-in shell.
+import { RustTV } from "@rusttv/skin.slint";
+
+component GlassPillButton inherits Rectangle {
+    in property <string> label;
+    in property <string> icon;
+    in property <bool> focused;
+    callback clicked();
+
+    height: 48px;
+    width: row.preferred-width;
+    border-radius: 24px;
+    background: focused ? #FFFFFF : #FFFFFF18;
+    border-width: focused ? 2.5px : 1.5px;
+    border-color: focused ? #FFFFFF : #FFFFFF48;
+
+    row := HorizontalLayout {
+        padding-left: 18px;
+        padding-right: 20px;
+        spacing: 10px;
+        Rectangle {
+            width: 20px;
+            height: 48px;
+            Path {
+                y: 14px;
+                width: 20px;
+                height: 20px;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: root.icon;
+                stroke: root.focused ? #0C0E14 : #FFFFFF;
+                stroke-width: 2px;
+                fill: transparent;
+            }
+        }
+        Text {
+            text: root.label;
+            font-size: 18px;
+            font-weight: root.focused ? 600 : 500;
+            color: root.focused ? #0C0E14 : #FFFFFF;
+            vertical-alignment: center;
+        }
+    }
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+export component SkinHome inherits Window {
+    // Exactly "RustTV": the compositor raises that window on Home (labwc rc.xml).
+    title: "RustTV";
+    background: #06070B;
+    preferred-width: 1280px;
+    preferred-height: 720px;
+
+    property <length> u: min(root.width / 1920, root.height / 1080);
+
+    FocusScope {
+        init => { self.focus(); }
+        key-pressed(event) => {
+            RustTV.key(event.text, true, event.repeat) ? accept : reject
+        }
+        key-released(event) => {
+            RustTV.key(event.text, false, false) ? accept : reject
+        }
+    }
+
+    // Dramatic upper-left radial ambient glow driven by the focused app's colour.
+    Rectangle {
+        x: -parent.width * 0.15;
+        y: -parent.height * 0.20;
+        width: parent.width * 1.15;
+        height: parent.height * 1.15;
+        background: @radial-gradient(circle, RustTV.hero-color.with-alpha(0.72) 0%, RustTV.hero-color.with-alpha(0.28) 38%, #06070B00 72%);
+    }
+
+    // Top-left Greeting + Large Clock + Vertical Divider + Uppercase Date.
+    Rectangle {
+        x: 112 * u;
+        y: 44 * u;
+        width: 820 * u;
+        height: 116 * u;
+
+        Text {
+            x: 0;
+            y: 0;
+            text: RustTV.greeting-text;
+            font-size: 18 * u;
+            font-weight: 500;
+            letter-spacing: 2.6 * u;
+            color: #FFFFFFC0;
+        }
+        HorizontalLayout {
+            x: 0;
+            y: 26 * u;
+            height: 76 * u;
+            spacing: 24 * u;
+            alignment: start;
+
+            Text {
+                text: RustTV.clock-text;
+                font-size: 64 * u;
+                font-weight: 400;
+                color: #FFFFFF;
+                vertical-alignment: center;
+            }
+            Rectangle {
+                width: 2 * u;
+                height: 76 * u;
+                Rectangle {
+                    y: 16 * u;
+                    width: 2 * u;
+                    height: 44 * u;
+                    background: #FFFFFF4C;
+                }
+            }
+            Text {
+                text: RustTV.date-text;
+                font-size: 18 * u;
+                font-weight: 500;
+                letter-spacing: 1.8 * u;
+                color: #FFFFFFD4;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    // Top-right Stadium Glass Pill Buttons.
+    HorizontalLayout {
+        x: parent.width - self.preferred-width - 112 * u;
+        y: 58 * u;
+        width: self.preferred-width;
+        height: 48px;
+        spacing: 14px;
+
+        GlassPillButton {
+            label: "Settings";
+            focused: RustTV.i1 == 1;
+            icon: "M 19.18 9.51 L 21.77 9.86 L 21.77 14.14 L 19.18 14.49 L 18.84 15.32 L 20.42 17.39 L 17.39 20.42 L 15.32 18.84 L 14.49 19.18 L 14.14 21.77 L 9.86 21.77 L 9.51 19.18 L 8.68 18.84 L 6.61 20.42 L 3.58 17.39 L 5.16 15.32 L 4.82 14.49 L 2.23 14.14 L 2.23 9.86 L 4.82 9.51 L 5.16 8.68 L 3.58 6.61 L 6.61 3.58 L 8.68 5.16 L 9.51 4.82 L 9.86 2.23 L 14.14 2.23 L 14.49 4.82 L 15.32 5.16 L 17.39 3.58 L 20.42 6.61 L 18.84 8.68 Z M 15.2 12 A 3.2 3.2 0 1 0 8.8 12 A 3.2 3.2 0 1 0 15.2 12 Z";
+            clicked => { RustTV.action("settings", ""); }
+        }
+    }
+
+    // Focused app title directly above the 4-column dock.
+    Text {
+        x: 112 * u;
+        y: parent.height - 460 * u;
+        width: parent.width - 224 * u;
+        text: RustTV.hero-title;
+        font-size: 62 * u;
+        font-weight: 500;
+        color: #FFFFFF;
+        overflow: elide;
+    }
+
+    // Framed 4-column wide dock container.
+    Rectangle {
+        x: 92 * u;
+        y: parent.height - 364 * u;
+        width: parent.width - 184 * u;
+        height: 270 * u;
+        border-radius: 30 * u;
+        background: #14182270;
+        border-width: 1.5 * u;
+        border-color: #FFFFFF2A;
+
+        property <length> pad: 22 * u;
+        property <length> gap: 24 * u;
+        property <length> card-w: (self.width - 2 * self.pad - 3 * self.gap) / 4;
+        property <length> card-h: self.height - 2 * self.pad;
+
+        for tile[i] in RustTV.tiles: Rectangle {
+            property <int> row-start: RustTV.i4 * 4;
+            property <int> slot: i - row-start;
+            property <bool> is-focused: RustTV.i1 == 0 && i == RustTV.focused-index;
+            property <float> sc: is-focused ? 1.04 : 1.0;
+            width: parent.card-w * sc;
+            height: parent.card-h * sc;
+            x: parent.pad + slot * (parent.card-w + parent.gap) - (self.width - parent.card-w) / 2;
+            y: parent.pad - (self.height - parent.card-h) / 2;
+            border-radius: 22 * u;
+            background: tile.tint.alpha > 0 ? tile.tint : #141822;
+            border-width: is-focused ? 4 * u : 0px;
+            border-color: #FFFFFF;
+            visible: i >= row-start && i < row-start + 4;
+            animate width, height, x, y { duration: 150ms; easing: ease-out; }
+
+            Rectangle {
+                width: parent.width;
+                height: parent.height;
+                border-radius: parent.border-radius;
+                clip: true;
+                Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: tile.image;
+                    image-fit: tile.kind == 1 ? contain : cover;
+                }
+            }
+            TouchArea { clicked => { RustTV.tile-clicked(i, false); } }
+        }
+    }
+
+    // Next row peeking cleanly at the bottom edge.
+    Rectangle {
+        x: 114 * u;
+        y: parent.height - 64 * u;
+        width: parent.width - 228 * u;
+        height: 226 * u;
+
+        property <length> gap: 24 * u;
+        property <length> card-w: (self.width - 3 * self.gap) / 4;
+
+        for tile[i] in RustTV.tiles: Rectangle {
+            property <int> next-start: (RustTV.i4 + 1) * 4;
+            visible: i >= next-start && i < next-start + 4;
+            x: (i - next-start) * (parent.card-w + parent.gap);
+            y: 0;
+            width: parent.card-w;
+            height: parent.height;
+            border-radius: 22 * u;
+            background: tile.tint.alpha > 0 ? tile.tint : #141822;
+            clip: true;
+            Image {
+                width: parent.width;
+                height: parent.height;
+                source: tile.image;
+                image-fit: tile.kind == 1 ? contain : cover;
+            }
+        }
+    }
+}

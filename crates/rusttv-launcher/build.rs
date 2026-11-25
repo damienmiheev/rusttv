@@ -73,6 +73,8 @@ fn main() {
     }
     std::fs::write(out.join("banner-shadow.rgba"), banner_shadow())
         .expect("OUT_DIR should be writable");
+    std::fs::write(out.join("tile-shadow.rgba"), tile_shadow())
+        .expect("OUT_DIR should be writable");
 }
 
 /// The banner card's drop shadow (home.slint `BannerCard`), in pixels at
@@ -83,6 +85,13 @@ const SHADOW_BLUR: usize = 40;
 const SHADOW_RADIUS: usize = 24;
 const SHADOW_CARD: (usize, usize) = (480, 112);
 
+/// Compact white-alpha Gaussian shadow mask for focused tiles (home.slint
+/// `Tile`): tinted at draw time via `Image { colorize: ... }` so focus zoom
+/// never triggers per-frame Skia Gaussian blur FBOs.
+const TILE_SHADOW_BLUR: usize = 24;
+const TILE_SHADOW_RADIUS: usize = 12;
+const TILE_SHADOW_CARD: (usize, usize) = (160, 90);
+
 /// The banner card's drop shadow, blurred here rather than by the renderer:
 /// RGBA, the card plus the blur on each side, black at #00000080 times a
 /// Gaussian blur of the card's rounded shape, the way Skia blurs a drop
@@ -90,7 +99,29 @@ const SHADOW_CARD: (usize, usize) = (480, 112);
 /// a shadow Slint draws would need the whole card rendered into a layer on
 /// every frame of the fade.
 fn banner_shadow() -> Vec<u8> {
-    let (pad, radius, shape) = (SHADOW_BLUR, SHADOW_RADIUS as f32, SHADOW_CARD);
+    rounded_shadow(SHADOW_CARD, SHADOW_RADIUS, SHADOW_BLUR, [0, 0, 0], 128.0)
+}
+
+/// White-alpha rounded Gaussian mask for focused tiles, tinted by Slint's
+/// `colorize` property for both dark elevation shadows and coloured focus glows.
+fn tile_shadow() -> Vec<u8> {
+    rounded_shadow(
+        TILE_SHADOW_CARD,
+        TILE_SHADOW_RADIUS,
+        TILE_SHADOW_BLUR,
+        [255, 255, 255],
+        255.0,
+    )
+}
+
+fn rounded_shadow(
+    shape: (usize, usize),
+    radius: usize,
+    blur_px: usize,
+    rgb: [u8; 3],
+    max_alpha: f32,
+) -> Vec<u8> {
+    let (pad, radius) = (blur_px, radius as f32);
     let (width, height) = (shape.0 + 2 * pad, shape.1 + 2 * pad);
     // The rounded shape's coverage, 4 × 4 samples a pixel.
     let inside = |x: f32, y: f32| {
@@ -120,8 +151,8 @@ fn banner_shadow() -> Vec<u8> {
         })
         .collect();
     // A separable Gaussian to three sigmas.
-    let sigma = SHADOW_BLUR as f32 / 2.0;
-    let reach = 3 * SHADOW_BLUR / 2;
+    let sigma = blur_px as f32 / 2.0;
+    let reach = 3 * blur_px / 2;
     let weights: Vec<f32> = (0..=2 * reach)
         .map(|tap| {
             let distance = tap as f32 - reach as f32;
@@ -149,7 +180,14 @@ fn banner_shadow() -> Vec<u8> {
     mask = blur(&mask, (1, 0));
     mask = blur(&mask, (0, 1));
     mask.iter()
-        .flat_map(|coverage| [0, 0, 0, (128.0 * coverage).round() as u8])
+        .flat_map(|coverage| {
+            [
+                rgb[0],
+                rgb[1],
+                rgb[2],
+                (max_alpha * coverage).round().clamp(0.0, 255.0) as u8,
+            ]
+        })
         .collect()
 }
 

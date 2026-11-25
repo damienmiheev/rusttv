@@ -1,0 +1,62 @@
+# Reference theme: Coastal Minimal (bare icons top bar + frosted wallpaper dock)
+# Full-bleed coastal wallpaper, top-left clean clock, borderless monochrome
+# top-right icons, optical frosted-glass bottom dock, unframed icons with
+# labels inside, and frosted glass-pill focus highlight.
+schema_version = 1
+name = "Coastal Minimal"
+author = "RustTV"
+description = "Full-bleed wallpaper with optical frosted glass dock and bare monochrome icons"
+
+[colors]
+bg = "#0C141C"
+surface = "#16222E"
+dock_bg = "#14202C68"
+text = "#F6F8FA"
+text_dim = "#B8C6D4"
+accent = "#5EC4D6"
+accent_text = "#09131A"
+focus_ring = "#FFFFFF"
+icon_card_tint = 0.0
+
+[layout]
+style = "zen"
+columns = 6
+tile_aspect = "poster"
+tile_style = "dock-icon"
+tile_dim_unfocused = 0.0
+tile_gap = 14
+grid_margin_x = 110
+hero = "off"
+hero_artwork = false
+focus_style = "glass-pill"
+dock_surface = true
+dock_blur = true
+dock_radius = 28
+top_bar_style = "bare-icons"
+clock_position = "top-start"
+tile_radius = 22
+panel_radius = 24
+focus_scale = 1.0
+focus_ring_width = 0
+show_labels = "always"
+sway = false
+glow_strength = 0.0
+
+[surfaces]
+panel_style = "tinted"
+panel_opacity = 0.86
+panel_border_width = 1.2
+panel_border_color = "#FFFFFF36"
+scrim_opacity = 0.62
+selection_style = "invert"
+
+[typography]
+clock_size = 36
+clock_weight = 500
+motion_scale = 0.9
+
+[background]
+image = "coastal-cliff.svg"
+image_opacity = 1.0
+scrim = "vignette"
+scrim_strength = 0.20

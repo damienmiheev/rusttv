@@ -1,0 +1,52 @@
+# Reference theme: Arcade Grid
+# Full-screen 5-column square-tile grid with crisp corners, electric-blue
+# focus border, top header strip, always-visible labels, and zero sway.
+schema_version = 1
+name = "Arcade Grid"
+author = "RustTV"
+description = "5-column square tile grid with bold focus border and snappy navigation"
+
+[colors]
+bg = "#0E141B"
+surface = "#1B2838"
+dock_bg = "#131C27E6"
+text = "#EDF2F7"
+text_dim = "#8F98A0"
+accent = "#1A9FFF"
+focus_ring = "#66C0F4"
+icon_card_tint = 0.24
+
+[layout]
+style = "grid"
+columns = 5
+tile_aspect = "square"
+tile_style = "outline"
+tile_border_width = 2.0
+tile_border_color = "#66C0F438"
+tile_gap = 38
+grid_margin_x = 120
+hero = "off"
+focus_style = "ring"
+top_bar_style = "strip"
+clock_position = "top-start"
+tile_radius = 8
+panel_radius = 10
+focus_scale = 1.08
+focus_ring_width = 5
+show_labels = "always"
+sway = false
+glow_strength = 0.0
+
+[surfaces]
+panel_style = "outline"
+panel_border_width = 2.0
+panel_border_color = "#66C0F444"
+selection_style = "accent"
+
+[typography]
+motion_scale = 0.6
+
+[background]
+gradient_top = "#1E2D3D"
+gradient_bottom = "#0B1016"
+gradient_angle = 135

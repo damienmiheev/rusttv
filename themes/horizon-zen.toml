@@ -1,0 +1,58 @@
+schema_version = 1
+name = "Horizon Zen"
+author = "RustTV"
+description = "Wallpaper-first minimalist canvas with centerpiece clock and frosted icon dock"
+
+[colors]
+bg = "#070B12"
+surface = "#141D2E"
+dock_bg = "#0F1726CC"
+text = "#F4F7FC"
+text_dim = "#94A3B8"
+accent = "#38BDF8"
+accent_text = "#07101C"
+focus_ring = "#E2F1FF"
+icon_card_tint = 0.22
+
+[layout]
+style = "zen"
+columns = 6
+tile_aspect = "square"
+tile_style = "glass"
+tile_border_width = 1.5
+tile_border_color = "#FFFFFF26"
+tile_dim_unfocused = 0.22
+tile_gap = 34.0
+grid_margin_x = 160.0
+hero = "off"
+hero_artwork = false
+focus_style = "underline"
+dock_surface = true
+top_bar_style = "minimal"
+clock_position = "center-hero"
+tile_radius = 22.0
+panel_radius = 24.0
+focus_scale = 1.12
+focus_ring_width = 0.0
+show_labels = "focused"
+sway = false
+glow_strength = 0.0
+
+[surfaces]
+panel_style = "tinted"
+panel_opacity = 0.86
+panel_border_width = 1.5
+panel_border_color = "#38BDF838"
+scrim_opacity = 0.78
+selection_style = "bar"
+
+[typography]
+clock_size = 116.0
+clock_weight = 300
+motion_scale = 0.9
+
+[background]
+image = "horizon-backdrop.svg"
+image_opacity = 0.92
+scrim = "bottom"
+scrim_strength = 0.60

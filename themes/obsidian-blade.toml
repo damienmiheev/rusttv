@@ -1,0 +1,59 @@
+schema_version = 1
+name = "Obsidian Blade"
+author = "RustTV"
+description = "Full-height edge-to-edge navigation blade with accent-filled rows and showcase"
+
+[colors]
+bg = "#0A0E14"
+surface = "#131A24"
+dock_bg = "#0E141EE8"
+text = "#F2F5FA"
+text_dim = "#8C98AB"
+accent = "#0EA5E9"
+accent_text = "#061018"
+focus_ring = "#38BDF8"
+icon_card_tint = 0.16
+
+[layout]
+style = "blade"
+columns = 1
+tile_aspect = "row"
+tile_style = "glass"
+tile_gap = 10.0
+grid_margin_x = 28.0
+hero = "full"
+hero_align = "end"
+hero_artwork = true
+hero_title_size = 72.0
+focus_style = "fill"
+dock_surface = true
+top_bar_style = "minimal"
+clock_position = "top-start"
+tile_radius = 8.0
+panel_radius = 12.0
+focus_scale = 1.01
+focus_ring_width = 0.0
+show_labels = "always"
+sway = false
+glow_strength = 0.80
+
+[surfaces]
+panel_style = "tinted"
+panel_opacity = 0.90
+panel_border_width = 1.5
+panel_border_color = "#38BDF840"
+scrim_opacity = 0.82
+selection_style = "accent"
+
+[typography]
+clock_size = 38.0
+clock_weight = 300
+hero_title_weight = 700
+motion_scale = 0.75
+
+[background]
+gradient_top = "#131D2E"
+gradient_bottom = "#070A10"
+gradient_angle = 135.0
+scrim = "left"
+scrim_strength = 0.50

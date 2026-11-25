@@ -57,6 +57,8 @@ pub(crate) enum Section {
     Animations,
     /// Full or reduced effects (shadows, backdrop) for a weak GPU.
     Effects,
+    /// Built-in and user-generated UI themes (THEMES.md).
+    Theme,
     /// The idle screen on or off (PANELS.md § 9 Q6): after a while on
     /// Home, a dim clock.
     Ambient,
@@ -67,6 +69,14 @@ pub(crate) enum Section {
     Tab(usize),
     /// RustTV and the host; always last.
     About,
+}
+
+/// One theme entry listed in Settings → Theme.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ThemeOption {
+    pub id: String,
+    pub name: String,
+    pub detail: String,
 }
 
 /// A row of the About section, top to bottom.
@@ -118,6 +128,8 @@ pub(crate) enum Action {
     Update,
     /// Open the licence and third-party notices (the About page).
     Notices,
+    /// Switch to the UI theme with this id immediately.
+    SetTheme(String),
 }
 
 /// Changes waiting for review.
@@ -153,6 +165,10 @@ pub(crate) struct SettingsPage {
     overview: Overview,
     /// The platform's tabs, once read.
     tabs: Vec<Tab>,
+    /// Available UI themes (built-in presets plus user TOML themes).
+    themes: Vec<ThemeOption>,
+    /// The currently active theme id.
+    active_theme: String,
     /// Facts about the host for About, as (label, value).
     host: Vec<(String, String)>,
     section: usize,
@@ -172,6 +188,8 @@ impl SettingsPage {
         Self {
             overview,
             tabs: Vec::new(),
+            themes: Vec::new(),
+            active_theme: String::new(),
             host: Vec::new(),
             section: 0,
             focus: Focus::List,
@@ -179,6 +197,23 @@ impl SettingsPage {
             loaded: false,
             about: true,
         }
+    }
+
+    /// Populates the Theme section with available themes and the active id.
+    pub fn with_themes(mut self, themes: Vec<ThemeOption>, active: String) -> Self {
+        self.themes = themes;
+        self.active_theme = active;
+        self
+    }
+
+    /// The available themes for Settings → Theme.
+    pub fn themes(&self) -> &[ThemeOption] {
+        &self.themes
+    }
+
+    /// The active theme id.
+    pub fn active_theme(&self) -> &str {
+        &self.active_theme
     }
 
     /// Whether the section list is complete (see [`Self::new`]).
@@ -289,13 +324,11 @@ impl SettingsPage {
     /// The sections, in order; "Waiting" only when something waits, then
     /// the platform's tabs and About.
     pub fn sections(&self) -> Vec<Section> {
-        let mut sections = vec![
-            Section::Animations,
-            Section::Effects,
-            Section::Ambient,
-            Section::Updates,
-            Section::History,
-        ];
+        let mut sections = vec![Section::Animations, Section::Effects];
+        if !self.themes.is_empty() {
+            sections.push(Section::Theme);
+        }
+        sections.extend([Section::Ambient, Section::Updates, Section::History]);
         if !self.overview.pending.is_empty() {
             sections.push(Section::Waiting);
         }
@@ -384,6 +417,11 @@ impl SettingsPage {
         match self.section() {
             Section::Animations => self.animation_choice().unwrap_or(NORMAL_ANIMATIONS),
             Section::Effects => usize::from(self.overview.launcher.reduced_effects),
+            Section::Theme => self
+                .themes
+                .iter()
+                .position(|theme| theme.id == self.active_theme)
+                .unwrap_or(0),
             Section::Ambient => usize::from(self.overview.launcher.ambient_off),
             Section::Updates => usize::from(!self.overview.launcher.update_check),
             Section::History | Section::Waiting | Section::Tab(_) | Section::About => 0,
@@ -394,6 +432,7 @@ impl SettingsPage {
         match self.section() {
             Section::Animations => ANIMATION_CHOICES.len(),
             Section::Effects | Section::Ambient | Section::Updates => 2,
+            Section::Theme => self.themes.len(),
             Section::History => self.overview.entries.len(),
             Section::Waiting => self.overview.pending.len(),
             Section::Tab(tab) => self.tabs.get(tab).map_or(0, |tab| tab.controls.len()),
@@ -504,6 +543,15 @@ impl SettingsPage {
                     changes: Vec::new(),
                     launcher: Some(launcher),
                 }))
+            }
+            Section::Theme => {
+                let theme = self.themes.get(row)?;
+                if theme.id == self.active_theme {
+                    return None;
+                }
+                let id = theme.id.clone();
+                self.active_theme = id.clone();
+                Some(Action::SetTheme(id))
             }
             Section::Ambient => {
                 let off = row == 1;
@@ -797,5 +845,40 @@ mod tests {
         // OK then enters its entries.
         page.handle(Input::OkReleased);
         assert_eq!(page.panel_row(), Some(0));
+    }
+
+    #[test]
+    fn theme_section_focuses_the_active_theme_and_switches_on_ok() {
+        let mut page = page().with_themes(
+            vec![
+                ThemeOption {
+                    id: "default".into(),
+                    name: "Default".into(),
+                    detail: "Built-in".into(),
+                },
+                ThemeOption {
+                    id: "oled".into(),
+                    name: "OLED Black".into(),
+                    detail: "Built-in".into(),
+                },
+            ],
+            "oled".into(),
+        );
+        page.handle(Input::Down);
+        page.handle(Input::Down);
+        assert_eq!(page.section(), Section::Theme);
+        page.handle(Input::Right);
+        assert_eq!(page.panel_row(), Some(1), "focus starts on active theme");
+        assert_eq!(
+            page.handle(Input::OkReleased),
+            None,
+            "re-selecting active theme does nothing"
+        );
+        page.handle(Input::Up);
+        assert_eq!(
+            page.handle(Input::OkReleased),
+            Some(Action::SetTheme("default".into()))
+        );
+        assert_eq!(page.active_theme(), "default");
     }
 }
