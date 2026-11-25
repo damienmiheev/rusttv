@@ -940,8 +940,19 @@ impl ItemRenderer for SkiaItemRenderer<'_> {
         _size: LogicalSize,
     ) -> RenderingResult {
         let opacity = opacity_item.opacity();
+        // RustTV: an element faded out completely draws nothing. Without this
+        // it was still rendered, children and all, into a full-size offscreen
+        // layer that was then blended at alpha 0: ~25 such layers a frame on
+        // the stock Home (faded-out hero layers, hidden labels), each an extra
+        // render pass on the Mali-G31. Likewise an opacity that rounds to 255
+        // needs no layer.
+        let alpha = (opacity * 255.).round();
+        if alpha <= 0. {
+            return RenderingResult::ContinueRenderingWithoutChildren;
+        }
+        let opacity = if alpha >= 255. { 1.0 } else { opacity };
         if Opacity::need_layer(item_rc, opacity) {
-            self.canvas.save_layer_alpha(None, (opacity * 255.) as u32);
+            self.canvas.save_layer_alpha(None, alpha as u32);
             self.state_stack.push(self.current_state);
             self.current_state.alpha = 1.0;
 

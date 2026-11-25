@@ -382,6 +382,9 @@ pub struct SkiaRenderer {
     dirty_region_debug_mode: DirtyRegionDebugMode,
     /// Tracking dirty regions indexed by buffer age - 1. More than 3 back buffers aren't supported, but also unlikely to happen.
     dirty_region_history: RefCell<[DirtyRegion; 3]>,
+    /// RustTV: frames left that repaint the whole window without computing
+    /// the dirty region first (see `render_to_canvas`).
+    full_repaint_frames: Cell<u8>,
     shared_context: SkiaSharedContext,
 }
 
@@ -428,6 +431,7 @@ impl SkiaRenderer {
             partial_rendering_state,
             dirty_region_debug_mode: Default::default(),
             dirty_region_history: Default::default(),
+            full_repaint_frames: Default::default(),
             shared_context: context.clone(),
         }
     }
@@ -768,7 +772,25 @@ impl SkiaRenderer {
             let mut partial_renderer;
             let mut dirty_region_to_visualize = None;
 
-            if let Some(partial_rendering_state) = self.partial_rendering_state() {
+            // RustTV: while (nearly) the whole window changes every frame, as in
+            // a row scroll or a full-screen crossfade, the dirty region pass
+            // walks the entire item tree only to find that everything is
+            // dirty: 2.5 ms a frame on the stock Home, 5 ms on interpreted
+            // skins, on the HY320F's Cortex-A53 (a quarter of the frame
+            // budget). After such a frame the next few frames repaint the
+            // whole window directly; then the pass runs again. Skipping it is
+            // safe: the item caches it maintains only go stale, which makes
+            // the next pass mark more, never less.
+            let skip_dirty_pass =
+                self.partial_rendering_state().is_some() && self.full_repaint_frames.get() > 0;
+            if skip_dirty_pass {
+                self.full_repaint_frames.set(self.full_repaint_frames.get() - 1);
+                let full: DirtyRegion = LogicalRect::from_size(logical_window_size).into();
+                let mut dirty_region_history = self.dirty_region_history.borrow_mut();
+                dirty_region_history.rotate_right(1);
+                dirty_region_history[0] = full.clone();
+                dirty_region = Some(full);
+            } else if let Some(partial_rendering_state) = self.partial_rendering_state() {
                 partial_renderer =
                     partial_rendering_state.create_partial_renderer(skia_item_renderer);
 
@@ -793,6 +815,24 @@ impl SkiaRenderer {
                     logical_window_size,
                     buffer_dirty_region,
                 );
+
+                // RustTV: repaint the bounding box of a multi-rect dirty region.
+                // Clipping to the exact union is a path clip, which Ganesh turns
+                // into a stencil mask that is rebuilt every frame and tested by
+                // every draw: ~15% of the frame's CPU on the HY320F's Mali-G31
+                // (and its stencil passes on the GPU). With buffer age the region
+                // is the union of several frames' rects, so this hit most frames.
+                // A single rect is a scissor; the items inside the box are
+                // re-drawn (the partial renderer filters on this region).
+                if dirty_region_for_this_frame.bounding_rect().area()
+                    >= logical_window_size.area() * FULL_REPAINT_SHARE
+                {
+                    self.full_repaint_frames.set(FULL_REPAINT_FRAMES);
+                }
+                if partial_renderer.dirty_region.iter().nth(1).is_some() {
+                    partial_renderer.dirty_region =
+                        partial_renderer.dirty_region.bounding_rect().into();
+                }
 
                 if matches!(self.dirty_region_debug_mode, DirtyRegionDebugMode::Log) {
                     let area_to_repaint: f32 =
@@ -1140,3 +1180,9 @@ impl SkiaRendererExt for SkiaRenderer {
         )
     }
 }
+
+/// RustTV: a frame whose own changes cover this share of the window starts
+/// [`FULL_REPAINT_FRAMES`] frames that repaint everything without the dirty
+/// region pass.
+const FULL_REPAINT_SHARE: f32 = 0.7;
+const FULL_REPAINT_FRAMES: u8 = 3;

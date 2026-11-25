@@ -246,6 +246,17 @@ pub(crate) fn main() -> Result<(), Box<dyn Error>> {
     if log::set_logger(&Stderr).is_ok() {
         log::set_max_level(log::LevelFilter::Info);
     }
+    // Slint's winit backend creates every window transparent on Linux, so the
+    // surface has no opaque region and labwc blends the full-screen launcher
+    // over every window behind it on each frame: 7-9 ms of a Mali-G31 frame
+    // at 1080p output, on top of the launcher's own rendering. All launcher
+    // windows (Home, programmable skins) are opaque full-screen pages.
+    if let Err(error) = slint::BackendSelector::new()
+        .with_winit_window_attributes_hook(|attributes| attributes.with_transparent(false))
+        .select()
+    {
+        log::warn!("selecting the Slint backend failed: {error}");
+    }
     let dir = state_dir()?;
     std::fs::create_dir_all(&dir)?;
     start_desktop_history(dir.clone(), true);
