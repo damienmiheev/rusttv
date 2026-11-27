@@ -1,0 +1,6 @@
+schema_version = 2
+name = "Coastal Dock Pro"
+author = "RustTV"
+description = "Standalone frosted wallpaper dock with borderless top bar and glass-pill focus"
+entry = "skin.slint"
+script = "skin.rhai"

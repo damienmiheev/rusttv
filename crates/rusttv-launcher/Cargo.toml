@@ -16,10 +16,14 @@ crate-type = ["lib", "cdylib"]
 [features]
 # Test doubles such as FakePlatform (M-TEST-UTIL). Never enable in release builds.
 test-util = []
+# Level 3 programmable skins: runtime .slint UI (slint-interpreter) + sandboxed
+# Rhai scripting (HTML+CSS+JS parity on native 60 fps Skia).
+skins = ["dep:slint-interpreter", "dep:rhai"]
 # Linux home screen: apps from the XDG desktop entries (src/linux.rs) and the
 # `rusttv-launcher-linux` binary, as a native Wayland client. png and resvg
 # decode the apps' icons; evdev reads game controllers.
 linux = [
+    "skins",
     "dep:ab_glyph",
     "dep:calloop",
     "dep:enumflags2",
@@ -47,6 +51,8 @@ rusttv-history.workspace = true
 rusttv-remote.workspace = true
 getrandom.workspace = true
 qrcode.workspace = true
+slint-interpreter = { workspace = true, optional = true, features = ["internal"] }
+rhai = { workspace = true, optional = true }
 
 # Desktop dev mode: window via winit, CPU rendering (no Skia download).
 [target.'cfg(not(target_os = "android"))'.dependencies]

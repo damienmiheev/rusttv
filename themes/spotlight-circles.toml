@@ -1,0 +1,62 @@
+# Reference theme: Spotlight Circles
+# Top-left pill navigation tabs with active solid white pill, compact circular
+# top-right icon buttons + RustTV wordmark, cinematic hero fading into #0E0F12,
+# "Your apps" section heading, and true circular app icons with white focus ring.
+schema_version = 1
+name = "Spotlight Circles"
+author = "RustTV"
+description = "Pill tabs, cinematic hero fade, and circular Your apps row"
+
+[colors]
+bg = "#0E0F12"
+surface = "#1C1E24"
+dock_bg = "#0E0F1200"
+text = "#F2F4F8"
+text_dim = "#A8B0BC"
+accent = "#E8EAED"
+accent_text = "#121212"
+focus_ring = "#FFFFFF"
+icon_card_tint = 0.28
+
+[layout]
+style = "dock"
+columns = 8
+tile_aspect = "circle"
+tile_style = "card"
+tile_gap = 28
+grid_margin_x = 90
+hero = "full"
+hero_align = "start"
+hero_artwork = false
+hero_title_size = 62
+hero_title_position = "default"
+focus_style = "ring"
+dock_surface = false
+section_label = "Your apps"
+top_bar_style = "google-tv"
+clock_position = "hidden"
+tile_radius = 32
+panel_radius = 22
+focus_scale = 1.10
+focus_ring_width = 4.0
+show_labels = "never"
+sway = false
+glow_strength = 0.65
+
+[surfaces]
+panel_style = "solid"
+panel_opacity = 0.96
+panel_border_width = 1.0
+panel_border_color = "#FFFFFF1A"
+scrim_opacity = 0.78
+selection_style = "invert"
+
+[typography]
+hero_title_weight = 400
+motion_scale = 0.95
+
+[background]
+image = "cinema-hero.svg"
+image_opacity = 1.0
+scrim = "bottom"
+scrim_strength = 0.35

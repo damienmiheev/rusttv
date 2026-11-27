@@ -1,0 +1,6 @@
+schema_version = 2
+name = "Classic Home Pro"
+author = "RustTV"
+description = "The default RustTV home screen as a Level 3 skin: hero with colour backdrop, 6-column card shelf, round top-right menu"
+entry = "skin.slint"
+script = "skin.rhai"

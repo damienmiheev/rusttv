@@ -1,0 +1,6 @@
+schema_version = 2
+name = "Ambient Pills Pro"
+author = "RustTV"
+description = "Standalone radial-glow canvas, greeting + date header, glass pills, and wide 4-app dock"
+entry = "skin.slint"
+script = "skin.rhai"

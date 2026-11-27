@@ -66,8 +66,10 @@ export component PageSurface inherits Rectangle {
         y: (header ? 260 : 90) * u;
         width: 1110 * u;
         height: (header ? 760 : 900) * u;
-        border-radius: 16 * u;
-        background: Theme.surface;
+        border-radius: Theme.panel-radius * u;
+        background: Theme.surface.with-alpha(Theme.panel-opacity);
+        border-width: Theme.panel-border-width * u;
+        border-color: Theme.panel-border-color;
         clip: true;
         VerticalLayout {
             padding-top: 36 * u;
@@ -257,16 +259,28 @@ export component MenuRow inherits Rectangle {
     in property <bool> tall;
     property <bool> two-lines: detail != "" || tall;
     height: (two-lines ? 96 : 64) * u;
-    border-radius: 10 * u;
-    background: selected ? Theme.text : marked ? Theme.surface : Theme.text.with-alpha(0);
-    animate background { duration: 120ms; }
+    border-radius: min(Theme.tile-radius, 12.0) * u;
+    background: !selected
+        ? (marked ? Theme.surface.with-alpha(Theme.panel-opacity) : Theme.text.with-alpha(0))
+        : Theme.selection-style == 1 ? Theme.accent
+        : Theme.selection-style == 2 ? Theme.surface.with-alpha(0.95)
+        : Theme.text;
+    animate background { duration: 120ms * Theme.motion-scale; }
+    if selected && Theme.selection-style == 2: Rectangle {
+        x: Dir.x(6 * u, self.width, parent.width);
+        y: 12 * u;
+        width: 6 * u;
+        height: parent.height - 24 * u;
+        border-radius: 3 * u;
+        background: Theme.accent;
+    }
     if current: Rectangle {
         x: Dir.x(18 * u, self.width, parent.width);
         y: (two-lines ? 28 * u : (parent.height - self.height) / 2);
         width: 10 * u;
         height: 10 * u;
         border-radius: self.width / 2;
-        background: Theme.accent;
+        background: selected && Theme.selection-style == 1 ? Theme.accent-text : Theme.accent;
     }
     Text {
         x: Dir.x(44 * u, self.width, parent.width);
@@ -275,12 +289,15 @@ export component MenuRow inherits Rectangle {
         height: two-lines ? 34 * u : parent.height;
         text: root.text;
         font-size: 27 * u;
-        font-weight: 500;
-        color: selected ? Theme.bg : dim ? Theme.text-dim : Theme.text;
+        font-weight: selected ? 600 : 500;
+        color: !selected ? (dim ? Theme.text-dim : Theme.text)
+            : Theme.selection-style == 1 ? Theme.accent-text
+            : Theme.selection-style == 2 ? Theme.text
+            : Theme.bg;
         horizontal-alignment: Dir.start;
         vertical-alignment: center;
         overflow: elide;
-        animate color { duration: 120ms; }
+        animate color { duration: 120ms * Theme.motion-scale; }
     }
     if detail != "": Text {
         x: Dir.x(44 * u, self.width, parent.width);
@@ -289,11 +306,14 @@ export component MenuRow inherits Rectangle {
         height: 32 * u;
         text: root.detail;
         font-size: 25 * u;
-        color: selected ? Theme.bg.with-alpha(0.7) : Theme.text-dim;
+        color: !selected ? Theme.text-dim
+            : Theme.selection-style == 1 ? Theme.accent-text.with-alpha(0.75)
+            : Theme.selection-style == 2 ? Theme.text-dim
+            : Theme.bg.with-alpha(0.7);
         horizontal-alignment: Dir.start;
         vertical-alignment: center;
         overflow: elide;
-        animate color { duration: 120ms; }
+        animate color { duration: 120ms * Theme.motion-scale; }
     }
 }
 

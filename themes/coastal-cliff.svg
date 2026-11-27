@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3A5060"/>
+      <stop offset="35%" stop-color="#6B8290"/>
+      <stop offset="70%" stop-color="#9BAFB8"/>
+      <stop offset="100%" stop-color="#C2D0D4"/>
+    </linearGradient>
+    <linearGradient id="ocean" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4A7A8C"/>
+      <stop offset="40%" stop-color="#286878"/>
+      <stop offset="75%" stop-color="#194B5E"/>
+      <stop offset="100%" stop-color="#0E2E3E"/>
+    </linearGradient>
+    <linearGradient id="surf" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#E6F2F4" stop-opacity="0.72"/>
+      <stop offset="60%" stop-color="#A6D4DC" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#286878" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="cliff-far" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#58646C"/>
+      <stop offset="100%" stop-color="#2E3840"/>
+    </linearGradient>
+    <linearGradient id="cliff-mid" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4C483E"/>
+      <stop offset="45%" stop-color="#2C322A"/>
+      <stop offset="100%" stop-color="#161C18"/>
+    </linearGradient>
+    <linearGradient id="cliff-near" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#6E5A42"/>
+      <stop offset="35%" stop-color="#3C3426"/>
+      <stop offset="100%" stop-color="#141814"/>
+    </linearGradient>
+    <linearGradient id="sunlight" x1="0.8" y1="0" x2="0.2" y2="1">
+      <stop offset="0%" stop-color="#F6F2E8" stop-opacity="0.34"/>
+      <stop offset="100%" stop-color="#F6F2E8" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- Hazy Pacific sky & horizon -->
+  <rect width="1280" height="720" fill="url(#sky)"/>
+  <!-- Ocean expanse -->
+  <path d="M 380 85 L 1280 75 L 1280 720 L 240 720 Z" fill="url(#ocean)"/>
+  <!-- Sunlight sheen on water -->
+  <ellipse cx="960" cy="280" rx="420" ry="220" fill="url(#sunlight)"/>
+  <!-- Distant coastal headlands -->
+  <path d="M 0 0 L 520 0 L 450 90 L 380 120 L 310 210 L 0 260 Z" fill="url(#cliff-far)"/>
+  <path d="M 410 72 L 495 105 L 430 140 L 365 118 Z" fill="#3E4B52" opacity="0.72"/>
+  <!-- Midground rugged cliffs -->
+  <path d="M 0 55 L 330 165 L 420 260 L 490 345 L 410 420 L 280 465 L 0 520 Z" fill="url(#cliff-mid)"/>
+  <!-- Turquoise cove surf & foam bands -->
+  <path d="M 390 250 Q 520 285 620 345 Q 720 405 640 475 Q 530 515 390 480 Q 320 425 390 250 Z" fill="#3B8E9C" opacity="0.52"/>
+  <path d="M 445 305 Q 560 330 650 385 Q 565 405 460 360 Z" fill="url(#surf)"/>
+  <path d="M 520 410 Q 670 435 790 495 Q 690 520 530 465 Z" fill="url(#surf)"/>
+  <path d="M 740 245 Q 890 265 1030 320 Q 920 340 760 285 Z" fill="url(#surf)" opacity="0.75"/>
+  <path d="M 860 375 Q 1040 400 1220 465 Q 1080 485 880 420 Z" fill="url(#surf)" opacity="0.65"/>
+  <!-- Sea stacks / rocks -->
+  <path d="M 670 465 L 718 415 L 775 452 L 820 485 L 650 500 Z" fill="#1E282E"/>
+  <path d="M 718 415 L 745 440 L 705 462 Z" fill="#3A474E" opacity="0.65"/>
+  <path d="M 555 245 L 580 222 L 605 248 L 548 258 Z" fill="#2A3942" opacity="0.78"/>
+  <!-- Foreground golden-brown California cliff & dark pines -->
+  <path d="M 0 210 L 185 300 L 290 415 L 440 535 L 560 720 L 0 720 Z" fill="url(#cliff-near)"/>
+  <path d="M 0 380 L 130 435 L 250 560 L 365 720 L 0 720 Z" fill="#141A15"/>
+  <path d="M 70 495 Q 145 455 205 510 Q 260 565 320 720 L 0 720 L 0 540 Z" fill="#0F1510"/>
+  <!-- Foreground pine silhouettes bottom-right -->
+  <path d="M 740 720 L 825 620 L 895 660 L 965 595 L 1060 665 L 1160 630 L 1280 720 Z" fill="#0F1A18" opacity="0.88"/>
+</svg>

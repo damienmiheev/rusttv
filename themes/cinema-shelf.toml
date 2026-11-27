@@ -1,0 +1,63 @@
+# Reference theme: Cinema Shelf
+# Full-bleed cinematic top shelf backdrop with bold top-left display title,
+# floating warm frosted-glass dock holding 5 large rounded cards with borderless
+# focus lift, no tile labels, and row 2 peeking at the bottom edge.
+schema_version = 1
+name = "Cinema Shelf"
+author = "RustTV"
+description = "Cinematic backdrop with frosted 5-app top shelf dock and borderless lift"
+
+[colors]
+bg = "#160A04"
+surface = "#241914"
+dock_bg = "#E8DFD64C"
+text = "#FFFFFF"
+text_dim = "#D8CFC8"
+accent = "#FFFFFF"
+accent_text = "#161618"
+focus_ring = "#FFFFFF"
+icon_card_tint = 0.25
+
+[layout]
+style = "dock"
+columns = 5
+tile_aspect = "wide"
+tile_style = "card"
+tile_gap = 28
+grid_margin_x = 110
+hero = "full"
+hero_align = "start"
+hero_artwork = false
+hero_title_size = 76
+hero_title_position = "top-start"
+focus_style = "lift"
+dock_surface = true
+dock_blur = true
+dock_radius = 36
+top_bar_style = "minimal"
+clock_position = "hidden"
+tile_radius = 22
+panel_radius = 28
+focus_scale = 1.10
+focus_ring_width = 0
+show_labels = "never"
+sway = false
+glow_strength = 0.0
+
+[surfaces]
+panel_style = "tinted"
+panel_opacity = 0.88
+panel_border_width = 1.5
+panel_border_color = "#FFFFFF48"
+scrim_opacity = 0.68
+selection_style = "invert"
+
+[typography]
+hero_title_weight = 800
+motion_scale = 1.0
+
+[background]
+image = "mars-horizon.svg"
+image_opacity = 1.0
+scrim = "none"
+scrim_strength = 0.0

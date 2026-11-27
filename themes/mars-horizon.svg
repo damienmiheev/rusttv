@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#8A6414"/>
+      <stop offset="32%" stop-color="#C88A1E"/>
+      <stop offset="60%" stop-color="#E59824"/>
+      <stop offset="100%" stop-color="#B85610"/>
+    </linearGradient>
+    <radialGradient id="sun-glow" cx="0.62" cy="0.30" r="0.55">
+      <stop offset="0%" stop-color="#FFE188" stop-opacity="0.58"/>
+      <stop offset="55%" stop-color="#E89220" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#B0480C" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ridge-far" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#9C4612"/>
+      <stop offset="100%" stop-color="#5E2208"/>
+    </linearGradient>
+    <linearGradient id="ridge-near" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6A260A"/>
+      <stop offset="50%" stop-color="#3C1406"/>
+      <stop offset="100%" stop-color="#1E0903"/>
+    </linearGradient>
+  </defs>
+  <!-- Warm cinematic Martian sky -->
+  <rect width="1280" height="720" fill="url(#sky)"/>
+  <rect width="1280" height="720" fill="url(#sun-glow)"/>
+  <!-- Atmospheric dust bands -->
+  <path d="M 0 210 Q 340 190 680 218 Q 1000 240 1280 205 L 1280 265 Q 940 285 600 265 Q 260 245 0 270 Z" fill="#F2AE3B" opacity="0.26"/>
+  <!-- Distant desert plains & mesas -->
+  <path d="M 0 335 L 240 315 L 440 330 L 670 308 L 930 326 L 1160 312 L 1280 322 L 1280 720 L 0 720 Z" fill="url(#ridge-far)"/>
+  <!-- Midground canyon shadows -->
+  <path d="M 0 405 L 220 380 L 420 420 L 660 392 L 900 428 L 1120 398 L 1280 418 L 1280 720 L 0 720 Z" fill="#742C0C" opacity="0.82"/>
+  <!-- Foreground dramatic rocky crest -->
+  <path d="M 0 475 L 180 438 L 365 468 L 540 442 L 750 478 L 975 450 L 1280 488 L 1280 720 L 0 720 Z" fill="url(#ridge-near)"/>
+</svg>

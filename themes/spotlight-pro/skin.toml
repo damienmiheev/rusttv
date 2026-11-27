@@ -1,0 +1,6 @@
+schema_version = 2
+name = "Spotlight Pro"
+author = "RustTV"
+description = "Programmable .slint + .rhai skin with live tabs, spotlight banner, and circular apps"
+entry = "skin.slint"
+script = "skin.rhai"

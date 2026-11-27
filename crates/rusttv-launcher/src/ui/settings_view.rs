@@ -120,13 +120,19 @@ pub(super) const NO_STATUS: i32 = status::NONE;
 impl Controller {
     /// OK on the Settings entry of the top-right menu.
     pub(super) fn open_settings(&mut self) {
+        self.reload_themes();
+        let themes = self.theme_options();
+        let active = self.active_theme_id().to_owned();
         self.settings = Some(
             // About's section where Home has no About tile to open the
             // licence notices and Slint's attribution: under a top-right
             // menu, and while the About tile is hidden (PANELS.md § 6).
-            SettingsPage::new(Overview::default(), self.options.right_to_left).with_about(
-                self.platform.top_right_menu() || self.home.is_hidden(&crate::model::TileId::About),
-            ),
+            SettingsPage::new(Overview::default(), self.options.right_to_left)
+                .with_themes(themes, active)
+                .with_about(
+                    self.platform.top_right_menu()
+                        || self.home.is_hidden(&crate::model::TileId::About),
+                ),
         );
         self.settings_status = (status::READING, String::new());
         self.refresh_settings_data();
@@ -175,12 +181,14 @@ impl Controller {
             }
             None => {}
         }
+        let reduced = overview.launcher.reduced_effects;
         if let Some(window) = self.window.upgrade() {
-            super::apply_effects(&window, overview.launcher.reduced_effects);
+            super::apply_effects(&window, reduced);
         }
         page.refresh(overview);
         let ambient_off = page.overview().launcher.ambient_off;
         self.set_ambient_setting(ambient_off);
+        self.on_effects_changed(reduced);
         // The history thread read the summary with the page's data.
         self.show_history_panel();
         self.render();
@@ -298,6 +306,7 @@ impl Controller {
                 let effect = self.home.open_about();
                 self.apply(effect);
             }
+            Some(Action::SetTheme(id)) => self.select_theme(&id),
             None => {}
         }
     }
@@ -688,6 +697,17 @@ impl Controller {
                             ..SettingsRow::default()
                         })
                         .collect(),
+                    Section::Theme => page
+                        .themes()
+                        .iter()
+                        .map(|theme| SettingsRow {
+                            title: theme.name.as_str().into(),
+                            detail: theme.detail.as_str().into(),
+                            current: page.active_theme() == theme.id,
+                            dim: false,
+                            ..SettingsRow::default()
+                        })
+                        .collect(),
                     Section::Ambient => [true, false]
                         .into_iter()
                         .map(|on| SettingsRow {
@@ -877,6 +897,7 @@ fn section_value(section: Section) -> i32 {
         Section::Waiting => 3,
         Section::Effects => 4,
         Section::Ambient => 6,
+        Section::Theme => 8,
         // Tabs are named by the platform.
         Section::About | Section::Tab(_) => 5,
     }

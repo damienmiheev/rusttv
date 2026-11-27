@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0.2" y2="1">
+      <stop offset="0%" stop-color="#0A1224"/>
+      <stop offset="52%" stop-color="#14233C"/>
+      <stop offset="100%" stop-color="#0B1018"/>
+    </linearGradient>
+    <radialGradient id="aurora1" cx="28%" cy="24%" r="55%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.30"/>
+      <stop offset="60%" stop-color="#0EA5E9" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#0A1224" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="aurora2" cx="76%" cy="32%" r="48%">
+      <stop offset="0%" stop-color="#818CF8" stop-opacity="0.24"/>
+      <stop offset="65%" stop-color="#6366F1" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#0A1224" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ridgeFar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1B2E4B" stop-opacity="0.82"/>
+      <stop offset="100%" stop-color="#0C1422" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="ridgeMid" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#132238" stop-opacity="0.92"/>
+      <stop offset="100%" stop-color="#090F1A" stop-opacity="1"/>
+    </linearGradient>
+    <linearGradient id="ridgeNear" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0D1626" stop-opacity="0.96"/>
+      <stop offset="100%" stop-color="#070B12" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#sky)"/>
+  <rect width="1280" height="720" fill="url(#aurora1)"/>
+  <rect width="1280" height="720" fill="url(#aurora2)"/>
+  <path d="M 0 510 Q 210 420 430 475 T 880 440 T 1280 485 L 1280 720 L 0 720 Z" fill="url(#ridgeFar)"/>
+  <path d="M 0 565 Q 290 485 590 545 T 1120 510 L 1280 535 L 1280 720 L 0 720 Z" fill="url(#ridgeMid)"/>
+  <path d="M 0 620 Q 340 570 680 615 T 1280 595 L 1280 720 L 0 720 Z" fill="url(#ridgeNear)"/>
+</svg>

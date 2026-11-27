@@ -128,6 +128,55 @@ pub(super) fn clock_text(local_unix: i64, twenty_four: bool) -> String {
     }
 }
 
+/// "GOOD MORNING" / "GOOD AFTERNOON" / "GOOD EVENING" for the greeting header skin.
+pub(super) fn greeting_text(local_unix: i64) -> &'static str {
+    let hour = local_unix.rem_euclid(86_400) / 3600;
+    match hour {
+        5..=11 => "GOOD MORNING",
+        12..=17 => "GOOD AFTERNOON",
+        _ => "GOOD EVENING",
+    }
+}
+
+/// "SATURDAY  17 OCTOBER" for the greeting header skin (Howard Hinnant's
+/// civil-from-days algorithm, zero extra dependencies).
+pub(super) fn date_text(local_unix: i64) -> String {
+    const DAYS: [&str; 7] = [
+        "THURSDAY",
+        "FRIDAY",
+        "SATURDAY",
+        "SUNDAY",
+        "MONDAY",
+        "TUESDAY",
+        "WEDNESDAY",
+    ];
+    const MONTHS: [&str; 12] = [
+        "JANUARY",
+        "FEBRUARY",
+        "MARCH",
+        "APRIL",
+        "MAY",
+        "JUNE",
+        "JULY",
+        "AUGUST",
+        "SEPTEMBER",
+        "OCTOBER",
+        "NOVEMBER",
+        "DECEMBER",
+    ];
+    let z = local_unix.div_euclid(86_400);
+    let weekday = DAYS[z.rem_euclid(7) as usize];
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 } as usize;
+    format!("{weekday}  {day} {}", MONTHS[month - 1])
+}
+
 /// A prop's value for a Slint call.
 fn arg(props: &Props, name: &str) -> SharedString {
     props.get(name).into()
@@ -150,7 +199,16 @@ impl Controller {
             crate::i18n::uses_24_hours(self.options.language.as_deref().unwrap_or_default())
         });
         if let Some(window) = self.window.upgrade() {
-            window.set_clock_text(clock_text(local, twenty_four).into());
+            let clk = clock_text(local, twenty_four);
+            let greet = greeting_text(local);
+            let date = date_text(local);
+            window.set_clock_text(clk.as_str().into());
+            window.set_greeting_text(greet.into());
+            window.set_date_text(date.as_str().into());
+            #[cfg(feature = "skins")]
+            if let Some(skin) = &self.active_skin {
+                skin.set_clock(&clk, greet, &date);
+            }
             if self.faces.ambient {
                 self.faces.drift = (self.faces.drift + 1) % 25;
                 window.set_ambient_drift(self.faces.drift);

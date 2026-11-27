@@ -1,0 +1,42 @@
+# Reference theme: Fast Wall
+# Distraction-free 6-column full-screen app grid with no hero, no glow, and no
+# sway for maximum responsiveness on low-power GPUs.
+schema_version = 1
+name = "Fast Wall"
+author = "RustTV"
+description = "6-column wall of apps with no hero or glow for maximum speed"
+
+[colors]
+bg = "#0B0C0F"
+surface = "#171A20"
+dock_bg = "#14171CE6"
+text = "#F2F3F5"
+text_dim = "#9198A6"
+accent = "#38BDF8"
+focus_ring = "#38BDF8"
+icon_card_tint = 0.18
+
+[layout]
+style = "grid"
+columns = 6
+tile_aspect = "wide"
+tile_gap = 36
+grid_margin_x = 90
+hero = "off"
+focus_style = "bar"
+top_bar_style = "floating"
+clock_position = "top-end"
+tile_radius = 10
+panel_radius = 14
+focus_scale = 1.08
+focus_ring_width = 4
+show_labels = "always"
+sway = false
+glow_strength = 0.0
+
+[surfaces]
+panel_style = "solid"
+selection_style = "bar"
+
+[typography]
+motion_scale = 0.0

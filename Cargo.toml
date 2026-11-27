@@ -31,6 +31,10 @@ tokio = { version = "1.54.1", default-features = false, features = ["rt", "macro
 # Launcher UI (ARCHITECTURE D9). Pinned: Slint's generated code and runtime must match.
 slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2"] }
 slint-build = "=1.18.1"
+# Runtime .slint skin compiler/host (Level 3 custom skins; matches slint version).
+slint-interpreter = { version = "=1.18.1", default-features = false, features = ["compat-1-2"] }
+# Sandboxed skin scripting (HTML+CSS+JS parity with strict op/memory caps; MIT OR Apache-2.0).
+rhai = { version = "1.27.0", default-features = false, features = ["std", "only_i64", "f32_float", "no_time", "no_module"] }
 # Launcher build script: decodes the built-in tiles' banners (assets/tiles) into
 # raw pixels, since the TV build has no image decoder. Already in the tree via
 # slint-build's compiler (owner OK 2026-10-25). MIT OR Apache-2.0.

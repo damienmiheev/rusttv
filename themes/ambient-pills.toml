@@ -1,0 +1,67 @@
+# Reference skin: Ambient Pills
+# Deep near-black canvas lit by vivid app-colour ambient glow, top-left
+# greeting + large clock + vertical divider + uppercase date, top-right
+# glass stadium pills, focused app title directly above a wide 4-column
+# framed dock, and row 2 peeking at the bottom.
+schema_version = 1
+name = "Ambient Pills"
+author = "RustTV"
+description = "Vivid ambient glow, greeting + date header, glass pills, and 4-column wide dock"
+
+[colors]
+bg = "#06070B"
+surface = "#12151E"
+dock_bg = "#14182266"
+text = "#FFFFFF"
+text_dim = "#A6AFBE"
+accent = "#FFFFFF"
+accent_text = "#06070B"
+focus_ring = "#FFFFFF"
+icon_card_tint = 0.22
+
+[layout]
+style = "dock"
+columns = 4
+tile_aspect = "wide"
+tile_style = "card"
+tile_gap = 26
+grid_margin_x = 120
+hero = "full"
+hero_align = "start"
+hero_artwork = false
+hero_title_size = 60
+hero_title_position = "above-dock"
+focus_style = "ring"
+dock_surface = true
+dock_blur = false
+dock_radius = 30
+top_bar_style = "glass-pills"
+clock_position = "greeting-header"
+tile_radius = 22
+panel_radius = 24
+focus_scale = 1.04
+focus_ring_width = 4.0
+show_labels = "never"
+sway = false
+glow_strength = 1.45
+
+[surfaces]
+panel_style = "tinted"
+panel_opacity = 0.90
+panel_border_width = 1.5
+panel_border_color = "#FFFFFF28"
+scrim_opacity = 0.74
+selection_style = "invert"
+
+[typography]
+clock_size = 64
+clock_weight = 400
+hero_title_weight = 500
+motion_scale = 0.95
+
+[background]
+gradient_top = "#0C0E16"
+gradient_bottom = "#05060A"
+gradient_angle = 155
+scrim = "none"
+scrim_strength = 0.0

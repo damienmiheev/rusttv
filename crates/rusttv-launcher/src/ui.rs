@@ -3,7 +3,7 @@
 //! Rust owns all state and timers; the window only draws and forwards keys.
 
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 use std::time::{Duration, Instant};
@@ -23,6 +23,8 @@ use crate::panels;
 use crate::platform::{
     AppEntry, Artwork, Bitmap, Platform, PlatformError, PointerState, UpdateStatus,
 };
+use crate::settings::ThemeOption;
+use crate::theme::{self, HeroMode, ThemeSpec};
 use rusttv_remote::Event as RemoteEvent;
 use rusttv_remote::protocol::{
     AppView as PhoneAppView, DragPhase, Gesture, Key as PhoneKey, KeyAction, MenuChoice,
@@ -49,11 +51,13 @@ use generated::{
     AboutAmbient, AboutBanner, AboutCorner, AboutListRow, AboutPanel, AmbientLine, Badges, Dir,
     Effects, Hints, HistoryAmbient, HistoryBanner, HistoryCorner, HistoryListRow, HistoryPanel,
     HomeWindow, Pictures, Pointer, RemoteAmbient, RemoteBanner, RemoteCorner, RemoteListRow,
-    RemotePanel, ReviewLine, SettingsRow, Strings, TileData,
+    RemotePanel, ReviewLine, SettingsRow, Strings, Theme, TileData,
 };
 
 mod device_view;
 mod faces_view;
+#[cfg(feature = "skins")]
+mod one_window;
 mod remote_view;
 mod settings_view;
 
@@ -105,6 +109,11 @@ const HISTORY_BANNER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/history.
 const BANNER_SHADOW_SIZE: (u32, u32) = (560, 192);
 const BANNER_SHADOW: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/banner-shadow.rgba"));
 
+/// Compact white-alpha Gaussian shadow mask for focused tiles (home.slint
+/// `Tile`), tinted via `Image.colorize` for zero-FBO elevation & glow.
+const TILE_SHADOW_SIZE: (u32, u32) = (208, 138);
+const TILE_SHADOW: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/tile-shadow.rgba"));
+
 /// A built-in tile's banner, by tile name, as RGBA ([`BUILTIN_BANNER_SIZE`]):
 /// for the phones' pictures.
 pub(crate) fn builtin_banner(name: &str) -> Option<(u32, u32, &'static [u8])> {
@@ -130,9 +139,6 @@ const BACKDROP_GLOW_TONE: f64 = 30.0;
 /// 320-wide 16:9 screen down to `Glow::HEIGHT` (780 of 1080 rows, 130 of
 /// 180); the GPU scales it to the screen.
 const BACKDROP_SIZE: (u32, u32) = (320, 130);
-
-/// `Theme.bg` in `home.slint`: the page under the grid.
-const PAGE_COLOUR: [u8; 3] = [0x0E, 0x10, 0x14];
 
 /// Lines of the notices passed to the window at a time: more than fit, the
 /// rest is clipped (long lines wrap). Only a slice is laid out, never all
@@ -275,6 +281,9 @@ impl Lifecycle {
             if controller.home.launching() == Some(id.as_str()) {
                 controller.input(Input::Paused);
             }
+            if controller.sync_running() {
+                controller.render();
+            }
         });
     }
 
@@ -376,7 +385,14 @@ pub(crate) fn pointer_changed() {
 
 /// Shows the home screen and runs the UI event loop until the window closes.
 pub fn run(platform: impl Platform + 'static, options: RunOptions) -> Result<(), PlatformError> {
-    let (window, _controller) = start(platform, options, real_clock())?;
+    let (window, controller) = start(platform, options, real_clock())?;
+    #[cfg(feature = "skins")]
+    if controller.borrow().skin_visible {
+        // The skin is already up and fullscreen in `HomeWindow`'s window
+        // (`one_window`).
+        return slint::run_event_loop().map_err(ui_error);
+    }
+    let _ = controller;
     window.run().map_err(ui_error)
 }
 
@@ -521,6 +537,124 @@ fn apply_effects(window: &HomeWindow, reduced: bool) {
     effects.set_backdrop(!reduced);
 }
 
+/// Tints the build-time white-alpha [`TILE_SHADOW`] mask to `rgb` with peak
+/// alpha `alpha` (0..=1), once on startup or theme switch, so Slint draws a
+/// plain GPU texture with zero per-frame `Image.colorize` FBO passes.
+fn tint_tile_shadow(rgb: [u8; 3], alpha: f32) -> slint::Image {
+    let scale = alpha.clamp(0.0, 1.0);
+    let mut rgba = Vec::with_capacity(TILE_SHADOW.len());
+    for &[_, _, _, alpha_byte] in TILE_SHADOW.as_chunks::<4>().0 {
+        let a = (f32::from(alpha_byte) * scale).round().clamp(0.0, 255.0) as u8;
+        rgba.extend_from_slice(&[rgb[0], rgb[1], rgb[2], a]);
+    }
+    slint::Image::from_rgba8(SharedPixelBuffer::clone_from_slice(
+        &rgba,
+        TILE_SHADOW_SIZE.0,
+        TILE_SHADOW_SIZE.1,
+    ))
+}
+
+/// Pushes a validated [`ThemeSpec`] onto the window's `Theme` global.
+fn apply_theme(window: &HomeWindow, spec: &ThemeSpec) {
+    let theme = window.global::<Theme>();
+    theme.set_bg(spec.colors.bg.to_slint());
+    theme.set_surface(spec.colors.surface.to_slint());
+    theme.set_dock_bg(spec.colors.dock_bg.to_slint());
+    theme.set_text(spec.colors.text.to_slint());
+    theme.set_text_dim(spec.colors.text_dim.to_slint());
+    theme.set_accent(spec.colors.accent.to_slint());
+    theme.set_accent_text(spec.colors.accent_text.to_slint());
+    theme.set_focus_ring(spec.colors.focus_ring.to_slint());
+    theme.set_layout_style(spec.layout.style.as_i32());
+    theme.set_columns(i32::try_from(spec.layout.columns).unwrap_or(6));
+    theme.set_tile_aspect(spec.layout.tile_aspect.as_i32());
+    theme.set_tile_style(spec.layout.tile_style.as_i32());
+    theme.set_tile_border_width(spec.layout.tile_border_width);
+    theme.set_tile_border_color(spec.layout.tile_border_color.to_slint());
+    theme.set_tile_dim_unfocused(spec.layout.tile_dim_unfocused);
+    theme.set_tile_gap(spec.layout.tile_gap);
+    theme.set_grid_margin_x(spec.layout.grid_margin_x);
+    theme.set_hero_align(spec.layout.hero_align.as_i32());
+    theme.set_hero_artwork(spec.layout.hero_artwork);
+    theme.set_hero_title_size(spec.layout.hero_title_size);
+    theme.set_hero_title_weight(spec.typography.hero_title_weight);
+    theme.set_hero_title_position(spec.layout.hero_title_position.as_i32());
+    theme.set_focus_style(spec.layout.focus_style.as_i32());
+    theme.set_dock_surface(spec.layout.dock_surface);
+    theme.set_dock_blur(spec.layout.dock_blur);
+    theme.set_dock_radius(spec.layout.dock_radius);
+    theme.set_section_label(spec.layout.section_label.as_str().into());
+    theme.set_top_bar_style(spec.layout.top_bar_style.as_i32());
+    theme.set_clock_position(spec.layout.clock_position.as_i32());
+    theme.set_clock_size(spec.typography.clock_size);
+    theme.set_clock_weight(spec.typography.clock_weight);
+    theme.set_panel_style(spec.surfaces.panel_style.as_i32());
+    theme.set_panel_opacity(spec.surfaces.panel_opacity);
+    theme.set_panel_border_width(spec.surfaces.panel_border_width);
+    theme.set_panel_border_color(spec.surfaces.panel_border_color.to_slint());
+    theme.set_scrim_opacity(spec.surfaces.scrim_opacity);
+    theme.set_selection_style(spec.surfaces.selection_style.as_i32());
+    theme.set_font_family(spec.typography.font_family.as_str().into());
+    theme.set_motion_scale(spec.typography.motion_scale);
+    theme.set_tile_radius(spec.layout.tile_radius);
+    theme.set_panel_radius(spec.layout.panel_radius);
+    theme.set_focus_scale(spec.layout.focus_scale);
+    theme.set_focus_ring_width(spec.layout.focus_ring_width);
+    theme.set_hero_mode(spec.layout.hero.as_i32());
+    theme.set_show_labels(spec.layout.show_labels.as_i32());
+    theme.set_sway(spec.layout.sway);
+    theme.set_glow_strength(spec.layout.glow_strength);
+    theme.set_bg_gradient_angle(spec.background.gradient_angle);
+    theme.set_bg_scrim(spec.background.scrim.as_i32());
+    theme.set_bg_scrim_strength(spec.background.scrim_strength);
+    match spec.background.gradient {
+        Some((top, bottom)) => {
+            theme.set_bg_top(top.to_slint());
+            theme.set_bg_bottom(bottom.to_slint());
+        }
+        None => {
+            theme.set_bg_top(spec.colors.bg.to_slint());
+            theme.set_bg_bottom(spec.colors.bg.to_slint());
+        }
+    }
+    // Bake bg + gradient + PNG/SVG wallpaper + directional scrim once into a
+    // single opaque RGB texture (one GPU blit instead of 4 full-screen passes).
+    let rtl = window.global::<Dir>().get_rtl();
+    match theme::bake_backdrop(spec, rtl) {
+        Some(baked) => {
+            theme.set_bg_image(slint::Image::from_rgb8(
+                SharedPixelBuffer::clone_from_slice(&baked.rgb, baked.width, baked.height),
+            ));
+            theme.set_has_bg_image(true);
+            theme.set_bg_image_opacity(1.0);
+            theme.set_has_gradient(false);
+            if let Some((bw, bh, ref brgb)) = baked.blurred {
+                theme.set_bg_blurred_image(slint::Image::from_rgb8(
+                    SharedPixelBuffer::clone_from_slice(brgb, bw, bh),
+                ));
+                theme.set_has_bg_blurred(true);
+            } else {
+                theme.set_bg_blurred_image(slint::Image::default());
+                theme.set_has_bg_blurred(false);
+            }
+        }
+        None => {
+            theme.set_bg_image(slint::Image::default());
+            theme.set_has_bg_image(false);
+            theme.set_bg_image_opacity(0.0);
+            theme.set_has_gradient(false);
+            theme.set_bg_blurred_image(slint::Image::default());
+            theme.set_has_bg_blurred(false);
+        }
+    }
+    // Pre-tint the coloured focus-glow shadow once on theme switch (zero
+    // per-frame `Image.colorize` FBOs in Slint).
+    let fr = spec.colors.focus_ring;
+    window
+        .global::<Effects>()
+        .set_tile_glow_shadow(tint_tile_shadow([fr.r, fr.g, fr.b], 0.62));
+}
+
 /// Shows or hides the mouse pointer over the whole window, at once (a
 /// TouchArea's `mouse-cursor` only changes with the next pointer event).
 fn show_pointer(window: &HomeWindow, shown: bool) {
@@ -620,6 +754,9 @@ fn start(
             BANNER_SHADOW_SIZE.1,
         ),
     ));
+    window
+        .global::<Effects>()
+        .set_tile_shadow(tint_tile_shadow([0, 0, 0], 0.56));
     let reduced = options
         .order_file
         .as_deref()
@@ -690,6 +827,12 @@ fn start(
     window.on_quick_dismissed(move || {
         if let Some(controller) = weak.upgrade() {
             controller.borrow_mut().quick_dismissed();
+        }
+    });
+    let weak = Rc::downgrade(&controller);
+    window.on_overlay_dismissed(move || {
+        if let Some(controller) = weak.upgrade() {
+            controller.borrow_mut().overlay_dismissed();
         }
     });
     let weak = Rc::downgrade(&controller);
@@ -799,22 +942,30 @@ fn pause_when_covered(window: &HomeWindow, controller: &Rc<RefCell<Controller>>)
             return EventResult::PreventDefault;
         }
         if let WindowEvent::Focused(focused) = *event {
-            let weak = weak.clone();
-            // Not from inside the event filter: the controller may be borrowed.
-            Timer::single_shot(Duration::ZERO, move || {
-                let Some(controller) = weak.upgrade() else {
-                    return;
-                };
-                let mut this = controller.borrow_mut();
-                if !focused && this.home.state() == State::Launching {
-                    this.away = true;
-                    this.input(Input::Paused);
-                } else if focused && this.away {
-                    this.resume();
-                }
-            });
+            launcher_focus_changed(weak.clone(), focused);
         }
         EventResult::Propagate
+    });
+}
+
+/// A launcher window (Home or a programmable skin's) gained or lost the
+/// keyboard: losing it while an app launches means the app's window took
+/// over (the launch ends, RustTV is away); getting it back after that is a
+/// return to RustTV.
+#[cfg(feature = "linux")]
+fn launcher_focus_changed(weak: Weak<RefCell<Controller>>, focused: bool) {
+    // Not from inside an event filter: the controller may be borrowed.
+    Timer::single_shot(Duration::ZERO, move || {
+        let Some(controller) = weak.upgrade() else {
+            return;
+        };
+        let mut this = controller.borrow_mut();
+        if !focused && this.home.state() == State::Launching {
+            this.away = true;
+            this.input(Input::Paused);
+        } else if focused && this.away {
+            this.resume();
+        }
     });
 }
 
@@ -1010,6 +1161,36 @@ struct Controller {
     prompt: Option<device_view::Prompt>,
     /// The status corner, banners and the idle screen (ui/faces_view.rs).
     faces: faces_view::Faces,
+    /// Available UI themes (built-in presets + discovered user TOML themes).
+    themes: Vec<ThemeSpec>,
+    /// Currently active UI theme.
+    active_theme: ThemeSpec,
+    /// Discovered Level 3 programmable `.slint` (+ optional `.rhai`) skins.
+    #[cfg(feature = "skins")]
+    skins: Vec<crate::skin_runtime::SkinManifest>,
+    /// Currently active Level 3 programmable skin instance, when a `"skin:*"` ID is selected.
+    #[cfg(feature = "skins")]
+    active_skin: Option<crate::skin_runtime::SkinInstance>,
+    /// Whether `active_skin`'s window is currently shown (only while on plain Home).
+    #[cfg(feature = "skins")]
+    skin_visible: bool,
+    /// `HomeWindow`'s and the skin's item trees, which share its window
+    /// (`one_window`); set while a skin is active.
+    #[cfg(feature = "skins")]
+    skin_trees: Option<one_window::Trees>,
+    /// Last focused index pushed into `active_skin` (so `on_focus` fires once per change).
+    #[cfg(feature = "skins")]
+    skin_last_focus: Option<i32>,
+    /// Signature of the tile list last pushed into `active_skin` (avoids rebuilding
+    /// `VecModel<SkinTile>` on every D-pad focus move for locked 60 fps, while still
+    /// updating as soon as async icons finish loading).
+    #[cfg(feature = "skins")]
+    skin_tiles_sig: Vec<(String, String, bool, i32, u32)>,
+    /// Last `(clock, greeting, date)` pushed into `active_skin`.
+    #[cfg(feature = "skins")]
+    skin_clock_sig: (String, String, String),
+    /// Whether Settings → Effects is in Reduced mode (skip hero glow work).
+    reduced_effects: bool,
 }
 
 impl Controller {
@@ -1075,11 +1256,26 @@ impl Controller {
             home.focus_on(id);
         }
         // Settings → Idle screen: on unless its flag file is there.
-        let ambient_off = options
+        let state_dir = options
             .order_file
             .as_deref()
-            .and_then(std::path::Path::parent)
-            .is_some_and(|dir| dir.join(order_file::AMBIENT_OFF).exists());
+            .and_then(std::path::Path::parent);
+        let ambient_off = state_dir.is_some_and(|dir| dir.join(order_file::AMBIENT_OFF).exists());
+        let reduced_effects =
+            state_dir.is_some_and(|dir| dir.join(order_file::REDUCED_EFFECTS).exists());
+        let theme_dirs = theme::theme_dirs(state_dir);
+        let themes = theme::load_all(&theme_dirs);
+        #[cfg(feature = "skins")]
+        let skins = crate::skin_runtime::discover_skins(&theme_dirs);
+        let selected_id = theme::load_selected(state_dir);
+        let active_theme = themes
+            .iter()
+            .find(|spec| spec.id == selected_id)
+            .cloned()
+            .unwrap_or_default();
+        let (cols, slots, carousel) = active_theme.layout.home_nav();
+        home.set_layout(cols, slots, carousel);
+        apply_theme(window, &active_theme);
         let faces = faces_view::Faces::new(window, ambient_off);
         let right_to_left = options.right_to_left;
         let baked = platform.top_right_menu();
@@ -1171,6 +1367,23 @@ impl Controller {
                 pointer_timer: Timer::default(),
                 prompt: None,
                 faces,
+                themes,
+                active_theme,
+                #[cfg(feature = "skins")]
+                skins,
+                #[cfg(feature = "skins")]
+                active_skin: None,
+                #[cfg(feature = "skins")]
+                skin_visible: false,
+                #[cfg(feature = "skins")]
+                skin_trees: None,
+                #[cfg(feature = "skins")]
+                skin_last_focus: None,
+                #[cfg(feature = "skins")]
+                skin_tiles_sig: Vec::new(),
+                #[cfg(feature = "skins")]
+                skin_clock_sig: (String::new(), String::new(), String::new()),
+                reduced_effects,
             })
         });
         *controller.borrow().options.lifecycle.0.borrow_mut() = Rc::downgrade(&controller);
@@ -1183,6 +1396,10 @@ impl Controller {
             // `render` schedules the hero after HERO_DELAY, so the first frame
             // does not wait for its backdrop; it fades in like any focus change.
             this.render();
+            #[cfg(feature = "skins")]
+            if selected_id.starts_with("skin:") {
+                this.select_theme(&selected_id);
+            }
             this.refresh_update();
             this.start_links();
             this.tick_clock();
@@ -1205,7 +1422,11 @@ impl Controller {
         self.refresh_update();
         self.show_history_panel();
         self.push_remote_view();
+        #[cfg(feature = "skins")]
+        self.sync_active_skin();
         self.pack_timer.stop();
+        self.start_links();
+        let running_changed = self.sync_running();
         // The clock runs again, and Home may dim after a rest from now (no
         // sway until a key, as after a long time away before).
         self.leave_ambient();
@@ -1228,6 +1449,8 @@ impl Controller {
             // Rebuild tiles and hero too: an updated app may have a new banner.
             self.shown.clear();
             self.hero = None;
+            self.render();
+        } else if running_changed {
             self.render();
         }
     }
@@ -1253,6 +1476,7 @@ impl Controller {
                 if self.home.set_apps(&apps) {
                     self.save_order();
                 }
+                self.sync_running();
                 // Queued again, in tile order, when the tiles are rebuilt (`render`).
                 self.pending_artwork.clear();
             }
@@ -1447,9 +1671,10 @@ impl Controller {
         }
         if input == Input::Paused {
             self.faces_away();
-            // No sway and no idle screen while away; resuming starts the
-            // wait again.
+            // No sway, no idle screen and no network-icon polling while away;
+            // resuming starts them again.
             self.idle_timer.stop();
+            self.links_timer.stop();
             self.set_idle_phase(0);
             self.prompt = None;
             self.close_settings_view();
@@ -1519,6 +1744,11 @@ impl Controller {
                     self.resized = Some(id);
                 }
             }
+            Some(Effect::CloseApp(id)) => {
+                self.platform.close_app(&id);
+                self.sync_running();
+            }
+            Some(Effect::DeleteApp(id)) => self.delete_app(id),
             // `render` fills the page and queues its artwork.
             Some(Effect::OpenHidden) | None => {}
         }
@@ -1561,6 +1791,7 @@ impl Controller {
                 if !self.home.hover(&tile) {
                     return;
                 }
+                self.home.touch_move((self.clock)());
                 None
             }
             _ => {
@@ -1663,7 +1894,6 @@ impl Controller {
                 Input::Left
             };
             self.input(step);
-            self.render();
             let Some(after) = focus(self) else {
                 return;
             };
@@ -1675,6 +1905,531 @@ impl Controller {
             }
         }
     }
+
+    /// A click outside an open folder or long-press tile menu closes it.
+    fn overlay_dismissed(&mut self) {
+        self.parked = false;
+        if !self.pointer_reaches(false) {
+            return;
+        }
+        if matches!(self.home.state(), State::Menu | State::Folder) {
+            self.input(Input::Back);
+        }
+    }
+
+    /// Re-scans built-in and user theme directories so newly dropped TOML
+    /// themes appear in Settings → Theme without restarting.
+    pub(super) fn reload_themes(&mut self) {
+        let state_dir = self
+            .options
+            .order_file
+            .as_deref()
+            .and_then(std::path::Path::parent);
+        let dirs = theme::theme_dirs(state_dir);
+        self.themes = theme::load_all(&dirs);
+        #[cfg(feature = "skins")]
+        {
+            self.skins = crate::skin_runtime::discover_skins(&dirs);
+        }
+        if let Some(updated) = self
+            .themes
+            .iter()
+            .find(|spec| spec.id == self.active_theme.id)
+            .cloned()
+        {
+            self.active_theme = updated;
+        }
+    }
+
+    /// Theme entries shown in Settings → Theme.
+    pub(super) fn theme_options(&self) -> Vec<ThemeOption> {
+        let mut opts: Vec<ThemeOption> = self
+            .themes
+            .iter()
+            .map(|spec| ThemeOption {
+                id: spec.id.clone(),
+                name: spec.name.clone(),
+                detail: spec.detail.clone(),
+            })
+            .collect();
+        #[cfg(feature = "skins")]
+        opts.extend(self.skins.iter().map(|manifest| ThemeOption {
+            id: manifest.id.clone(),
+            name: manifest.name.clone(),
+            detail: manifest.detail.clone(),
+        }));
+        opts
+    }
+
+    /// Currently active theme or programmable skin ID.
+    pub(super) fn active_theme_id(&self) -> &str {
+        #[cfg(feature = "skins")]
+        if let Some(skin) = &self.active_skin {
+            return &skin.manifest.id;
+        }
+        &self.active_theme.id
+    }
+
+    /// Applies and persists the selected theme (or Level 3 `.slint`+`.rhai` skin) immediately.
+    pub(super) fn select_theme(&mut self, id: &str) {
+        #[cfg(feature = "skins")]
+        if let Some(manifest) = self.skins.iter().find(|s| s.id == id).cloned() {
+            let prefs_dir = self
+                .options
+                .order_file
+                .as_deref()
+                .and_then(std::path::Path::parent)
+                .map(|dir| dir.join("skin-prefs"));
+            // The skin draws into `HomeWindow`'s window (`one_window`).
+            let home_window = self.window.upgrade();
+            let home_tree = self
+                .skin_trees
+                .as_ref()
+                .map(|trees| trees.home().clone())
+                .or_else(|| home_window.as_ref().map(one_window::Trees::current));
+            match crate::skin_runtime::SkinInstance::load_into_window(
+                &manifest,
+                prefs_dir.as_deref(),
+                home_window.as_ref().map(|window| window.window()),
+            ) {
+                Ok(skin) => {
+                    // Loading made the skin's tree the window's; `HomeWindow`'s
+                    // shows until `sync_active_skin` decides.
+                    let skin_tree = home_window.as_ref().map(one_window::Trees::current);
+                    if let (Some(window), Some(home)) = (&home_window, &home_tree) {
+                        one_window::show_home_tree(window, home);
+                    }
+                    self.skin_trees = home_tree
+                        .zip(skin_tree)
+                        .map(|(home, skin)| one_window::Trees::new(home, skin));
+                    drop(self.active_skin.take());
+                    self.skin_visible = false;
+                    self.skin_last_focus = None;
+                    self.skin_tiles_sig.clear();
+                    self.skin_clock_sig = (String::new(), String::new(), String::new());
+                    let me_key = self.me.clone();
+                    let me_tile = self.me.clone();
+                    let me_action = self.me.clone();
+                    skin.set_callbacks(
+                        move |text, pressed, repeat| {
+                            me_key
+                                .upgrade()
+                                .is_some_and(|c| c.borrow_mut().skin_key(&text, pressed, repeat))
+                        },
+                        move |idx, menu| {
+                            if let Some(c) = me_tile.upgrade() {
+                                c.borrow_mut()
+                                    .tile_pointer(false, idx, if menu { 2 } else { 1 });
+                            }
+                        },
+                        move |name, arg| {
+                            if let Some(c) = me_action.upgrade() {
+                                c.borrow_mut().skin_action(&name, &arg);
+                            }
+                        },
+                    );
+                    let me_menu = self.me.clone();
+                    skin.set_menu_callback(move |idx| {
+                        if let Some(c) = me_menu.upgrade() {
+                            c.borrow_mut().list_pointer(0, idx, 1);
+                        }
+                    });
+                    let me_quick_click = self.me.clone();
+                    let me_quick_hover = self.me.clone();
+                    skin.set_quick_callbacks(
+                        move |idx| {
+                            if let Some(c) = me_quick_click.upgrade() {
+                                c.borrow_mut().quick_clicked(idx);
+                            }
+                        },
+                        move |idx| {
+                            if let Some(c) = me_quick_hover.upgrade() {
+                                c.borrow_mut().quick_hovered(idx);
+                            }
+                        },
+                    );
+                    self.active_skin = Some(skin);
+                    if let Some(dir) = self
+                        .options
+                        .order_file
+                        .as_deref()
+                        .and_then(std::path::Path::parent)
+                        && let Err(error) = theme::save_selected(dir, id)
+                    {
+                        log::warn!("saving selected skin failed: {error}");
+                    }
+                    self.sync_active_skin();
+                }
+                Err(error) => {
+                    log::warn!("loading programmable skin {id} failed: {error}");
+                    self.show_toast(format!("Skin error: {error}").into());
+                }
+            }
+            return;
+        }
+
+        let Some(spec) = self.themes.iter().find(|spec| spec.id == id).cloned() else {
+            return;
+        };
+        #[cfg(feature = "skins")]
+        if let Some(prev) = self.active_skin.take() {
+            // Back to `HomeWindow`'s own tree before the skin's goes.
+            if let (Some(trees), Some(window)) = (self.skin_trees.take(), self.window.upgrade()) {
+                trees.show_home(&window);
+            }
+            drop(prev);
+            self.skin_visible = false;
+            self.skin_last_focus = None;
+        }
+        let bg_changed = spec.colors.bg != self.active_theme.colors.bg;
+        let tint_changed = spec.colors.icon_card_tint != self.active_theme.colors.icon_card_tint
+            || spec.colors.surface != self.active_theme.colors.surface;
+        self.active_theme = spec;
+        let (cols, slots, carousel) = self.active_theme.layout.home_nav();
+        self.home.set_layout(cols, slots, carousel);
+        if let Some(dir) = self
+            .options
+            .order_file
+            .as_deref()
+            .and_then(std::path::Path::parent)
+            && let Err(error) = theme::save_selected(dir, &self.active_theme.id)
+        {
+            log::warn!("saving selected theme failed: {error}");
+        }
+        if let Some(window) = self.window.upgrade() {
+            apply_theme(&window, &self.active_theme);
+        }
+        if bg_changed {
+            self.glows.clear();
+            self.builtins.clear_glows();
+            self.glow_generation += 1;
+            self.glows_complete = false;
+        }
+        if tint_changed {
+            self.shown.clear();
+            self.folder_shown.clear();
+            self.hidden_shown.clear();
+        }
+        self.hero = None;
+        self.show_hero();
+    }
+
+    #[cfg(feature = "skins")]
+    fn skin_key(&mut self, text: &str, pressed: bool, repeat: bool) -> bool {
+        // While the in-skin long-press context menu or the top-right menu has
+        // focus, route keys directly to Home's state machine instead of the
+        // skin's grid handler.
+        if matches!(
+            self.home.state(),
+            State::Menu | State::Bar | State::Launching
+        ) {
+            return self.key(text, pressed, repeat);
+        }
+        let key_name = match text {
+            "\u{F700}" => "Up",
+            "\u{F701}" => "Down",
+            "\u{F702}" => "Left",
+            "\u{F703}" => "Right",
+            "\n" | "\r" => "Ok",
+            "\u{F748}" | "\u{1b}" | "\u{8}" => "Back",
+            "\u{F735}" => "Menu",
+            other => other,
+        };
+        let (handled, cmds) = if let Some(skin) = self.active_skin.as_mut() {
+            skin.dispatch_key(key_name, pressed)
+        } else {
+            (false, Vec::new())
+        };
+        self.run_skin_commands(cmds);
+        if handled {
+            return true;
+        }
+        self.key(text, pressed, repeat)
+    }
+
+    #[cfg(feature = "skins")]
+    fn skin_action(&mut self, name: &str, arg: &str) {
+        let cmds = if let Some(skin) = self.active_skin.as_mut() {
+            skin.dispatch_action(name, arg)
+        } else {
+            Vec::new()
+        };
+        self.run_skin_commands(cmds);
+    }
+
+    #[cfg(feature = "skins")]
+    fn run_skin_commands(&mut self, cmds: Vec<crate::skin_runtime::HostCommand>) {
+        use crate::skin_runtime::HostCommand;
+        for cmd in cmds {
+            match cmd {
+                HostCommand::Launch(index) => self.tile_pointer(false, index, 1),
+                HostCommand::Focus(index) => {
+                    if let Some(tile) = usize::try_from(index)
+                        .ok()
+                        .and_then(|i| self.home.tiles().get(i))
+                        .cloned()
+                        && self.home.hover(&tile)
+                    {
+                        self.render();
+                    }
+                }
+                HostCommand::OpenSettings => {
+                    if self.home.open_settings().is_some() {
+                        self.open_settings();
+                        self.render();
+                    }
+                }
+            }
+        }
+    }
+
+    /// Syncs live tiles, focus, clock, hero, and visibility to an active Level 3 skin.
+    #[cfg(feature = "skins")]
+    fn sync_active_skin(&mut self) {
+        if self.active_skin.is_none() {
+            return;
+        }
+        // Only rebuild `RustTV.tiles` when tile IDs, labels, or running states
+        // actually change — never on plain D-pad focus moves, so Slint keeps
+        // animations and GPU textures alive at a locked 60 fps.
+        let tiles_sig: Vec<(String, String, bool, i32, u32)> = self
+            .home
+            .tiles()
+            .iter()
+            .map(|id| {
+                let name = order_file::name_of(id);
+                let (label, kind, img_w) = match id {
+                    TileId::App(app_id) => self
+                        .apps
+                        .get(app_id)
+                        .map(|a| (a.label.clone(), a.kind, a.image.size().width))
+                        .unwrap_or_else(|| (name.clone(), 4, 0)),
+                    _ => {
+                        let d = self.tile_data(id);
+                        (d.label.to_string(), d.kind, d.image.size().width)
+                    }
+                };
+                let running = match id {
+                    TileId::App(app_id) => self.home.is_app_running(app_id),
+                    _ => false,
+                };
+                (name, label, running, kind, img_w)
+            })
+            .collect();
+        let tiles_changed = tiles_sig != self.skin_tiles_sig;
+        let skin_tiles = if tiles_changed {
+            self.skin_tiles_sig = tiles_sig;
+            Some(
+                self.home
+                    .tiles()
+                    .iter()
+                    .map(|id| {
+                        let data = self.tile_data(id);
+                        crate::skin_runtime::SkinTileData {
+                            id: order_file::name_of(id),
+                            label: data.label.to_string(),
+                            image: data.image,
+                            kind: data.kind,
+                            running: data.running,
+                            tint: data.tint,
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        } else {
+            None
+        };
+
+        let focus = i32::try_from(self.home.focus()).unwrap_or(0);
+        let focus_changed = self.skin_last_focus != Some(focus);
+        let focus_id = self
+            .home
+            .focused()
+            .map(order_file::name_of)
+            .unwrap_or_default();
+        let focused_hero = if focus_changed || tiles_changed {
+            let focused_data = self.home.focused().map(|id| self.tile_data(id));
+            let label = focused_data
+                .as_ref()
+                .map(|d| d.label.to_string())
+                .unwrap_or_default();
+            let image = focused_data
+                .as_ref()
+                .map(|d| d.image.clone())
+                .unwrap_or_default();
+            let color = focused_data
+                .as_ref()
+                .map(|d| d.tint)
+                .unwrap_or_else(|| self.active_theme.colors.surface.to_slint());
+            Some((label, color, image))
+        } else {
+            None
+        };
+
+        let clock_sig = if let Some(window) = self.window.upgrade() {
+            (
+                window.get_clock_text().to_string(),
+                window.get_greeting_text().to_string(),
+                window.get_date_text().to_string(),
+            )
+        } else {
+            (String::new(), String::new(), String::new())
+        };
+        let clock_changed = clock_sig != self.skin_clock_sig;
+        if clock_changed {
+            self.skin_clock_sig = clock_sig.clone();
+        }
+
+        let (menu_open, menu_title, menu_items, menu_selected) = if self.home.state() == State::Menu
+        {
+            let items: Vec<String> = self.menu_items.iter().map(|s| s.to_string()).collect();
+            let title = self
+                .home
+                .focused()
+                .map(|id| self.tile_data(id).label.to_string())
+                .unwrap_or_default();
+            let sel = self
+                .window
+                .upgrade()
+                .map(|window| window.get_menu_selected())
+                .unwrap_or(0);
+            (true, title, items, sel)
+        } else {
+            (false, String::new(), Vec::new(), 0)
+        };
+
+        // Keep the programmable skin as the sole visible launcher window on
+        // the home screen (Browse, Bar, Moving, or in-skin Menu) — even while
+        // an external app is in front, so pressing Home or long-pressing an app
+        // never flashes the stock `HomeWindow`. Only swap to `HomeWindow` for
+        // full-screen built-in pages (Settings, Folder, Hidden apps, About, Remote).
+        // The skin also stays up while an app launches: its window's focus
+        // ends the launch (`pause_when_covered`, the shared window's hook), and it draws its own
+        // launch feedback from `RustTV.mode`.
+        let should_show = matches!(
+            self.home.state(),
+            State::Browse | State::Bar | State::Moving | State::Menu | State::Launching
+        );
+        let reduced_effects = self.reduced_effects;
+        let home_win = self.window.upgrade();
+        let mut swapped = false;
+        let cmds = if let Some(skin) = self.active_skin.as_mut() {
+            if let Some(tiles) = &skin_tiles {
+                skin.set_tiles(tiles);
+            }
+            if clock_changed {
+                skin.set_clock(&clock_sig.0, &clock_sig.1, &clock_sig.2);
+            }
+            skin.set_reduced_effects(reduced_effects);
+            skin.set_menu(menu_open, &menu_title, &menu_items, menu_selected);
+            // The top-right menu's entries (quick.slint codes) and focus;
+            // the skin draws them.
+            let quick: Vec<(i32, &str)> = self.quick_codes.iter().map(|code| (code, "")).collect();
+            let quick_selected = self
+                .home
+                .quick_selected()
+                .map_or(-1, |s| i32::try_from(s).unwrap_or(i32::MAX));
+            skin.set_quick_bar(&quick, quick_selected);
+            if let Some(window) = &home_win {
+                skin.set_mode(window.get_mode());
+            }
+            let focus_label = if let Some((label, color, image)) = focused_hero {
+                skin.set_hero(&label, color, image);
+                label
+            } else {
+                String::new()
+            };
+            let cmds = if focus_changed {
+                self.skin_last_focus = Some(focus);
+                skin.set_focused(focus, &focus_id, &focus_label)
+            } else {
+                Vec::new()
+            };
+            // One window, two trees (`one_window`): no window comes or goes.
+            if should_show && !self.skin_visible {
+                self.skin_visible = true;
+                swapped = true;
+            } else if !should_show && self.skin_visible {
+                self.skin_visible = false;
+                swapped = true;
+            }
+            cmds
+        } else {
+            Vec::new()
+        };
+        if swapped && let (Some(trees), Some(window)) = (&self.skin_trees, &home_win) {
+            if self.skin_visible {
+                trees.show_skin(window);
+            } else {
+                trees.show_home(window);
+            }
+        }
+        self.run_skin_commands(cmds);
+    }
+
+    /// Called when Settings → Effects changes `reduced_effects`.
+    pub(super) fn on_effects_changed(&mut self, reduced: bool) {
+        if self.reduced_effects == reduced {
+            return;
+        }
+        self.reduced_effects = reduced;
+        if !reduced && self.glows_enabled() {
+            self.glows_complete = false;
+            self.hero = None;
+            self.show_hero();
+        }
+    }
+
+    /// Whether hero colour glows should be quantized and baked.
+    fn glows_enabled(&self) -> bool {
+        !self.reduced_effects
+            && self.active_theme.layout.hero != HeroMode::Off
+            && self.active_theme.layout.glow_strength > 0.0
+    }
+
+    /// The active theme's background colour for baked hero backdrops.
+    fn page_colour(&self) -> [u8; 3] {
+        self.active_theme.colors.bg.rgb_array()
+    }
+
+    /// Refreshes which installed apps are currently running in the background
+    /// and updates the `running` badge in-place on visible tile rows.
+    fn sync_running(&mut self) -> bool {
+        let running: BTreeSet<String> = self
+            .apps
+            .keys()
+            .filter(|id| self.platform.is_running(id))
+            .cloned()
+            .collect();
+        if !self.home.sync_running_apps(running) {
+            return false;
+        }
+        for (index, tile) in self.shown.iter().enumerate() {
+            if let TileId::App(id) = tile
+                && let Some(mut data) = self.tiles.row_data(index)
+            {
+                let now = self.home.is_app_running(id);
+                if data.running != now {
+                    data.running = now;
+                    self.tiles.set_row_data(index, data);
+                }
+            }
+        }
+        for (index, tile) in self.folder_shown.iter().enumerate() {
+            if let TileId::App(id) = tile
+                && let Some(mut data) = self.folder_tiles.row_data(index)
+            {
+                let now = self.home.is_app_running(id);
+                if data.running != now {
+                    data.running = now;
+                    self.folder_tiles.set_row_data(index, data);
+                }
+            }
+        }
+        true
+    }
+
+    fn delete_app(&mut self, _id: String) {}
 
     fn after_pointer(&mut self, effect: Option<Effect>) {
         self.restart_idle();
@@ -1837,6 +2592,8 @@ impl Controller {
             self.render();
         } else if caption_changed && !self.away {
             self.push_remote_view();
+            #[cfg(feature = "skins")]
+            self.sync_active_skin();
         }
     }
 
@@ -1960,6 +2717,9 @@ impl Controller {
         } = closed;
         if close_app {
             self.platform.close_app(&app);
+            if self.sync_running() {
+                self.render();
+            }
             return;
         }
         let Some(size) = size.filter(|size| *size != self.platform.app_scale(&app)) else {
@@ -1997,6 +2757,7 @@ impl Controller {
         }
         match self.platform.launch(id) {
             Ok(()) => {
+                self.sync_running();
                 if let Some(delay) = self.options.simulated_pause {
                     let me = self.me.clone();
                     self.pause_timer
@@ -2164,9 +2925,10 @@ impl Controller {
             Some(TileId::App(id)) => self.platform.app_scale(&id),
             _ => 100,
         };
+        let confirm_delete = self.home.menu_confirm_delete();
         let labels: Vec<SharedString> = items
             .iter()
-            .map(|item| menu_label(&window, *item, size))
+            .map(|item| menu_label(&window, *item, size, confirm_delete))
             .collect();
         if !self.menu_items.iter().eq(labels.iter().cloned()) {
             self.menu_items.set_vec(labels);
@@ -2234,6 +2996,8 @@ impl Controller {
                 });
         }
         self.push_remote_view();
+        #[cfg(feature = "skins")]
+        self.sync_active_skin();
         self.after_render_faces();
     }
 
@@ -2558,6 +3322,8 @@ impl Controller {
             page.set_pointer(self.platform.pointer_state());
         }
         self.push_remote_view();
+        #[cfg(feature = "skins")]
+        self.sync_active_skin();
         self.render();
     }
 
@@ -2638,12 +3404,20 @@ impl Controller {
             .as_ref()
             .map(|id| self.tile_data(id))
             .unwrap_or_default();
-        let glow = match &focused {
-            Some(TileId::App(component)) => self.glow(component),
-            Some(builtin) => self.builtins.view(builtin).map(BuiltinView::glow),
-            None => None,
-        }
-        .unwrap_or_default();
+        let glow = if self.glows_enabled() {
+            let page_colour = self.page_colour();
+            match &focused {
+                Some(TileId::App(component)) => self.glow(component),
+                Some(builtin) => self
+                    .builtins
+                    .view(builtin)
+                    .map(|view| view.glow(page_colour)),
+                None => None,
+            }
+            .unwrap_or_default()
+        } else {
+            generated::Glow::default()
+        };
         // Fill the hidden layer, then make it the front one.
         if self.hero_a_front {
             window.set_hero_b(data);
@@ -2664,8 +3438,11 @@ impl Controller {
         }
     }
 
-    /// The hero glow for an app; `None` if it has no artwork.
+    /// The hero glow for an app; `None` if it has no artwork or glows are off.
     fn glow(&mut self, component: &str) -> Option<generated::Glow> {
+        if !self.glows_enabled() {
+            return None;
+        }
         if let Some(cached) = self.glows.get(component) {
             return Some(cached.clone());
         }
@@ -2674,6 +3451,7 @@ impl Controller {
             source,
             self.platform.top_right_menu(),
             self.options.right_to_left,
+            self.page_colour(),
         );
         self.glows.insert(component.to_owned(), glow.clone());
         Some(glow)
@@ -2688,7 +3466,7 @@ impl Controller {
     /// its glow is ready make theirs on focus ([`Controller::glow`],
     /// [`BuiltinView::glow`]).
     fn make_glows(&mut self) {
-        if self.glows_making || self.glows_complete || self.glows_failed {
+        if !self.glows_enabled() || self.glows_making || self.glows_complete || self.glows_failed {
             return;
         }
         let missing = |id: &TileId| match id {
@@ -2716,7 +3494,11 @@ impl Controller {
             self.glows_complete = true;
             return;
         }
-        let (baked, right_to_left) = (self.platform.top_right_menu(), self.options.right_to_left);
+        let (baked, right_to_left, page_colour) = (
+            self.platform.top_right_menu(),
+            self.options.right_to_left,
+            self.page_colour(),
+        );
         let generation = self.glow_generation;
         let started = settings_view::in_background(
             "rusttv-glows",
@@ -2724,7 +3506,9 @@ impl Controller {
                 // A panic is reported as `None`, so the UI stops waiting.
                 std::panic::catch_unwind(move || {
                     jobs.into_iter()
-                        .map(|(id, source)| (id, glow_parts(&source, baked, right_to_left)))
+                        .map(|(id, source)| {
+                            (id, glow_parts(&source, baked, right_to_left, page_colour))
+                        })
                         .collect::<Vec<_>>()
                 })
                 .ok()
@@ -2942,11 +3726,27 @@ impl Controller {
                 ..TileData::default()
             };
         };
+        let tint = if app.kind == 1 && self.active_theme.colors.icon_card_tint > 0.0 {
+            app.accent_rgb
+                .map(|rgb| {
+                    theme::mix_rgb(
+                        self.active_theme.colors.surface,
+                        rgb,
+                        self.active_theme.colors.icon_card_tint,
+                    )
+                    .to_slint()
+                })
+                .unwrap_or_default()
+        } else {
+            slint::Color::default()
+        };
         TileData {
             label: app.label.as_str().into(),
             // A cheap handle: the tile and the hero share one image and texture.
             image: app.image.clone(),
             kind: app.kind,
+            running: self.home.is_app_running(component),
+            tint,
             ..TileData::default()
         }
     }
@@ -2964,6 +3764,8 @@ struct AppView {
     /// (3, 5 and 6 are the About, Hidden apps and Settings tiles).
     kind: i32,
     glow_source: Option<Bitmap>,
+    /// Mean colour of non-transparent icon pixels, for tinted icon cards.
+    accent_rgb: Option<[u8; 3]>,
 }
 
 impl AppView {
@@ -2973,6 +3775,7 @@ impl AppView {
             image: slint::Image::default(),
             kind: 2,
             glow_source: None,
+            accent_rgb: None,
         };
         view.set_artwork(&entry.artwork);
         view
@@ -2990,6 +3793,11 @@ impl AppView {
         self.kind = kind;
         self.glow_source =
             glow_source.map(|bitmap| bitmap.shrink(GLOW_SOURCE_SIZE.0, GLOW_SOURCE_SIZE.1));
+        self.accent_rgb = if kind == 1 {
+            self.glow_source.as_ref().and_then(icon_tint_rgb)
+        } else {
+            None
+        };
     }
 
     /// Whether the artwork is still to be loaded ([`Artwork::Later`]).
@@ -3031,13 +3839,13 @@ impl BuiltinView {
     }
 
     /// The hero glow, made on the first call if the worker has not made it.
-    fn glow(&self) -> generated::Glow {
+    fn glow(&self, page_colour: [u8; 3]) -> generated::Glow {
         self.glow
             .get_or_init(|| {
                 self.glow_source
                     .as_ref()
                     .map_or_else(generated::Glow::default, |source| {
-                        hero_glow(source, self.baked, self.right_to_left)
+                        hero_glow(source, self.baked, self.right_to_left, page_colour)
                     })
             })
             .clone()
@@ -3072,6 +3880,16 @@ impl Builtins {
             history: BuiltinView::new(HISTORY_BANNER, baked, right_to_left),
             hidden: BuiltinView::new(HIDDEN_BANNER, baked, right_to_left),
         }
+    }
+
+    /// Clears cached built-in glows (e.g. when the active theme's background
+    /// colour changes).
+    fn clear_glows(&mut self) {
+        self.about.glow.take();
+        self.settings.glow.take();
+        self.remote.glow.take();
+        self.history.glow.take();
+        self.hidden.glow.take();
     }
 
     /// The view of a built-in tile; `None` for an app.
@@ -3177,12 +3995,19 @@ fn mode_value(state: State) -> i32 {
 
 /// What the long-press menu shows for an item; `size` is the app's size
 /// in percent.
-fn menu_label(window: &HomeWindow, item: MenuItem, size: u32) -> SharedString {
+fn menu_label(
+    window: &HomeWindow,
+    item: MenuItem,
+    size: u32,
+    confirm_delete: bool,
+) -> SharedString {
     let strings = window.global::<Strings>();
     match item {
         MenuItem::Move => strings.invoke_menu_label(0),
         MenuItem::Hide => strings.invoke_menu_label(1),
         MenuItem::Size => strings.invoke_menu_size(size.to_string().into()),
+        MenuItem::Close => strings.invoke_menu_label(2),
+        MenuItem::Delete => strings.invoke_menu_label(if confirm_delete { 4 } else { 3 }),
     }
 }
 
@@ -3243,8 +4068,13 @@ fn input_for_key(text: &str, pressed: bool) -> Option<Input> {
 /// With `baked` (`Effects.baked-backdrop`, where there is a top-right menu)
 /// the backdrop is painted once into a small picture; otherwise home.slint
 /// draws it from the other fields.
-fn hero_glow(source: &Bitmap, baked: bool, right_to_left: bool) -> generated::Glow {
-    glow_from_parts(glow_parts(source, baked, right_to_left))
+fn hero_glow(
+    source: &Bitmap,
+    baked: bool,
+    right_to_left: bool,
+    page_colour: [u8; 3],
+) -> generated::Glow {
+    glow_from_parts(glow_parts(source, baked, right_to_left, page_colour))
 }
 
 /// What [`hero_glow`] computes, without Slint's types (which stay on the
@@ -3257,13 +4087,56 @@ struct GlowParts {
 
 /// The costly part of [`hero_glow`] (the colour quantization and the baked
 /// backdrop's pixels); any thread.
-fn glow_parts(source: &Bitmap, baked: bool, right_to_left: bool) -> GlowParts {
+fn glow_parts(
+    source: &Bitmap,
+    baked: bool,
+    right_to_left: bool,
+    page_colour: [u8; 3],
+) -> GlowParts {
     let glow = source.glow(BACKDROP_BASE_TONE, BACKDROP_GLOW_TONE);
     let backdrop = baked.then(|| {
         let (width, height) = BACKDROP_SIZE;
-        glow.paint(width, height, PAGE_COLOUR, right_to_left)
+        glow.paint(width, height, page_colour, right_to_left)
     });
     GlowParts { glow, backdrop }
+}
+
+/// Fast mean RGB of opaque, colourful pixels in an icon's small copy, used to
+/// subtly tint icon-only cards when a theme enables `icon_card_tint`.
+fn icon_tint_rgb(bitmap: &Bitmap) -> Option<[u8; 3]> {
+    let mut sat_sum = [0_u64; 3];
+    let mut sat_count = 0_u64;
+    let mut all_sum = [0_u64; 3];
+    let mut all_count = 0_u64;
+    for &[r, g, b, a] in bitmap.rgba().as_chunks::<4>().0 {
+        if a < 128 {
+            continue;
+        }
+        all_sum[0] += u64::from(r);
+        all_sum[1] += u64::from(g);
+        all_sum[2] += u64::from(b);
+        all_count += 1;
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+        if max.saturating_sub(min) >= 32 {
+            sat_sum[0] += u64::from(r);
+            sat_sum[1] += u64::from(g);
+            sat_sum[2] += u64::from(b);
+            sat_count += 1;
+        }
+    }
+    let (sum, count) = if sat_count > 0 {
+        (sat_sum, sat_count)
+    } else if all_count > 0 {
+        (all_sum, all_count)
+    } else {
+        return None;
+    };
+    Some([
+        (sum[0] / count) as u8,
+        (sum[1] / count) as u8,
+        (sum[2] / count) as u8,
+    ])
 }
 
 /// The window's glow from [`glow_parts`]; cheap (one small copy).
@@ -4374,12 +5247,14 @@ mod tests {
     fn builtin_glow_is_made_when_first_needed() {
         let view = BuiltinView::new(HISTORY_BANNER, false, false);
         assert!(view.glow.get().is_none());
+        let bg = ThemeSpec::default().colors.bg.rgb_array();
         let expected = hero_glow(
             view.glow_source.as_ref().expect("the banner has its size"),
             false,
             false,
+            bg,
         );
-        let glow = view.glow();
+        let glow = view.glow(bg);
         assert!(view.glow.get().is_some());
         assert_eq!(glow.color, expected.color);
         assert_eq!(glow.base, expected.base);
@@ -4441,6 +5316,7 @@ mod tests {
             &Bitmap::new(1, 1, vec![200, 40, 40, 255]).expect("one pixel"),
             false,
             false,
+            ThemeSpec::default().colors.bg.rgb_array(),
         );
         let old = controller.glow_generation - 1;
         controller.glows_made(old, vec![(TileId::App("a/.Main".to_owned()), parts)]);
@@ -5807,8 +6683,8 @@ mod tests {
         click_settings(&screen.window);
         assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
         settle(&screen);
-        // Animations, Effects, Idle screen, Updates, History, About.
-        assert_eq!(screen.window.get_settings_sections().row_count(), 6);
+        // Animations, Effects, Theme, Idle screen, Updates, History, About.
+        assert_eq!(screen.window.get_settings_sections().row_count(), 7);
         assert_eq!(screen.window.get_settings_rows().row_count(), 7);
         screen.tap(RIGHT); // focus on Normal, the current choice
         assert_eq!(screen.window.get_settings_row(), 4);
@@ -5900,9 +6776,9 @@ mod tests {
         screen.tap(OK);
         assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
         settle(&screen);
-        // Animations, Effects, Idle screen, Updates, History, About: on
+        // Animations, Effects, Theme, Idle screen, Updates, History, About: on
         // History.
-        assert_eq!(screen.window.get_settings_section(), 4);
+        assert_eq!(screen.window.get_settings_section(), 5);
         assert_eq!(screen.window.get_settings_row(), -1);
         let face = screen.window.global::<HistoryListRow>();
         let section = |index: usize| {
@@ -5912,7 +6788,7 @@ mod tests {
                 .row_data(index)
                 .unwrap()
         };
-        let row = section(4);
+        let row = section(5);
         assert_eq!(
             (row.title.as_str(), row.current, row.tall),
             ("History", false, true)
@@ -5922,7 +6798,7 @@ mod tests {
             face.invoke_detail(panel.get_status(), panel.get_count())
         );
         assert!(!row.detail.is_empty());
-        assert!(!section(5).tall, "only History's row keeps a second line");
+        assert!(!section(6).tall, "only History's row keeps a second line");
 
         // While an approval waits: the dot and "Waiting".
         screen._controller.borrow_mut().history.0 = Some(crate::history::Summary {
@@ -5930,7 +6806,7 @@ mod tests {
             pending: 1,
         });
         screen._controller.borrow_mut().render();
-        let row = section(4);
+        let row = section(5);
         assert_eq!((row.detail.as_str(), row.current), ("Waiting", true));
 
         // The pointer, mirroring home.slint's section list: History's row
@@ -5948,12 +6824,12 @@ mod tests {
                     position: slint::LogicalPosition::new(200.0 * u, y * u),
                 });
         };
-        // The middle of Waiting's row: under four short rows and History's.
-        hover(260.0 + 4.0 * 72.0 + 104.0 + 32.0);
-        assert_eq!(screen.window.get_settings_section(), 5);
+        // The middle of Waiting's row: under five short rows and History's.
+        hover(260.0 + 5.0 * 72.0 + 104.0 + 32.0);
+        assert_eq!(screen.window.get_settings_section(), 6);
         // History's second line.
-        hover(260.0 + 4.0 * 72.0 + 80.0);
-        assert_eq!(screen.window.get_settings_section(), 4);
+        hover(260.0 + 5.0 * 72.0 + 80.0);
+        assert_eq!(screen.window.get_settings_section(), 5);
 
         screen.tap(BACK);
         assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
@@ -6867,4 +7743,196 @@ mod tests {
 
     /// How long the volume bar stays (ui/device_view.rs), with a margin.
     const VOLUME_SHOWN_MS: u64 = 1600;
+
+    #[test]
+    fn user_themes_appear_in_settings_and_apply_live_by_dpad_and_pointer() {
+        let dir = std::env::temp_dir().join(format!("rusttv-theme-ui-{}", std::process::id()));
+        let themes_dir = dir.join("themes");
+        std::fs::create_dir_all(&themes_dir).expect("themes dir");
+        std::fs::write(
+            themes_dir.join("sunset.toml"),
+            "schema_version = 1\nname = \"Sunset\"\nauthor = \"Tester\"\n\
+             [colors]\nbg = \"#120810\"\naccent = \"#FF6633\"\n\
+             [layout]\nhero = \"compact\"\ntile_radius = 20\n",
+        )
+        .expect("write theme");
+        let order_path = dir.join("order.toml");
+        let screen = screen(Some(order_path));
+        click_settings(&screen.window);
+        settle(&screen);
+
+        let theme_idx = screen
+            .window
+            .get_settings_sections()
+            .iter()
+            .position(|section| section.title == "Theme")
+            .expect("Theme section");
+        // Navigate with D-pad into Theme section.
+        for _ in 0..theme_idx {
+            screen.tap(DOWN);
+        }
+        let rows: Vec<SettingsRow> = screen.window.get_settings_rows().iter().collect();
+        let sunset_row = rows
+            .iter()
+            .position(|row| row.title == "Sunset")
+            .expect("custom Sunset theme listed");
+        assert!(rows[0].current, "Default theme active initially");
+
+        // Select Sunset via D-pad.
+        screen.tap(RIGHT);
+        for _ in 0..sunset_row {
+            screen.tap(DOWN);
+        }
+        screen.tap(OK);
+        let theme = screen.window.global::<Theme>();
+        assert_eq!(theme.get_hero_mode(), 1, "compact hero applied live");
+        assert!((theme.get_tile_radius() - 20.0).abs() < 0.01);
+        assert_eq!(
+            std::fs::read_to_string(dir.join("theme"))
+                .expect("saved")
+                .trim(),
+            "user:sunset"
+        );
+
+        // Switch back to OLED Pure (row 1) via pointer click.
+        screen.window.invoke_settings_pointer(true, 1, 1);
+        let theme = screen.window.global::<Theme>();
+        assert_eq!(theme.get_hero_mode(), 0, "OLED Pure uses full hero");
+        assert_eq!(theme.get_bg(), slint::Color::from_rgb_u8(0, 0, 0));
+        assert_eq!(
+            std::fs::read_to_string(dir.join("theme"))
+                .expect("saved")
+                .trim(),
+            "oled"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn running_app_shows_indicator_and_close_app_in_long_press_menu() {
+        let screen = screen_with(abc().with_app_sizes(), None);
+        // Launch first app so FakePlatform marks it running.
+        screen.tap(OK);
+        screen.lifecycle.paused();
+        screen.wait(10);
+        screen.lifecycle.resumed();
+        screen.wait(10);
+        assert!(
+            screen
+                .window
+                .get_tiles()
+                .row_data(0)
+                .expect("tile 0")
+                .running,
+            "running pill shown on tile"
+        );
+
+        // Open long-press menu via right-click (pointer).
+        screen.window.invoke_tile_pointer(false, 0, 2);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Menu));
+        let items: Vec<SharedString> = screen.window.get_menu_items().iter().collect();
+        let close_idx = items
+            .iter()
+            .position(|label| label == "Close app")
+            .expect("Close app entry");
+        // Click "Close app" with pointer.
+        screen
+            .window
+            .invoke_list_pointer(0, i32::try_from(close_idx).unwrap(), 1);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert!(
+            !screen
+                .window
+                .get_tiles()
+                .row_data(0)
+                .expect("tile 0")
+                .running,
+            "running pill clears once app is closed"
+        );
+    }
+
+    /// Headless software renderer for visually inspecting the 5 reference skins.
+    /// Run with: `RUSTTV_SKIN_OUT=/path cargo test -p rusttv-launcher --features linux -- --ignored render_reference_skin_previews`
+    #[cfg(all(target_os = "linux", feature = "linux"))]
+    #[test]
+    #[ignore = "renders reference skin PNG previews on demand"]
+    fn render_reference_skin_previews() {
+        use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
+        use slint::platform::{Platform as SlintPlatform, WindowAdapter};
+
+        struct HeadlessBackend {
+            window: Rc<MinimalSoftwareWindow>,
+        }
+        impl SlintPlatform for HeadlessBackend {
+            fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, slint::PlatformError> {
+                Ok(self.window.clone())
+            }
+        }
+
+        let sw_window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+        sw_window.set_size(slint::PhysicalSize::new(1280, 720));
+        slint::platform::set_platform(Box::new(HeadlessBackend {
+            window: sw_window.clone(),
+        }))
+        .expect("headless software platform");
+
+        let out_dir = PathBuf::from(
+            std::env::var("RUSTTV_SKIN_OUT").unwrap_or_else(|_| "/tmp/skin-previews".to_owned()),
+        );
+        std::fs::create_dir_all(&out_dir).expect("create output dir");
+        let themes_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("themes");
+
+        let platform = FakePlatform::sample().with_device();
+        let shared = Shared {
+            platform: Rc::new(RefCell::new(platform)),
+            ..Shared::default()
+        };
+        let options = RunOptions::default();
+        let clock: Clock = Box::new(|| Duration::from_secs(10));
+        let (window, _controller) = start(shared, options, clock).expect("start");
+        window.show().expect("show");
+        window.set_clock_text("1:13 PM".into());
+        window.set_greeting_text("GOOD AFTERNOON".into());
+        window.set_date_text("SATURDAY  17 OCTOBER".into());
+
+        let skins = [
+            "coastal-glass",
+            "coastal-minimal",
+            "cinema-shelf",
+            "spotlight-circles",
+            "ambient-pills",
+        ];
+        let mut buf = vec![slint::Rgb8Pixel::new(0, 0, 0); 1280 * 720];
+        for name in skins {
+            let path = themes_dir.join(format!("{name}.toml"));
+            let spec = crate::theme::load_file(&path, format!("user:{name}")).expect("load theme");
+            apply_theme(&window, &spec);
+            slint::platform::update_timers_and_animations();
+            sw_window.draw_if_needed(|renderer| {
+                renderer.render(&mut buf, 1280);
+            });
+            // Force a full repaint even if not dirty.
+            sw_window.request_redraw();
+            sw_window.draw_if_needed(|renderer| {
+                renderer.render(&mut buf, 1280);
+            });
+            let mut bytes = Vec::with_capacity(1280 * 720 * 3);
+            for px in &buf {
+                bytes.push(px.r);
+                bytes.push(px.g);
+                bytes.push(px.b);
+            }
+            let out_path = out_dir.join(format!("{name}.png"));
+            let file = std::fs::File::create(&out_path).expect("create png");
+            let mut encoder = png::Encoder::new(file, 1280, 720);
+            encoder.set_color(png::ColorType::Rgb);
+            encoder.set_depth(png::BitDepth::Eight);
+            let mut writer = encoder.write_header().expect("png header");
+            writer.write_image_data(&bytes).expect("png data");
+        }
+    }
 }

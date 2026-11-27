@@ -1,0 +1,665 @@
+// Level 3 programmable skin: Classic Home Pro (.slint + .rhai).
+// A from-scratch rebuild of the default RustTV home screen, with its
+// geometry, colours, motion and focus treatment: a 6-column grid of 16:9
+// cards on a 1920 × 1080 reference canvas, the first row a shelf under a
+// hero (artwork card, large title, colour backdrop), a round top-right menu
+// with the clock beside it, and the long-press menu beside the focused tile.
+import { RustTV, SkinTile } from "@rusttv/skin.slint";
+
+export component SkinHome inherits Window {
+    // Exactly "RustTV": the compositor raises that window on Home (labwc rc.xml).
+    title: "RustTV";
+    background: root.bg;
+    preferred-width: 1280px;
+    preferred-height: 720px;
+
+    property <length> u: min(root.width / 1920, root.height / 1080);
+
+    // The default theme's palette (theme.slint `Theme`).
+    property <color> bg: #0E1014;
+    property <color> surface: #1C1F26;
+    property <color> text: #F2F3F5;
+    property <color> accent: #F5A524;
+
+    // Grid geometry: 90 margin, 48 gap, 6 columns → 250 × 141 cards.
+    property <length> margin-x: 90 * u;
+    property <length> tile-w: 250 * u;
+    property <length> tile-h: 141 * u;
+    property <length> step-x: 298 * u;
+    property <length> step-y: 251 * u;
+    property <length> shelf-y: 800 * u;
+
+    property <bool> shelf: RustTV.i5 == 1;
+    property <int> first-row: RustTV.i4;
+    property <bool> in-bar: RustTV.quick-selected >= 0;
+    property <bool> fx: !RustTV.reduced-effects;
+    property <int> grid-rows: max(1, ceil(RustTV.tiles.length / 6));
+
+    // OK held: the focused card shrinks halfway back (`pressed` in home.slint).
+    property <bool> ok-held: false;
+
+    // Idle sway like the default: the focused card starts swaying 300 ms
+    // after the last input and stops 20 s later. Each input flips between
+    // phases 0 and 3, which restarts the 300 ms wait.
+    property <int> idle-phase: 0;
+    function activity() {
+        root.idle-phase = root.idle-phase == 0 ? 3 : 0;
+    }
+    Timer {
+        interval: 300ms;
+        running: root.idle-phase == 0;
+        triggered => { root.idle-phase = 1; }
+    }
+    Timer {
+        interval: 300ms;
+        running: root.idle-phase == 3;
+        triggered => { root.idle-phase = 1; }
+    }
+    Timer {
+        interval: 19700ms;
+        running: root.idle-phase == 1;
+        triggered => { root.idle-phase = 2; }
+    }
+
+    FocusScope {
+        init => { self.focus(); }
+        key-pressed(event) => {
+            root.activity();
+            if event.text == Key.Return {
+                root.ok-held = true;
+            }
+            RustTV.key(event.text, true, event.repeat) ? accept : reject
+        }
+        key-released(event) => {
+            if event.text == Key.Return {
+                root.ok-held = false;
+            }
+            RustTV.key(event.text, false, false) ? accept : reject
+        }
+    }
+
+    // Mouse wheel anywhere moves a row (like Down / Up).
+    function wheel(dy: length) {
+        root.activity();
+        if dy < 0 {
+            RustTV.action("wheel", "down");
+        } else if dy > 0 {
+            RustTV.action("wheel", "up");
+        }
+    }
+    TouchArea {
+        scroll-event(event) => {
+            root.wheel(event.delta-y);
+            accept
+        }
+    }
+
+    // The hero shows while focus is in the first row and fades with it.
+    property <float> shelf-fade: shelf ? 1 : 0;
+    animate shelf-fade { duration: fx ? 180ms : 0ms; }
+
+    // The hero (backdrop wash, artwork card, title) cross-fades from the
+    // previously focused tile to the newly focused one. Two layers, A and B,
+    // take turns: the one in front shows the focused tile and fades in, the
+    // other keeps the previous tile and fades out. One layer per tile instead
+    // cost the interpreter ~11 ms of CPU a frame (3 × every tile, each frame).
+    property <int> hero-a: -1;
+    property <int> hero-b: -1;
+    property <bool> hero-front-a: true;
+    property <int> hero-focus: RustTV.focused-index;
+    init => { root.hero-a = RustTV.focused-index; }
+    changed hero-focus => {
+        if (root.hero-front-a ? root.hero-a : root.hero-b) != root.hero-focus {
+            if root.hero-front-a {
+                root.hero-b = root.hero-focus;
+            } else {
+                root.hero-a = root.hero-focus;
+            }
+            root.hero-front-a = !root.hero-front-a;
+        }
+    }
+
+    // Hero backdrop, made by the skin: each tile's artwork is blurred once in
+    // skin.rhai (`mono-image`). A banner becomes a full-width colour wash; a
+    // transparent icon, scaled to a circle 1.3 × the screen wide, becomes a
+    // soft glow like the default's. Then the default's start-side and bottom
+    // scrims. Only the focused tile's layer (and the one fading out) draws.
+    if fx: Rectangle {
+        // Explicit: an element without x / y is centred in its parent.
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: 780 * u;
+        clip: true;
+        // Off the first row the wash has faded out and the scrims are page
+        // colour over page colour: draw nothing, as each full-screen layer
+        // costs the Mali-G31 several ms per frame while the rows scroll.
+        visible: root.shelf-fade > 0;
+        for k in 2: Image {
+            property <int> i: k == 0 ? root.hero-a : root.hero-b;
+            property <SkinTile> tile: RustTV.tiles[self.i];
+            property <float> fade: (k == 0) == root.hero-front-a ? 1 : 0;
+            animate fade { duration: 180ms; }
+            property <bool> disc: self.tile.kind != 0 && self.tile.kind != 5 && self.tile.kind != 6;
+            width: self.disc ? root.width * 1.3 : parent.width;
+            height: self.disc ? self.width : parent.height;
+            x: self.disc ? root.width * 0.58 - self.width / 2 : 0;
+            y: self.disc ? root.height * 0.36 - self.height / 2 : 0;
+            source: self.tile.mono-image;
+            image-fit: self.disc ? fill : cover;
+            image-rendering: smooth;
+            opacity: self.fade * root.shelf-fade * (self.disc ? 1.0 : 0.62);
+            visible: self.i >= 0 && self.i < RustTV.i6 && self.opacity > 0;
+        }
+        // The scrims never change: drawn once into a cached layer, then one
+        // texture per frame. Skia's gradient shaders cost the Mali-G31 about
+        // 20 ms a frame at 720p for these three, re-drawn on every frame.
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            cache-rendering-hint: true;
+            // Radial falloff: the default glow's circle (1.3 × the screen wide,
+            // colour 100 % → 45 % at 30 % → 0 at 70 %), as page colour over the wash.
+            Rectangle {
+                width: root.width * 1.3;
+                height: self.width;
+                x: root.width * 0.58 - self.width / 2;
+                y: root.height * 0.36 - self.height / 2;
+                background: @radial-gradient(circle, root.bg.with-alpha(0) 0%, root.bg.with-alpha(0.55) 30%, root.bg 70%);
+            }
+            Rectangle {
+                background: @linear-gradient(90deg, root.bg.with-alpha(0.85) 0%, root.bg.with-alpha(0.4) 40%, root.bg.with-alpha(0) 70%);
+            }
+            Rectangle {
+                y: 400 * u;
+                height: 380 * u;
+                background: @linear-gradient(180deg, root.bg.with-alpha(0) 0%, root.bg 100%);
+            }
+        }
+    }
+
+    // Hero artwork card (448 × 252 at 90, 360) and title (68 px at 640).
+    Rectangle {
+        x: root.margin-x;
+        y: 360 * u;
+        width: 448 * u;
+        height: 252 * u;
+        border-radius: 16 * u;
+        clip: true;
+        visible: root.shelf-fade > 0;
+        for k in 2: hero := Rectangle {
+            property <int> i: k == 0 ? root.hero-a : root.hero-b;
+            property <SkinTile> tile: RustTV.tiles[self.i];
+            property <float> fade: (k == 0) == root.hero-front-a ? 1 : 0;
+            animate fade { duration: fx ? 180ms : 0ms; }
+            property <float> f: self.fade * root.shelf-fade;
+            property <bool> has-cover: hero.tile.kind == 0 || hero.tile.kind == 5 || hero.tile.kind == 6 || ((hero.tile.kind == 3 || hero.tile.kind >= 7) && hero.tile.image.width > 0);
+            visible: self.i >= 0 && self.f > 0;
+            background: (hero.tile.tint.alpha > 0 ? hero.tile.tint : root.surface).with-alpha(self.f);
+            if hero.has-cover: Image {
+                width: parent.width;
+                height: parent.height;
+                source: hero.tile.image;
+                image-fit: cover;
+                opacity: hero.f;
+            }
+            if hero.tile.kind == 1: Image {
+                x: (parent.width - self.width) / 2;
+                y: parent.height * 0.15;
+                width: 72 * u;
+                height: 72 * u;
+                source: hero.tile.image;
+                image-fit: contain;
+                opacity: hero.f;
+            }
+            if hero.tile.kind == 1 || hero.tile.kind == 2 || (!hero.has-cover && hero.tile.kind != 4): Text {
+                y: hero.tile.kind == 1 ? parent.height * 0.15 + 80 * u : 0;
+                width: parent.width;
+                height: hero.tile.kind == 1 ? 32 * u : parent.height;
+                text: hero.tile.label;
+                font-size: 23 * u;
+                color: root.text.with-alpha(hero.f);
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+    for k in 2: Text {
+        property <int> i: k == 0 ? root.hero-a : root.hero-b;
+        property <SkinTile> tile: RustTV.tiles[self.i];
+        property <float> fade: (k == 0) == root.hero-front-a ? 1 : 0;
+        animate fade { duration: fx ? 180ms : 0ms; }
+        x: root.margin-x;
+        y: 640 * u;
+        width: 1740 * u;
+        text: self.tile.kind == 3 ? "RustTV" : self.tile.label;
+        font-size: 68 * u;
+        font-weight: 600;
+        color: root.text;
+        overflow: elide;
+        opacity: self.fade * root.shelf-fade;
+        visible: self.i >= 0 && self.opacity > 0;
+    }
+
+    // All rows; the whole grid moves to scroll. Off-screen rows are hidden.
+    Rectangle {
+        y: shelf ? root.shelf-y : 90 * u - first-row * root.step-y;
+        height: 0;
+        animate y { duration: fx ? 250ms : 0ms; easing: ease-out; }
+
+        for tile[i] in RustTV.tiles: slot := Rectangle {
+            property <int> gcol: mod(i, 6);
+            property <int> grow: floor(i / 6);
+            property <bool> focused: i == RustTV.focused-index && !root.in-bar;
+            // OK launched this card's app: it zooms out and fades (home.slint).
+            property <bool> launching: self.focused && RustTV.mode == 2;
+            property <bool> sway: focused && !self.launching && !root.ok-held && !RustTV.menu-open && root.idle-phase == 1 && root.fx;
+            property <float> sway-amount: self.sway ? 1 : 0;
+            animate sway-amount {
+                duration: self.sway || (self.focused && !root.ok-held) ? 1200ms : 0ms;
+                easing: ease-in-out;
+            }
+            property <float> turns: self.sway-amount > 0 ? animation-tick() / 4s : 0;
+            property <float> zoom: self.launching ? 1.6 : !self.focused ? 1.0 : (root.ok-held && !RustTV.menu-open) ? 1.075 : 1.15;
+            animate zoom {
+                duration: !root.fx ? 0ms : self.launching ? 500ms : self.focused ? 150ms : 250ms;
+                easing: self.launching ? cubic-bezier(0.25, 0.1, 0.25, 1) : self.focused ? ease-out : ease-in-out;
+            }
+            property <bool> has-cover: tile.kind == 0 || tile.kind == 5 || tile.kind == 6 || ((tile.kind == 3 || tile.kind >= 7) && tile.image.width > 0);
+
+            x: root.margin-x + self.gcol * root.step-x;
+            y: self.grow * root.step-y;
+            width: root.tile-w;
+            height: root.tile-h;
+            z: self.focused ? 1 : 0;
+            visible: shelf ? self.grow <= 2 : (self.grow >= first-row - 1 && self.grow <= first-row + 4);
+
+            // Elevation shadow under the focused card (off with Reduced effects).
+            if slot.focused && !slot.launching && root.fx: Rectangle {
+                x: card.x;
+                y: card.y + 18 * u;
+                width: card.width;
+                height: card.height;
+                border-radius: 12 * u;
+                background: root.bg;
+                drop-shadow-color: #0000008F;
+                drop-shadow-blur: 28 * u;
+            }
+
+            card := Rectangle {
+                width: parent.width * slot.zoom;
+                height: parent.height * slot.zoom;
+                x: (parent.width - self.width) / 2 + (slot.sway-amount > 0 ? slot.sway-amount * 3 * u * sin(slot.turns * 360deg + 90deg) : 0px);
+                y: (parent.height - self.height) / 2 + (slot.sway-amount > 0 ? slot.sway-amount * 3 * u * sin(slot.turns * 360deg) : 0px);
+                transform-origin: { x: self.width / 2, y: self.height / 2 };
+                transform-rotation: slot.sway-amount > 0 ? slot.sway-amount * 1.5deg * sin(slot.turns * 360deg) : 0deg;
+                border-radius: 12 * u;
+                opacity: slot.launching ? 0 : 1;
+                animate opacity { duration: slot.launching && root.fx ? 500ms : 0ms; easing: cubic-bezier(0.25, 0.1, 0.25, 1); }
+
+                Rectangle {
+                    width: parent.width;
+                    height: parent.height;
+                    border-radius: parent.border-radius;
+                    clip: true;
+                    background: tile.tint.alpha > 0 ? tile.tint : root.surface;
+
+                    if slot.has-cover: Image {
+                        width: parent.width;
+                        height: parent.height;
+                        source: tile.image;
+                        image-fit: cover;
+                    }
+                    if tile.kind == 1: Image {
+                        x: (parent.width - self.width) / 2;
+                        y: parent.height * 0.15;
+                        width: 72 * u;
+                        height: 72 * u;
+                        source: tile.image;
+                        image-fit: contain;
+                    }
+                    if tile.kind == 1 || tile.kind == 2 || (!slot.has-cover && tile.kind != 4): Text {
+                        y: tile.kind == 1 ? parent.height * 0.15 + 80 * u : 0;
+                        width: parent.width;
+                        height: tile.kind == 1 ? 32 * u : parent.height;
+                        text: tile.label;
+                        font-size: 23 * u;
+                        color: root.text;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    // Sheen: a faint light band sliding across while the card sways.
+                    if slot.sway-amount > 0: Rectangle {
+                        width: parent.width * 0.6;
+                        height: parent.height;
+                        opacity: slot.sway-amount;
+                        x: parent.width * (0.2 + 0.45 * sin(slot.turns * 360deg));
+                        background: @linear-gradient(90deg, #ffffff00 0%, #ffffff1f 50%, #ffffff00 100%);
+                    }
+                }
+
+                // Pill at the bottom edge while the app runs in the background.
+                if tile.running: Rectangle {
+                    x: (parent.width - self.width) / 2;
+                    y: parent.height - 10 * u;
+                    width: 36 * u;
+                    height: 5 * u;
+                    border-radius: self.height / 2;
+                    background: root.accent;
+                }
+
+                // Focus ring.
+                if slot.focused && !slot.launching: Rectangle {
+                    width: parent.width;
+                    height: parent.height;
+                    border-radius: parent.border-radius;
+                    border-width: 4 * u;
+                    border-color: root.text;
+                }
+            }
+
+            // Pointer input over the card's resting place: moving onto it
+            // focuses it, a click opens it, the secondary button (or a long
+            // press) opens its menu.
+            TouchArea {
+                clicked => {
+                    root.activity();
+                    RustTV.tile-clicked(i, false);
+                }
+                pointer-event(event) => {
+                    if event.kind == PointerEventKind.move {
+                        root.activity();
+                        RustTV.action("hover", i);
+                    } else if event.kind == PointerEventKind.down && event.button == PointerEventButton.right {
+                        RustTV.tile-clicked(i, true);
+                    }
+                }
+                scroll-event(event) => {
+                    root.wheel(event.delta-y);
+                    accept
+                }
+            }
+
+            // Name under the focused card, with a soft shadow copy.
+            property <bool> show-label: self.focused && !self.launching && tile.kind != 1 && tile.kind != 2;
+            property <float> label-fade: self.show-label ? 1 : 0;
+            animate label-fade { duration: root.fx ? 150ms : 0ms; }
+            if root.fx && slot.label-fade > 0: Text {
+                y: parent.height + 26 * u;
+                width: parent.width;
+                text: tile.kind == 3 ? "About" : tile.label;
+                font-size: 25 * u;
+                font-weight: 500;
+                color: #00000066;
+                horizontal-alignment: center;
+                overflow: elide;
+                opacity: slot.label-fade;
+            }
+            if slot.label-fade > 0: Text {
+                y: parent.height + 24 * u;
+                width: parent.width;
+                text: tile.kind == 3 ? "About" : tile.label;
+                font-size: 25 * u;
+                font-weight: 500;
+                color: root.text;
+                horizontal-alignment: center;
+                overflow: elide;
+                opacity: slot.label-fade;
+            }
+        }
+    }
+
+    // Vertical scroll indicator when there are more rows than fit.
+    if grid-rows > 2 && !RustTV.menu-open: Rectangle {
+        x: root.width - 30 * u;
+        y: shelf ? root.shelf-y : 90 * u;
+        width: 4 * u;
+        height: root.height - self.y - 60 * u;
+        border-radius: self.width / 2;
+        background: root.text.with-alpha(0.10);
+        Rectangle {
+            property <int> focus-row: floor(max(0, RustTV.focused-index) / 6);
+            property <float> frac: min(1.0, 3.0 / root.grid-rows);
+            property <float> pos: root.grid-rows <= 1 ? 0.0 : clamp(self.focus-row / (root.grid-rows - 1), 0.0, 1.0);
+            property <length> thumb: max(parent.height * self.frac, 44 * u);
+            y: (parent.height - self.thumb) * self.pos;
+            height: self.thumb;
+            border-radius: parent.border-radius;
+            background: root.text.with-alpha(0.45);
+            animate y { duration: root.fx ? 180ms : 0ms; easing: ease-out; }
+        }
+    }
+
+    // Top-right menu: RustTV's own entries (`quick-actions`, quick.slint
+    // codes) as round 72 px buttons 18 apart, 90 from the edge; the focused
+    // one inverts and shows its name under it. Up from the first row reaches
+    // it; RustTV runs it (panels, Settings, Power).
+    property <length> qsize: 72 * u;
+    property <length> qgap: 18 * u;
+    pure function qname(code: int, label: string) -> string {
+        if code == 0 { return "Search"; }
+        if code == 1 { return "Modify"; }
+        if code == 2 { return "Audio"; }
+        if code == 3 { return "Network"; }
+        if code == 4 { return "KDE Connect"; }
+        if code == 5 { return "Settings"; }
+        if code == 7 { return "RustTV"; }
+        if code == 8 { return label; }
+        return "Power";
+    }
+    // 24 × 24 outline icons, drawn as strokes.
+    pure function qicon(code: int) -> string {
+        if code == 0 { return "M 10 3 A 7 7 0 1 0 10 17 A 7 7 0 1 0 10 3 Z M 15 15 L 21 21"; }
+        if code == 1 { return "M 4 20 L 4 16 L 15 5 L 19 9 L 8 20 Z M 13 7 L 17 11"; }
+        if code == 2 { return "M 3 9 L 7 9 L 12 5 L 12 19 L 7 15 L 3 15 Z M 15.5 9 A 4 4 0 0 1 15.5 15 M 18 6 A 8 8 0 0 1 18 18"; }
+        if code == 3 { return "M 2 9 A 14 14 0 0 1 22 9 M 5.5 12.5 A 9 9 0 0 1 18.5 12.5 M 9 16 A 4.5 4.5 0 0 1 15 16 M 12 19 L 12 19.5"; }
+        if code == 4 { return "M 7 2 L 17 2 L 17 22 L 7 22 Z M 10.5 18.5 L 13.5 18.5"; }
+        if code == 7 { return "M 4 4 L 10 4 L 10 10 L 4 10 Z M 14 4 L 20 4 L 20 10 L 14 10 Z M 4 14 L 10 14 L 10 20 L 4 20 Z M 14 14 L 20 14 L 20 20 L 14 20 Z"; }
+        if code == 8 { return "M 9 7 L 9 4 L 21 4 L 21 18 L 9 18 L 9 15 M 2 11 L 14 11 M 10.5 7.5 L 14 11 L 10.5 14.5 M 12 21 L 18 21"; }
+        if code == 5 { return "M 19.18 9.51 L 21.77 9.86 L 21.77 14.14 L 19.18 14.49 L 18.84 15.32 L 20.42 17.39 L 17.39 20.42 L 15.32 18.84 L 14.49 19.18 L 14.14 21.77 L 9.86 21.77 L 9.51 19.18 L 8.68 18.84 L 6.61 20.42 L 3.58 17.39 L 5.16 15.32 L 4.82 14.49 L 2.23 14.14 L 2.23 9.86 L 4.82 9.51 L 5.16 8.68 L 3.58 6.61 L 6.61 3.58 L 8.68 5.16 L 9.51 4.82 L 9.86 2.23 L 14.14 2.23 L 14.49 4.82 L 15.32 5.16 L 17.39 3.58 L 20.42 6.61 L 18.84 8.68 Z M 15.2 12 A 3.2 3.2 0 1 0 8.8 12 A 3.2 3.2 0 1 0 15.2 12 Z"; }
+        return "M 12 2.5 L 12 11 M 6.5 5.5 A 8 8 0 1 0 17.5 5.5";
+    }
+    property <float> bar-fade: shelf ? 1 : 0;
+    animate bar-fade { duration: fx ? 250ms : 0ms; }
+    bar := Rectangle {
+        width: max(0px, RustTV.quick-actions.length * (root.qsize + root.qgap) - root.qgap);
+        height: root.qsize;
+        x: root.width - 90 * u - self.width;
+        y: 48 * u;
+        opacity: root.bar-fade;
+        visible: self.opacity > 0;
+        for action[qi] in RustTV.quick-actions: Rectangle {
+            property <bool> focused: qi == RustTV.quick-selected;
+            x: qi * (root.qsize + root.qgap);
+            width: root.qsize;
+            height: root.qsize;
+            border-radius: self.height / 2;
+            background: self.focused ? root.text : #0000005C;
+            animate background { duration: root.fx ? 120ms : 0ms; }
+            Path {
+                x: (parent.width - parent.height * 0.5) / 2;
+                y: parent.height * 0.25;
+                width: parent.height * 0.5;
+                height: parent.height * 0.5;
+                viewbox-width: 24;
+                viewbox-height: 24;
+                commands: root.qicon(action.code);
+                stroke: parent.focused ? root.bg : root.text;
+                stroke-width: 2.6 * u;
+                fill: transparent;
+            }
+            TouchArea {
+                mouse-cursor: pointer;
+                pointer-event(event) => {
+                    if event.kind == PointerEventKind.move {
+                        RustTV.quick-hovered(qi);
+                    }
+                }
+                clicked => { RustTV.quick-clicked(qi); }
+            }
+        }
+    }
+    if RustTV.quick-selected >= 0 && RustTV.quick-selected < RustTV.quick-actions.length: Text {
+        property <length> centre: bar.x + RustTV.quick-selected * (root.qsize + root.qgap) + root.qsize / 2;
+        x: min(self.centre - 160 * u, bar.x + bar.width + 60 * u - 320 * u);
+        y: bar.y + root.qsize + 14 * u;
+        width: 320 * u;
+        horizontal-alignment: center;
+        text: root.qname(RustTV.quick-actions[RustTV.quick-selected].code, RustTV.quick-actions[RustTV.quick-selected].label);
+        font-size: 25 * u;
+        font-weight: 500;
+        color: root.text;
+        overflow: elide;
+        opacity: root.bar-fade;
+    }
+
+    // Clock, 40 px before the menu, vertically centred on it.
+    Text {
+        x: bar.x - (bar.width > 0 ? 40 * u : 0px) - self.width;
+        y: 48 * u;
+        width: self.preferred-width;
+        height: 72 * u;
+        text: RustTV.clock-text;
+        font-size: 34 * u;
+        font-weight: 400;
+        color: root.text;
+        vertical-alignment: center;
+        opacity: root.bar-fade;
+        visible: self.opacity > 0;
+    }
+
+    // Long-press menu, beside the focused card: to its right when it fits,
+    // else to its left. Fades in; closes at once. A click outside closes it.
+    if RustTV.menu-open: TouchArea {
+        clicked => {
+            RustTV.key("\u{1b}", true, false);
+            RustTV.key("\u{1b}", false, false);
+        }
+    }
+    Rectangle {
+        property <int> gcol: mod(max(0, RustTV.focused-index), 6);
+        property <int> grow: floor(max(0, RustTV.focused-index) / 6);
+        property <length> tile-x: root.margin-x + self.gcol * root.step-x;
+        property <length> tile-y: shelf ? root.shelf-y : 90 * u + (self.grow - first-row) * root.step-y;
+        // 43 clears the focused card's zoom (19 per side) plus a gap.
+        property <bool> place-after: self.tile-x + root.tile-w + 43 * u + self.width <= root.width - 32 * u;
+        width: 380 * u;
+        height: (RustTV.menu-items.length * 64 + 16) * u;
+        x: self.place-after ? self.tile-x + root.tile-w + 43 * u : self.tile-x - 43 * u - self.width;
+        y: clamp(self.tile-y + (root.tile-h - self.height) / 2, 32 * u, root.height - self.height - 32 * u);
+        opacity: RustTV.menu-open ? 1 : 0;
+        visible: self.opacity > 0;
+        animate opacity { duration: RustTV.menu-open && root.fx ? 150ms : 0ms; easing: ease-out; }
+        border-radius: 16 * u;
+        background: root.surface;
+        drop-shadow-color: root.fx ? #00000080 : transparent;
+        drop-shadow-blur: root.fx ? 40 * u : 0;
+        drop-shadow-offset-y: root.fx ? 20 * u : 0;
+
+        for item[idx] in RustTV.menu-items: Rectangle {
+            property <bool> sel: idx == RustTV.menu-selected;
+            x: 8 * u;
+            y: (8 + idx * 64) * u;
+            width: parent.width - 16 * u;
+            height: 64 * u;
+            border-radius: 12 * u;
+            background: self.sel ? root.text : root.text.with-alpha(0);
+            animate background { duration: root.fx ? 120ms : 0ms; }
+            Text {
+                x: 24 * u;
+                width: parent.width - 48 * u;
+                height: parent.height;
+                text: item;
+                font-size: 27 * u;
+                font-weight: 500;
+                color: parent.sel ? root.bg : root.text;
+                vertical-alignment: center;
+                overflow: elide;
+                animate color { duration: root.fx ? 120ms : 0ms; }
+            }
+            TouchArea {
+                enabled: RustTV.menu-open;
+                clicked => { RustTV.menu-clicked(idx); }
+            }
+        }
+    }
+
+    // Launch splash: covers Home while the app starts, until its window takes
+    // over. It fades in a little late, so an app that opens at once shows
+    // only the card's zoom. The dots animate only while it is shown.
+    splash := Rectangle {
+        property <bool> shown: RustTV.mode == 2;
+        property <int> app: max(0, RustTV.focused-index);
+        property <bool> has-app: self.app < RustTV.tiles.length;
+        property <bool> has-cover: self.has-app && (RustTV.tiles[self.app].kind == 0 || RustTV.tiles[self.app].kind == 5 || RustTV.tiles[self.app].kind == 6 || (RustTV.tiles[self.app].image.width > 0 && RustTV.tiles[self.app].kind != 1));
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        background: root.bg;
+        opacity: self.shown ? 1 : 0;
+        visible: self.opacity > 0;
+        animate opacity { duration: !root.fx ? 0ms : self.shown ? 250ms : 150ms; delay: self.shown && root.fx ? 200ms : 0ms; easing: ease-out; }
+
+        if splash.has-app: Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: 300 * u;
+            width: 500 * u;
+            height: 282 * u;
+            border-radius: 20 * u;
+            clip: true;
+            background: RustTV.tiles[splash.app].tint.alpha > 0 ? RustTV.tiles[splash.app].tint : root.surface;
+            if splash.has-cover: Image {
+                width: parent.width;
+                height: parent.height;
+                source: RustTV.tiles[splash.app].image;
+                image-fit: cover;
+            }
+            if RustTV.tiles[splash.app].kind == 1: Image {
+                x: (parent.width - self.width) / 2;
+                y: parent.height * 0.15;
+                width: 144 * u;
+                height: 144 * u;
+                source: RustTV.tiles[splash.app].image;
+                image-fit: contain;
+            }
+            if RustTV.tiles[splash.app].kind == 1 || !splash.has-cover: Text {
+                y: RustTV.tiles[splash.app].kind == 1 ? parent.height * 0.15 + 160 * u : 0;
+                width: parent.width;
+                height: RustTV.tiles[splash.app].kind == 1 ? 64 * u : parent.height;
+                text: RustTV.tiles[splash.app].label;
+                font-size: 46 * u;
+                color: root.text;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+        // Icon cards (kinds 1, 2) already carry the name.
+        if splash.has-app && RustTV.tiles[splash.app].kind != 1 && RustTV.tiles[splash.app].kind != 2: Text {
+            x: 0;
+            y: 630 * u;
+            width: parent.width;
+            text: RustTV.tiles[splash.app].label;
+            font-size: 41 * u;
+            font-weight: 500;
+            color: root.text;
+            horizontal-alignment: center;
+            overflow: elide;
+        }
+        for k in 3: Rectangle {
+            property <float> phase: splash.visible ? mod(animation-tick() / 1200ms + k * 0.2, 1) : 0;
+            x: (parent.width - 3 * 18 * u - 2 * 22 * u) / 2 + k * 40 * u;
+            y: 740 * u;
+            width: 18 * u;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: root.accent;
+            opacity: 0.25 + 0.75 * max(0, sin(self.phase * 360deg));
+        }
+    }
+}

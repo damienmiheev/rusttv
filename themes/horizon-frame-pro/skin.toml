@@ -1,0 +1,6 @@
+schema_version = 2
+name = "Horizon Frame Pro"
+author = "RustTV"
+description = "Photographic glass dock with optical pre-baked frost, sliding focus plate, quiet top-right utilities, and vertical list mode"
+entry = "skin.slint"
+script = "skin.rhai"

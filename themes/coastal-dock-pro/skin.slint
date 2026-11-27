@@ -1,0 +1,199 @@
+// Standalone Level 3 skin: Coastal Dock Pro (.slint + .rhai).
+// Completely independent UI sharing zero elements with the built-in shell.
+import { RustTV } from "@rusttv/skin.slint";
+
+export component SkinHome inherits Window {
+    // Exactly "RustTV": the compositor raises that window on Home (labwc rc.xml).
+    title: "RustTV";
+    background: #0C141C;
+    preferred-width: 1280px;
+    preferred-height: 720px;
+
+    property <length> u: min(root.width / 1920, root.height / 1080);
+
+    FocusScope {
+        init => { self.focus(); }
+        key-pressed(event) => {
+            RustTV.key(event.text, true, event.repeat) ? accept : reject
+        }
+        key-released(event) => {
+            RustTV.key(event.text, false, false) ? accept : reject
+        }
+    }
+
+    // Layered coastal horizon backdrop drawn natively with gradients & shapes.
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: @linear-gradient(145deg, #3A5060 0%, #286878 42%, #194B5E 75%, #0C1A24 100%);
+    }
+    // Soft sunlight haze over the ocean.
+    Rectangle {
+        x: parent.width * 0.35;
+        y: -parent.height * 0.1;
+        width: parent.width * 0.85;
+        height: parent.height * 0.75;
+        border-radius: self.height / 2;
+        background: @radial-gradient(circle, #DCEBE840 0%, #6CA0AE18 55%, #00000000 100%);
+    }
+    // Subtle top vignette for crisp white header text.
+    Rectangle {
+        width: parent.width;
+        height: 180 * u;
+        background: @linear-gradient(180deg, #09121880 0%, #09121800 100%);
+    }
+
+    // Top-left clean clock.
+    Text {
+        x: 96 * u;
+        y: 44 * u;
+        text: RustTV.clock-text;
+        font-size: 40 * u;
+        font-weight: 500;
+        color: #FFFFFF;
+    }
+
+    // Top-right borderless actions (toggles between inline labels and bare icons via Rhai).
+    HorizontalLayout {
+        x: parent.width - self.preferred-width - 96 * u;
+        y: 44 * u;
+        width: self.preferred-width;
+        height: 52 * u;
+        spacing: RustTV.i0 == 0 ? 34 * u : 24 * u;
+
+        // Toggle bar style
+        Rectangle {
+            property <bool> is-focused: RustTV.i1 == 1 && RustTV.i2 == 0;
+            width: row0.preferred-width + 24 * u;
+            height: 52 * u;
+            border-radius: 26 * u;
+            background: is-focused ? #FFFFFF34 : transparent;
+            border-width: is-focused ? 1.5 * u : 0px;
+            border-color: #FFFFFF90;
+            row0 := HorizontalLayout {
+                x: 12 * u;
+                spacing: 10 * u;
+                Rectangle {
+                    width: 26 * u;
+                    height: 52 * u;
+                    Path {
+                        y: 13 * u;
+                        width: 26 * u;
+                        height: 26 * u;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: "M 4 4 L 10 4 L 10 10 L 4 10 Z M 14 4 L 20 4 L 20 10 L 14 10 Z M 4 14 L 10 14 L 10 20 L 4 20 Z M 14 14 L 20 14 L 20 20 L 14 20 Z";
+                        stroke: #FFFFFF;
+                        stroke-width: 2 * u;
+                        fill: transparent;
+                    }
+                }
+                if RustTV.i0 == 0: Text {
+                    text: "Bar style";
+                    font-size: 22 * u;
+                    color: #FFFFFF;
+                    vertical-alignment: center;
+                }
+            }
+            TouchArea { clicked => { RustTV.action("toggle_bar", ""); } }
+        }
+        // Settings
+        Rectangle {
+            property <bool> is-focused: RustTV.i1 == 1 && RustTV.i2 == 1;
+            width: row1.preferred-width + 24 * u;
+            height: 52 * u;
+            border-radius: 26 * u;
+            background: is-focused ? #FFFFFF34 : transparent;
+            border-width: is-focused ? 1.5 * u : 0px;
+            border-color: #FFFFFF90;
+            row1 := HorizontalLayout {
+                x: 12 * u;
+                spacing: 10 * u;
+                Rectangle {
+                    width: 26 * u;
+                    height: 52 * u;
+                    Path {
+                        y: 13 * u;
+                        width: 26 * u;
+                        height: 26 * u;
+                        viewbox-width: 24;
+                        viewbox-height: 24;
+                        commands: "M 19.18 9.51 L 21.77 9.86 L 21.77 14.14 L 19.18 14.49 L 18.84 15.32 L 20.42 17.39 L 17.39 20.42 L 15.32 18.84 L 14.49 19.18 L 14.14 21.77 L 9.86 21.77 L 9.51 19.18 L 8.68 18.84 L 6.61 20.42 L 3.58 17.39 L 5.16 15.32 L 4.82 14.49 L 2.23 14.14 L 2.23 9.86 L 4.82 9.51 L 5.16 8.68 L 3.58 6.61 L 6.61 3.58 L 8.68 5.16 L 9.51 4.82 L 9.86 2.23 L 14.14 2.23 L 14.49 4.82 L 15.32 5.16 L 17.39 3.58 L 20.42 6.61 L 18.84 8.68 Z M 15.2 12 A 3.2 3.2 0 1 0 8.8 12 A 3.2 3.2 0 1 0 15.2 12 Z";
+                        stroke: #FFFFFF;
+                        stroke-width: 2 * u;
+                        fill: transparent;
+                    }
+                }
+                if RustTV.i0 == 0: Text {
+                    text: "Settings";
+                    font-size: 22 * u;
+                    color: #FFFFFF;
+                    vertical-alignment: center;
+                }
+            }
+            TouchArea { clicked => { RustTV.action("settings", ""); } }
+        }
+    }
+
+    // Floating translucent frosted bottom dock.
+    Rectangle {
+        x: 96 * u;
+        y: parent.height - 340 * u;
+        width: parent.width - 192 * u;
+        height: 226 * u;
+        border-radius: 30 * u;
+        background: @linear-gradient(180deg, #1828349C 0%, #0E1A24B4 100%);
+        border-width: 1.5 * u;
+        border-color: #FFFFFF38;
+        clip: true;
+
+        property <length> pad: 18 * u;
+        property <length> gap: 12 * u;
+        property <length> slot-w: (self.width - 2 * self.pad - 5 * self.gap) / 6;
+
+        for tile[i] in RustTV.tiles: Rectangle {
+            property <bool> is-focused: RustTV.i1 == 0 && i == RustTV.focused-index;
+            x: parent.pad + (i - RustTV.i4) * (parent.slot-w + parent.gap);
+            y: parent.pad;
+            width: parent.slot-w;
+            height: parent.height - 2 * parent.pad;
+            border-radius: 22 * u;
+            background: is-focused ? @linear-gradient(180deg, #FFFFFF3E 0%, #FFFFFF14 100%) : transparent;
+            border-width: is-focused ? 1.5 * u : 0px;
+            border-color: #FFFFFF6C;
+            visible: i >= RustTV.i4 && i < RustTV.i4 + 6;
+            animate background { duration: 140ms; easing: ease-out; }
+
+            Rectangle {
+                x: (parent.width - self.width) / 2;
+                y: 22 * u;
+                width: tile.kind == 1 ? 86 * u : 152 * u;
+                height: 86 * u;
+                border-radius: tile.kind == 1 ? 0px : 14 * u;
+                clip: tile.kind != 1;
+                Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: tile.image;
+                    image-fit: tile.kind == 1 ? contain : cover;
+                }
+            }
+            Text {
+                x: 10 * u;
+                y: parent.height - 54 * u;
+                width: parent.width - 20 * u;
+                height: 36 * u;
+                text: tile.label;
+                font-size: 22 * u;
+                font-weight: is-focused ? 600 : 400;
+                color: is-focused ? #FFFFFF : #FFFFFFD4;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+            TouchArea {
+                clicked => { RustTV.tile-clicked(i, false); }
+            }
+        }
+    }
+}
