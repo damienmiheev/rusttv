@@ -23,6 +23,7 @@ build)
     export SKIA_BINARIES_URL="file://${XDG_CACHE_HOME:-$HOME/.cache}/rusttv/skia/skia-binaries-{key}.tar.gz"
     [ -z "${JAVA_HOME:-}" ] && JAVA_HOME="$(/usr/libexec/java_home -v 17)" && export JAVA_HOME
     feats=""; [ "${2:-}" = "--no-png" ] && feats="--no-default-features"
+    [ "${2:-}" = "--interp" ] && feats="--features interp"
     cargo ndk -t armeabi-v7a --platform 26 -o android/app/src/main/jniLibs build --profile android-release $feats
     ls -l android/app/src/main/jniLibs/armeabi-v7a/libtv_renderer_spike.so
     ../../android/gradlew -q -p android assembleDebug
@@ -30,7 +31,7 @@ build)
 install) adb_ install -r android/app/build/outputs/apk/debug/app-debug.apk ;;
 run)
     mode="$2"; secs="$3"
-    case "$mode" in compiled-home|generic-home|generic-[0-9]*|compiled-[0-9]*) ;; *) echo "bad mode" >&2; exit 2 ;; esac
+    case "$mode" in compiled-home|generic-home|interp-home|generic-[0-9]*|compiled-[0-9]*) ;; *) echo "bad mode" >&2; exit 2 ;; esac
     case "$secs" in *[!0-9]*) echo "bad secs" >&2; exit 2 ;; esac
     adb_ shell am force-stop $PKG; adb_ logcat -c
     adb_ shell am start -n $ACT --es mode "$mode" >/dev/null
@@ -40,7 +41,7 @@ run)
     adb_ shell am force-stop $PKG ;;
 startup)
     mode="$2"
-    case "$mode" in compiled-home|generic-home|generic-[0-9]*|compiled-[0-9]*) ;; *) echo "bad mode" >&2; exit 2 ;; esac
+    case "$mode" in compiled-home|generic-home|interp-home|generic-[0-9]*|compiled-[0-9]*) ;; *) echo "bad mode" >&2; exit 2 ;; esac
     for i in 1 2 3; do
         adb_ shell am force-stop $PKG; sleep 2
         adb_ shell am start -W -n $ACT --es mode "$mode" | grep -E "TotalTime|WaitTime"
@@ -61,7 +62,7 @@ a11y)
     adb_ shell rm /sdcard/spike-ui.xml ;;
 shot)
     mode="$2"
-    case "$mode" in compiled-home|generic-home|generic-[0-9]*|compiled-[0-9]*) ;; *) echo "bad mode" >&2; exit 2 ;; esac
+    case "$mode" in compiled-home|generic-home|interp-home|generic-[0-9]*|compiled-[0-9]*) ;; *) echo "bad mode" >&2; exit 2 ;; esac
     adb_ shell am force-stop $PKG
     adb_ shell am start -n $ACT --es mode "$mode" >/dev/null
     sleep 4

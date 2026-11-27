@@ -153,41 +153,11 @@ fn pct(v: &mut [f64], p: f64) -> f64 {
     v[((v.len() - 1) as f64 * p).round() as usize]
 }
 
-#[unsafe(no_mangle)]
-fn android_main(app: AndroidApp) {
-    let main_start = Instant::now();
-    android_logger::init_once(android_logger::Config::default().with_tag(TAG).with_max_level(log::LevelFilter::Info));
-    slint::android::init(app.clone()).unwrap();
-    let mode = mode(&app);
-    log::info!("mode {mode}");
-    let image = Image::default();
-
-    let ui = Spike::new().unwrap();
-    let t = Instant::now();
-    let (generic, count) = match mode.split_once('-') {
-        Some(("compiled", "home")) => (false, 18),
-        Some(("generic", "home")) => (true, 18),
-        Some(("compiled", n)) => (false, n.parse::<usize>().unwrap_or(500) / 10),
-        Some((_, n)) => (true, n.parse::<usize>().unwrap_or(500) / 10),
-        None => (true, 18),
-    };
-    if generic {
-        let list = nodes(count, &image);
-        log::info!("JSON parse + flatten: {} nodes in {:.2} ms", list.len(), t.elapsed().as_secs_f64() * 1e3);
-        ui.set_nodes(ModelRc::new(VecModel::from(list)));
-        ui.set_mode(0);
-    } else {
-        ui.set_compiled_tiles(count as i32);
-        ui.set_mode(1);
-    }
-    ui.set_status(format!("spike {mode}").into());
-    ui.set_animate(true);
-
+fn install_stats(window: &slint::Window, main_start: Instant) {
     let stats = Rc::new(RefCell::new(Stats { start: Some(main_start), ..Default::default() }));
     let s = stats.clone();
-    let weak = ui.as_weak();
     let mut frames = 0u32;
-    ui.window()
+    window
         .set_rendering_notifier(move |state, _| {
             let now = Instant::now();
             let mut st = s.borrow_mut();
@@ -226,15 +196,88 @@ fn android_main(app: AndroidApp) {
                         );
                         st.render.clear();
                         st.interval.clear();
-                        if let Some(ui) = weak.upgrade() {
-                            let _ = ui; // keep animating
-                        }
                     }
                 }
                 _ => {}
             }
         })
         .unwrap();
+
+}
+
+/// `interp-home`: the same Home as `compiled-home`, compiled from source at
+/// run time by slint-interpreter.
+#[cfg(feature = "interp")]
+fn interp_home(main_start: Instant) {
+    use slint_interpreter::{Compiler, Value as V};
+    let t = Instant::now();
+    let result = spin_on(Compiler::default().build_from_source(
+        include_str!("../ui/spike.slint").into(),
+        "spike.slint".into(),
+    ));
+    for d in result.diagnostics() {
+        log::warn!("slint: {d}");
+    }
+    let def = result.component("Spike").unwrap();
+    log::info!("interpreter compile {:.1} ms", t.elapsed().as_secs_f64() * 1e3);
+    let t = Instant::now();
+    let ui = def.create().unwrap();
+    ui.set_property("compiled-tiles", V::Number(18.0)).unwrap();
+    ui.set_property("mode", V::Number(1.0)).unwrap();
+    ui.set_property("status", V::String("spike interp-home".into())).unwrap();
+    ui.set_property("animate", V::Bool(true)).unwrap();
+    log::info!("interpreter create {:.1} ms", t.elapsed().as_secs_f64() * 1e3);
+    install_stats(ui.window(), main_start);
+    ui.run().unwrap();
+}
+
+/// Polls a future that completes without waiting (no file loads).
+#[cfg(feature = "interp")]
+fn spin_on<F: std::future::Future>(f: F) -> F::Output {
+    let mut f = std::pin::pin!(f);
+    let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+    loop {
+        if let std::task::Poll::Ready(v) = f.as_mut().poll(&mut cx) {
+            return v;
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+fn android_main(app: AndroidApp) {
+    let main_start = Instant::now();
+    android_logger::init_once(android_logger::Config::default().with_tag(TAG).with_max_level(log::LevelFilter::Info));
+    slint::android::init(app.clone()).unwrap();
+    let mode = mode(&app);
+    log::info!("mode {mode}");
+    let image = Image::default();
+    #[cfg(feature = "interp")]
+    if mode == "interp-home" {
+        return interp_home(main_start);
+    }
+
+    let ui = Spike::new().unwrap();
+    let t = Instant::now();
+    let (generic, count) = match mode.split_once('-') {
+        Some(("compiled", "home")) => (false, 18),
+        Some(("generic", "home")) => (true, 18),
+        Some(("compiled", n)) => (false, n.parse::<usize>().unwrap_or(500) / 10),
+        Some((_, n)) => (true, n.parse::<usize>().unwrap_or(500) / 10),
+        None => (true, 18),
+    };
+    if generic {
+        let list = nodes(count, &image);
+        log::info!("JSON parse + flatten: {} nodes in {:.2} ms", list.len(), t.elapsed().as_secs_f64() * 1e3);
+        ui.set_nodes(ModelRc::new(VecModel::from(list)));
+        ui.set_mode(0);
+    } else {
+        ui.set_compiled_tiles(count as i32);
+        ui.set_mode(1);
+    }
+    ui.set_status(format!("spike {mode}").into());
+    ui.set_animate(true);
+
+    install_stats(ui.window(), main_start);
 
     // PNG decode cost, after the first frame so it doesn't count in startup.
     slint::Timer::single_shot(Duration::from_secs(3), || {

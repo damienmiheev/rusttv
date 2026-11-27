@@ -58,6 +58,12 @@ package can change (§ 4).
     file before it is coded** (2026-11-21).
 12. **Plan reviews loop** with "all scenarios? all customisations?" until
     a round finds nothing new (2026-11-20).
+13. **Fully customisable, Home included: data first, code later**
+    (2026-11-27, after PR #79 and a Philips measurement, § 6.7). A theme
+    may lay Home out any way it likes (grid, dock, top tabs, carousel,
+    floating pills…), react to keys, sort and filter lists and animate,
+    all as data the studio edits visually (§ 5.7, § 10.4). Scripts come
+    later as an opt-in layer for power users (§ 5.8).
 
 Safety stays as it is (CLAUDE.md, SECURITY.md): every change to the TV is
 plan → dry run → approval → record → apply → verify, approved by a person
@@ -527,8 +533,15 @@ bindings survive).
 - **Reduced effects** (Settings → Effects) and reduced motion: each
   effect or animation may name a reduced alternative; the default is an
   instant change.
-- Keyframes, shared transitions between faces and staggered lists are
-  later (format 2.x).
+- **Keyframes** on any animatable property, **staggered lists** (each
+  item a set delay after the one before) and animations started by events
+  (§ 5.7) come with full customisation (§ 15 step 2f); shared transitions
+  between faces stay later.
+- **Effects** beyond shadows (blur, gradients, particles, 3D tilt) are
+  added one at a time, each with a support tier per renderer (§ 6.2): a
+  device that can't draw one gets its reduced alternative, and the studio
+  says so. Scripts (§ 5.8) can't draw anything new either: they only
+  compute values.
 
 ### 5.5 Actions and keys
 
@@ -598,6 +611,76 @@ too; each is its own later decision (§ 15 step 8).
   missing translations are listed for a warning. The size limits are
   § 5.1's (2 000 strings, 16 placeholders a string, 1 MiB a table;
   `TOO_MANY`, `BAD_PLACEHOLDER`, `TOO_LARGE`).
+
+### 5.7 Events, states and navigation (full customisation, data)
+
+Owner request 13: everything a theme or panel needs to behave its own
+way is data, so the studio can edit it and the review can say what it
+does.
+
+- **States**: a document declares named states (yes/no, number, text, or
+  one of a list) with a start value; expressions read `{"state": name}`.
+  States are the "local" values of § 5.3: kept while the face is shown,
+  never persisted (a value meant to last is a knob, § 7).
+- **Events**: handlers on focusable nodes and on the document:
+  - a key (OK, the arrows, Menu, colour keys, numbers, Play/Pause), with
+    long press (600 ms or more), double press, hold for 1 to 5 s, or a
+    sequence of up to 8 keys;
+  - focus entering or leaving a node, a list's first or last item
+    reached;
+  - a source change, a timer while visible.
+
+  Each handler has an optional `when` (a yes/no expression) and up to 8
+  steps: set a state, move focus to a node or list item, scroll a list,
+  switch a variant, play an animation, or one of § 5.5's actions. Timer
+  and source events may only set states, switch variants and play
+  animations, never § 5.5 actions (as today).
+- **No loops**: a handler runs its steps once per event; a step can't
+  raise another event in the same frame, so handlers can't chain into a
+  cycle. Fuel and the watchdog (§ 6.5) cover the rest.
+- **Reserved keys**: Home, long-press Home and the safe-look chord can't
+  be bound. Back may be bound only while a state differs from its start
+  value (to close a menu or a tab); with every state at its start, Back
+  does what the launcher does, so a person can always get out.
+- **Navigation as data**: each container says how the arrows move inside
+  it (a row, a column, a grid, with or without wrap) and where focus goes
+  at an edge (another container, or nowhere); without it the host moves
+  to the nearest node in that direction. Right to left mirrors it (§ 5.3).
+- **Lists**: `repeat` (§ 5.3) gains `sort` (by an item field or a
+  source such as launch counts, either way) and `filter` (a yes/no
+  expression over the item), and per-item stagger (§ 5.4).
+- The error codes and limits come with the slice (§ 15 step 2f).
+
+### 5.8 Scripts (later, opt-in)
+
+Owner decision 2026-11-27: code is a later layer on top of § 5.7, for
+power users, never needed for a look the data can describe.
+
+- A package may carry small scripts, used in two places only: a `script`
+  function in expressions that computes a value from its arguments, and a
+  `script` step in an event handler that returns state changes and steps
+  from § 5.7's list. Scripts never call actions themselves; the steps they
+  return pass the same checks as written ones.
+- **What a script can read**: the arguments it is given (declared
+  sources, knobs, states, the list item), nothing else: no files,
+  network, clipboard, settings, other packages or the wall clock beyond
+  the clock source; randomness only from a seed the host passes.
+- **Budget**: an operation (fuel) limit per call and per frame and a
+  memory cap; over budget, the call gives no value (the fallback shows)
+  and the watchdog counts it; a script over budget again and again is
+  paused like a heavy face (§ 6.5).
+- **Review**: "contains code" in amber, with the scripts listed by size.
+  The review says what a script can read (its sources' tiers), not what
+  it computes. Packages with scripts install only when the person has
+  turned on "Allow packages with code" (off by default; turning it on
+  takes the code and hold, and the look lock covers it).
+- Scripts never run on locked surfaces (§ 4), and the safe look disables
+  scripted packages like every user package.
+- The studio edits scripts as text with checks; an agent-written script
+  is untrusted like any package content.
+- The language (Rhai, as #79 uses, or WASM) and its cost on the Philips
+  are decided before the slice (§ 16 Q19); #79's Rhai sandbox is a
+  starting point.
 
 ## 6. The TV side
 
@@ -716,6 +799,10 @@ a removed one is deprecated for one release first.
   `BAD_EXPRESSION`, `UNKNOWN_FUNCTION`, `TYPE_MISMATCH`,
   `UNKNOWN_SOURCE`, `UNDECLARED_SOURCE`, `EXPRESSION_TOO_LARGE`,
   `TOO_MANY_BINDINGS`.
+- **For full customisation** (§ 15 step 2f): launch counts (how often
+  RustTV opened each app, kept by the launcher itself, so no usage-access
+  permission) and an app icon's main colour (computed by the launcher),
+  both tier 2 like the app list.
 - **Later sources**, each with its own SECURITY.md section: web data
   through one RustTV fetcher with fixed endpoints and no package-supplied
   parameters; data from an app's content provider the person allows; data
@@ -785,6 +872,26 @@ What it settles:
 - **Not settled here**: the studio preview route (§ 6.1, Skia helper vs
   "approximate") is checked with the studio in step 6; the safe-look chord
   in step 3.
+
+### 6.7 Runtime `.slint` measured (2026-11-27)
+
+PR #79 proposed skins as `.slint` files run by `slint-interpreter`, plus
+Rhai scripts. The step 1 spike gained an `interp-home` mode that builds
+the same 18-tile Home as `compiled-home` from source at run time; both
+drew the same screen (checked by screenshot) on the Philips:
+
+| Home, 18 tiles | render p50 / p95 | PSS |
+|---|---|---|
+| compiled (today) | 6.2 / 7.1 ms | about 51 MB |
+| `slint-interpreter` | 9.4 / 10.2 ms | about 51 MB |
+
+- The interpreter costs about 50% more per frame than compiled code (the
+  JSON route of § 6.6: about 18%); both keep 60 fps on this screen.
+  Compiling the `.slint` source took 30 ms; the spike's library grew to
+  21 MB with the interpreter.
+- So owner request 13 is met with data drawn by compiled components
+  first (§ 5.7, § 10.4), and code comes later as small scripts that only
+  compute values (§ 5.8), not as a runtime UI language.
 
 ## 7. Knobs and settings (no canvas needed)
 
@@ -1153,7 +1260,7 @@ Each token says where it is used, `since` and `deprecated`.
   refused at install.
 - **Ranges for every token**, motion included (focus zoom, sway, glow,
   durations), and no alias cycles (checked like expressions).
-- **Themes carry tokens and assets only** — no panel overrides; a theme
+- **Themes carry tokens, assets and a Home document (§ 10.4)** — no panel overrides; a theme
   can't change what a panel says, only how everything looks. Its assets
   go into fixed slots: Home background, folder background, focus frame
   (nine-slice), tile mask; a reduced-motion alternative applies.
@@ -1165,7 +1272,7 @@ Each token says where it is used, `since` and `deprecated`.
 
 | Surface | Theme can |
 |---|---|
-| Home, folders, tile menu, top-right menu, banners, idle screen | tokens; Home layout tokens (columns, rows, hero, shelf) within ranges |
+| Home, folders, tile menu, top-right menu, banners, idle screen | tokens, and Home's whole layout through the Home document (§ 10.4) within its floors |
 | Settings, History, Optimizer, Remote pages | tokens only (layout stays the launcher's) |
 | User and built-in panels | tokens (panels read tokens) |
 | Review screen, code entry, pairing and trust screens, Recovery, safe-look notice, update confirmation | **nothing** (locked) |
@@ -1182,6 +1289,34 @@ Each token says where it is used, `since` and `deprecated`.
   "your photos" source is later, with its own tier and review.
 - The launcher's literals become tokens before themes exist (§ 15 step
   3).
+
+### 10.4 Home as a document (owner request 13)
+
+- A theme may carry `home`: a document like a panel's (§ 5.3) for the
+  Home screen, with the same nodes, bindings, states, events, navigation
+  and motion (§ 5.4, § 5.7). Home-only parts are slots it places and
+  styles: the app list (a `repeat` over `apps.list`, with each app's
+  banner, icon and name), folders, the panel tiles the person placed
+  (§ 8), the hero, the clock and the status corner.
+- **Layout styles are sample documents, not modes**: grid, shelf, dock,
+  top tabs, carousel, floating pills, sidebar, blade and zen (the last
+  ones from #79) ship as starting points in the studio, each fully
+  editable.
+- **Floors**, checked at install and on every load:
+  - every app the person hasn't hidden stays reachable (the app list must
+    be present and reachable by focus), and the person's placement still
+    decides which panels appear;
+  - the focus is always visible (the focus floor, § 10.1), and contrast
+    and minimum text size hold;
+  - Settings stays reachable through a launcher-owned way in that a theme
+    can't remove (the Menu key or a long press, decided with the safe look
+    in step 3);
+  - Back follows § 5.7.
+- A theme without `home` gets the built-in Home with its tokens. The
+  built-in Home becomes the default theme's Home document when the
+  built-ins move to v2 (§ 15 step 2e).
+- Home's node budget may be larger than a face's (measured in step 2f;
+  the node count is after `repeat`).
 
 ## 11. Live preview on the TV (optional)
 
@@ -1446,6 +1581,10 @@ the measurement APK) starts with the owner's go-ahead in that session.
    - 2d function faces (rows, corner, banner, idle line, hero) as
      launcher slots.
    - 2e (after step 3) built-in panels moved to v2 with no visible change.
+   - 2f full customisation (owner request 13, § 5.7, § 10.4): `repeat`
+     with `sort` and `filter`, states and events, declared navigation,
+     keyframes and stagger, the Home document with its floors, the layout
+     samples; Home's node budget measured on the Philips.
      The release APK carries both paths behind a flag; BENCHMARK_PLAN.md
      measures each as Home on the Philips (cold start from Home, PSS,
      first draw, key-to-frame latency, sway CPU), and v2 becomes the
@@ -1496,10 +1635,10 @@ the measurement APK) starts with the owner's go-ahead in that session.
    - 6e sources, bindings, motion;
    - 6f MCP.
 7. **Live preview** (§ 11), after its SECURITY.md section.
-8. **Later, each with its own decision**: web data sources, code panels
-   (level 3), settings actions, input switching and global keys, signed sharing and a catalog, setup bundles, larger
-   tiles, keyframes and shared transitions, icon packs and tile art,
-   sound, more faces.
+8. **Later, each with its own decision**: scripts (§ 5.8, after step 2f
+   and Q19), web data sources, settings actions, input switching and
+   global keys, signed sharing and a catalog, setup bundles, larger
+   tiles, shared transitions, icon packs and tile art, sound, more faces.
 
 ## 16. Open questions for the owner
 
@@ -1556,6 +1695,10 @@ the measurement APK) starts with the owner's go-ahead in that session.
     take a plain Approve with no code, since they only take things away
     and can be undone (a new SECURITY.md tier)? — **Decided 2026-11-24:
     plain Approve.**
+19. **Script language** (§ 5.8): Rhai (as #79 uses) or WASM (`wasmi`)?
+    Decided before the scripts slice, with a Philips measurement of each
+    (frame time with scripts computing values, memory, library size) and
+    a dependency review.
 
 ## 17. Research
 
