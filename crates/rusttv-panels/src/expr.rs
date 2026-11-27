@@ -537,6 +537,11 @@ impl<'a> Scope<'a> {
         self.sources.contains(group)
     }
 
+    /// Whether this is inside a repeat.
+    pub fn in_a_repeat(&self) -> bool {
+        self.item.is_some()
+    }
+
     /// The same, inside a repeat over `list`.
     #[must_use]
     pub fn in_repeat(self, list: &'static Collection) -> Self {
@@ -890,9 +895,10 @@ pub fn eval(expr: &Expr, inputs: &dyn Inputs, fuel: &mut u32) -> Option<Value> {
         Expr::Knob(name) => inputs.knob(name.as_str()),
         Expr::Item(field) => inputs.item(field),
         Expr::Count { group, field } => {
-            let n = inputs.count(group, field)?;
-            // Exact: a list has far fewer than 2^53 items; larger counts give no value.
-            (n < (1 << 53)).then_some(Value::Number(n as f64))
+            // Exact below 2^53; a larger count gives no value. (u64, so the
+            // bound means the same on 32-bit targets.)
+            let n = u64::try_from(inputs.count(group, field)?).ok()?;
+            (n < 1 << 53).then_some(Value::Number(n as f64))
         }
         Expr::Msg { id, args } => {
             // A whole, non-negative number is a count (it picks plural
@@ -1281,12 +1287,37 @@ mod tests {
             Err(Code::UnknownSource)
         );
         assert_eq!(expr(r#"{"count": "apps"}"#), Err(Code::BadExpression));
-        let empty = eval(
+        assert_eq!(expr(r#"{"item": 5}"#), Err(Code::WrongType));
+        assert_eq!(
+            check_in(r#"{"count": "foo.list"}"#, Type::Number, &outside),
+            Err(Code::UnknownSource)
+        );
+        let phones = BTreeSet::from(["phones"]);
+        let with_phones = Scope::new(&phones, &knobs);
+        assert_eq!(
+            check_in(r#"{"count": "phones.list"}"#, Type::Number, &with_phones),
+            Ok(())
+        );
+        assert!(!outside.in_a_repeat() && inside.in_a_repeat());
+        assert!(outside.contains_source("apps") && !outside.contains_source("phones"));
+        assert_eq!(source_tier("phones"), Some(2));
+        assert!(collection("apps", "grid").is_none());
+        // A host with no count gives no value: the fallback shows.
+        let no_count = Pair([Value::Bool(true), Value::Bool(true)]);
+        assert_eq!(
+            eval(
+                &expr(r#"{"count": "apps.list"}"#).unwrap(),
+                &no_count,
+                &mut 10
+            ),
+            None
+        );
+        let none_waiting = eval(
             &expr(r#"{"call": "eq", "args": [{"count": "apps.list"}, 0]}"#).unwrap(),
             &Fake,
             &mut 10,
         );
-        assert_eq!(empty, Some(Value::Bool(false)));
+        assert_eq!(none_waiting, Some(Value::Bool(false)));
         assert_eq!(
             eval(&expr(r#"{"item": "name"}"#).unwrap(), &Fake, &mut 10),
             text("YouTube")

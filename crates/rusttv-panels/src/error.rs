@@ -129,7 +129,7 @@ codes! {
     UnknownFunction => "UNKNOWN_FUNCTION",
     /// An expression whose type doesn't fit where it is used.
     TypeMismatch => "TYPE_MISMATCH",
-    /// A source (or source field) RustTV doesn't have.
+    /// A source, source field, list or list item field RustTV doesn't have.
     UnknownSource => "UNKNOWN_SOURCE",
     /// An expression reads a source group `meta.sources` doesn't list.
     UndeclaredSource => "UNDECLARED_SOURCE",
