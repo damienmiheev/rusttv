@@ -229,6 +229,11 @@ mod tests {
             check(r#"[{"options": [["a", "l"]]}]"#),
             Some(Code::WrongType)
         );
+        assert_eq!(check("[1]"), Some(Code::WrongType));
+        assert_eq!(
+            super::check(r#"{"meta": {"x": {"knobs": [[1]]}}}"#, 8, 99, true).err(),
+            None
+        );
         // Only in `meta`: a `knobs` list elsewhere is plain JSON.
         assert_eq!(
             super::check(r#"{"x": {"knobs": [[1]]}}"#, 8, 99, true).err(),

@@ -163,6 +163,8 @@ impl Knob {
     /// the knob, or none yet).
     pub fn resolve(&self, stored: Option<&Value>) -> Value {
         match stored {
+            // `+ 0.0` turns -0 into 0, as for literals.
+            Some(Value::Number(n)) if self.accepts(&Value::Number(*n)) => Value::Number(n + 0.0),
             Some(value) if self.accepts(value) => value.clone(),
             _ => self.default_value(),
         }
@@ -711,5 +713,9 @@ mod tests {
             Value::Number(1.0)
         );
         assert_eq!(number.resolve(None), Value::Number(1.0));
+        let zero = one(r#""type": "number", "min": -1, "max": 1, "default": 1"#).unwrap();
+        assert!(
+            matches!(zero.resolve(Some(&Value::Number(-0.0))), Value::Number(n) if n.is_sign_positive())
+        );
     }
 }
