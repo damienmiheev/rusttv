@@ -325,6 +325,14 @@ assets/<lang>/<name>.png, assets/<mode>/<name>.png   locale or mode variants
 thumbnail.png         for the studio and the Panels page (never on locked surfaces)
 ```
 
+- **As built (theme track T1, 2026-11-27)**: `meta.runtime` is `data`
+  (the default) or `code`; a panel can't be `code` (`NOT_FOR_KIND` at
+  `meta.runtime`). `code/<name>.slint` and `scripts/<name>.rhai` (names
+  like images, each at most 256 KiB) are read only in a `runtime: code`
+  theme (elsewhere `NOT_FOR_KIND`), which must have `code/home.slint`
+  (`MISSING_FILE`). Each must be UTF-8 with no NUL and no bidi controls
+  (`BAD_SOURCE`), so code can't read differently from what it does.
+  Nothing interprets them yet (T5).
 - **As built (step 2a, zip slice, 2026-11-24)**: our own strict reader
   of the central directory (the `zip` crate is lenient about exactly what
   this list forbids); inflate by `miniz_oxide` and CRCs by `crc32fast`,

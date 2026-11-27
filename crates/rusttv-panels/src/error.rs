@@ -169,13 +169,18 @@ codes! {
     BadEntryName => "BAD_ENTRY_NAME",
     /// Two entries with the same name, also ignoring case.
     DuplicateEntry => "DUPLICATE_ENTRY",
-    /// A file the package must have (`package.json`) is missing.
+    /// A file the package must have (`package.json`, or `code/home.slint`
+    /// in a `runtime: code` theme) is missing.
     MissingFile => "MISSING_FILE",
     /// An image node's asset, or a variant's base image, isn't in the
     /// package.
     MissingAsset => "MISSING_ASSET",
     /// An image that isn't a PNG.
     BadImage => "BAD_IMAGE",
+    /// A `code/` or `scripts/` file that isn't UTF-8 text, or holds a NUL
+    /// or a bidi control (which can make code read differently from what it
+    /// does).
+    BadSource => "BAD_SOURCE",
 }
 
 impl Code {
