@@ -79,7 +79,8 @@ pub trait Inputs {
     /// The value of `group.field`, or `None` while it is loading, empty or
     /// unavailable.
     fn source(&self, group: &str, field: &str) -> Option<Value>;
-    /// The value of knob `name`: the one the person set, or its default.
+    /// The value of knob `name`: [`crate::Knob::resolve`] of the stored
+    /// one, so it has the knob's type and rules.
     fn knob(&self, name: &str) -> Option<Value>;
     /// The message `id` in the panel's language with `args` filled in.
     fn message(&self, id: &str, args: &[(&str, Arg<'_>)]) -> Option<String>;
@@ -837,6 +838,10 @@ fn call(function: Function, args: &[Expr], inputs: &dyn Inputs, fuel: &mut u32) 
             let same = match (values.first()?, values.get(1)?) {
                 // The same moment, whatever offset each is shown in.
                 (Value::Time(a), Value::Time(b)) => a.unix == b.unix,
+                // A colour literal evaluates to text; compare it as a colour.
+                (a @ Value::Color(_), b) | (b, a @ Value::Color(_)) => {
+                    a.as_color().is_some() && a.as_color() == b.as_color()
+                }
                 (a, b) => a == b,
             };
             Some(Value::Bool(same == (function == F::Eq)))
@@ -1079,6 +1084,29 @@ mod tests {
     }
 
     #[test]
+    fn colours_compare_as_colours() {
+        struct Accent;
+        impl Inputs for Accent {
+            fn source(&self, _: &str, _: &str) -> Option<Value> {
+                None
+            }
+            fn knob(&self, _: &str) -> Option<Value> {
+                Some(Value::Color(Color::parse("#3478f6").ok()?))
+            }
+            fn message(&self, _: &str, _: &[(&str, Arg<'_>)]) -> Option<String> {
+                None
+            }
+        }
+        let same = |literal: &str| {
+            let json = format!(r#"{{"call": "eq", "args": [{{"knob": "accent"}}, "{literal}"]}}"#);
+            eval(&checked(&json, Type::Bool).unwrap(), &Accent, &mut 10)
+        };
+        assert_eq!(same("#3478f6"), Some(Value::Bool(true)));
+        assert_eq!(same("#3478F6ff"), Some(Value::Bool(true)));
+        assert_eq!(same("#000000"), Some(Value::Bool(false)));
+    }
+
+    #[test]
     fn knobs_are_read_by_name_and_type() {
         assert_eq!(
             run(
@@ -1101,6 +1129,13 @@ mod tests {
         for (json, want, code) in cases {
             assert_eq!(checked(json, want).err(), Some(code), "{json}");
         }
+        assert_eq!(
+            run(
+                r#"{"if": [{"call": "gt", "args": [{"knob": "size"}, 3]}, {"msg": "unread", "args": {"count": {"knob": "size"}}}, "no"]}"#,
+                Type::Text
+            ),
+            text("4 waiting")
+        );
         // A knob with no value (the host has none) shows the fallback.
         assert_eq!(
             eval(

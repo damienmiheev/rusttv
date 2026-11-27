@@ -15,7 +15,8 @@
 //!
 //! Labels are message ids, so they are translated like every other package
 //! text. `visible_if` is a yes/no expression that reads only knobs declared
-//! before it, so visibility can't go round in a circle.
+//! before it, and no sources, so visibility can't go round in a circle.
+//! Texts keep their spaces at the ends, like text literals in expressions.
 
 use crate::Color;
 use crate::error::{Code, PackageError, Position};
@@ -58,11 +59,13 @@ pub struct KnobOption {
 #[non_exhaustive]
 pub enum KnobKind {
     /// Yes or no.
+    #[non_exhaustive]
     Toggle {
         /// Its default.
         default: bool,
     },
     /// A number from `min` to `max`.
+    #[non_exhaustive]
     Number {
         /// The smallest value.
         min: f64,
@@ -74,6 +77,7 @@ pub enum KnobKind {
         default: f64,
     },
     /// One of `options`; its value is the option's id, as text.
+    #[non_exhaustive]
     Choice {
         /// The options, at least two.
         options: Vec<KnobOption>,
@@ -81,11 +85,13 @@ pub enum KnobKind {
         default: Name,
     },
     /// A colour.
+    #[non_exhaustive]
     Color {
         /// Its default.
         default: Color,
     },
     /// A short text, cleaned like every package text.
+    #[non_exhaustive]
     Text {
         /// Its longest length in characters.
         max_length: usize,
@@ -133,9 +139,9 @@ impl Knob {
     }
 
     /// Whether `value` is one this knob can hold: the right type, in range,
-    /// one of the options, or a cleaned text short enough. A stored value
-    /// that isn't (say, after an update changed the knob) is replaced by the
-    /// default.
+    /// one of the options, or a text that cleaning leaves as it is and
+    /// that has at most `max_length` characters (`char`s). The step is only
+    /// a hint for the editor, so any number in range is accepted.
     pub fn accepts(&self, value: &Value) -> bool {
         match (&self.kind, value) {
             (KnobKind::Toggle { .. }, Value::Bool(_))
@@ -149,6 +155,16 @@ impl Knob {
                     && crate::text::clean_keeping_ends(text) == *text
             }
             _ => false,
+        }
+    }
+
+    /// The value to use: `stored` if this knob [accepts](Self::accepts)
+    /// it, else the default (a value from before an update that changed
+    /// the knob, or none yet).
+    pub fn resolve(&self, stored: Option<&Value>) -> Value {
+        match stored {
+            Some(value) if self.accepts(value) => value.clone(),
+            _ => self.default_value(),
         }
     }
 
@@ -194,7 +210,8 @@ pub(crate) struct RawKnob {
 /// A number literal, or [`Code::WrongType`].
 fn number(expr: &Expr) -> Result<f64, Code> {
     match expr {
-        Expr::Number(n) => Ok(*n),
+        // `+ 0.0` turns -0 into 0, so there is one spelling of zero.
+        Expr::Number(n) => Ok(*n + 0.0),
         _ => Err(Code::WrongType),
     }
 }
@@ -221,7 +238,12 @@ fn check_one(raw: RawKnob) -> Result<Knob, Code> {
             };
             let (min, max, default) = (number(min)?, number(max)?, number(&raw.default)?);
             let step = raw.step.as_ref().map(number).transpose()?;
-            if min >= max || step.is_some_and(|s| s <= 0.0 || s > max - min) {
+            let steps = |s: f64| (max - min) / s;
+            if min >= max
+                || step.is_some_and(|s| {
+                    s <= 0.0 || s > max - min || steps(s) > limits::KNOB_STEPS as f64
+                })
+            {
                 return Err(Code::BadKnob);
             }
             if !(min..=max).contains(&default) {
@@ -524,6 +546,135 @@ mod tests {
     }
 
     #[test]
+    fn edges_of_each_rule() {
+        let ok = [
+            r#""type": "number", "min": 1, "max": 5, "default": 1"#,
+            r#""type": "number", "min": 1, "max": 5, "default": 5"#,
+            r#""type": "number", "min": 0, "max": 1, "step": 1, "default": 0"#,
+            r#""type": "number", "min": 0, "max": 10000, "step": 1, "default": 0"#,
+            r#""type": "text", "max_length": 1, "default": "a""#,
+            r#""type": "text", "max_length": 200, "default": """#,
+            r#""type": "text", "max_length": 3, "default": "ééé""#,
+            r##""type": "color", "default": "#10203040""##,
+            r#""type": "toggle", "default": false, "visible_if": true"#,
+        ];
+        for fields in ok {
+            assert!(one(fields).is_ok(), "{fields}");
+        }
+        let long = "a".repeat(limits::KNOB_TEXT + 1);
+        let bad = [
+            (r#""type": "number", "min": 1, "max": 5, "default": 0"#.to_owned(), Code::OutOfRange),
+            (r#""type": "number", "min": 2, "max": 1, "default": 1"#.to_owned(), Code::BadKnob),
+            (r#""type": "number", "min": 0, "max": 1, "step": -1, "default": 0"#.to_owned(), Code::BadKnob),
+            (r#""type": "number", "min": 0, "max": 1, "step": "1", "default": 0"#.to_owned(), Code::WrongType),
+            (r#""type": "number", "min": 0, "max": 10001, "step": 1, "default": 0"#.to_owned(), Code::BadKnob),
+            (r#""type": "number", "min": 0, "max": 1, "step": 5e-324, "default": 0"#.to_owned(), Code::BadKnob),
+            (r#""type": "number", "min": 0, "default": 0"#.to_owned(), Code::MissingProperty),
+            (r#""type": "toggle", "default": true, "options": []"#.to_owned(), Code::NotForKind),
+            (r#""type": "number", "min": 0, "max": 1, "default": 0, "max_length": 3"#.to_owned(), Code::NotForKind),
+            (r#""type": "text", "default": "", "step": 1"#.to_owned(), Code::NotForKind),
+            (r#""type": "choice", "default": "a", "max": 1, "options": []"#.to_owned(), Code::NotForKind),
+            (r#""type": "choice", "default": 1, "options": [{"id": "a", "label": "x"}, {"id": "b", "label": "y"}]"#.to_owned(), Code::WrongType),
+            (r#""type": "text", "max_length": 0, "default": """#.to_owned(), Code::OutOfRange),
+            (r#""type": "text", "max_length": "5", "default": """#.to_owned(), Code::WrongType),
+            (format!(r#""type": "text", "default": "{long}""#), Code::TextTooLong),
+            (r#""type": "color", "default": 5"#.to_owned(), Code::WrongType),
+            (r##""type": "color", "default": "#abc""##.to_owned(), Code::BadColor),
+            (r#""type": "toggle""#.to_owned(), Code::MissingField),
+        ];
+        for (fields, want) in bad {
+            assert_eq!(one(&fields).err(), Some(want), "{fields}");
+        }
+        assert_eq!(
+            parse(r#"[{"name": "k", "label": "l", "default": true}]"#).err(),
+            Some(Code::MissingField)
+        );
+        let zero = one(r#""type": "number", "min": -1, "max": 1, "default": -0.0"#).unwrap();
+        assert!(
+            matches!(zero.kind, KnobKind::Number { default, .. } if default.is_sign_positive())
+        );
+        let cleaned = one(r#""type": "text", "default": " a\u202eb ""#).unwrap();
+        assert_eq!(cleaned.default_value(), Value::Text(" ab ".into()));
+    }
+
+    #[test]
+    fn up_to_the_limits_is_fine_and_errors_name_their_knob() {
+        let knob = |name: &str| {
+            format!(r#"{{"name": "{name}", "type": "toggle", "label": "l", "default": true}}"#)
+        };
+        let all: Vec<String> = (0..limits::KNOBS).map(|i| knob(&format!("k{i}"))).collect();
+        assert!(parse(&format!("[{}]", all.join(","))).is_ok());
+        let options: Vec<String> = (0..limits::KNOB_OPTIONS)
+            .map(|i| format!(r#"{{"id": "o{i}", "label": "l"}}"#))
+            .collect();
+        assert!(
+            one(&format!(
+                r#""type": "choice", "default": "o0", "options": [{}]"#,
+                options.join(",")
+            ))
+            .is_ok()
+        );
+        let at = |json: &str| {
+            let raw: Vec<RawKnob> = serde_json::from_str(json).unwrap();
+            check(raw).unwrap_err()
+        };
+        let first = knob("a");
+        let range =
+            r#"{"name": "n", "type": "number", "label": "l", "min": 1, "max": 1, "default": 1}"#;
+        let later = r#"{"name": "s", "type": "toggle", "label": "l", "default": true, "visible_if": {"knob": "z"}}"#;
+        for (json, code) in [
+            (format!("[{first},{}]", knob("a")), Code::Duplicate),
+            (format!("[{first},{range}]"), Code::BadKnob),
+            (format!("[{first},{later}]"), Code::UnknownKnob),
+        ] {
+            let error = at(&json);
+            assert_eq!(
+                (error.code, error.at),
+                (
+                    code,
+                    Position::Field {
+                        path: "meta.knobs",
+                        index: Some(1)
+                    }
+                ),
+                "{json}"
+            );
+        }
+        let many: Vec<String> = (0..=limits::KNOBS)
+            .map(|i| knob(&format!("k{i}")))
+            .collect();
+        assert_eq!(
+            at(&format!("[{}]", many.join(","))).at,
+            Position::field("meta.knobs")
+        );
+    }
+
+    #[test]
+    fn visible_if_sees_the_types_of_earlier_knobs() {
+        let knobs = r#"{"name": "on", "type": "toggle", "label": "l", "default": true},
+            {"name": "size", "type": "number", "label": "l", "min": 0, "max": 9, "default": 1},
+            {"name": "style", "type": "choice", "label": "l", "default": "a",
+             "options": [{"id": "a", "label": "l"}, {"id": "b", "label": "l"}]}"#;
+        let with = |condition: &str| {
+            parse(&format!(
+                r#"[{knobs}, {{"name": "x", "type": "toggle", "label": "l", "default": true, "visible_if": {condition}}}]"#
+            ))
+            .err()
+        };
+        assert_eq!(
+            with(
+                r#"{"call": "and", "args": [{"knob": "on"}, {"call": "eq", "args": [{"knob": "style"}, "b"]}]}"#
+            ),
+            None
+        );
+        assert_eq!(
+            with(r#"{"call": "gt", "args": [{"knob": "size"}, 3]}"#),
+            None
+        );
+        assert_eq!(with(r#"{"knob": "size"}"#), Some(Code::TypeMismatch));
+    }
+
+    #[test]
     fn accepts_checks_range_options_and_length() {
         let number = one(r#""type": "number", "min": 0, "max": 10, "default": 1"#).unwrap();
         assert!(!number.accepts(&Value::Number(11.0)));
@@ -538,7 +689,27 @@ mod tests {
         assert!(text.accepts(&Value::Text("abc".into())));
         assert!(!text.accepts(&Value::Text("abcd".into())));
         assert!(!text.accepts(&Value::Text("a\u{202e}b".into())));
+        assert!(text.accepts(&Value::Text("ééé".into())));
+        assert!(!text.accepts(&Value::Bool(true)));
         assert!(!text.one_click());
         assert!(choice.one_click() && number.one_click());
+        assert!(number.accepts(&Value::Number(0.0)) && number.accepts(&Value::Number(10.0)));
+        assert!(!number.accepts(&Value::Number(-1.0)) && !number.accepts(&Value::Number(f64::NAN)));
+        assert!(!choice.accepts(&Value::Text("B".into())) && !choice.accepts(&Value::Number(1.0)));
+        let toggle = one(r#""type": "toggle", "default": true"#).unwrap();
+        let color = one(r##""type": "color", "default": "#000000""##).unwrap();
+        assert!(toggle.one_click() && color.one_click());
+        assert!(
+            !toggle.accepts(&Value::Number(1.0)) && !color.accepts(&Value::Text("#000000".into()))
+        );
+        assert_eq!(
+            number.resolve(Some(&Value::Number(7.0))),
+            Value::Number(7.0)
+        );
+        assert_eq!(
+            number.resolve(Some(&Value::Number(70.0))),
+            Value::Number(1.0)
+        );
+        assert_eq!(number.resolve(None), Value::Number(1.0));
     }
 }

@@ -5,8 +5,9 @@
 //! § 5.1: duplicate keys are errors). Derived structs also accept a JSON array
 //! in place of an object, which would give a package a second spelling. This
 //! pass walks the whole document once before typed parsing and refuses all
-//! three: the file, its `meta` and every struct in `document` (the document,
-//! each list entry, `root`, `stroke`) must be objects. It also counts the
+//! three: the file, its `meta`, each of `meta.knobs` and their `options`,
+//! and every struct in `document` (the document, each list entry, `root`,
+//! `stroke`) must be objects. It also counts the
 //! objects in `document`, so a large file can't build a large tree.
 
 use crate::error::{Code, PackageError};
@@ -37,10 +38,24 @@ pub(crate) fn check(
         objects: &objects,
         max_objects,
         package,
+        role: Role::Other,
     }
     .deserialize(&mut reader)
     .and_then(|()| reader.end())
     .map_err(|error| PackageError::from_json(&error))
+}
+
+/// Where a value sits in `meta`, for the lists of structs there.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Role {
+    Other,
+    Meta,
+    /// `meta.knobs`.
+    Knobs,
+    /// One knob.
+    Knob,
+    /// A knob's `options`.
+    Options,
 }
 
 /// One JSON value at a given depth.
@@ -60,6 +75,8 @@ struct Node<'a> {
     max_objects: usize,
     /// `package.json`, whose root `meta` and `document` have rules.
     package: bool,
+    /// Its place in `meta`.
+    role: Role,
 }
 
 impl Node<'_> {
@@ -77,6 +94,7 @@ impl Node<'_> {
             must_be_object,
             in_document,
             in_expression,
+            role: Role::Other,
             ..self
         })
     }
@@ -149,8 +167,12 @@ impl<'de> Visitor<'de> for Node<'_> {
         self.not_object()?;
         // Every list in the document is a list of structs, except in
         // expressions.
-        let structs = self.in_document && !self.in_expression;
-        let child = self.child(structs, self.in_document, self.in_expression)?;
+        let in_meta = matches!(self.role, Role::Knobs | Role::Options);
+        let structs = (self.in_document && !self.in_expression) || in_meta;
+        let mut child = self.child(structs, self.in_document, self.in_expression)?;
+        if self.role == Role::Knobs {
+            child.role = Role::Knob;
+        }
         while seq.next_element_seed(child)?.is_some() {}
         Ok(())
     }
@@ -166,7 +188,13 @@ impl<'de> Visitor<'de> for Node<'_> {
             let struct_field = structs && (key == "root" || key == "stroke" || key == "bindings");
             let in_expression = self.in_expression || (structs && key == "bindings");
             let must_be_object = (at_root && key == "meta") || document || struct_field;
-            let child = self.child(must_be_object, in_document, in_expression)?;
+            let mut child = self.child(must_be_object, in_document, in_expression)?;
+            child.role = match (self.role, key.as_str()) {
+                (Role::Other, "meta") if at_root => Role::Meta,
+                (Role::Meta, "knobs") => Role::Knobs,
+                (Role::Knob, "options") => Role::Options,
+                _ => Role::Other,
+            };
             if !keys.insert(key) {
                 return Err(de::Error::custom(Code::DuplicateKey.as_str()));
             }
@@ -183,6 +211,29 @@ mod tests {
 
     fn code(text: &str) -> Option<Code> {
         check(text, 4, 3, true).err().map(|e| e.code)
+    }
+
+    #[test]
+    fn knobs_and_their_options_must_be_objects() {
+        let check = |knobs: &str| {
+            super::check(&format!(r#"{{"meta": {{"knobs": {knobs}}}}}"#), 8, 99, true)
+                .err()
+                .map(|e| e.code)
+        };
+        assert_eq!(
+            check(r#"[{"options": [{"id": "a"}], "default": [1]}]"#),
+            None
+        );
+        assert_eq!(check(r#"[["a", "toggle"]]"#), Some(Code::WrongType));
+        assert_eq!(
+            check(r#"[{"options": [["a", "l"]]}]"#),
+            Some(Code::WrongType)
+        );
+        // Only in `meta`: a `knobs` list elsewhere is plain JSON.
+        assert_eq!(
+            super::check(r#"{"x": {"knobs": [[1]]}}"#, 8, 99, true).err(),
+            None
+        );
     }
 
     #[test]

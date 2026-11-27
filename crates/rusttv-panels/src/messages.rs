@@ -890,6 +890,49 @@ mod tests {
             check(choice, &[("en", &with_placeholder)]),
             Some((Code::PlaceholderMismatch, at(0)))
         );
+        for (from, to) in [
+            (r#""Style""#, r#""Style {x}""#),
+            (r#""Square""#, r#""Square {x}""#),
+        ] {
+            assert_eq!(
+                check(choice, &[("en", &en.replace(from, to))]),
+                Some((Code::PlaceholderMismatch, at(0))),
+                "{to}"
+            );
+        }
+        // A plural message needs its count, which a label doesn't have.
+        let plural = en.replace(
+            r#""Look""#,
+            r#"{"plural": "n", "one": "Look", "other": "Looks"}"#,
+        );
+        assert_eq!(
+            check(choice, &[("en", &plural)]),
+            Some((Code::PlaceholderMismatch, at(0)))
+        );
+        let second = format!(
+            r#"{choice}, {}"#,
+            choice
+                .replace(r#""name": "style""#, r#""name": "two""#)
+                .replace(r#""label": "style""#, r#""label": "gone""#)
+        );
+        assert_eq!(
+            check(&second, &[("en", en)]),
+            Some((Code::UnknownMessage, at(1)))
+        );
+        assert_eq!(
+            check(choice, &[("uk", en)]),
+            Some((Code::NoDefaultStrings, at(0)))
+        );
+        let with_arg = shown.replace(
+            r#"{"msg": "round"}"#,
+            r#"{"msg": "round", "args": {"x": "y"}}"#,
+        );
+        assert_eq!(
+            check(&with_arg, &[("en", en)]),
+            Some((Code::PlaceholderMismatch, at(0)))
+        );
+        let round_x = en.replace(r#""Round""#, r#""Round {x}""#);
+        assert_eq!(check(&with_arg, &[("en", &round_x)]), None);
         let no_round = en.replace(r#""round":"#, r#""other":"#);
         let toggle_first = shown.replace(r#""label": "style""#, r#""label": "look""#);
         assert_eq!(

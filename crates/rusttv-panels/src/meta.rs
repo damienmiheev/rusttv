@@ -256,6 +256,8 @@ pub mod limits {
     pub const KNOB_OPTIONS: usize = 32;
     /// Longest text a text knob holds, in characters.
     pub const KNOB_TEXT: usize = 200;
+    /// Most steps from a number knob's `min` to its `max`.
+    pub const KNOB_STEPS: usize = 10_000;
 }
 
 /// The homepage: an `https://` link with a plain host (ASCII letters,

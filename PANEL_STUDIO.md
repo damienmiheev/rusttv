@@ -45,8 +45,9 @@ package can change (§ 4).
    fast drawing on the TV). Its UI uses whatever fits a canvas and docking
    best; only the preview pane reuses the TV's components (§ 10).
 6. **Its own MCP so Claude can edit** panels and themes (2026-11-20;
-   corrected 2026-11-27: installing goes through RustTV's normal MCP,
-   `rusttv-mcp`, like everything else on the TV).
+   corrected 2026-11-27: the studio's MCP only edits; installing goes
+   the normal RustTV way, where `rusttv-mcp` gives the plan and a person
+   approves on the TV, § 12.6).
 7. **Our own predefined panels stay** (2026-11-20).
 8. **Themes** built in the same editor, installed like panels, picked in
    a **Themes panel on the TV** (2026-11-20).
@@ -828,22 +829,30 @@ What it settles:
   cancelled with the PIN or from the designated phone. After a reset the
   lock is off until a new PIN is set (§ 14, § 16 Q16).
 - **As built (step 2a, knobs slice, 2026-11-27)**: `meta.knobs` lists
-  up to 32 knobs `{name, type, label, group?, visible_if?, default}`;
-  `name` is `[a-z0-9-]{1,32}` and distinct; `label`, `group` and option
-  labels are message ids that must be in the default table with no
-  placeholders. Types so far: `toggle` (yes/no), `number` (`min` < `max`,
-  optional `step` > 0 and no wider than the range, default in range),
-  `choice` (2 to 32 `options` `{id, label}` with distinct ids; the value
-  is the id, as text), `color`, `text` (`max_length` 1…200, default 200;
-  the default may be empty). A field of another type is `NOT_FOR_KIND`.
-  Bindings read `{"knob": name}` with the knob's type; `visible_if` is a
-  yes/no expression over knobs declared before it (so no cycles) and no
-  sources. Text knobs are the only ones that aren't one-click. A stored
-  value the knob no longer accepts falls back to the default. Date, time,
+  up to 32 knobs `{name, type, label, group?, visible_if?, default}`
+  (each an object); `name` is `[a-z0-9-]{1,32}`, not starting or ending
+  with `-`, and distinct. `label`, `group` and option labels are message
+  ids that must be in the default table (a package with knobs needs one)
+  with no placeholders; messages inside `visible_if` must exist with the
+  placeholders they fill. Types so far: `toggle` (yes/no), `number`
+  (`min` < `max`; optional `step` > 0, no wider than the range and at
+  most 10 000 steps across it, only a hint for the editor; default in
+  range), `choice` (2 to 32 `options` `{id, label}` with distinct ids;
+  the value is the id, as text), `color`, `text` (`max_length` 1…200
+  characters, default 200; the default may be empty and keeps its spaces
+  at the ends, like text literals). `min`, `max`, `step`, `options` or
+  `max_length` on a knob of another type is `NOT_FOR_KIND`. Bindings read
+  `{"knob": name}` with the knob's type, and colours compare as colours;
+  `visible_if` is a yes/no expression over knobs declared before it (so
+  no cycles) and no sources. Of the types built so far, only text knobs
+  aren't one-click. `Knob::accepts` says whether a stored value still
+  fits (type, range, options, length), and `Knob::resolve` gives the
+  default for one that doesn't; the host stores values (4c). Date, time,
   duration, unit, time zone, icon, image, app and list knobs come with
   their slices (formatting, assets, app sources, `repeat`). Codes:
-  `BAD_KNOB` (empty range, step wider than it, fewer than two options, a
-  default that isn't an option), `UNKNOWN_KNOB`.
+  `BAD_KNOB` (an empty range; a step that is zero, negative, wider than
+  the range or finer than 10 000 steps; fewer than two options; a default
+  that isn't an option), `UNKNOWN_KNOB`.
 - **Knobs never switch surfaces**: a knob may switch a face's variants,
   but not turn on a surface or a banner declaration; that is placement,
   under the first-activation rule (§ 8.2).
@@ -1027,8 +1036,9 @@ Panels page says so elsewhere.
 - An update that drops a face, surface or knob that is in use lists it
   on the update review; its placement closes up, and schedules or named
   looks that name it show "unavailable" (like dangling references, § 7).
-- Knob values migrate by name across versions; a knob whose type changed
-  resets to its default, with a note on the update review.
+- Knob values migrate by name across versions; a value the knob no
+  longer accepts (new type, range, options or length) resets to its
+  default, with a note on the update review.
 
 ### 9.4 Themes on the TV
 
@@ -1408,7 +1418,8 @@ the measurement APK) starts with the owner's go-ahead in that session.
    (all answered 2026-11-24); Q12 before 4e; Q5 before step 7.
    - 2a `rusttv-panels`: types, validator, JSON Schema, expressions,
      message tables, zip reader, fuzz targets (no UI; meta, document and
-     message tables, expressions and the zip reader done 2026-11-24, knobs 2026-11-27); `rusttv panel
+     message tables, expressions and the zip reader done 2026-11-24,
+     knobs 2026-11-27); `rusttv panel
      pack` for people, so packages can be made and tested before the
      studio (unsigned until 4b). Until 4b a package reaches only the
      desktop launcher, or a debug-build TV loader that is compiled out of
