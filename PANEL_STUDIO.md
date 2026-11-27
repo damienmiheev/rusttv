@@ -9,7 +9,8 @@ starts with two spikes, not with the editor.
 
 **Panel Studio** is a desktop app for building RustTV **panels** and
 **themes** without code: a Figma-like canvas, an IntelliJ-like workspace,
-its own MCP server, and a way to install what you made on the TV (and,
+its own MCP server so Claude can edit panels and themes, and a way to
+install what you made on the TV (and,
 optionally, to see it live on the TV while you edit). It builds on
 PANELS.md: a panel is one feature with several **faces** (tile, row, page,
 corner, banner, idle screen…), and Panel Studio is where people make their
@@ -43,10 +44,11 @@ package can change (§ 4).
    studio doesn't have to use Slint** (2026-11-24: Slint was chosen for
    fast drawing on the TV). Its UI uses whatever fits a canvas and docking
    best; only the preview pane reuses the TV's components (§ 10).
-6. **Its own MCP** to edit panels and themes and install them on the TV
-   (2026-11-20).
+6. **Its own MCP so Claude can edit** panels and themes (2026-11-20;
+   corrected 2026-11-27: installing goes through RustTV's normal MCP,
+   `rusttv-mcp`, like everything else on the TV).
 7. **Our own predefined panels stay** (2026-11-20).
-8. **Themes** built in the same editor, installed over the MCP, picked in
+8. **Themes** built in the same editor, installed like panels, picked in
    a **Themes panel on the TV** (2026-11-20).
 9. **Live preview on the TV, as an option** (2026-11-20).
 10. **FigCraft's code may be reused** (MIT or Apache-2.0), notices kept
