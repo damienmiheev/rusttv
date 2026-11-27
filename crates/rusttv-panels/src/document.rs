@@ -634,6 +634,8 @@ impl<'a> Walk<'a> {
         if self.scope.in_a_repeat() {
             return fail(Code::NestedRepeat);
         }
+        // `check_node` already requires `max`; this repeats it so a later
+        // change there can't make a repeat count its children only once.
         let Some(max) = node.max else {
             return fail(Code::MissingProperty);
         };

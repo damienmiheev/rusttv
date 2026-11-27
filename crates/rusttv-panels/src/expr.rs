@@ -1324,6 +1324,42 @@ mod tests {
         );
     }
 
+    #[cfg(target_pointer_width = "64")]
+    #[test]
+    fn a_count_too_large_to_be_exact_gives_no_value() {
+        struct Huge;
+        impl Inputs for Huge {
+            fn source(&self, _: &str, _: &str) -> Option<Value> {
+                None
+            }
+            fn knob(&self, _: &str) -> Option<Value> {
+                None
+            }
+            fn item(&self, _: &str) -> Option<Value> {
+                None
+            }
+            fn count(&self, _: &str, field: &str) -> Option<usize> {
+                Some(if field == "list" {
+                    1 << 53
+                } else {
+                    (1 << 53) - 1
+                })
+            }
+            fn message(&self, _: &str, _: &[(&str, Arg<'_>)]) -> Option<String> {
+                None
+            }
+        }
+        let count = |path: &str| {
+            let json = format!(r#"{{"count": "{path}"}}"#);
+            eval(&expr(&json).unwrap(), &Huge, &mut 10)
+        };
+        assert_eq!(count("apps.list"), None);
+        assert_eq!(
+            count("apps.other"),
+            Some(Value::Number(((1_u64 << 53) - 1) as f64))
+        );
+    }
+
     #[test]
     fn knobs_are_read_by_name_and_type() {
         assert_eq!(
