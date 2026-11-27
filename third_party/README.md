@@ -80,6 +80,25 @@ Philips. Not reported upstream yet.
 **Removing it.** Once a Slint release fixes the leak, delete
 this directory and the `[patch.crates-io]` section, and re-measure.
 
+## Slint 1.18.1: less work per frame (Linux and the TV)
+
+`slint-frame-time.patch` (applied to `i-slint-renderer-skia-1.18.1/itemrenderer.rs`
+and `lib.rs`), from PR #78 (profiled by its author on an ARM projector,
+Cortex-A53 + Mali-G31):
+- an element faded out completely is not drawn (no offscreen layer for
+  it), and an opacity that rounds to full needs no layer;
+- a dirty region of several rectangles is repainted as its bounding box,
+  a scissor instead of a stencil clip;
+- after a frame whose changes cover 70% of the window, the next 3 frames
+  repaint everything without the dirty-region pass, and the frame after
+  them repaints everything too (the pass's item caches miss where items
+  were drawn while it was skipped).
+
+Checked on the Philips 2026-11-27, one quick round each of 24 D-pad
+presses along the Home row (main, patched, main): launcher CPU 11.68,
+11.31 and 11.75 s; no janky or late display frames in any round (one run
+each, raw traces not kept, so not a claim). Not reported upstream.
+
 ## reis 0.7.1: accept a libei client without a name
 
 `reis-0.7.1/` is the crates.io source of reis 0.7.1 (MIT, `LICENSE`),
