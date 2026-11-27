@@ -99,12 +99,19 @@ fn install(adb: &dyn Adb, file: &Path, target: &Target, json: bool) -> Result<()
     let size = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
     if !json {
         println!(
-            "Hash {}: compare it with the one the TV shows.",
+            "Fingerprint {}: compare it with the one the TV shows.",
             &sha256[..12]
         );
     }
-    stage(adb, &serial, bytes, size, &sha256)?;
-    journal(&serial, size, &sha256);
+    // Logged before and after, so an interrupted send is on record too.
+    journal(&serial, size, &sha256, "sending");
+    let staged = stage(adb, &serial, bytes, size, &sha256);
+    let outcome = match &staged {
+        Ok(()) => "staged",
+        Err(error) => error.code(),
+    };
+    journal(&serial, size, &sha256, outcome);
+    staged?;
     let staged = Staged {
         id: meta.id.as_str().to_owned(),
         version: meta.version.to_string(),
@@ -134,7 +141,7 @@ fn read_file(file: &Path) -> Result<Vec<u8>, CliError> {
     fs::File::open(file)
         .and_then(|handle| handle.take(StageAnnounce::MAX + 1).read_to_end(&mut bytes))
         .map_err(|error| invalid(format!("{}: {error}", file.display())))?;
-    if bytes.len() as u64 > StageAnnounce::MAX {
+    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > StageAnnounce::MAX {
         return Err(invalid(format!("{} is larger than 4 MiB", file.display())));
     }
     Ok(bytes)
@@ -166,7 +173,14 @@ fn stage(
         payload: InboxPayload::new(bytes),
     };
     let stdin = write.stdin().unwrap_or_default().to_vec();
-    adb.run_binary(serial, &write, &stdin)?;
+    // The TV refuses a write whose nonce expired or was replaced by failing
+    // the `content write` itself.
+    adb.run_binary(serial, &write, &stdin).map_err(|error| {
+        Failure::new(
+            "STAGING_EXPIRED",
+            format!("the TV refused the package's bytes ({error}); send it again"),
+        )
+    })?;
     answer(&adb.run(serial, &DeviceCommand::StageEnd(nonce))?)?;
     Ok(())
 }
@@ -201,9 +215,9 @@ fn answer(output: &str) -> Result<StageResult, CliError> {
     }
 }
 
-/// One line in this computer's staging log (device, size, SHA-256, time);
-/// a log that can't be written is only a warning.
-fn journal(serial: &str, size: u64, sha256: &str) {
+/// One line in this computer's staging log: time, device, size, SHA-256,
+/// what happened; a log that can't be written is only a warning.
+fn journal(serial: &str, size: u64, sha256: &str, outcome: &str) {
     let written = rusttv_core::state_dir()
         .map_err(|error| std::io::Error::other(error.to_string()))
         .and_then(|dir| {
@@ -215,7 +229,7 @@ fn journal(serial: &str, size: u64, sha256: &str) {
                 .create(true)
                 .append(true)
                 .open(dir.join("staging.log"))?
-                .write_all(format!("{seconds} {serial} {size} {sha256}\n").as_bytes())
+                .write_all(format!("{seconds} {serial} {size} {sha256} {outcome}\n").as_bytes())
         });
     if let Err(error) = written {
         output::print_note(&format!("warning: couldn't write the staging log: {error}"));

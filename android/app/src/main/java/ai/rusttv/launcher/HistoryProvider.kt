@@ -86,10 +86,16 @@ class HistoryProvider : ContentProvider() {
     /** The staging slot's folder (crates/rusttv-launcher/src/staging.rs). */
     private fun stagingDir(): String = File(appContext().filesDir, "staging").path
 
+    /** One `stage/<nonce>` write: its copy thread, the pipe's read end, a stop flag. */
+    private class Copy(val thread: Thread, val source: ParcelFileDescriptor) {
+        @Volatile var stopped = false
+    }
+
     /**
      * The write end of a pipe for `stage/<nonce>`: a thread copies at most
      * the announced size plus one byte into the slot's incoming file, so a
-     * larger stream is cut off and `stage end` refuses it.
+     * larger stream is cut off and `stage end` refuses it. Each nonce opens
+     * one write only (staging.rs), so a peer can't start many threads.
      */
     private fun stageWrite(nonce: String): ParcelFileDescriptor {
         require(NONCE.matches(nonce)) { "bad stage name" }
@@ -98,32 +104,63 @@ class HistoryProvider : ContentProvider() {
         val cap = target.substringAfter(' ', "").toLongOrNull()
         require(path.isNotEmpty() && cap != null) { "no staging for that name" }
         val pipe = ParcelFileDescriptor.createPipe()
-        val copy = Thread {
-            ParcelFileDescriptor.AutoCloseInputStream(pipe[0]).use { input ->
-                FileOutputStream(path).use { output ->
-                    val buffer = ByteArray(64 * 1024)
-                    var left = cap + 1
-                    while (left > 0) {
-                        val n = input.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
-                        if (n < 0) break
-                        output.write(buffer, 0, n)
-                        left -= n
+        try {
+            lateinit var copy: Copy
+            val thread = Thread {
+                // Any failure (storage full, the file gone) only ends this
+                // write: `stage end` then refuses the bytes. Never crash Home.
+                try {
+                    ParcelFileDescriptor.AutoCloseInputStream(pipe[0]).use { input ->
+                        FileOutputStream(path).use { output ->
+                            val buffer = ByteArray(64 * 1024)
+                            var left = cap + 1
+                            while (left > 0 && !copy.stopped) {
+                                val n = input.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
+                                if (n < 0 || copy.stopped) break
+                                output.write(buffer, 0, n)
+                                left -= n
+                            }
+                        }
                     }
+                } catch (_: Exception) {
                 }
             }
+            copy = Copy(thread, pipe[0])
+            copies[nonce] = copy
+            thread.start()
+            return pipe[1]
+        } catch (error: Exception) {
+            copies.remove(nonce)
+            pipe[0].close()
+            pipe[1].close()
+            throw error
         }
-        copies[nonce] = copy
-        copy.start()
-        return pipe[1]
+    }
+
+    /**
+     * Waits for the write of `nonce` to finish, then stops it for good, so
+     * no byte can land after `stage end` checks the file. False when it
+     * would not stop.
+     */
+    private fun stopCopy(nonce: String): Boolean {
+        val copy = copies.remove(nonce) ?: return true
+        copy.thread.join(COPY_WAIT_MS)
+        copy.stopped = true
+        try {
+            copy.source.close()
+        } catch (_: Exception) {
+        }
+        copy.thread.join(STOP_WAIT_MS)
+        return !copy.thread.isAlive
     }
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle {
         checkShell()
         History.load()
         if (method == "stage" && arg != null) {
-            // The copy must have finished before the bytes are checked.
-            if (arg.startsWith("end:")) {
-                copies.remove(arg.substringAfter(':'))?.join(COPY_WAIT_MS)
+            // The copy must have stopped before the bytes are checked.
+            if (arg.startsWith("end:") && !stopCopy(arg.substringAfter(':'))) {
+                return Bundle().apply { putString("rusttv", "rusttv-stage 1 error STAGING_STORAGE") }
             }
             val result = History.nativeStage(stagingDir(), arg, History.bootCount(appContext()), History.elapsedMs())
             return Bundle().apply { putString("rusttv", result) }
@@ -212,7 +249,9 @@ class HistoryProvider : ContentProvider() {
         const val MAX_INBOX_BYTES = 64L * 1024 * 1024 + 4096
         /** How long `stage end` waits for the bytes still in the pipe. */
         const val COPY_WAIT_MS = 10_000L
+        /** How long a stopped copy may take to notice. */
+        const val STOP_WAIT_MS = 2_000L
         /** The copy threads of stage writes, by nonce. */
-        val copies = ConcurrentHashMap<String, Thread>()
+        val copies = ConcurrentHashMap<String, Copy>()
     }
 }

@@ -210,6 +210,8 @@ struct Pending {
     size: u64,
     sha256: String,
     at: Moment,
+    /// Its one write has started.
+    written: bool,
 }
 
 impl Slot {
@@ -224,12 +226,22 @@ impl Slot {
         let Ok(_guard) = LOCK.lock() else {
             return StageResult::error("STAGING_STORAGE");
         };
-        let result = match StageArg::parse(arg) {
-            Err(_) => Err("STAGING_INVALID"),
-            Ok(StageArg::Begin { size, sha256 }) => self
-                .begin(size, sha256, nonce, at)
-                .map(|()| Some(nonce.to_owned())),
-            Ok(StageArg::End { nonce }) => self.end(nonce, at).map(|()| None),
+        let result = if at.boot == 0 {
+            // No boot count: a reboot couldn't be told apart (rule 2).
+            Err("STAGING_STORAGE")
+        } else if arg.starts_with("begin:") {
+            // Every begin counts, malformed and failed ones too (rule 3).
+            self.count(at).and_then(|()| match StageArg::parse(arg) {
+                Ok(StageArg::Begin { size, sha256 }) => self
+                    .begin(size, sha256, nonce, at)
+                    .map(|()| Some(nonce.to_owned())),
+                _ => Err("STAGING_INVALID"),
+            })
+        } else {
+            match StageArg::parse(arg) {
+                Ok(StageArg::End { nonce }) => self.end(nonce, at).map(|()| None),
+                _ => Err("STAGING_INVALID"),
+            }
         };
         match result {
             Ok(nonce) => StageResult::ok(nonce),
@@ -238,32 +250,47 @@ impl Slot {
     }
 
     /// Where the bytes for `nonce` go, and at most how many: only for the
-    /// latest `begin`, within its 60 s.
+    /// latest `begin`, within its 60 s, and only once.
     pub fn incoming(&self, nonce: &str, at: Moment) -> Option<(PathBuf, u64)> {
         let _guard = LOCK.lock().ok()?;
         let pending = self.pending(at)?;
-        (pending.nonce == nonce && at.ms.saturating_sub(pending.at.ms) <= NONCE_MS)
-            .then(|| (self.incoming_path(nonce), pending.size))
+        if pending.nonce != nonce || pending.written {
+            return None;
+        }
+        let line = format!(
+            "{} {} {} {} {} written\n",
+            pending.nonce, pending.size, pending.sha256, pending.at.boot, pending.at.ms
+        );
+        write_atomic(&self.dir.join("pending"), line.as_bytes()).ok()?;
+        Some((self.incoming_path(nonce), pending.size))
     }
 
     /// The package waiting, if any; an expired one is deleted.
     pub fn waiting(&self, at: Moment) -> Option<Waiting> {
         let _guard = LOCK.lock().ok()?;
-        let meta = fs::read_to_string(self.dir.join("slot.meta")).ok()?;
+        let meta = fs::read_to_string(self.dir.join("slot.meta")).unwrap_or_default();
         let fields: Vec<&str> = meta.split_whitespace().collect();
         let parsed = match fields.as_slice() {
-            [size, sha256, boot, ms] => Some((
-                size.parse::<u64>().ok()?,
-                (*sha256).to_owned(),
-                Moment {
-                    boot: boot.parse().ok()?,
-                    ms: ms.parse().ok()?,
-                },
-            )),
+            [size, sha256, boot, ms] => size.parse::<u64>().ok().and_then(|size| {
+                Some((
+                    size,
+                    (*sha256).to_owned(),
+                    Moment {
+                        boot: boot.parse().ok()?,
+                        ms: ms.parse().ok()?,
+                    },
+                ))
+            }),
             _ => None,
         };
+        // The slot's bytes must be the ones the meta describes.
+        let on_disk = fs::metadata(self.dir.join("slot"))
+            .map(|meta| meta.len())
+            .ok();
         match parsed {
-            Some((size, sha256, staged)) if fresh(staged, at, SLOT_MS) => {
+            Some((size, sha256, staged))
+                if at.boot != 0 && fresh(staged, at, SLOT_MS) && on_disk == Some(size) =>
+            {
                 Some(Waiting { size, sha256 })
             }
             _ => {
@@ -273,12 +300,9 @@ impl Slot {
         }
     }
 
-    fn begin(&self, size: u64, sha256: &str, nonce: &str, at: Moment) -> Result<(), &'static str> {
-        if size > MAX_STAGED {
-            return Err("STAGING_TOO_BIG");
-        }
+    /// Counts a begin; refuses past [`PER_HOUR`] in the last hour.
+    fn count(&self, at: Moment) -> Result<(), &'static str> {
         fs::create_dir_all(&self.dir).map_err(|_| "STAGING_STORAGE")?;
-        // Every begin counts, failed ones too (rule 3).
         let mut times = self.rate(at);
         if times.len() >= PER_HOUR {
             return Err("STAGING_BUSY");
@@ -288,10 +312,19 @@ impl Slot {
             .iter()
             .map(|ms| format!("{} {ms}\n", at.boot))
             .collect();
-        write_atomic(&self.dir.join("rate"), rate.as_bytes()).map_err(|_| "STAGING_STORAGE")?;
-        // A newer begin replaces an unfinished one.
-        if let Some(old) = self.pending(at) {
-            let _ = fs::remove_file(self.incoming_path(&old.nonce));
+        write_atomic(&self.dir.join("rate"), rate.as_bytes()).map_err(|_| "STAGING_STORAGE")
+    }
+
+    fn begin(&self, size: u64, sha256: &str, nonce: &str, at: Moment) -> Result<(), &'static str> {
+        // A newer begin replaces an unfinished one, and no stray incoming
+        // file outlives it.
+        let _ = fs::remove_file(self.dir.join("pending"));
+        if let Ok(entries) = fs::read_dir(&self.dir) {
+            for entry in entries.flatten() {
+                if entry.file_name().to_string_lossy().starts_with("incoming-") {
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
         }
         let line = format!("{nonce} {size} {sha256} {} {}\n", at.boot, at.ms);
         write_atomic(&self.dir.join("pending"), line.as_bytes()).map_err(|_| "STAGING_STORAGE")
@@ -307,15 +340,24 @@ impl Slot {
         let checked = hash_file(&incoming, pending.size);
         let result = match checked {
             Ok(Some((size, sha256))) if size == pending.size && sha256 == pending.sha256 => {
-                // The slot is replaced in one rename, in the same folder, only
-                // now that the bytes match (rule 2).
+                // Only now that the bytes match is the slot replaced (rule 2):
+                // its meta goes first, so a slot without a matching meta is
+                // never shown, then the bytes in one rename in the same
+                // folder, then the new meta.
                 let meta = format!("{size} {sha256} {} {}\n", at.boot, at.ms);
-                fs::rename(&incoming, self.dir.join("slot"))
-                    .and_then(|()| write_atomic(&self.dir.join("slot.meta"), meta.as_bytes()))
+                let tmp = self.dir.join("slot.meta.new");
+                fs::write(&tmp, meta.as_bytes())
+                    .and_then(|()| {
+                        let _ = fs::remove_file(self.dir.join("slot.meta"));
+                        fs::rename(&incoming, self.dir.join("slot"))
+                    })
+                    .and_then(|()| fs::rename(&tmp, self.dir.join("slot.meta")))
                     .map_err(|_| "STAGING_STORAGE")
             }
             Ok(None) => Err("STAGING_TOO_BIG"),
             Ok(Some(_)) => Err("STAGING_MISMATCH"),
+            // Nothing was written.
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Err("STAGING_MISMATCH"),
             Err(_) => Err("STAGING_STORAGE"),
         };
         let _ = fs::remove_file(&incoming);
@@ -326,16 +368,23 @@ impl Slot {
     fn pending(&self, at: Moment) -> Option<Pending> {
         let text = fs::read_to_string(self.dir.join("pending")).ok()?;
         let fields: Vec<&str> = text.split_whitespace().collect();
-        let pending = match fields.as_slice() {
-            [nonce, size, sha256, boot, ms] => Some(Pending {
-                nonce: (*nonce).to_owned(),
+        let parse = |nonce: &str, size: &str, sha256: &str, boot: &str, ms: &str, written| {
+            Some(Pending {
+                nonce: nonce.to_owned(),
                 size: size.parse().ok()?,
-                sha256: (*sha256).to_owned(),
+                sha256: sha256.to_owned(),
                 at: Moment {
                     boot: boot.parse().ok()?,
                     ms: ms.parse().ok()?,
                 },
-            }),
+                written,
+            })
+        };
+        let pending = match fields.as_slice() {
+            [nonce, size, sha256, boot, ms] => parse(nonce, size, sha256, boot, ms, false),
+            [nonce, size, sha256, boot, ms, "written"] => {
+                parse(nonce, size, sha256, boot, ms, true)
+            }
             _ => None,
         };
         match pending {
@@ -636,5 +685,89 @@ mod slot_tests {
             StageResult::error("STAGING_INVALID")
         );
         assert!(staging.waiting(at(1)).is_none());
+    }
+
+    #[test]
+    fn a_nonce_opens_one_write_only() {
+        let dir = TempDir::new("one-write");
+        let staging = Slot::new(&dir.0);
+        begin(&staging, b"abc", NONCE, 1_000);
+        assert!(staging.incoming(NONCE, at(1_000)).is_some());
+        assert!(
+            staging.incoming(NONCE, at(1_001)).is_none(),
+            "a second write"
+        );
+    }
+
+    #[test]
+    fn an_end_with_nothing_written_is_a_mismatch() {
+        let dir = TempDir::new("nothing");
+        let staging = Slot::new(&dir.0);
+        begin(&staging, b"abc", NONCE, 1_000);
+        assert_eq!(
+            end(&staging, NONCE, 1_000),
+            StageResult::error("STAGING_MISMATCH")
+        );
+    }
+
+    #[test]
+    fn a_begin_clears_stray_incoming_files() {
+        let dir = TempDir::new("stray");
+        let staging = Slot::new(&dir.0);
+        begin(&staging, b"abc", NONCE, 1_000);
+        let (path, _) = staging.incoming(NONCE, at(1_000)).unwrap();
+        fs::write(&path, b"ab").unwrap();
+        begin(&staging, b"abc", "1111111111111111", 2_000);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn malformed_begins_count_toward_the_limit() {
+        let dir = TempDir::new("rate-bad");
+        let staging = Slot::new(&dir.0);
+        for n in 0..PER_HOUR as u64 {
+            assert_eq!(
+                staging.call("begin:x:y", NONCE, at(1_000 + n)),
+                StageResult::error("STAGING_INVALID")
+            );
+        }
+        assert_eq!(
+            begin(&staging, b"abc", NONCE, 2_000),
+            StageResult::error("STAGING_BUSY")
+        );
+    }
+
+    #[test]
+    fn without_a_boot_count_nothing_is_staged() {
+        let dir = TempDir::new("no-boot");
+        let staging = Slot::new(&dir.0);
+        let zero = Moment { boot: 0, ms: 5 };
+        let arg = StageArg::Begin {
+            size: 3,
+            sha256: &sha(b"abc"),
+        };
+        assert_eq!(
+            staging.call(&arg.encode(), NONCE, zero),
+            StageResult::error("STAGING_STORAGE")
+        );
+        assert!(staging.waiting(zero).is_none());
+    }
+
+    #[test]
+    fn a_slot_whose_meta_does_not_match_is_dropped() {
+        let dir = TempDir::new("bad-meta");
+        let staging = Slot::new(&dir.0);
+        begin(&staging, b"abc", NONCE, 1_000);
+        write(&staging, NONCE, b"abc", 1_000);
+        end(&staging, NONCE, 1_000);
+        fs::write(dir.0.join("slot.meta"), "x y 7 1000\n").unwrap();
+        assert!(staging.waiting(at(2_000)).is_none());
+        assert!(!dir.0.join("slot").exists());
+        // Bytes without their meta are never shown either.
+        begin(&staging, b"abc", "1111111111111111", 3_000);
+        write(&staging, "1111111111111111", b"abc", 3_000);
+        end(&staging, "1111111111111111", 3_000);
+        fs::write(dir.0.join("slot"), b"abcd").unwrap();
+        assert!(staging.waiting(at(4_000)).is_none());
     }
 }

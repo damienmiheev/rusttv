@@ -596,9 +596,9 @@ msgid "A package from adb (identity unknown)"
 msgstr "Пакет через adb (відправник невідомий)"
 
 #: ui/home.slint
-msgid "{} KB · hash {}"
-msgstr "{} КБ · хеш {}"
+msgid "{} KB · fingerprint {}"
+msgstr "{} КБ · відбиток {}"
 
 #: ui/home.slint
-msgid "Compare the hash with the one your computer printed. Installing it from the TV comes in a later RustTV version."
-msgstr "Порівняйте хеш із тим, що показав комп’ютер. Встановлення прямо з телевізора з’явиться в одній із наступних версій RustTV."
+msgid "Compare the fingerprint with the one your computer printed. Installing it from the TV comes in a later RustTV version."
+msgstr "Порівняйте відбиток із тим, що показав комп’ютер. Встановлення прямо з телевізора з’явиться в одній із наступних версій RustTV."

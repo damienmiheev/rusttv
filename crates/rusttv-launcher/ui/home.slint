@@ -310,10 +310,10 @@ export global Strings {
         return @tr("A package from adb (identity unknown)");
     }
     public pure function staged-detail(kilobytes: string, hash: string) -> string {
-        return @tr("{} KB · hash {}", kilobytes, hash);
+        return @tr("{} KB · fingerprint {}", kilobytes, hash);
     }
     public pure function staged-note() -> string {
-        return @tr("Compare the hash with the one your computer printed. Installing it from the TV comes in a later RustTV version.");
+        return @tr("Compare the fingerprint with the one your computer printed. Installing it from the TV comes in a later RustTV version.");
     }
     public pure function history-empty() -> string {
         return @tr("No changes yet. Changes made here or from your computer appear here.");
