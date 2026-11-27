@@ -5815,8 +5815,10 @@ mod tests {
         screen.tap(UP);
         screen.tap(OK); // Faster
         assert_eq!(screen.window.get_mode(), 7, "the review screen opens");
-        // A header and the three scales, then Approve (no code).
+        // A header and the three scales, then Approve (no code), on a
+        // secure window all the same: it also hides other apps' overlays.
         assert_eq!(screen.window.get_review_lines().row_count(), 4);
+        assert!(screen.shared.platform.borrow().secure());
         for _ in 0..4 {
             screen.tap(DOWN);
         }

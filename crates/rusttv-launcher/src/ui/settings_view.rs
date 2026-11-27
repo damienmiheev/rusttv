@@ -303,6 +303,8 @@ impl Controller {
         }
     }
 
+    /// Opens the review screen for `draft`; [`needs_code`] says whether
+    /// it asks for the code after Approve.
     fn open_review(&mut self, draft: Draft) {
         let Some(page) = &self.settings else {
             return;
@@ -312,15 +314,8 @@ impl Controller {
             self.settings_status = (status::TEST_BUILD, String::new());
             return;
         }
-        // Package changes go on to the computer, which carries them out
-        // because a person approved them here: only the code shown on a
-        // FLAG_SECURE screen proves that (SECURITY.md § Approval on the
-        // TV), so they still ask for it. Otherwise Approve confirms.
-        let has_packages = draft
-            .changes
-            .iter()
-            .any(|change| matches!(change, ApprovedChange::Package { .. }));
-        if has_packages && overview.locked_ms > 0 {
+        let needs_code = needs_code(&draft.changes, overview.can_write_settings);
+        if needs_code && overview.locked_ms > 0 {
             self.settings_status = (status::LOCKED, self.duration_text(overview.locked_ms));
             return;
         }
@@ -328,7 +323,7 @@ impl Controller {
             return;
         };
         let lines = self.review_lines_for(&window, &draft, overview);
-        let code = has_packages.then(|| self.platform.random_code().map(Arrow::from_random));
+        let code = needs_code.then(|| self.platform.random_code().map(Arrow::from_random));
         let count = lines.len();
         self.review_lines.set_vec(lines);
         self.review_code.set_vec(
@@ -337,8 +332,10 @@ impl Controller {
                 .map(|arrow| arrow_value(*arrow))
                 .collect::<Vec<_>>(),
         );
-        // Secure before the code can ever be drawn (it appears after Approve).
-        self.platform.set_secure(code.is_some());
+        // Secure before the code can ever be drawn (it appears after
+        // Approve), and for every review: it also hides other apps'
+        // overlays, so what is approved is what the person sees.
+        self.platform.set_secure(true);
         self.review = Some(Review::new(draft, count, code, (self.clock)()));
         self.settings_status = (status::NONE, String::new());
     }
@@ -1080,6 +1077,19 @@ fn format_time(local_unix: i64) -> String {
     )
 }
 
+/// Whether approving `changes` on the TV needs the 4-arrow code and hold
+/// (SECURITY.md § Approval on the TV). Changes the launcher can't make
+/// itself (packages; settings without `WRITE_SECURE_SETTINGS`) go on to
+/// the computer, which carries them out because a person approved them
+/// here, and only the code shown on a `FLAG_SECURE` screen proves that.
+/// Everything else takes a plain Approve (owner decision 2026-11-24).
+fn needs_code(changes: &[ApprovedChange], can_write_settings: bool) -> bool {
+    changes.iter().any(|change| match change {
+        ApprovedChange::Package { .. } => true,
+        ApprovedChange::Setting { .. } => !can_write_settings,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1096,5 +1106,37 @@ mod tests {
         assert!(is_bidi_control('\u{202E}'));
         assert!(is_bidi_control('\u{2067}'));
         assert!(!is_bidi_control('a'));
+    }
+}
+
+#[cfg(test)]
+mod code_tests {
+    use super::*;
+
+    fn setting() -> ApprovedChange {
+        ApprovedChange::Setting {
+            key: "animator_duration_scale".into(),
+            old: None,
+            new: Some("0.5".into()),
+        }
+    }
+
+    fn package() -> ApprovedChange {
+        ApprovedChange::Package {
+            name: "com.example.app".into(),
+            old: None,
+            new: rusttv_history::PackageState::Disabled,
+        }
+    }
+
+    #[test]
+    fn only_changes_for_the_computer_need_the_code() {
+        // A launcher-only restore, and settings the launcher writes itself.
+        assert!(!needs_code(&[], true));
+        assert!(!needs_code(&[setting()], true));
+        // Packages always go to the computer; settings do without the grant.
+        assert!(needs_code(&[package()], true));
+        assert!(needs_code(&[setting(), package()], true));
+        assert!(needs_code(&[setting()], false));
     }
 }
