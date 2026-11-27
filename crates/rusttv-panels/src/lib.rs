@@ -69,7 +69,7 @@ mod plural;
 mod text;
 mod zip;
 
-pub use archive::{Asset, AssetMode, AssetVariant, Contents, Source, read_package};
+pub use archive::{Asset, AssetMode, AssetVariant, Contents, MAX_SOURCES, Source, read_package};
 pub use document::{
     Align, AssetName, Bindings, Color, Direction, Document, Fit, Node, NodeId, NodeKind, Shadow,
     SizeClass, Stroke, Variant, features,

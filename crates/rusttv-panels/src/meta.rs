@@ -392,7 +392,9 @@ pub struct Meta {
     pub actions: List<Name>,
     /// The settings it offers (§ 7).
     pub knobs: Vec<Knob>,
-    /// How it is drawn; only a theme may be `code`.
+    /// How it is drawn; only a theme may be `code`. [`crate::parse_package`]
+    /// reads only `package.json`, so the `code/` files a `code` theme needs
+    /// are checked by [`crate::read_package`].
     pub runtime: Runtime,
 }
 

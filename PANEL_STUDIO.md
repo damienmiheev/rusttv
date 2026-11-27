@@ -330,9 +330,16 @@ thumbnail.png         for the studio and the Panels page (never on locked surfac
   `meta.runtime`). `code/<name>.slint` and `scripts/<name>.rhai` (names
   like images, each at most 256 KiB) are read only in a `runtime: code`
   theme (elsewhere `NOT_FOR_KIND`), which must have `code/home.slint`
-  (`MISSING_FILE`). Each must be UTF-8 with no NUL and no bidi controls
-  (`BAD_SOURCE`), so code can't read differently from what it does.
-  Nothing interprets them yet (T5).
+  (`MISSING_FILE` at `code/home.slint`); a panel or data theme with them
+  gets `NOT_FOR_KIND` before their content is read. Each must be UTF-8
+  with no control character but tab and line breaks and no invisible or
+  direction-changing character (`BAD_SOURCE`), so the code shown on review
+  is the code that runs; all of them together are at most 1 MiB
+  (`TOO_LARGE`). `parse_package` reads only `package.json`; the zip reader
+  checks the files. The field and code are additive while format 2 is
+  unreleased (no launcher reads packages yet); a code theme sets
+  `min_launcher` to the first launcher with T5. Nothing interprets them
+  yet (T5).
 - **As built (step 2a, zip slice, 2026-11-24)**: our own strict reader
   of the central directory (the `zip` crate is lenient about exactly what
   this list forbids); inflate by `miniz_oxide` and CRCs by `crc32fast`,

@@ -177,9 +177,10 @@ codes! {
     MissingAsset => "MISSING_ASSET",
     /// An image that isn't a PNG.
     BadImage => "BAD_IMAGE",
-    /// A `code/` or `scripts/` file that isn't UTF-8 text, or holds a NUL
-    /// or a bidi control (which can make code read differently from what it
-    /// does).
+    /// A `code/` or `scripts/` file that isn't UTF-8 text, or holds a
+    /// control character (other than tab and line breaks) or an invisible
+    /// or direction-changing one, which could make the code shown on review
+    /// differ from what runs.
     BadSource => "BAD_SOURCE",
 }
 

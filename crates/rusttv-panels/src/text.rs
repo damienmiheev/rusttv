@@ -75,7 +75,7 @@ pub(crate) fn clean_keeping_ends(text: &str) -> String {
 }
 
 /// Characters that never reach the screen.
-fn removed(c: char) -> bool {
+pub(crate) fn removed(c: char) -> bool {
     c.is_control()
         || matches!(c,
             '\u{00AD}'                  // soft hyphen
