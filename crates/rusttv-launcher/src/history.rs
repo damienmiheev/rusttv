@@ -7,7 +7,7 @@
 //! launcher is off screen, and stops when it comes back (HISTORY.md § 9).
 
 use rusttv_history::stage::{Moment, Slot};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -60,6 +60,7 @@ enum Job {
     Apply(Draft, Reply<Result<ApplyOutcome, Refused>>),
     WrongCode(Reply<u64>),
     CorrectCode,
+    Now(Reply<Moment>),
     #[cfg_attr(
         not(target_os = "android"),
         expect(dead_code, reason = "the door is the Android provider")
@@ -91,6 +92,8 @@ pub(crate) struct History {
     launcher_changed: Arc<AtomicBool>,
     /// History's tile data, once the thread has read it ([`Summary`]).
     summary: Arc<Mutex<Option<Summary>>>,
+    /// The launcher's files directory (the staging slot is under it).
+    root: PathBuf,
 }
 
 static GLOBAL: OnceLock<History> = OnceLock::new();
@@ -109,6 +112,12 @@ impl History {
 
     /// Starts a history thread (the process's own goes through [`Self::global`]).
     pub fn start(platform: Box<dyn HistoryPlatform>) -> Self {
+        let root = platform.root();
+        // Once per process, before any check can start (they need this
+        // handle): a review lives only in memory, and a crash marker means
+        // the launcher died checking that package (SECURITY.md "Packages:
+        // staging and install" rule 5).
+        Slot::new(root.join("staging")).after_start();
         let (jobs, receiver) = mpsc::channel();
         let history = Self {
             jobs,
@@ -116,6 +125,7 @@ impl History {
             interrupt: Arc::default(),
             launcher_changed: Arc::default(),
             summary: Arc::default(),
+            root,
         };
         let shared = history.clone();
         let spawned = thread::Builder::new()
@@ -152,6 +162,16 @@ impl History {
     /// The launcher is back on screen: stop packing.
     pub fn resumed(&self) {
         self.interrupt.store(true, Ordering::SeqCst);
+    }
+
+    /// The TV's boot and uptime now, from the history thread's clock.
+    pub fn now(&self) -> Option<Moment> {
+        self.ask(Job::Now)
+    }
+
+    /// The launcher's files directory.
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 
     /// Whether a TV change is in progress.
@@ -313,7 +333,9 @@ fn run(history: &mut TvHistory, job: Job, platform: &mut dyn HistoryPlatform, sh
                 boot: clock.boot_count(),
                 ms: clock.elapsed_ms(),
             };
-            overview.staged = Slot::new(staging).waiting(now);
+            let slot = Slot::new(staging);
+            overview.staged = slot.waiting(now);
+            overview.quarantined = slot.quarantined();
             if overview.error.is_none() {
                 shared.set_summary(Summary {
                     last_unix: overview.entries.first().map(|entry| entry.time_unix),
@@ -332,6 +354,8 @@ fn run(history: &mut TvHistory, job: Job, platform: &mut dyn HistoryPlatform, sh
                     code: "TEST_BUILD",
                     message: "approvals are off in test builds".to_owned(),
                 })
+            } else if let Some(theme) = &draft.theme {
+                history.install(&theme.install, device, clock, &new_id)
             } else {
                 history.apply(
                     &draft.changes,
@@ -349,6 +373,12 @@ fn run(history: &mut TvHistory, job: Job, platform: &mut dyn HistoryPlatform, sh
         }
         Job::WrongCode(reply) => {
             let _ = reply.send(history.wrong_code(clock).unwrap_or(0));
+        }
+        Job::Now(reply) => {
+            let _ = reply.send(Moment {
+                boot: clock.boot_count(),
+                ms: clock.elapsed_ms(),
+            });
         }
         Job::CorrectCode => {
             if let Err(error) = history.correct_code() {
@@ -411,6 +441,10 @@ fn reply_failed(job: Job, message: &str) {
         Job::WrongCode(reply) => {
             let _ = reply.send(0);
         }
+        // Without a history there is no slot to check either.
+        Job::Now(reply) => {
+            let _ = reply.send(Moment { boot: 0, ms: 0 });
+        }
         Job::Export(_, reply) => {
             let _ = reply.send(Err(refused()));
         }
@@ -450,6 +484,7 @@ fn overview(
             test_build,
             error: None,
             staged: None,
+            quarantined: false,
         })
     };
     read().unwrap_or_else(|error| Overview {
@@ -669,6 +704,7 @@ mod tests {
                 new: Some("0.5".into()),
             }],
             launcher: None,
+            theme: None,
         };
         assert!(matches!(
             history.apply(draft),
@@ -721,6 +757,7 @@ mod tests {
                 new: Some("0.5".into()),
             }],
             launcher: None,
+            theme: None,
         };
         assert!(matches!(
             history.apply(draft),
@@ -743,6 +780,7 @@ mod tests {
         let draft = Draft {
             changes: Vec::new(),
             launcher: Some(Launcher::default()),
+            theme: None,
         };
         assert_eq!(history.apply(draft).unwrap_err().code, "TEST_BUILD");
         assert!(history.overview().test_build);

@@ -596,5 +596,121 @@ msgid "{} KB · fingerprint {}"
 msgstr "{} KB · parmak izi {}"
 
 #: ui/home.slint
-msgid "Compare the fingerprint with the one your computer printed. Installing it from the TV comes in a later RustTV version."
-msgstr "Parmak izini bilgisayarınızın gösterdiğiyle karşılaştırın. TV’den kurulum, RustTV’nin sonraki bir sürümünde gelecek."
+msgid "Compare the fingerprint with the one your computer printed, then press OK to review it."
+msgstr "Parmak izini bilgisayarınızın yazdırdığıyla karşılaştırın, sonra incelemek için OK'e basın."
+
+#: ui/home.slint
+msgid "A package was deleted"
+msgstr "Bir paket silindi"
+
+#: ui/home.slint
+msgid "A theme that runs no code"
+msgstr "Kod çalıştırmayan bir tema"
+
+#: ui/home.slint
+msgid "Checking it stopped RustTV. Send it again to try once more."
+msgstr "Kontrol RustTV'yi durdurdu. Tekrar denemek için yeniden gönderin."
+
+#: ui/home.slint
+msgid "Checking the package…"
+msgstr "Paket kontrol ediliyor…"
+
+#: ui/home.slint
+msgid "Compare the fingerprint with the one your computer printed."
+msgstr "Parmak izini bilgisayarınızın yazdırdığıyla karşılaştırın."
+
+#: ui/home.slint
+msgid "Id: {}"
+msgstr "Id: {}"
+
+#: ui/home.slint
+msgid "Install this theme"
+msgstr "Bu temayı yükle"
+
+#: ui/home.slint
+msgid "Installed the theme {} {}"
+msgstr "{} {} teması yüklendi"
+
+#: ui/home.slint
+msgid "Installed themes don't change Home yet; that comes in a later RustTV version."
+msgstr "Yüklenen temalar Ana ekranı henüz değiştirmiyor; bu, RustTV'nin sonraki bir sürümünde gelecek."
+
+#: ui/home.slint
+msgid "Installed. Installed themes don't change Home yet."
+msgstr "Yüklendi. Yüklenen temalar Ana ekranı henüz değiştirmiyor."
+
+#: ui/home.slint
+msgid "Not installed: a different package with this version is installed. Its version must be higher."
+msgstr "Yüklenmedi: bu sürümde başka bir paket yüklü. Sürüm daha yüksek olmalı."
+
+#: ui/home.slint
+msgid "Not installed: a newer version of this theme is installed."
+msgstr "Yüklenmedi: bu temanın daha yeni bir sürümü yüklü."
+
+#: ui/home.slint
+msgid "Not installed: another package or a built-in tile has this name."
+msgstr "Yüklenmedi: başka bir paket veya yerleşik bir kutucuk bu adı kullanıyor."
+
+#: ui/home.slint
+msgid "Not installed: checking the package took too long."
+msgstr "Yüklenmedi: paketin kontrolü çok uzun sürdü."
+
+#: ui/home.slint
+msgid "Not installed: the package couldn't be read. Send it again."
+msgstr "Yüklenmedi: paket okunamadı. Yeniden gönderin."
+
+#: ui/home.slint
+msgid "Not installed: the package is broken ({}). It was deleted."
+msgstr "Yüklenmedi: paket bozuk ({}). Silindi."
+
+#: ui/home.slint
+msgid "Not installed: the package needs a newer RustTV. It was deleted."
+msgstr "Yüklenmedi: paket daha yeni bir RustTV gerektiriyor. Silindi."
+
+#: ui/home.slint
+msgid "Not installed: themes that run code can't be installed yet."
+msgstr "Yüklenmedi: kod çalıştıran temalar henüz yüklenemiyor."
+
+#: ui/home.slint
+msgid "Not installed: there is no room for more packages."
+msgstr "Yüklenmedi: daha fazla paket için yer yok."
+
+#: ui/home.slint
+msgid "Not installed: this package isn't a theme. It was deleted."
+msgstr "Yüklenmedi: bu paket bir tema değil. Silindi."
+
+#: ui/home.slint
+msgid "Nothing changed: the package or the installed ones changed during the review."
+msgstr "Hiçbir şey değişmedi: paket veya yüklü olanlar inceleme sırasında değişti."
+
+#: ui/home.slint
+msgid "Origin unknown: the package isn't signed"
+msgstr "Kaynak bilinmiyor: paket imzalı değil"
+
+#: ui/home.slint
+msgid "Removed the theme {}"
+msgstr "{} teması kaldırıldı"
+
+#: ui/home.slint
+msgid "This theme is already installed."
+msgstr "Bu tema zaten yüklü."
+
+#: ui/home.slint
+msgid "Update this theme"
+msgstr "Bu temayı güncelle"
+
+#: ui/home.slint
+msgid "Updated the theme {} to {}"
+msgstr "{} teması {} sürümüne güncellendi"
+
+#: ui/home.slint
+msgid "Version: {}"
+msgstr "Sürüm: {}"
+
+#: ui/home.slint
+msgid "Version: {} → {}"
+msgstr "Sürüm: {} → {}"
+
+#: ui/home.slint
+msgid "{} (name unverified)"
+msgstr "{} (ad doğrulanmadı)"

@@ -592,5 +592,121 @@ msgid "{} KB · fingerprint {}"
 msgstr "{} KB · 指紋 {}"
 
 #: ui/home.slint
-msgid "Compare the fingerprint with the one your computer printed. Installing it from the TV comes in a later RustTV version."
-msgstr "請與電腦上顯示的指紋比對。從電視上安裝將在 RustTV 的後續版本中提供。"
+msgid "Compare the fingerprint with the one your computer printed, then press OK to review it."
+msgstr "請將指紋與電腦列印的指紋比對，然後按 OK 鍵檢視。"
+
+#: ui/home.slint
+msgid "A package was deleted"
+msgstr "一個套件已被刪除"
+
+#: ui/home.slint
+msgid "A theme that runs no code"
+msgstr "不執行程式碼的主題"
+
+#: ui/home.slint
+msgid "Checking it stopped RustTV. Send it again to try once more."
+msgstr "檢查導致 RustTV 停止運作。請重新傳送以再試一次。"
+
+#: ui/home.slint
+msgid "Checking the package…"
+msgstr "正在檢查套件…"
+
+#: ui/home.slint
+msgid "Compare the fingerprint with the one your computer printed."
+msgstr "請將指紋與電腦列印的指紋比對。"
+
+#: ui/home.slint
+msgid "Id: {}"
+msgstr "Id：{}"
+
+#: ui/home.slint
+msgid "Install this theme"
+msgstr "安裝此主題"
+
+#: ui/home.slint
+msgid "Installed the theme {} {}"
+msgstr "已安裝主題 {} {}"
+
+#: ui/home.slint
+msgid "Installed themes don't change Home yet; that comes in a later RustTV version."
+msgstr "已安裝的主題暫不改變主畫面；這將在 RustTV 的後續版本中實現。"
+
+#: ui/home.slint
+msgid "Installed. Installed themes don't change Home yet."
+msgstr "已安裝。已安裝的主題暫不改變主畫面。"
+
+#: ui/home.slint
+msgid "Not installed: a different package with this version is installed. Its version must be higher."
+msgstr "未安裝：已安裝另一個相同版本的套件。版本號必須更高。"
+
+#: ui/home.slint
+msgid "Not installed: a newer version of this theme is installed."
+msgstr "未安裝：已安裝此主題的較新版本。"
+
+#: ui/home.slint
+msgid "Not installed: another package or a built-in tile has this name."
+msgstr "未安裝：其他套件或內建磚塊已使用此名稱。"
+
+#: ui/home.slint
+msgid "Not installed: checking the package took too long."
+msgstr "未安裝：檢查套件耗時過長。"
+
+#: ui/home.slint
+msgid "Not installed: the package couldn't be read. Send it again."
+msgstr "未安裝：無法讀取該套件。請重新傳送。"
+
+#: ui/home.slint
+msgid "Not installed: the package is broken ({}). It was deleted."
+msgstr "未安裝：套件已損毀（{}），已刪除。"
+
+#: ui/home.slint
+msgid "Not installed: the package needs a newer RustTV. It was deleted."
+msgstr "未安裝：此套件需要較新版本的 RustTV。已將其刪除。"
+
+#: ui/home.slint
+msgid "Not installed: themes that run code can't be installed yet."
+msgstr "未安裝：暫不支援安裝會執行程式碼的主題。"
+
+#: ui/home.slint
+msgid "Not installed: there is no room for more packages."
+msgstr "未安裝：沒有空間容納更多套件。"
+
+#: ui/home.slint
+msgid "Not installed: this package isn't a theme. It was deleted."
+msgstr "未安裝：此套件不是主題，已刪除。"
+
+#: ui/home.slint
+msgid "Nothing changed: the package or the installed ones changed during the review."
+msgstr "未做任何變更：檢視期間套件或已安裝的套件發生了變化。"
+
+#: ui/home.slint
+msgid "Origin unknown: the package isn't signed"
+msgstr "來源不明：套件未簽署"
+
+#: ui/home.slint
+msgid "Removed the theme {}"
+msgstr "已移除主題 {}"
+
+#: ui/home.slint
+msgid "This theme is already installed."
+msgstr "此主題已安裝。"
+
+#: ui/home.slint
+msgid "Update this theme"
+msgstr "更新此主題"
+
+#: ui/home.slint
+msgid "Updated the theme {} to {}"
+msgstr "已將主題 {} 更新到 {}"
+
+#: ui/home.slint
+msgid "Version: {}"
+msgstr "版本：{}"
+
+#: ui/home.slint
+msgid "Version: {} → {}"
+msgstr "版本：{} → {}"
+
+#: ui/home.slint
+msgid "{} (name unverified)"
+msgstr "{}（名稱未驗證）"

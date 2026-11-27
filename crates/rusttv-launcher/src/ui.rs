@@ -930,6 +930,15 @@ struct Controller {
     swallow_ok_release: bool,
     /// Packs the history a few seconds after the launcher left the screen.
     pack_timer: Timer,
+    /// A staged package is being checked for its review (one at a time).
+    checking: bool,
+    /// The check took too long: its result is dropped when it comes.
+    check_late: bool,
+    /// Ends the wait for a check.
+    check_timer: Timer,
+    /// A theme install is running on the history thread (it reads the
+    /// review copy, so no check may start).
+    installing: bool,
     settings_sections: Rc<VecModel<SettingsRow>>,
     settings_rows: Rc<VecModel<SettingsRow>>,
     review_lines: Rc<VecModel<ReviewLine>>,
@@ -1146,6 +1155,10 @@ impl Controller {
                 hold_timer: Timer::default(),
                 swallow_ok_release: false,
                 pack_timer: Timer::default(),
+                checking: false,
+                check_late: false,
+                check_timer: Timer::default(),
+                installing: false,
                 settings_sections,
                 settings_rows,
                 review_lines,
@@ -5902,6 +5915,159 @@ mod tests {
         );
         assert!(screen.launched().is_empty());
         screen.tap(BACK);
+    }
+
+    /// A theme package from adb: OK on "Waiting to install" checks it, the
+    /// review shows only facts the launcher derived, and Approve, the code
+    /// and the 2 s hold install it into the package store, recorded in History.
+    #[test]
+    fn a_staged_theme_is_checked_reviewed_and_installed_with_the_code() {
+        let (dir, _history) = history_dir();
+        let bytes = crate::theme_check::tests::theme("Dusk", "data");
+        let staging = dir.join("staging");
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("slot"), &bytes).unwrap();
+        let sha = rusttv_history::stage::sha256_hex(&bytes);
+        std::fs::write(
+            staging.join("slot.meta"),
+            format!("{} {sha} 1 0\n", bytes.len()),
+        )
+        .unwrap();
+        let screen = screen(Some(dir.join("order.toml")));
+        crate::history::History::get().unwrap().launcher_edited();
+        click_settings(&screen.window);
+        settle(&screen);
+        // Animations, Effects, Idle screen, Updates, History, then Waiting to install.
+        for _ in 0..5 {
+            screen.tap(DOWN);
+        }
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        settle(&screen);
+        assert_eq!(
+            screen.window.get_mode(),
+            7,
+            "the review opens: {}",
+            screen.window.get_settings_status()
+        );
+        assert!(screen.shared.platform.borrow().secure());
+        let lines: Vec<String> = screen
+            .window
+            .get_review_lines()
+            .iter()
+            .map(|line| line.text.to_string())
+            .collect();
+        assert_eq!(lines[0], "Install this theme");
+        assert!(
+            lines.contains(&"\u{2068}Dusk\u{2069} (name unverified)".to_owned()),
+            "{lines:?}"
+        );
+        assert!(lines.contains(&"Id: user.dusk".to_owned()), "{lines:?}");
+        assert!(lines.contains(&"Version: 1.0.0".to_owned()), "{lines:?}");
+        assert!(
+            lines.iter().any(|line| line.contains(&sha[..12])),
+            "{lines:?}"
+        );
+        assert!(staging.join("review").exists());
+        for _ in 0..lines.len() {
+            screen.tap(DOWN);
+        }
+        screen.tap(OK); // Approve
+        assert_eq!(screen.window.get_review_phase(), 1, "the code is asked for");
+        // FakePlatform's code: left, up, right, down.
+        for key in [LEFT, UP, RIGHT, DOWN] {
+            screen.tap(key);
+        }
+        screen.key(OK, true);
+        screen.wait(2_100);
+        screen.key(OK, false);
+        settle_apply(&screen);
+        assert_eq!(
+            screen.window.get_settings_status(),
+            "Installed. Installed themes don't change Home yet."
+        );
+        assert!(!screen.shared.platform.borrow().secure());
+        assert!(dir.join("packages").join(format!("{sha}.zip")).exists());
+        assert!(!staging.join("slot").exists());
+        assert!(!staging.join("review").exists());
+        let overview = crate::history::History::get().unwrap().overview();
+        assert_eq!(
+            overview.entries[0].changes,
+            [rusttv_history::Change::Theme {
+                id: "user.dusk".to_owned(),
+                old: None,
+                new: Some("1.0.0".to_owned()),
+            }]
+        );
+    }
+
+    /// A refused package says why; Back on the review and leaving Settings
+    /// during a check leave no review copy behind, and the slot waits on.
+    #[test]
+    fn staged_themes_that_are_refused_cancelled_or_left_leave_no_copy() {
+        let (dir, _history) = history_dir();
+        let staging = dir.join("staging");
+        std::fs::create_dir_all(&staging).unwrap();
+        let stage = |bytes: &[u8]| {
+            std::fs::write(staging.join("slot"), bytes).unwrap();
+            let sha = rusttv_history::stage::sha256_hex(bytes);
+            let meta = format!("{} {sha} 1 0\n", bytes.len());
+            std::fs::write(staging.join("slot.meta"), meta).unwrap();
+        };
+        let screen = screen(Some(dir.join("order.toml")));
+        crate::history::History::get().unwrap().launcher_edited();
+        let open_staged = || {
+            click_settings(&screen.window);
+            settle(&screen);
+            for _ in 0..5 {
+                screen.tap(DOWN);
+            }
+            screen.tap(RIGHT);
+            screen.tap(OK);
+        };
+        stage(&crate::theme_check::tests::theme_with(
+            "user.code",
+            "Code",
+            "code",
+        ));
+        open_staged();
+        settle(&screen);
+        assert_eq!(
+            screen.window.get_settings_status(),
+            "Not installed: themes that run code can't be installed yet."
+        );
+        assert!(!staging.join("review").exists());
+        assert!(staging.join("slot").exists());
+        screen.tap(BACK);
+        screen.tap(BACK);
+
+        stage(&crate::theme_check::tests::theme_with(
+            "user.dawn",
+            "Dawn",
+            "data",
+        ));
+        open_staged();
+        settle(&screen);
+        assert_eq!(
+            screen.window.get_mode(),
+            7,
+            "the review opens: {}",
+            screen.window.get_settings_status()
+        );
+        assert!(staging.join("review").exists());
+        screen.tap(BACK);
+        assert!(!staging.join("review").exists(), "Back deletes the copy");
+        assert!(staging.join("slot").exists());
+
+        // OK, then Settings closes before the check is done.
+        screen.tap(OK);
+        screen.tap(BACK);
+        screen.tap(BACK);
+        settle(&screen);
+        assert_ne!(screen.window.get_mode(), 7, "no review opens later");
+        assert!(!staging.join("review").exists());
+        assert!(staging.join("slot").exists());
+        let _ = std::fs::remove_file(staging.join("slot"));
     }
 
     #[test]

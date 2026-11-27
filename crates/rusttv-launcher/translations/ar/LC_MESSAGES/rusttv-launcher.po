@@ -612,5 +612,121 @@ msgid "{} KB · fingerprint {}"
 msgstr "{} ك.ب · البصمة {}"
 
 #: ui/home.slint
-msgid "Compare the fingerprint with the one your computer printed. Installing it from the TV comes in a later RustTV version."
-msgstr "قارن البصمة بالتي عرضها حاسوبك. سيتوفر التثبيت من التلفاز في إصدار لاحق من RustTV."
+msgid "Compare the fingerprint with the one your computer printed, then press OK to review it."
+msgstr "قارن البصمة بالتي طبعها حاسوبك، ثم اضغط OK لمراجعتها."
+
+#: ui/home.slint
+msgid "A package was deleted"
+msgstr "حُذفت حزمة"
+
+#: ui/home.slint
+msgid "A theme that runs no code"
+msgstr "سمة لا تشغّل أي رمز برمجي"
+
+#: ui/home.slint
+msgid "Checking it stopped RustTV. Send it again to try once more."
+msgstr "أوقف الفحص RustTV. أرسلها مرة أخرى للمحاولة من جديد."
+
+#: ui/home.slint
+msgid "Checking the package…"
+msgstr "جارٍ فحص الحزمة…"
+
+#: ui/home.slint
+msgid "Compare the fingerprint with the one your computer printed."
+msgstr "قارن البصمة بالتي طبعها حاسوبك."
+
+#: ui/home.slint
+msgid "Id: {}"
+msgstr "المعرّف: {}"
+
+#: ui/home.slint
+msgid "Install this theme"
+msgstr "تثبيت هذه السمة"
+
+#: ui/home.slint
+msgid "Installed the theme {} {}"
+msgstr "تم تثبيت السمة {} {}"
+
+#: ui/home.slint
+msgid "Installed themes don't change Home yet; that comes in a later RustTV version."
+msgstr "السمات المثبّتة لا تغيّر الشاشة الرئيسية بعد؛ سيأتي ذلك في إصدار لاحق من RustTV."
+
+#: ui/home.slint
+msgid "Installed. Installed themes don't change Home yet."
+msgstr "تم التثبيت. السمات المثبّتة لا تغيّر الشاشة الرئيسية بعد."
+
+#: ui/home.slint
+msgid "Not installed: a different package with this version is installed. Its version must be higher."
+msgstr "لم يتم التثبيت: حزمة أخرى بهذا الإصدار مثبّتة. يجب أن يكون إصدارها أعلى."
+
+#: ui/home.slint
+msgid "Not installed: a newer version of this theme is installed."
+msgstr "لم يتم التثبيت: إصدار أحدث من هذه السمة مثبّت."
+
+#: ui/home.slint
+msgid "Not installed: another package or a built-in tile has this name."
+msgstr "لم يتم التثبيت: حزمة أخرى أو مربع مدمج يحمل هذا الاسم."
+
+#: ui/home.slint
+msgid "Not installed: checking the package took too long."
+msgstr "لم يتم التثبيت: استغرق فحص الحزمة وقتًا طويلًا."
+
+#: ui/home.slint
+msgid "Not installed: the package couldn't be read. Send it again."
+msgstr "لم يتم التثبيت: تعذّرت قراءة الحزمة. أرسلها مرة أخرى."
+
+#: ui/home.slint
+msgid "Not installed: the package is broken ({}). It was deleted."
+msgstr "لم يتم التثبيت: الحزمة تالفة ({}). حُذفت."
+
+#: ui/home.slint
+msgid "Not installed: the package needs a newer RustTV. It was deleted."
+msgstr "لم يتم التثبيت: الحزمة تتطلب إصدارًا أحدث من RustTV. حُذفت."
+
+#: ui/home.slint
+msgid "Not installed: themes that run code can't be installed yet."
+msgstr "لم يتم التثبيت: السمات التي تشغّل رمزًا برمجيًا لا يمكن تثبيتها بعد."
+
+#: ui/home.slint
+msgid "Not installed: there is no room for more packages."
+msgstr "لم يتم التثبيت: لا توجد مساحة لمزيد من الحزم."
+
+#: ui/home.slint
+msgid "Not installed: this package isn't a theme. It was deleted."
+msgstr "لم يتم التثبيت: هذه الحزمة ليست سمة. حُذفت."
+
+#: ui/home.slint
+msgid "Nothing changed: the package or the installed ones changed during the review."
+msgstr "لم يتغيّر شيء: تغيّرت الحزمة أو الحزم المثبّتة أثناء المراجعة."
+
+#: ui/home.slint
+msgid "Origin unknown: the package isn't signed"
+msgstr "المصدر غير معروف: الحزمة غير موقّعة"
+
+#: ui/home.slint
+msgid "Removed the theme {}"
+msgstr "أُزيلت السمة {}"
+
+#: ui/home.slint
+msgid "This theme is already installed."
+msgstr "هذه السمة مثبّتة بالفعل."
+
+#: ui/home.slint
+msgid "Update this theme"
+msgstr "تحديث هذه السمة"
+
+#: ui/home.slint
+msgid "Updated the theme {} to {}"
+msgstr "تم تحديث السمة {} إلى {}"
+
+#: ui/home.slint
+msgid "Version: {}"
+msgstr "الإصدار: {}"
+
+#: ui/home.slint
+msgid "Version: {} → {}"
+msgstr "الإصدار: {} ← {}"
+
+#: ui/home.slint
+msgid "{} (name unverified)"
+msgstr "{} (الاسم غير موثّق)"

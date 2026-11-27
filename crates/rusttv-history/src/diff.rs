@@ -125,6 +125,15 @@ pub enum Change {
         /// After.
         new: Option<PackageState>,
     },
+    /// A theme package was installed, updated or is gone (format 10).
+    Theme {
+        /// Its id.
+        id: String,
+        /// The version before, if it was installed.
+        old: Option<String>,
+        /// The version after, if it is installed.
+        new: Option<String>,
+    },
     /// The firmware fingerprint changed.
     Firmware {
         /// Before.
@@ -311,6 +320,18 @@ pub fn diff(old: &State, new: &State) -> Vec<Change> {
         }
     }
 
+    let ids: BTreeSet<&String> = old.themes.keys().chain(new.themes.keys()).collect();
+    for id in ids {
+        let (was, now) = (old.themes.get(id), new.themes.get(id));
+        if was != now {
+            changes.push(Change::Theme {
+                id: id.clone(),
+                old: was.map(|theme| theme.version.clone()),
+                new: now.map(|theme| theme.version.clone()),
+            });
+        }
+    }
+
     if old.device.fingerprint != new.device.fingerprint {
         changes.push(Change::Firmware {
             old: old.device.fingerprint.clone(),
@@ -384,6 +405,11 @@ pub(crate) fn summary(changes: &[Change]) -> String {
         Change::Package { name, new, .. } => match new {
             Some(state) => format!("{name} {state}"),
             None => format!("{name} not seen"),
+        },
+        Change::Theme { id, old, new } => match (old, new) {
+            (None, Some(new)) => format!("Installed theme {id} {new}"),
+            (Some(_), Some(new)) => format!("Updated theme {id} to {new}"),
+            _ => format!("Removed theme {id}"),
         },
         Change::Firmware { .. } => "Firmware changed".to_owned(),
         Change::Takeover { active } => {

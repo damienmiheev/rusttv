@@ -300,6 +300,101 @@ impl Slot {
         }
     }
 
+    /// Copies the package waiting into the review's own file (rule 5), so a
+    /// later staging can't change what is reviewed; `None` when nothing
+    /// waits. The copy's bytes are checked against the facts by whoever
+    /// reads it.
+    ///
+    /// # Errors
+    ///
+    /// Copying failed.
+    pub fn copy_for_review(&self, at: Moment) -> io::Result<Option<Waiting>> {
+        let Some(waiting) = self.waiting(at) else {
+            return Ok(None);
+        };
+        // Under the lock: `end` replaces the bytes and meta in two renames.
+        let _guard = LOCK
+            .lock()
+            .map_err(|_| io::Error::other("the slot lock is poisoned"))?;
+        let meta = fs::read_to_string(self.dir.join("slot.meta")).unwrap_or_default();
+        if !meta.contains(&waiting.sha256) {
+            // Replaced between the two reads: review the newer one later.
+            return Ok(None);
+        }
+        let bytes = fs::read(self.dir.join("slot"))?;
+        drop(_guard);
+        crate::packages::write_synced(&self.review_path(), &bytes)?;
+        Ok(Some(waiting))
+    }
+
+    /// The review's copy of the package.
+    pub fn review_path(&self) -> PathBuf {
+        self.dir.join("review")
+    }
+
+    /// Sets the crash marker while the package with `sha256` is checked,
+    /// or clears it (`None`).
+    pub fn set_checking(&self, sha256: Option<&str>) -> io::Result<()> {
+        let path = self.dir.join("checking");
+        match sha256 {
+            Some(sha256) => crate::packages::write_synced(&path, sha256.as_bytes()),
+            None => match fs::remove_file(path) {
+                Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
+                _ => Ok(()),
+            },
+        }
+    }
+
+    /// Deletes the review copy, and the slot too when it still holds
+    /// `sha256` (a newer staging stays).
+    /// Returns whether the slot was deleted.
+    pub fn discard(&self, sha256: Option<&str>) -> bool {
+        let _ = fs::remove_file(self.review_path());
+        let Some(sha256) = sha256 else {
+            return false;
+        };
+        let Ok(_guard) = LOCK.lock() else {
+            return false;
+        };
+        let meta = fs::read_to_string(self.dir.join("slot.meta")).unwrap_or_default();
+        let held = meta.split_whitespace().nth(1) == Some(sha256);
+        if held {
+            self.remove_slot();
+        }
+        held
+    }
+
+    /// At the launcher's start, before anything reads the slot: a review
+    /// lives only in memory, so its copy goes; a crash marker means the
+    /// launcher died checking a package, which is then deleted and noted
+    /// (crash quarantine, rule 5). Returns whether that happened.
+    pub fn after_start(&self) -> bool {
+        for stale in ["review", "review.new", "checking.new"] {
+            let _ = fs::remove_file(self.dir.join(stale));
+        }
+        let marker = self.dir.join("checking");
+        let Ok(sha256) = fs::read_to_string(&marker) else {
+            return false;
+        };
+        let deleted = self.discard(Some(sha256.trim()));
+        if deleted {
+            let _ = fs::write(self.dir.join("quarantined"), b"");
+        }
+        let _ = fs::remove_file(marker);
+        deleted
+    }
+
+    /// Whether a package was deleted because checking it stopped the
+    /// launcher, since the last staging or [`Self::clear_quarantined`].
+    pub fn quarantined(&self) -> bool {
+        self.dir.join("quarantined").exists()
+    }
+
+    /// The person has seen the quarantine notice.
+    pub fn clear_quarantined(&self) {
+        let _ = fs::remove_file(self.dir.join("quarantined"));
+    }
+
     /// Counts a begin; refuses past [`PER_HOUR`] in the last hour.
     fn count(&self, at: Moment) -> Result<(), &'static str> {
         fs::create_dir_all(&self.dir).map_err(|_| "STAGING_STORAGE")?;
@@ -317,8 +412,9 @@ impl Slot {
 
     fn begin(&self, size: u64, sha256: &str, nonce: &str, at: Moment) -> Result<(), &'static str> {
         // A newer begin replaces an unfinished one, and no stray incoming
-        // file outlives it.
+        // file outlives it. A quarantine notice is for the package before.
         let _ = fs::remove_file(self.dir.join("pending"));
+        let _ = fs::remove_file(self.dir.join("quarantined"));
         if let Ok(entries) = fs::read_dir(&self.dir) {
             for entry in entries.flatten() {
                 if entry.file_name().to_string_lossy().starts_with("incoming-") {
@@ -429,8 +525,16 @@ fn fresh(then: Moment, now: Moment, limit: u64) -> bool {
     then.boot == now.boot && then.ms <= now.ms && now.ms - then.ms <= limit
 }
 
+/// The SHA-256 of `bytes`, lowercase hex.
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
 /// The file's size and SHA-256, or `None` when it holds more than `cap`.
-fn hash_file(path: &Path, cap: u64) -> io::Result<Option<(u64, String)>> {
+pub(crate) fn hash_file(path: &Path, cap: u64) -> io::Result<Option<(u64, String)>> {
     let file = fs::File::open(path)?;
     let mut hasher = Sha256::new();
     let mut size = 0_u64;
@@ -592,6 +696,69 @@ mod slot_tests {
         // 24 h later it is gone.
         assert!(staging.waiting(at(3_000 + SLOT_MS + 1)).is_none());
         assert!(!dir.0.join("slot").exists());
+    }
+
+    fn stage(staging: &Slot, bytes: &[u8], ms: u64) {
+        begin(staging, bytes, NONCE, ms);
+        write(staging, NONCE, bytes, ms);
+        assert_eq!(end(staging, NONCE, ms), StageResult::ok(None));
+    }
+
+    #[test]
+    fn the_review_copy_does_not_follow_a_later_staging() {
+        let dir = TempDir::new("review");
+        let staging = Slot::new(&dir.0);
+        stage(&staging, b"first", 1_000);
+        let waiting = staging.copy_for_review(at(2_000)).unwrap().unwrap();
+        assert_eq!(waiting.sha256, sha(b"first"));
+        stage(&staging, b"second", 3_000);
+        assert_eq!(fs::read(staging.review_path()).unwrap(), b"first");
+        // Done with the first: the newer staging stays.
+        staging.discard(Some(&sha(b"first")));
+        assert!(!staging.review_path().exists());
+        assert_eq!(staging.waiting(at(4_000)).unwrap().sha256, sha(b"second"));
+        // Nothing waiting, nothing to copy.
+        staging.discard(Some(&sha(b"second")));
+        assert_eq!(staging.copy_for_review(at(5_000)).unwrap(), None);
+    }
+
+    #[test]
+    fn a_crash_while_checking_deletes_that_package_at_the_next_start() {
+        let dir = TempDir::new("quarantine");
+        let staging = Slot::new(&dir.0);
+        stage(&staging, b"bad", 1_000);
+        staging.copy_for_review(at(1_000)).unwrap();
+        staging.set_checking(Some(&sha(b"bad"))).unwrap();
+        // The launcher dies here; at the next start:
+        assert!(staging.after_start());
+        assert!(staging.quarantined());
+        assert!(staging.waiting(at(2_000)).is_none());
+        assert!(!staging.review_path().exists());
+        assert!(!staging.after_start(), "only once");
+        // A new staging clears the notice.
+        stage(&staging, b"good", 3_000);
+        assert!(!staging.quarantined());
+    }
+
+    #[test]
+    fn a_crash_marker_spares_a_newer_staging_and_a_start_drops_old_copies() {
+        let dir = TempDir::new("spare");
+        let staging = Slot::new(&dir.0);
+        stage(&staging, b"old", 1_000);
+        staging.copy_for_review(at(1_000)).unwrap();
+        staging.set_checking(Some(&sha(b"old"))).unwrap();
+        stage(&staging, b"new", 2_000);
+        // Nothing was deleted, so there is no notice.
+        assert!(!staging.after_start());
+        assert!(!staging.quarantined());
+        assert_eq!(staging.waiting(at(3_000)).unwrap().sha256, sha(b"new"));
+        // Without a marker a start only drops the review copy.
+        staging.copy_for_review(at(3_000)).unwrap();
+        staging.clear_quarantined();
+        assert!(!staging.after_start());
+        assert!(!staging.review_path().exists());
+        assert!(!staging.quarantined());
+        assert!(staging.waiting(at(4_000)).is_some());
     }
 
     #[test]

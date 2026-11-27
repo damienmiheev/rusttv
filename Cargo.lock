@@ -5147,6 +5147,7 @@ dependencies = [
  "gix",
  "gix-pack",
  "proptest",
+ "rusttv-panels",
  "serde",
  "sha2",
  "thiserror 2.0.21",

@@ -23,10 +23,18 @@ use crate::order_file;
 use crate::panels::{self, CLOCK_SET_AFTER};
 use crate::review::{Arrow, Outcome, Phase, Review};
 use crate::settings::{AboutRow, Action, Draft, EntryView, Overview, Section, SettingsPage};
+use crate::theme_check::{self, Checked, ThemeReview};
+use rusttv_history::stage::Slot;
 
 /// How long after leaving the screen the history is packed (HISTORY.md § 3):
 /// not at once, so it doesn't compete with the app being opened.
 const PACK_AFTER: Duration = Duration::from_secs(5);
+
+/// How long the UI waits for a staged package's check (SECURITY.md
+/// "Packages: staging and install" rule 5, default). The validator itself
+/// isn't interrupted: a late result is dropped, and no second check starts
+/// until it is in.
+const CHECK_CAP: Duration = Duration::from_secs(10);
 
 /// Panel rows visible at once (the rest scroll by rows).
 const PANEL_ROWS: usize = 6;
@@ -110,6 +118,9 @@ mod status {
     pub const READING: i32 = 11;
     pub const UNREADABLE: i32 = 12;
     pub const REMOVED_PHONE: i32 = 13;
+    pub const CHECKING: i32 = 14;
+    pub const THEME_INSTALLED: i32 = 15;
+    pub const PACKAGE_REFUSED: i32 = 16;
 }
 
 /// "Removed {phone}" under the title (ui/remote_view.rs).
@@ -294,6 +305,7 @@ impl Controller {
                 title,
                 secret,
             }) => self.ask_text(tab, control, title, secret),
+            Some(Action::ReviewStaged) => self.check_staged(),
             Some(Action::Update) => self.update_action(),
             Some(Action::Notices) => {
                 let effect = self.home.open_about();
@@ -314,7 +326,8 @@ impl Controller {
             self.settings_status = (status::TEST_BUILD, String::new());
             return;
         }
-        let needs_code = needs_code(&draft.changes, overview.can_write_settings);
+        let needs_code =
+            draft.theme.is_some() || needs_code(&draft.changes, overview.can_write_settings);
         if needs_code && overview.locked_ms > 0 {
             self.settings_status = (status::LOCKED, self.duration_text(overview.locked_ms));
             return;
@@ -340,6 +353,110 @@ impl Controller {
         self.settings_status = (status::NONE, String::new());
     }
 
+    /// Checks the package waiting in the staging slot off the UI thread,
+    /// then opens its review ([`Self::checked`]).
+    fn check_staged(&mut self) {
+        let Some(page) = &self.settings else {
+            return;
+        };
+        let overview = page.overview();
+        if overview.test_build {
+            // Rule 9: a test build can't install (the shell could write
+            // the slot and the store with run-as).
+            self.settings_status = (status::TEST_BUILD, String::new());
+            return;
+        }
+        if overview.locked_ms > 0 {
+            self.settings_status = (status::LOCKED, self.duration_text(overview.locked_ms));
+            return;
+        }
+        let (Some(history), Some(window)) = (History::get(), self.window.upgrade()) else {
+            return;
+        };
+        if self.checking {
+            self.settings_status = (status::CHECKING, String::new());
+            return;
+        }
+        // An install in flight reads the review copy: no new copy now.
+        if self.installing || history.busy() {
+            self.settings_status = (status::BUSY, String::new());
+            return;
+        }
+        let Ok(launcher) = rusttv_panels::Version::parse(env!("CARGO_PKG_VERSION")) else {
+            return;
+        };
+        let builtin = builtin_names(&window);
+        let root = history.root().to_owned();
+        let started = in_background(
+            "rusttv-check",
+            move || match history.now() {
+                Some(at) if at.boot != 0 => {
+                    // A panic in the validator must not leave `checking`
+                    // set (on the TV a panic aborts, and the crash marker
+                    // takes over at the next start).
+                    std::panic::catch_unwind(|| theme_check::check(&root, at, launcher, &builtin))
+                        .unwrap_or_else(|_| theme_check::panicked(&root))
+                }
+                _ => Checked::Refused("STAGING_STORAGE"),
+            },
+            Controller::checked,
+        );
+        if let Err(error) = started {
+            self.settings_status = (status::NOTHING_CHANGED, error.to_string());
+            return;
+        }
+        self.checking = true;
+        self.check_late = false;
+        self.settings_status = (status::CHECKING, String::new());
+        let me = self.me.clone();
+        self.check_timer
+            .start(TimerMode::SingleShot, CHECK_CAP, move || {
+                if let Some(controller) = me.upgrade() {
+                    controller.borrow_mut().check_too_long();
+                }
+            });
+    }
+
+    fn check_too_long(&mut self) {
+        if self.checking {
+            self.check_late = true;
+            self.settings_status = (status::PACKAGE_REFUSED, "PACKAGE_TOO_SLOW".to_owned());
+            self.render();
+        }
+    }
+
+    fn checked(&mut self, result: Checked) {
+        self.checking = false;
+        self.check_timer.stop();
+        // Too late, Settings closed, or another review opened meanwhile.
+        if std::mem::take(&mut self.check_late) || self.settings.is_none() || self.review.is_some()
+        {
+            if matches!(result, Checked::Review(_)) {
+                discard_review_copy();
+            }
+            if self.settings_status.0 == status::CHECKING {
+                self.settings_status = (status::NONE, String::new());
+                self.render();
+            }
+            return;
+        }
+        match result {
+            Checked::Nothing => self.settings_status = (status::NONE, String::new()),
+            Checked::Refused(code) => {
+                self.settings_status = (status::PACKAGE_REFUSED, code.to_owned());
+            }
+            Checked::Review(review) => self.open_review(Draft {
+                theme: Some(review),
+                ..Draft::default()
+            }),
+        }
+        if self.review.is_none() {
+            discard_review_copy();
+            self.refresh_settings_data();
+        }
+        self.render();
+    }
+
     /// Opens the review for one package change, as a restore with one
     /// would: the screen that still asks for the code.
     #[cfg(test)]
@@ -351,6 +468,7 @@ impl Controller {
                 new: rusttv_history::PackageState::Disabled,
             }],
             launcher: None,
+            theme: None,
         });
         self.render();
     }
@@ -367,18 +485,22 @@ impl Controller {
         self.start_apply(draft);
     }
 
-    /// Hands `draft` to the history thread; [`Self::applied`] reports.
+    /// Hands `draft` to the history thread; [`Self::applied`] reports, or
+    /// [`Self::installed`] for a theme.
     fn start_apply(&mut self, draft: Draft) {
         let Some(history) = History::get() else {
             return;
         };
         self.settings_status = (status::BUSY, String::new());
-        let started = in_background(
-            "rusttv-apply",
-            move || history.apply(draft),
-            Controller::applied,
-        );
+        self.installing = draft.theme.is_some();
+        let done = if self.installing {
+            Controller::installed
+        } else {
+            Controller::applied
+        };
+        let started = in_background("rusttv-apply", move || history.apply(draft), done);
         if let Err(error) = started {
+            self.installing = false;
             self.settings_status = (status::NOTHING_CHANGED, error.to_string());
         }
     }
@@ -417,7 +539,7 @@ impl Controller {
             Some(Outcome::Confirmed) => {
                 let needs_code = review.needs_code();
                 let draft = review.draft().clone();
-                self.close_review();
+                self.end_review(false);
                 if needs_code {
                     // Holding OK confirmed on a tick; swallow the release that follows.
                     self.swallow_ok_release = true;
@@ -427,6 +549,30 @@ impl Controller {
                     }
                 }
                 self.start_apply(draft);
+            }
+        }
+    }
+
+    fn installed(&mut self, result: Result<ApplyOutcome, Refused>) {
+        self.installing = false;
+        match result {
+            Ok(ApplyOutcome::Applied { .. }) => {
+                self.settings_status = (status::THEME_INSTALLED, String::new());
+                self.show_history_panel();
+                self.refresh_settings_data();
+                self.render();
+            }
+            Err(refused)
+                if refused.code.starts_with("PACKAGE_") || refused.code == "CHANGED_MEANWHILE" =>
+            {
+                discard_review_copy();
+                self.settings_status = (status::PACKAGE_REFUSED, refused.code.to_owned());
+                self.refresh_settings_data();
+                self.render();
+            }
+            other => {
+                discard_review_copy();
+                self.applied(other);
             }
         }
     }
@@ -465,14 +611,28 @@ impl Controller {
     }
 
     fn close_review(&mut self) {
-        if self.review.take().is_some() {
+        self.end_review(true);
+    }
+
+    /// Closes the review screen; a theme's review copy goes unless it is
+    /// about to be installed (`discard` false).
+    fn end_review(&mut self, discard: bool) {
+        if let Some(review) = self.review.take() {
             self.hold_timer.stop();
             self.platform.set_secure(false);
+            if discard && review.draft().theme.is_some() {
+                discard_review_copy();
+            }
         }
     }
 
     /// The launcher left the screen: drafts and reviews are dropped.
     pub(super) fn close_settings_view(&mut self) {
+        if self.checking {
+            // Its result is dropped when it comes (and its copy deleted).
+            self.check_late = true;
+            self.check_timer.stop();
+        }
         self.close_review();
         self.close_pairing();
         self.settings = None;
@@ -533,6 +693,9 @@ impl Controller {
         overview: &Overview,
     ) -> Vec<ReviewLine> {
         let strings = window.global::<Strings>();
+        if let Some(theme) = &draft.theme {
+            return theme_lines(window, theme);
+        }
         let mut tv = Vec::new();
         let mut computer = Vec::new();
         for change in &draft.changes {
@@ -795,7 +958,7 @@ impl Controller {
                         .collect(),
                     Section::Staged => {
                         note.push(strings.invoke_staged_note().to_string());
-                        overview
+                        let mut rows: Vec<SettingsRow> = overview
                             .staged
                             .iter()
                             .map(|staged| {
@@ -806,7 +969,14 @@ impl Controller {
                                     &strings.invoke_staged_detail(kilobytes.into(), hash.into()),
                                 )
                             })
-                            .collect()
+                            .collect();
+                        if overview.quarantined {
+                            rows.push(row(
+                                strings.invoke_quarantined_title(),
+                                &strings.invoke_quarantined_detail(),
+                            ));
+                        }
+                        rows
                     }
                     Section::Waiting => overview
                         .pending
@@ -970,6 +1140,81 @@ fn as_change(change: &ApprovedChange) -> Change {
     }
 }
 
+/// The review of a theme package: only facts the launcher derived, and its
+/// name marked unverified (SECURITY.md "Packages: staging and install"
+/// rule 6). No package image or text but the name is drawn.
+fn theme_lines(window: &HomeWindow, theme: &ThemeReview) -> Vec<ReviewLine> {
+    let strings = window.global::<Strings>();
+    let package = &theme.install.package;
+    let name: String = theme
+        .name
+        .chars()
+        .filter(|c| {
+            !is_bidi_control(*c) && !c.is_control() && !matches!(c, '\u{2028}' | '\u{2029}')
+        })
+        .collect();
+    // Isolated, so a right-to-left name can't reorder the words around it.
+    let name = format!("\u{2068}{name}\u{2069}");
+    let version = match &theme.install.from {
+        Some(from) => strings.invoke_theme_version_update(
+            from.version.as_str().into(),
+            package.version.as_str().into(),
+        ),
+        None => strings.invoke_theme_version(package.version.as_str().into()),
+    };
+    let kilobytes = package.size.div_ceil(1024).to_string();
+    let hash = package.sha256.get(..12).unwrap_or_default();
+    let line = |text: SharedString| ReviewLine {
+        text,
+        header: false,
+    };
+    vec![
+        ReviewLine {
+            text: strings.invoke_theme_review_title(theme.install.from.is_some()),
+            header: true,
+        },
+        line(strings.invoke_theme_name(name.into())),
+        line(strings.invoke_theme_id(package.id.as_str().into())),
+        line(version),
+        line(strings.invoke_theme_kind()),
+        line(strings.invoke_staged_detail(kilobytes.into(), hash.into())),
+        line(strings.invoke_theme_compare()),
+        line(strings.invoke_theme_origin()),
+        line(strings.invoke_theme_not_shown()),
+    ]
+}
+
+/// Deletes the review's copy of a staged package; the slot stays (it
+/// expires by itself, rule 2).
+fn discard_review_copy() {
+    if let Some(history) = History::get() {
+        Slot::new(history.root().join("staging")).discard(None);
+    }
+}
+
+/// The built-in tiles' names, lowercased, as they show in this language
+/// and in English: no package may take one (PANEL_STUDIO.md § 5.2).
+fn builtin_names(window: &HomeWindow) -> Vec<String> {
+    let strings = window.global::<Strings>();
+    let mut names: Vec<String> = [
+        "About",
+        "Settings",
+        "RustTV Remote",
+        "History",
+        "Hidden apps",
+    ]
+    .iter()
+    .map(|name| name.to_lowercase())
+    .collect();
+    for tile in ["about", "settings", "remote", "panel:history"] {
+        let name = strings.invoke_builtin_name(tile.into()).to_lowercase();
+        if !name.is_empty() && !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    names
+}
+
 /// Unicode bidi controls (embeddings, overrides, isolates, marks).
 fn is_bidi_control(c: char) -> bool {
     matches!(c, '\u{061C}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
@@ -1043,6 +1288,16 @@ fn change_line(
         Change::PhoneRemoved { name, .. } => (17, name.as_str().into(), "".into(), "".into()),
         Change::Firmware { .. } => (6, "".into(), "".into(), "".into()),
         Change::Takeover { active } => (7, "".into(), "".into(), strings.invoke_on_off(*active)),
+        Change::Theme { id, old, new } => (
+            match (old, new) {
+                (None, Some(_)) => 21,
+                (Some(_), Some(_)) => 22,
+                _ => 23,
+            },
+            id.as_str().into(),
+            old.as_deref().unwrap_or_default().into(),
+            new.as_deref().unwrap_or_default().into(),
+        ),
         _ => (8, "".into(), "".into(), "".into()),
     };
     strings.invoke_change_line(kind, name, old, new)

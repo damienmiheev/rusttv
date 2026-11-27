@@ -15,6 +15,9 @@ toml.workspace = true
 gix.workspace = true
 gix-pack.workspace = true
 sha2.workspace = true
+# The package validator and its id and version rules, for the package store
+# (src/packages.rs, SECURITY.md "Packages: staging and install").
+rusttv-panels.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true

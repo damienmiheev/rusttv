@@ -141,6 +141,12 @@ pub(crate) enum ChangeView {
         old: Option<String>,
         new: Option<String>,
     },
+    /// A theme package installed on the TV (by id); null = not installed.
+    Theme {
+        theme: String,
+        old: Option<String>,
+        new: Option<String>,
+    },
     /// The firmware fingerprint.
     Firmware {
         old: Option<String>,
@@ -209,6 +215,11 @@ impl ChangeView {
                 old: state(old),
                 new: state(new),
             },
+            Change::Theme { id, old, new } => Self::Theme {
+                theme: id.clone(),
+                old: old.clone(),
+                new: new.clone(),
+            },
             Change::Firmware { old, new } => Self::Firmware {
                 old: old.clone(),
                 new: new.clone(),
@@ -273,6 +284,11 @@ pub(crate) fn change(change: &Change) -> String {
         Change::Package { name, old, new } => {
             format!("{name}: {} → {}", package(old), package(new))
         }
+        Change::Theme { id, old, new } => match (old, new) {
+            (None, Some(new)) => format!("Installed the theme {id} {new}"),
+            (Some(old), Some(new)) => format!("Updated the theme {id}: {old} → {new}"),
+            _ => format!("Removed the theme {id}"),
+        },
         Change::Firmware { old, new } => format!("Firmware: {} → {}", text(old), text(new)),
         Change::Takeover { active: true } => "Home takeover started".to_owned(),
         Change::Takeover { active: false } => "Home takeover ended".to_owned(),
