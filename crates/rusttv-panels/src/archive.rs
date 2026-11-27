@@ -14,7 +14,8 @@
 //!
 //! `code/` and `scripts/` files are only read here: UTF-8 with no control
 //! character but tab and line breaks and no invisible or direction-changing
-//! character (so the text shown on review is the text that runs), each
+//! character (so code can't read differently from what it does in any
+//! viewer, diff or editor), each
 //! capped and all together capped; nothing interprets them yet
 //! (PANEL_STUDIO.md § 5.9).
 //!
@@ -189,25 +190,23 @@ fn cap(name: &str) -> Result<usize, Code> {
     }
 }
 
-/// `bytes` as source text: UTF-8 with no control character but tab, line
-/// feed and carriage return, and none of the invisible or
-/// direction-changing characters package text has cleaned out
-/// ([`crate::text`]), nor the marks it keeps for display (zero-width
-/// joiners, direction marks and isolates, emoji style selectors).
+/// `bytes` as source text: UTF-8 with no control character but tab and
+/// line feed (and carriage return only before a line feed), none of the
+/// invisible or direction-changing characters package text cleans out or
+/// keeps for display ([`crate::text`]: zero-width joiners, direction marks
+/// and isolates, emoji style selectors, a byte order mark), no braille
+/// blank and no noncharacter. User-facing text belongs in
+/// `strings/<lang>.json`, where those characters are handled.
 fn source_text(bytes: Vec<u8>) -> Option<String> {
     let text = String::from_utf8(bytes).ok()?;
     let bad = |c: char| {
-        (crate::text::removed(c) && !matches!(c, '\t' | '\n' | '\r'))
-            || matches!(
-                c,
-                '\u{200C}'..='\u{200F}'
-                    | '\u{061C}'
-                    | '\u{2066}'..='\u{2069}'
-                    | '\u{FE0E}'
-                    | '\u{FE0F}'
-            )
+        ((crate::text::removed(c) || crate::text::is_format(c)) && !matches!(c, '\t' | '\n' | '\r'))
+            || matches!(c, '\u{2800}' | '\u{FFFC}'..='\u{FFFF}' | '\u{FE0E}' | '\u{FE0F}' | '\u{2066}'..='\u{2069}' | '\u{061C}')
     };
-    (!text.contains(bad)).then_some(text)
+    let lone_cr = text
+        .char_indices()
+        .any(|(i, c)| c == '\r' && !text[i + 1..].starts_with('\n'));
+    (!lone_cr && !text.contains(bad)).then_some(text)
 }
 
 /// Reads a package zip for a launcher that can do `can`, and checks it as a
@@ -609,6 +608,8 @@ mod tests {
                 ("code/home.slint", text.as_bytes()),
             ])
         };
+        assert_eq!(with("a\rb").unwrap_err().code, Code::BadSource);
+        assert_eq!(with("\u{FEFF}a").unwrap_err().code, Code::BadSource);
         let exact = "a\tb\r\nc\n  d  ";
         assert_eq!(with(exact).unwrap().code[0].text, exact);
         assert!(with("emoji ✓ und Grüße").is_ok());

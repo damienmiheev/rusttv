@@ -333,11 +333,14 @@ thumbnail.png         for the studio and the Panels page (never on locked surfac
   (`MISSING_FILE` at `code/home.slint`); a panel or data theme with them
   gets `NOT_FOR_KIND` before their content is read. Each must be UTF-8
   with no control character but tab and line breaks and no invisible or
-  direction-changing character (`BAD_SOURCE`), so the code shown on review
-  is the code that runs; all of them together are at most 1 MiB
+  direction-changing character, no lone carriage return, braille blank or
+  noncharacter, and no byte order mark (`BAD_SOURCE`), so code can't read
+  differently from what it does in a viewer, diff or editor (user-facing
+  text belongs in `strings/<lang>.json`); all of them together are at most 1 MiB
   (`TOO_LARGE`). `parse_package` reads only `package.json`; the zip reader
-  checks the files. The field and code are additive while format 2 is
-  unreleased (no launcher reads packages yet); a code theme sets
+  checks the files. The field and codes are additive while format 2 is
+  unreleased: the launcher uses only `RESERVED_NAMES` from this crate and
+  reads no packages until 4b; a code theme sets
   `min_launcher` to the first launcher with T5. Nothing interprets them
   yet (T5).
 - **As built (step 2a, zip slice, 2026-11-24)**: our own strict reader

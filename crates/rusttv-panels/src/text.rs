@@ -100,7 +100,7 @@ pub(crate) fn removed(c: char) -> bool {
 
 /// Kept characters that draw nothing: they don't end a run of combining
 /// marks and don't count as visible.
-fn is_format(c: char) -> bool {
+pub(crate) fn is_format(c: char) -> bool {
     matches!(
         c,
         ZWNJ | ZWJ

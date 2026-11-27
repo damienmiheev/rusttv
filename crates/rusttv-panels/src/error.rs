@@ -179,8 +179,8 @@ codes! {
     BadImage => "BAD_IMAGE",
     /// A `code/` or `scripts/` file that isn't UTF-8 text, or holds a
     /// control character (other than tab and line breaks) or an invisible
-    /// or direction-changing one, which could make the code shown on review
-    /// differ from what runs.
+    /// or direction-changing one, which could make code read differently
+    /// from what it does in a viewer, diff or editor.
     BadSource => "BAD_SOURCE",
 }
 
@@ -241,7 +241,9 @@ pub enum Position {
         index: usize,
     },
     /// A field path built only from this format's own field names, e.g.
-    /// `meta.requires`, and an index into a list; never a key from the package.
+    /// `meta.requires`, and an index into a list; never a key from the
+    /// package. In [`PackageFile::Zip`] it may name a file the format
+    /// requires (`code/home.slint`).
     Field {
         /// The path, e.g. `meta.requires`.
         path: &'static str,
