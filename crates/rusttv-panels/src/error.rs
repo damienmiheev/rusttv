@@ -129,7 +129,7 @@ codes! {
     UnknownFunction => "UNKNOWN_FUNCTION",
     /// An expression whose type doesn't fit where it is used.
     TypeMismatch => "TYPE_MISMATCH",
-    /// A source (or source field) RustTV doesn't have.
+    /// A source, source field, list or list item field RustTV doesn't have.
     UnknownSource => "UNKNOWN_SOURCE",
     /// An expression reads a source group `meta.sources` doesn't list.
     UndeclaredSource => "UNDECLARED_SOURCE",
@@ -146,6 +146,10 @@ codes! {
     /// An expression reads a knob `meta.knobs` doesn't declare (for
     /// `visible_if`, one declared before it).
     UnknownKnob => "UNKNOWN_KNOB",
+    /// An expression reads `{"item": …}` outside a repeat.
+    NotInRepeat => "NOT_IN_REPEAT",
+    /// A repeat inside another repeat.
+    NestedRepeat => "NESTED_REPEAT",
     /// Not a zip (no end record as the file's last 22 bytes).
     NotZip => "NOT_ZIP",
     /// A zip that doesn't hold together: headers that disagree, gaps,

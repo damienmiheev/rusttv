@@ -71,13 +71,13 @@ mod zip;
 
 pub use archive::{Asset, AssetMode, AssetVariant, Contents, read_package};
 pub use document::{
-    Align, AssetName, Bindings, Color, Document, Fit, Node, NodeId, NodeKind, Shadow, SizeClass,
-    Stroke, Variant, features,
+    Align, AssetName, Bindings, Color, Direction, Document, Fit, Node, NodeId, NodeKind, Shadow,
+    SizeClass, Stroke, Variant, features,
 };
 pub use error::{Code, PackageError, PackageFile, Position};
 pub use expr::{
-    Expr, Function, Inputs, Moment, SourceField, Type, Value, eval, is_source_group, source_tier,
-    sources,
+    Collection, Expr, Function, Inputs, Moment, Scope, SourceField, Type, Value, collection,
+    collections, eval, is_source_group, source_tier, sources,
 };
 pub use knob::{Knob, KnobKind, KnobOption, KnobType};
 pub use messages::{

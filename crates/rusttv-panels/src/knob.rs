@@ -341,8 +341,12 @@ pub(crate) fn check(raw: Vec<RawKnob>) -> Result<Vec<Knob>, PackageError> {
             return Err(PackageError::new(Code::Duplicate, at(index)));
         }
         if let Some(condition) = &knob.visible_if {
-            expr::check(condition, Type::Bool, &no_sources, &earlier)
-                .map_err(|code| PackageError::new(code, at(index)))?;
+            expr::check(
+                condition,
+                Type::Bool,
+                &expr::Scope::new(&no_sources, &earlier),
+            )
+            .map_err(|code| PackageError::new(code, at(index)))?;
         }
         knobs.push(knob);
         // Re-borrowed each round, so a knob sees only the ones before it.
