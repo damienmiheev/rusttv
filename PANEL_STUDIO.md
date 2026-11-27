@@ -1,6 +1,6 @@
 # Panel Studio — plan
 
-Status (2026-11-27): **plan, step 2a under way; review rounds 1–20 done (round 20 found nothing new); owner request 13 added full customisation (§ 5.7, § 5.8, § 6.7, § 10.4), reviewed in rounds 21 and 22** (§ Review
+Status (2026-11-27): **plan, step 2a under way; review rounds 1–20 done (round 20 found nothing new); owner request 13 added full customisation (§ 5.7, § 5.8, § 6.7, § 10.4), reviewed in rounds 21 and 22; request 14 added § 5.9 and the theme track, reviewed in round 23** (§ Review
 log). Written from the owner's requests of 2026-11-20, 2026-11-21 and
 2026-11-24 (§ 1) and research into FigCraft and its sibling apps, Rust GUI
 toolkits and RustTV's own code (§ 17). Nothing here is built. § 16 lists
@@ -65,6 +65,15 @@ change (§ 4).
     floating pills…), react to keys, sort and filter lists and animate,
     all as data the studio edits visually (§ 5.7, § 10.4). Scripts come
     later as an opt-in layer for power users (§ 5.8).
+14. **One theme system, two runtimes, nothing built in** (2026-11-27,
+    agreed with PR #79's author on the PR): one name, *theme*, and one zip
+    format; `"runtime": "data"` themes are drawn by compiled components,
+    `"runtime": "code"` themes are run by `slint-interpreter` (§ 5.9). A
+    theme always carries its Home layout. No theme is built into the
+    launcher, the default look included: every theme is a package installed
+    through `rusttv-mcp` and approved on the TV; the launcher keeps only a
+    plain emergency Home (§ 10.4). A bigger APK is fine as long as
+    performance doesn't drop much.
 
 Safety stays as it is (CLAUDE.md, SECURITY.md): every change to the TV is
 plan → dry run → approval → record → apply → verify, approved by a person
@@ -190,10 +199,11 @@ These hold for every option, format version and theme.
   an app as a key, so the candidate is holding Back for 5 s or Back plus
   a colour key, proven on the Philips remote and one other in step 3 —
   and `rusttv panel safe-look` from the CLI (a plan whose apply waits for
-  Approve on the TV, no code, like remove) switch to the default theme,
+  Approve on the TV, no code, like remove) switch to the emergency Home
+  (no theme, § 10.4),
   turn the look tweaks off (accessibility tweaks — text scale, bold text,
   focus frame, banner time — and the high-contrast or night mode stay; the
-  default theme loads in that mode) and disable every user package, keeping them and
+  emergency Home follows them) and disable every user package, keeping them and
   their placement for later. It needs no readable screen and no code
   because it only takes things away (so an adb peer pressing it is a
   nuisance, not a risk). The chord skipping plan and Approve is an
@@ -214,7 +224,7 @@ These hold for every option, format version and theme.
   disabled or updated since comes back under the old approval — and, because it adds things, takes the full approval and
   the look-lock PIN; a package or theme can't change or block the
   chord. The chord itself (not its undo) stays open under the look lock
-  (§ 7), so a child can switch a parent's look back to the default; that is accepted, because it can't add anything. The
+  (§ 7), so a child can switch a parent's look back to the emergency Home; that is accepted, because it can't add anything. The
   safe-look notice says what happened and how to turn packages back on. Until the chord is proven, the CLI and Recovery are the real
   reset. Neither screen exists today; both are built in step 3 (§ 15).
 - **Package content never appears on the review screen.** The review
@@ -306,8 +316,10 @@ bytes actually inflated, not the declared ones; the zip and inflate crates
 named and justified in step 2a):
 
 ```
-package.json          meta + document
+package.json          meta + document (a panel's faces, or a theme's tokens and Home)
 strings/<lang>.json   message tables, one per supported language
+code/<name>.slint     a `runtime: code` theme's layout (§ 5.9)
+scripts/<name>.rhai   scripts (§ 5.8), later
 assets/<name>.png     images ([a-z0-9_-]{1,40}.png)
 assets/<lang>/<name>.png, assets/<mode>/<name>.png   locale or mode variants
 thumbnail.png         for the studio and the Panels page (never on locked surfaces)
@@ -407,7 +419,8 @@ thumbnail.png         for the studio and the Panels page (never on locked surfac
 `author` (self-declared, shown "unverified"), `licence`, `homepage`,
 `description`, `format`, `min_launcher`, `requires` (renderer features),
 `faces` it implements (only the Home tile starts on, § 8.2), `sources` it
-reads, `actions` it uses, `knobs` (§ 7), `default_language`.
+reads, `actions` it uses, `knobs` (§ 7), `default_language`, and for a
+theme its `runtime`: `data` (the default) or `code` (§ 5.9).
 
 - **Ids**: `user.` + `[a-z0-9-]{1,32}`, not starting or ending with `-`
   — e.g. `user.weather-tiles`. User ids can't collide with
@@ -800,7 +813,7 @@ describe.
   (every item's calls count against it) and a memory cap; over budget,
   the call gives no value (the fallback shows) and the watchdog counts
   it; again and again, the package is paused (§ 6.5), or a Home document
-  falls back to the built-in Home (§ 10.4). The crash marker names
+  falls back to the emergency Home (§ 10.4). The crash marker names
   scripts (§ 9.6).
 - **Review**: "contains code" in amber, with the scripts listed by size;
   it says what they can read (the highest tier among their sources), not
@@ -821,6 +834,51 @@ describe.
 - The language (Rhai, as #79 uses, or WASM) and its cost on the Philips
   are decided before the slice (§ 16 Q19); #79's Rhai sandbox is a
   starting point.
+
+### 5.9 Themes with runtime code (owner request 14)
+
+- A `runtime: code` theme carries its Home (and later its other
+  surfaces) as `.slint` files in `code/`, compiled on the TV by
+  `slint-interpreter` when the theme loads. It draws through a fixed host
+  API (a `@rusttv/theme.slint` module, starting from #79's
+  `@rusttv/skin.slint`): the launcher passes in the same values data
+  themes get (apps, tiles, focus, clock, knobs, tokens) and gets back only
+  callbacks the launcher handles (open the focused item, move focus,
+  open the tile menu). The host API is versioned like the format.
+- It loads only when "Allow packages with code" is on (§ 5.8: off by
+  default, the code and hold to turn on), and the review says "contains
+  code".
+- It can't reach files, the network, Settings, History, pairing or any
+  locked surface (§ 4). When the theme is read, its `.slint` source is
+  checked against an allowlist: it imports only the host API module and
+  its own `code/` files, and has no `Window`, `PopupWindow`, `TextInput`
+  or file loader; images come only from its `assets/` through the host.
+  Size caps (bytes, elements, nesting) stand in for § 5.1's node caps.
+- **Floors, enforced by the launcher around it**: keys reach the launcher
+  first (reserved keys and the all-apps key never reach the code, § 5.7);
+  the all-apps key opens the launcher-drawn list of every app whatever
+  the theme draws; Back and the Settings way in always work; the
+  "custom Home" mark, the name of the app OK will open, and the
+  launcher's notices are drawn above the theme. Locked surfaces are
+  separate screens a theme can't reach, so a look-alike drawn by a theme
+  approves nothing; a hostile-code-theme test (§ 4) covers a fake dialog,
+  trapped focus and a hidden app. A theme that fails a floor, misses
+  frames again and again or fails to compile is disabled with its reason
+  and the emergency Home loads.
+- **Versions**: a code theme declares `host_api` (and the Slint language
+  version it was checked with); a launcher refuses a newer one at
+  install, compiles every code theme at the first start after an update,
+  and disables one that fails, with its reason. A removed host API
+  feature is deprecated for one release first.
+- **Review facts**: "contains code"; each `.slint` and script file with
+  its size and hash (never its content); the host API version; "draws
+  your whole Home and sees your app names and icons, the clock and its
+  knobs"; no network and no files; its cost class.
+- Cost: measured at about 50% more per frame than compiled code for the
+  same Home (§ 6.7); each code theme is measured on the Philips in its
+  PR. Scripts (§ 5.8) are Rhai first (Q19).
+- `slint-interpreter` is a new launcher dependency, justified in its PR
+  (size, licence, maintenance).
 
 ## 6. The TV side
 
@@ -964,7 +1022,7 @@ a removed one is deprecated for one release first.
   bindings) checked against the caps (§ 5.1); the studio shows it.
 - **Watchdog**: a face that misses frames repeatedly loses effects first,
   then animations, then pauses ("panel paused"), recorded in History (a
-  Home document isn't paused: the built-in Home loads instead, § 10.4). With
+  Home document isn't paused: the emergency Home loads instead, § 10.4). With
   several user faces visible, the one with the highest cost estimate is
   degraded first.
 - **BENCHMARK_PLAN.md** gets a synthetic-panel fixture set (small,
@@ -1042,9 +1100,10 @@ drew the same screen (checked by screenshot) on the Philips:
   41 MB is the APK without it).
   Compiling the `.slint` source took 30 ms; the spike's library grew to
   21 MB with the interpreter.
-- So owner request 13 is met with data drawn by compiled components
-  first (§ 5.7, § 10.4), and code comes later as small scripts that only
-  compute values (§ 5.8), not as a runtime UI language.
+- So request 13 is met with data drawn by compiled components first
+  (§ 5.7, § 10.4); request 14 adds `slint-interpreter` themes (§ 5.9) at
+  about 50% more per frame, measured per theme on the Philips (T5);
+  scripts (§ 5.8) stay value-only.
 
 ## 7. Knobs and settings (no canvas needed)
 
@@ -1278,7 +1337,8 @@ Panels page says so elsewhere.
   so an injected press is a nuisance, not a risk (like the safe look).
   SECURITY.md has no such tier today, so this is a dated decision (§ 14,
   § 16 Q18).
-  Removing the theme in use falls back to the default theme.
+  Removing the theme in use loads the emergency Home until the person
+  picks another.
 - The approval binds to the package hash, its author key, its declared
   sources, faces, surfaces and actions; apply re-hashes the staged copy
   first.
@@ -1307,7 +1367,11 @@ Panels page says so elsewhere.
 
 The **Themes panel** (built in): installed themes with previews (rendered
 by the launcher), pick one, its modes (manual, follow the system, or a
-clock range), theme tweaks (§ 7), remove.
+clock range), theme tweaks (§ 7), remove. Themes with runtime code are
+marked "contains code" and shown disabled, with the reason, while "Allow
+packages with code" is off; turning it off while one is in use loads the
+emergency Home. With nothing installed it says so and how to install a
+theme from the computer.
 
 ### 9.5 History
 
@@ -1340,7 +1404,7 @@ clock range), theme tweaks (§ 7), remove.
   needs the code instead.
 - **Downgrading the launcher** below a format it needs: the old launcher
   refuses the new snapshot (as today), keeps the files, and starts with
-  the default look and a notice.
+  the emergency Home and a notice.
 
 **After a launcher update** every stored package is validated again at
 the first start; one that fails a tightened limit or uses a removed
@@ -1370,9 +1434,11 @@ force stop never counts, and a foreground low-memory kill counts only
 three times in a row. A
 crash during staged validation deletes the staged file,
 and after two crashes in a row every user package is disabled and the
-default look loads (the safe-look notice says what happened). Same for a
-theme; a crashing Home document falls back to the built-in Home and the
-default theme.
+emergency Home loads (the safe-look notice says what happened). Same for a
+theme. A code theme's compile and every frame it draws keep its marker
+set (the theme in use is always at risk); compiling runs off the UI
+thread under a time and size cap, and two marked exits in a row disable
+it.
 
 ### 9.7 Profiles and several TVs
 
@@ -1396,7 +1462,7 @@ remote layouts.
 
 ### 10.1 Tokens
 
-A theme is a package of **tokens** in layers (the W3C Design Tokens
+A theme is a package with its Home (§ 10.4) and **tokens** in layers (the W3C Design Tokens
 format, DTCG): primitives (colour ramps, sizes) → semantic tokens (`bg`,
 `surface`, `text`, `text-dim`, `accent`, `focus`, `danger`, spacing,
 radii, elevation and shadows, type styles, motion durations and easings,
@@ -1406,15 +1472,17 @@ Each token says where it is used, `since` and `deprecated`.
 
 - **Partial overlay**: a theme sets what it wants; a missing token takes
   the fallback alias every new token must declare (an existing semantic
-  token, so a light theme stays light), else the default; the contrast
+  token, so a light theme stays light), else the launcher's compiled
+  token default (not a theme); the contrast
   floors run on the merged result at each load and after a launcher
-  update, and a theme that fails falls back to the default with a reason; an unknown token (from a newer launcher) is ignored with a
+  update, and a theme that fails is disabled with a reason and the
+  emergency Home loads; an unknown token (from a newer launcher) is ignored with a
   warning, so themes move between versions.
 - **Modes**: light, dark, high contrast, night; picked manually, following
   the system, or by a clock range.
 - **Floors enforced on the TV**: contrast of text pairs and of the focus
   indicator (WCAG AA), minimum text size, ranges for every layout token
-  of the built-in Home (a Home document has § 10.4's floors instead)
+  of today's compiled Home (a Home document has § 10.4's floors instead)
   (a theme can't hide the grid or the focus). A theme below a floor is
   refused at install.
 - **Ranges for every token**, motion included (focus zoom, sway, glow,
@@ -1431,7 +1499,8 @@ Each token says where it is used, `since` and `deprecated`.
 
 | Surface | Theme can |
 |---|---|
-| Home screen | tokens and the Home document (§ 10.4), within its floors |
+| Home screen | tokens and the Home document (§ 10.4), within its floors; a `runtime: code` theme draws it with `.slint` (§ 5.9) |
+| No theme installed | the emergency Home; Settings and the launcher's pages use the compiled token defaults |
 | Folders, tile menu, top-right menu, banners, idle screen | tokens, and the slots § 10.4 lists (a `folder` document, the `menu` slot, banner tokens, the `ambient` face) |
 | Settings, History, Optimizer, Remote pages | tokens only (layout stays the launcher's) |
 | User and built-in panels | tokens (panels read tokens) |
@@ -1452,13 +1521,19 @@ Each token says where it is used, `since` and `deprecated`.
 
 ### 10.4 Home as a document (owner request 13)
 
-- A theme may carry `home`: a document for the face `home` (themes only;
-  its root fills the window, § 5.7) with the same nodes, bindings, states,
-  events, navigation and motion as panels. A theme without one gets the
-  built-in Home with its tokens. The compiled built-in Home stays in the
-  launcher for good, as the fallback (and for the safe look and
-  Recovery); from step 2f4 the default theme carries a Home document that
-  copies it.
+- **Every theme carries `home`** (owner request 14): a document for the
+  face `home` (themes only; its root fills the window, § 5.7) with the
+  same nodes, bindings, states, events, navigation and motion as panels,
+  or for a `runtime: code` theme its `.slint` Home (§ 5.9).
+- **No theme is built in** (owner request 14): every theme, the
+  default-looking one included, is installed like any package (through
+  `rusttv-mcp` and approved on the TV); none ships inside the APK. The
+  launcher keeps only a plain **emergency Home**: the apps and Settings,
+  drawn with the compiled token defaults and the person's accessibility
+  tweaks (text scale, high contrast), used on first start until a theme
+  is installed, when no theme loads, when a theme fails a floor or
+  crashes, for the safe look and for Recovery. Until data themes exist
+  (step 2f4), today's compiled Home stays the look.
 - **Slots** the theme places and styles, never changes the content of:
   - the app list (the windowed host list, § 5.7) and folders (a `folder`
     document, or tokens);
@@ -1509,10 +1584,12 @@ Each token says where it is used, `since` and `deprecated`.
   - Back follows § 5.7.
 
   If a floor fails, or the document goes over budget, crashes or trips
-  the watchdog, the built-in Home loads with a notice, recorded in
+  the watchdog, the emergency Home loads with a notice, recorded in
   History (§ 9.6).
-- **First pick**: picking a theme with a Home document for the first
-  time needs the code, like a first activation (§ 8.2); a schedule or
+- **First pick**: picking an installed theme for the first time needs
+  the code, like a first activation (§ 8.2): installing approved the
+  package, the pick approves it taking over Home (on a fresh TV the
+  install review offers "use it now", so one code covers both); a schedule or
   named look that would switch to it counts as that pick. Later picks
   among installed themes stay one click.
 - **Budget**: until step 2f measures it (18, 50 and 100 apps with the
@@ -1719,9 +1796,11 @@ capabilities; install and preview never go through FigCraft.
   timers, launch counts as an opt-in launcher-kept store (and their
   exclusions), the icon palette source, `open_item` and the launcher-drawn
   name beside the "custom Home" mark.
-- Level 3 by the owner's dated decision (2026-11-27, Q9): scripts (§ 5.8),
-  the "Allow packages with code" setting and its tier, before the scripts
-  slice.
+- Level 3 by the owner's dated decision (2026-11-27, Q9 and request
+  14): themes with runtime code (§ 5.9: the interpreter, the host API and
+  its import allowlist, the floors around it) and scripts (§ 5.8), the
+  "Allow packages with code" setting and its tier; the emergency Home and
+  first start with no theme. Before T5.
 - Supply chain: FigCraft and new decoders pinned, vendored with notices,
   `cargo deny` source rules, audited for network calls; each new
   dependency justified in its PR.
@@ -1818,9 +1897,12 @@ the measurement APK) starts with the owner's go-ahead in that session.
    first the locked surfaces on `LockedTheme` with the hostile-theme
    test, the safe look with its key chord proven on the Philips and one
    other remote; then colours → type scale and radii → spacing and sizes → motion →
-   Home layout tokens (for the built-in Home); the Settings way in and
-   the all-apps key, decided with the safe-look chord; `Theme` driven from Rust; the default theme as a
-   package (system fonts, Q6).
+   Home layout tokens (for today's compiled Home, the default look until
+   data themes exist); the Settings way in and
+   the all-apps key, decided with the safe-look chord; `Theme` driven from Rust
+   (system fonts, Q6). Step 3 ends with today's compiled Home and the
+   emergency Home; the first data theme package comes after 2f4 and 4b,
+   with T3.
 4. **Install and placement**:
    - 4a the remaining SECURITY.md sections (§ 14) not already written in
      2c and 3, with the owner's dated decisions.
@@ -1853,6 +1935,24 @@ the measurement APK) starts with the owner's go-ahead in that session.
    - 6e sources, bindings, motion;
    - 6f MCP.
 7. **Live preview** (§ 11), after its SECURITY.md section.
+
+   **Theme track with #79** (owner request 14), its own PRs, alongside
+   steps 2–4, in this order: T1, T4, T3, T2, then T5 (after 2f4's floors
+   and the level 3 SECURITY.md entry; it builds the "Allow packages with
+   code" setting), T6, T7:
+   - T1 theme format: `runtime` in meta, `code/` and `scripts/` entries
+     (us).
+   - T2 Settings → Theme listing installed theme packages, translated
+     (#79's author; after T3, though its UI can be reviewed earlier).
+   - T3 install over MCP: `theme_install_plan`, staging, the review on the
+     TV, History (us; parts of 4b and 4d).
+   - T4 safety net: the emergency Home, the safe-look key (us; with the
+     step 3 safe look and its SECURITY.md entries).
+   - T5 the runtime-code engine and host API behind "Allow packages with
+     code", measured on Android (#79's author; the level 3 SECURITY.md
+     entry first).
+   - T6 #79's themes repacked as packages, outside the launcher.
+   - T7 Rhai scripts (after Q19).
 8. **Later, each with its own decision**: scripts (§ 5.8, after step 2f
    and Q19), web data sources, settings actions, input switching and
    global keys, signed sharing and a catalog, setup bundles, larger
@@ -1916,9 +2016,10 @@ the measurement APK) starts with the owner's go-ahead in that session.
     and can be undone (a new SECURITY.md tier)? — **Decided 2026-11-24:
     plain Approve.**
 19. **Script language** (§ 5.8): Rhai (as #79 uses) or WASM (`wasmi`)?
-    Decided before the scripts slice, with a Philips measurement of each
-    (frame time with scripts computing values, memory, library size) and
-    a dependency review.
+    — **Leaning 2026-11-27: Rhai first** (readable on the review, no
+    toolchain, #79 already uses it), behind a language-neutral host API so
+    WASM (scripts in Rust) can be added later; confirmed by a Philips
+    measurement before the scripts slice.
 20. **RustTV profiles** (a kids' Home with its own hidden apps, theme and
     knobs, switched with a PIN): wanted, and when? They need a SECURITY.md
     decision, since Settings behind a PIN meets § 10.4's floors.
@@ -2252,3 +2353,14 @@ All findings were folded into this version (§ 5.7, § 5.8, § 10.4 rewritten).
 
 All findings were folded in. The owner's two-round cap ends this loop
 here; a round 23 runs if the owner wants the "nothing new" proof.
+
+**Round 23 (2026-11-27)**, owner request 14 (one theme system, two
+runtimes, nothing built in), one fresh reviewer, high and medium only:
+the default look's bytes and first start (no bundled theme: the
+emergency Home until one is installed); every "default theme" fallback
+(now the emergency Home); § 6.7 still saying "not a runtime UI
+language"; build order (step 3 vs 2f4 and 4b, T-track order, where the
+code setting is built); the first-pick rule; the Themes panel with code
+themes; § 10.1/10.2 wording; § 14 entries; how § 5.9's floors hold for
+`.slint` (keys first, launcher-drawn list and marks, import allowlist);
+host API versions; the review facts; the crash marker. All folded in.
