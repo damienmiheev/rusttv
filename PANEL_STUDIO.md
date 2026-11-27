@@ -1,6 +1,6 @@
 # Panel Studio — plan
 
-Status (2026-11-27): **plan, step 2a under way; review rounds 1–20 done (round 20 found nothing new); owner request 13 added full customisation (§ 5.7, § 5.8, § 6.7, § 10.4), reviewed in round 21; round 22 pending** (§ Review
+Status (2026-11-27): **plan, step 2a under way; review rounds 1–20 done (round 20 found nothing new); owner request 13 added full customisation (§ 5.7, § 5.8, § 6.7, § 10.4), reviewed in rounds 21 and 22** (§ Review
 log). Written from the owner's requests of 2026-11-20, 2026-11-21 and
 2026-11-24 (§ 1) and research into FigCraft and its sibling apps, Rust GUI
 toolkits and RustTV's own code (§ 17). Nothing here is built. § 16 lists
@@ -445,7 +445,9 @@ reads, `actions` it uses, `knobs` (§ 7), `default_language`.
 ### 5.3 The document
 
 **A panel is a component set; each face is a variant** (`face=tile`,
-`row`, `page`, `corner`, `banner`, `ambient`, `hero`, `phone`), with
+`row`, `page`, `corner`, `banner`, `ambient`, `hero`, `phone`; themes
+also have `home` and `folder`, which panels refuse; `menu` is a slot, not
+a face), with
 optional extra variant properties (`state=attention`, `size=…`). Nodes
 form a tree with stable ids (the studio keeps them across edits so
 bindings survive).
@@ -520,8 +522,10 @@ bindings survive).
   background colour, rotation) with a fixed easing set (linear, ease,
   ease-in, ease-out, ease-in-out, two springs), between variants or on a
   source change.
-- **Loops** (pulse, rotate, fade) run only while the face is visible and
-  focused, at most one per surface at a time, and stop on the idle screen
+- **Loops** (pulse, rotate, fade, and `orbit`: a bounded drift of x, y
+  and rotation, today's sway) run only while the face is visible and
+  focused, at most one per surface at a time (a Home document: up to
+  three, one per layer, for sway and glows), and stop on the idle screen
   except at the minute tick (PANELS.md decision 8: no per-frame work for
   still panels).
 - **Triggers**: on focus, on press, on a source change, after a delay
@@ -637,7 +641,10 @@ say what it does. First numbers are guesses, measured in step 2f.
 - `mask` (an alpha gradient or image) on a group, for edge fades;
   `transform` (scale, move, skew, 2D rotation); image focal point, zoom,
   offset, saturation and brightness; text shadow, marquee on focus and fit
-  (shrink or cut); gradient stops that bind and animate. Each has a tier
+  (shrink or cut); gradient stops that bind and animate. Bindings may also
+  set x, y, w, h and the transform's parts (a carousel scaling by distance
+  from focus), animated by transitions; moves are in start/end terms, and
+  rotation and skew mirror in right-to-left languages. Each has a tier
   per renderer (§ 6.2) and a fallback the studio shows.
 
 **Lists**
@@ -645,26 +652,35 @@ say what it does. First numbers are guesses, measured in step 2f.
 - `repeat` (§ 5.3) gains `sort` (a list of keys, each an expression,
   either way, stable), `filter` (a yes/no expression), `from` and `count`
   (a dock with the first five, a shelf with the rest), `group_by`
-  (sections with headers), per-item stagger and a layout transition
+  (sections with headers, expanded into one flat list of headers and
+  items, so it isn't a nested repeat), per-item stagger and a layout transition
   (move, enter, exit). Sort and filter run again only when their inputs
   change.
 - **The app list stays the person's**: a `repeat` over `apps.list` is
   windowed (only the visible items and a margin are built, so a TV with
   120 apps fits the node budget and § 5.1's cap of 50 doesn't apply) and
   always shows every app the person hasn't hidden, in the person's order
-  (§ 8.2); `sort` and `filter` are refused on it. Other views of the same
-  apps (a "most used" row, a tab per kind) are extra lists; the full list
-  stays reachable (§ 10.4).
+  (§ 8.2); `sort`, `filter`, `from`, `count` and `group_by` are refused on
+  it. `apps.view` is a read-only copy of it that allows them all (a "most
+  used" row, a tab per kind, a dock with the first five); it is never the
+  only way to an app (§ 10.4).
 - `apps.list` items have: name, banner, icon, a monochrome icon and a
   small colour palette (both made by the host), kind (app, game, folder,
   panel), new (until first opened) and launch count. A folder's `children`
   are laid out by the theme's `folder` document, or with tokens only.
 - **Item and focus values**: inside a `repeat`, `{"item": …}` reads the
   item's fields and its index, first or last, row, column, whether it is
-  focused and how far it is from the focused item; anywhere,
+  focused, pressed, being moved or launching, and how far it is from the
+  focused item; `home.mode` says whether Home is browsing, moving a tile,
+  launching, or showing the tile menu or top-right menu (while moving or
+  launching the keys are the launcher's, and the theme only draws); anywhere,
   `{"focus": …}` reads the focused item's fields and box. These are
   in-document values, not the focused-app source § 6.4 keeps out. A
   focus-frame node may follow the focus box with a transition.
+- Items and `{"focus"}` also give `banner_blurred` (blurred once per item
+  by the host, for cinema and spotlight backdrops), `art_kind` (banner,
+  icon, none, loading) and a generated fallback; a bound image may
+  crossfade when it changes (Costly, § 6.2).
 - **Functions** added to expressions (§ 6.4): colour (mix, alpha,
   lighten, darken, a readable text colour on a background), time (hour,
   minute, weekday, between two times) and `select` (several branches),
@@ -676,8 +692,10 @@ say what it does. First numbers are guesses, measured in step 2f.
   list) with a start value; `{"state": name}` reads one; a `repeat`
   item may have its own. States replace § 5.3's "local" values: kept
   while the document is shown, never persisted. To remember a choice (the
-  last tab), a step may set one of the package's own one-click knobs
-  (§ 7), at most once every 5 s.
+  last tab), a step may write the package's `remember` slot: up to 1 KiB,
+  once every 5 s, not a setting, not recorded in History per write, not
+  under the look lock; it resets with the safe look and removal and can't
+  switch a surface by itself.
 - A variant may be picked by an expression (`variant_when`), with a hard
   cut (shared transitions stay later); a reduced-motion variant is picked
   this way.
@@ -699,18 +717,24 @@ say what it does. First numbers are guesses, measured in step 2f.
   steps: set a state; move focus (to a node, an item by index, first,
   last, a row, or the first item where an expression holds); scroll; open
   or close a focus scope (a menu that keeps focus until it closes, then
-  focus goes back); switch a variant; play an animation; set a one-click
-  knob (above); and § 5.5's actions.
+  focus goes back); switch a variant; play an animation; write the
+  `remember` slot (above); and § 5.5's actions.
 - **Only key presses act**: § 5.5's actions and focus moves run only
   from a key handler on a focused node. Document-level key handlers (key
   sequences) and focus, edge, show, timer, idle and source handlers only
   set states, switch variants and play animations. So nothing moves focus
   or opens anything without a key press, and focus handlers can't bounce
   focus back and forth.
-- **OK opens what it shows**: `open_item` opens the focused item only,
-  resolved by the host, and an app item's name and image must come from
-  that same item (a lint), so a theme can't show one app and open
-  another.
+- **OK opens what it shows**: `open_item` (Home and folder documents,
+  themes only) opens the focused item, resolved by the host from the
+  person's own visible list. It is the one open that needs no review
+  entry, and the review says "can open any visible app"; § 5.5's
+  exclusions still apply (Settings, SystemUI, installers, the launcher),
+  and a `panel` item opens only that panel's page. While an item is
+  focused, the launcher draws its name in its own slot beside the
+  "custom Home" mark (§ 10.4), so a theme can't show one app and open
+  another; the lint that name and image come from the same item is only
+  a first warning.
 - **No loops**: a handler runs its steps once per event, and a step
   can't raise another event in the same frame. Fuel and the watchdog
   (§ 6.5) cover the rest.
@@ -721,6 +745,11 @@ say what it does. First numbers are guesses, measured in step 2f.
   (the tile menu: move, hide, folders). A package may bind Back only while
   a state differs from its start, and only to put states back or close a
   focus scope; a second Back within 1 s always goes to the launcher.
+- **Default navigation**: an arrow no handler takes moves focus to the
+  nearest focusable node that way (list order inside a `repeat`, mirrored
+  in right to left); at an edge with nowhere to go, the key goes to the
+  launcher (the top-right menu above the first row, as today). A handler
+  takes a key only when it runs a step.
 - While a locked surface, a review, a launcher page or the idle screen is
   in front, a Home document gets no keys, timers or sources.
 
@@ -897,8 +926,11 @@ a removed one is deprecated for one release first.
 - **For full customisation** (§ 15 step 2f):
   - launch counts: how often RustTV opened each app in the last 30 days,
     kept by the launcher itself (so no usage-access permission; launches
-    from elsewhere don't count), hidden apps excluded, reset in Settings,
-    never in History, the Mac backup or MCP tools, tier 2;
+    from elsewhere don't count), hidden apps excluded, never in History,
+    the Mac backup or MCP tools, tier 2. Counting is off until the person
+    turns on "Count app launches" or approves a package that reads them
+    (the review shows it in amber); turning it off or resetting clears the
+    store, and both are under the look lock;
   - an app icon's palette and monochrome icon, made by the launcher, tier
     2 like the app list;
   - `ui.text_scale`, `ui.reduced_motion`, `ui.high_contrast`, `ui.rtl`,
@@ -1406,15 +1438,20 @@ Each token says where it is used, `since` and `deprecated`.
 - A theme may carry `home`: a document for the face `home` (themes only;
   its root fills the window, § 5.7) with the same nodes, bindings, states,
   events, navigation and motion as panels. A theme without one gets the
-  built-in Home with its tokens; the built-in Home becomes the default
-  theme's Home document when the built-ins move to v2 (§ 15 step 2e).
+  built-in Home with its tokens. The compiled built-in Home stays in the
+  launcher for good, as the fallback (and for the safe look and
+  Recovery); from step 2f4 the default theme carries a Home document that
+  copies it.
 - **Slots** the theme places and styles, never changes the content of:
   - the app list (the windowed host list, § 5.7) and folders (a `folder`
     document, or tokens);
-  - the panel tiles the person placed (§ 8): the theme places and sizes
-    each slot and picks the face by size (a dock icon uses the panel's
-    `icon` from its meta, else a generated icon and name), but never
-    changes what the panel draws, its user badge or its focus look;
+  - the panel tiles the person placed (§ 8) sit in the app order as items
+    of kind `panel`, drawn through a `panel` slot in the item template;
+    the theme sizes that slot and the face is picked by size (a dock icon
+    uses `meta.icon`, an icon from the launcher's built-in set, never a
+    package image, else a generated icon and name), but it never changes
+    what the panel draws, its user badge or its focus look, and never takes
+    panels out of the person's order;
   - the hero (the focused tile's, § 8.1), the clock (the minute tick;
     seconds only while visible and not idle, at most once a second) and
     the status corner (the person's priority and its 2-glyph cap stay);
@@ -1433,10 +1470,18 @@ Each token says where it is used, `since` and `deprecated`.
   wallpaper by the host) gives frosted glass where background blur isn't
   drawn (§ 6.2).
 - **Floors, enforced while Home runs**, not only at install:
-  - the app list, the focus frame and the Settings way in ignore
-    `visible`, opacity and size bindings; focus lands only on a node that
-    is drawn, on screen and at least the minimum size, and the host
-    scrolls it into view;
+  - every variant of a `home` document has one plain `apps.list`
+    repeat: no `sort`, `filter`, `from`, `count`, `group_by` or `mask`, and
+    a variant switch that would remove it is refused;
+  - the floors are minimums, not bans: an item may dim (opacity at least
+    0.3, the focused one 1.0) and scale (a `transform` scale counts as
+    size) but stays at least the minimum size and on screen, and an idle
+    fade dims the list to the minimum, never hides it; the focus frame and
+    the Settings way in ignore `visible`, opacity and size bindings;
+  - the host draws the app list, the focus frame and the Settings way in
+    above any node the document draws over them; focus lands only on a
+    node that is drawn, on screen and at least the minimum size, and the
+    host scrolls it into view;
   - the all-apps key opens a launcher-drawn list of every app the person
     hasn't hidden, whatever the document does;
   - a contrast guard remaps text colours at run time when bound colours
@@ -1654,8 +1699,9 @@ capabilities; install and preview never go through FigCraft.
 - The preview session and its transport; the studio MCP's scope.
 - Full customisation (step 2f): the Home document, its run-time floors,
   the reserved keys and the all-apps and Settings ways in, events and
-  timers, launch counts as a launcher-kept store (and their exclusions),
-  the icon palette source.
+  timers, launch counts as an opt-in launcher-kept store (and their
+  exclusions), the icon palette source, `open_item` and the launcher-drawn
+  name beside the "custom Home" mark.
 - Level 3 by the owner's dated decision (2026-11-27, Q9): scripts (§ 5.8),
   the "Allow packages with code" setting and its tier, before the scripts
   slice.
@@ -2172,3 +2218,20 @@ later), two fresh reviewers:
   setting's tier; § 14 entries; crash marker and watchdog for Home.
 
 All findings were folded into this version (§ 5.7, § 5.8, § 10.4 rewritten).
+
+**Round 22 (2026-11-27)**, two fresh reviewers, high and medium only
+(none high):
+
+- *Coverage* (9): floors banned the dimming and scaling carousels need;
+  no list for "most used" rows; no sway loop; geometry bindings and RTL
+  transforms; default navigation and key fall-through; Home modes and
+  item states; panel items in the app order; focused-item art;
+  `group_by` vs nested repeats.
+- *Consistency and safety* (8): `open_item` vs § 5.5; the same-item lint
+  enforced at run time; one plain app list per variant, drawn above
+  overlaps; knob writes from handlers vs the look lock (now a `remember`
+  slot); the compiled Home kept as the fallback; `meta.icon`; `home` and
+  `folder` faces; launch counts opt-in.
+
+All findings were folded in. The owner's two-round cap ends this loop
+here; a round 23 runs if the owner wants the "nothing new" proof.
