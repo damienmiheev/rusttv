@@ -6,6 +6,8 @@
 //! 12.5, true                                       number, yes/no
 //! {"source": "network.connected"}                  a field of a source group in meta.sources
 //! {"knob": "accent"}                               a knob in meta.knobs
+//! {"item": "name"}                                 a field of the list item, inside a repeat
+//! {"count": "apps.list"}                           how many items a list has
 //! {"msg": "unread", "args": {"count": {...}}}      a message from the package's tables
 //! {"if": [condition, then, else]}
 //! {"call": "format_time", "args": [{"source": "clock.now"}, "HH:mm"]}
@@ -82,6 +84,10 @@ pub trait Inputs {
     /// The value of knob `name`: [`crate::Knob::resolve`] of the stored
     /// one, so it has the knob's type and rules.
     fn knob(&self, name: &str) -> Option<Value>;
+    /// Field `field` of the item a repeat is drawing; `None` outside one.
+    fn item(&self, field: &str) -> Option<Value>;
+    /// How many items list `group.field` has now (before a repeat's `max`).
+    fn count(&self, group: &str, field: &str) -> Option<usize>;
     /// The message `id` in the panel's language with `args` filled in.
     fn message(&self, id: &str, args: &[(&str, Arg<'_>)]) -> Option<String>;
 }
@@ -111,8 +117,8 @@ const fn field(group: &'static str, field: &'static str, kind: Type, tier: u8) -
 }
 
 /// Every source field a package can bind (§ 6.4). Units: `storage.free`
-/// in bytes; `device.uptime` and `history.age` in seconds. Collections (the
-/// app list, paired phones' names) come with `repeat`.
+/// in bytes; `device.uptime` and `history.age` in seconds. Lists are in
+/// [`collections`].
 const SOURCES: &[SourceField] = &[
     field("clock", "now", Type::Time, 0),
     field("clock", "hour24", Type::Bool, 0),
@@ -130,20 +136,74 @@ const SOURCES: &[SourceField] = &[
     field("history", "waiting", Type::Number, 2),
 ];
 
+/// A list a `repeat` node draws (PANEL_STUDIO.md § 5.3): its group (listed
+/// in `meta.sources`), name, item fields and privacy tier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Collection {
+    /// The group, e.g. `apps`.
+    pub group: &'static str,
+    /// The list, e.g. `list`.
+    pub field: &'static str,
+    /// Each item's fields and their types.
+    pub items: &'static [(&'static str, Type)],
+    /// 0 (harmless) to 2 (warned about on review).
+    pub tier: u8,
+}
+
+/// Every list a package can repeat: the visible apps' names and the paired
+/// phones' names (shown only on the TV). More item fields (icons, banners,
+/// palettes) come with image bindings and step 2f.
+const COLLECTIONS: &[Collection] = &[
+    Collection {
+        group: "apps",
+        field: "list",
+        items: &[("name", Type::Text)],
+        tier: 2,
+    },
+    Collection {
+        group: "phones",
+        field: "list",
+        items: &[("name", Type::Text)],
+        tier: 2,
+    },
+];
+
 /// Every source field a package can bind.
 pub fn sources() -> &'static [SourceField] {
     SOURCES
 }
 
-/// Whether `group` is a source group a package may list in `meta.sources`.
-pub fn is_source_group(group: &str) -> bool {
-    SOURCES.iter().any(|s| s.group == group)
+/// Every list a package can repeat.
+pub fn collections() -> &'static [Collection] {
+    COLLECTIONS
 }
 
-/// A source group's privacy tier (every field of a group has the same
-/// one); the review warns about tier 2.
+/// The list `group.field`, if there is one.
+pub fn collection(group: &str, field: &str) -> Option<&'static Collection> {
+    COLLECTIONS
+        .iter()
+        .find(|c| c.group == group && c.field == field)
+}
+
+/// Whether `group` is a source group a package may list in `meta.sources`.
+pub fn is_source_group(group: &str) -> bool {
+    source_tier(group).is_some()
+}
+
+/// A source group's privacy tier (every field and list of a group has the
+/// same one); the review warns about tier 2.
 pub fn source_tier(group: &str) -> Option<u8> {
-    SOURCES.iter().find(|s| s.group == group).map(|s| s.tier)
+    SOURCES
+        .iter()
+        .find(|s| s.group == group)
+        .map(|s| s.tier)
+        .or_else(|| {
+            COLLECTIONS
+                .iter()
+                .find(|c| c.group == group)
+                .map(|c| c.tier)
+        })
 }
 
 /// A function an expression can call.
@@ -231,6 +291,15 @@ pub enum Expr {
     },
     /// A knob's value (`{"knob": name}`).
     Knob(Name),
+    /// A field of the item a repeat is drawing (`{"item": field}`).
+    Item(String),
+    /// How many items list `group.field` has (`{"count": "apps.list"}`).
+    Count {
+        /// The group.
+        group: String,
+        /// The list.
+        field: String,
+    },
     /// A message with its placeholders' values.
     Msg {
         /// The message id.
@@ -350,6 +419,15 @@ impl<'de> Deserialize<'de> for Expr {
                             }
                         }
                         "knob" => Expr::Knob(map.next_value()?),
+                        "item" => Expr::Item(map.next_value()?),
+                        "count" => {
+                            let path: String = map.next_value()?;
+                            let (group, field) = path.split_once('.').ok_or_else(bad)?;
+                            Expr::Count {
+                                group: group.to_owned(),
+                                field: field.to_owned(),
+                            }
+                        }
                         "if" => Expr::If(Box::new(map.next_value::<[Expr; 3]>()?)),
                         "msg" => Expr::Msg {
                             id: map.next_value()?,
@@ -420,30 +498,53 @@ struct Budget {
     nodes: usize,
 }
 
-/// Checks `expr` where a `want` is expected, reading only `sources` (the
-/// groups in `meta.sources`) and `knobs` (names and value types).
+/// Checks `expr` where a `want` is expected, reading only what `scope`
+/// allows.
 ///
 /// # Errors
 ///
 /// [`Code::TypeMismatch`], [`Code::UnknownSource`],
-/// [`Code::UndeclaredSource`], [`Code::UnknownKnob`], [`Code::BadExpression`] (wrong argument count,
+/// [`Code::UndeclaredSource`], [`Code::UnknownKnob`], [`Code::NotInRepeat`],
+/// [`Code::BadExpression`] (wrong argument count,
 /// a non-literal time pattern), [`Code::BadColor`] or
 /// [`Code::ExpressionTooLarge`].
-pub fn check(
-    expr: &Expr,
-    want: Type,
-    sources: &BTreeSet<&str>,
-    knobs: &BTreeMap<&str, Type>,
-) -> Result<(), Code> {
+pub fn check(expr: &Expr, want: Type, scope: &Scope<'_>) -> Result<(), Code> {
     let mut budget = Budget { nodes: 0 };
-    let scope = Scope { sources, knobs };
-    check_at(expr, Some(want), &scope, &mut budget, 1).map(|_| ())
+    check_at(expr, Some(want), scope, &mut budget, 1).map(|_| ())
 }
 
-/// What an expression may read.
-struct Scope<'a> {
+/// What an expression may read: the source groups in `meta.sources`, the
+/// knobs (names and value types) and, inside a repeat, its list's items.
+#[derive(Debug, Clone, Copy)]
+pub struct Scope<'a> {
     sources: &'a BTreeSet<&'a str>,
     knobs: &'a BTreeMap<&'a str, Type>,
+    item: Option<&'static Collection>,
+}
+
+impl<'a> Scope<'a> {
+    /// Reading `sources` and `knobs`, outside any repeat.
+    pub fn new(sources: &'a BTreeSet<&'a str>, knobs: &'a BTreeMap<&'a str, Type>) -> Self {
+        Self {
+            sources,
+            knobs,
+            item: None,
+        }
+    }
+
+    /// Whether `group` is listed in `meta.sources`.
+    pub fn contains_source(&self, group: &str) -> bool {
+        self.sources.contains(group)
+    }
+
+    /// The same, inside a repeat over `list`.
+    #[must_use]
+    pub fn in_repeat(self, list: &'static Collection) -> Self {
+        Self {
+            item: Some(list),
+            ..self
+        }
+    }
 }
 
 fn check_at(
@@ -479,6 +580,22 @@ fn check_at(
             Checked::Is(known.kind)
         }
         Expr::Knob(name) => Checked::Is(*scope.knobs.get(name.as_str()).ok_or(Code::UnknownKnob)?),
+        Expr::Item(field) => {
+            let list = scope.item.ok_or(Code::NotInRepeat)?;
+            let (_, kind) = list
+                .items
+                .iter()
+                .find(|(name, _)| name == field)
+                .ok_or(Code::UnknownSource)?;
+            Checked::Is(*kind)
+        }
+        Expr::Count { group, field } => {
+            let list = collection(group, field).ok_or(Code::UnknownSource)?;
+            if !scope.sources.contains(list.group) {
+                return Err(Code::UndeclaredSource);
+            }
+            Checked::Is(Type::Number)
+        }
         Expr::Msg { args, .. } => {
             for (_, arg) in args {
                 let got = check_at(arg, None, scope, budget, depth + 1)?;
@@ -610,7 +727,13 @@ pub(crate) fn each_message<'a>(
         }
         Expr::If(parts) => parts.iter().for_each(|part| each_message(part, f)),
         Expr::Call { args, .. } => args.iter().for_each(|arg| each_message(arg, f)),
-        Expr::Str(_) | Expr::Number(_) | Expr::Bool(_) | Expr::Source { .. } | Expr::Knob(_) => {}
+        Expr::Str(_)
+        | Expr::Number(_)
+        | Expr::Bool(_)
+        | Expr::Source { .. }
+        | Expr::Knob(_)
+        | Expr::Item(_)
+        | Expr::Count { .. } => {}
     }
 }
 
@@ -765,6 +888,12 @@ pub fn eval(expr: &Expr, inputs: &dyn Inputs, fuel: &mut u32) -> Option<Value> {
         Expr::Bool(b) => Some(Value::Bool(*b)),
         Expr::Source { group, field } => inputs.source(group, field),
         Expr::Knob(name) => inputs.knob(name.as_str()),
+        Expr::Item(field) => inputs.item(field),
+        Expr::Count { group, field } => {
+            let n = inputs.count(group, field)?;
+            // Exact: a list has far fewer than 2^53 items; larger counts give no value.
+            (n < (1 << 53)).then_some(Value::Number(n as f64))
+        }
         Expr::Msg { id, args } => {
             // A whole, non-negative number is a count (it picks plural
             // forms); any other value is text.
@@ -918,7 +1047,7 @@ mod tests {
         let expr = expr(json)?;
         let sources = BTreeSet::from(["clock", "network", "history"]);
         let knobs = BTreeMap::from([("size", Type::Number), ("accent", Type::Color)]);
-        check(&expr, want, &sources, &knobs).map(|()| expr)
+        check(&expr, want, &Scope::new(&sources, &knobs)).map(|()| expr)
     }
 
     struct Fake;
@@ -937,6 +1066,12 @@ mod tests {
         }
         fn knob(&self, name: &str) -> Option<Value> {
             (name == "size").then_some(Value::Number(4.0))
+        }
+        fn item(&self, field: &str) -> Option<Value> {
+            (field == "name").then(|| Value::Text("YouTube".into()))
+        }
+        fn count(&self, group: &str, _: &str) -> Option<usize> {
+            (group == "apps").then_some(7)
         }
         fn message(&self, id: &str, args: &[(&str, Arg<'_>)]) -> Option<String> {
             match (id, args) {
@@ -1093,6 +1228,12 @@ mod tests {
             fn knob(&self, _: &str) -> Option<Value> {
                 Some(Value::Color(Color::parse("#3478f6").ok()?))
             }
+            fn item(&self, _: &str) -> Option<Value> {
+                None
+            }
+            fn count(&self, _: &str, _: &str) -> Option<usize> {
+                None
+            }
             fn message(&self, _: &str, _: &[(&str, Arg<'_>)]) -> Option<String> {
                 None
             }
@@ -1104,6 +1245,52 @@ mod tests {
         assert_eq!(same("#3478f6"), Some(Value::Bool(true)));
         assert_eq!(same("#3478F6ff"), Some(Value::Bool(true)));
         assert_eq!(same("#000000"), Some(Value::Bool(false)));
+    }
+
+    #[test]
+    fn items_are_read_only_inside_a_repeat_and_counts_need_their_group() {
+        let sources = BTreeSet::from(["apps", "clock"]);
+        let knobs = BTreeMap::new();
+        let outside = Scope::new(&sources, &knobs);
+        let inside = outside.in_repeat(collection("apps", "list").unwrap());
+        let check_in =
+            |json: &str, want, scope: &Scope<'_>| check(&expr(json).unwrap(), want, scope);
+        assert_eq!(check_in(r#"{"item": "name"}"#, Type::Text, &inside), Ok(()));
+        assert_eq!(
+            check_in(r#"{"item": "name"}"#, Type::Text, &outside),
+            Err(Code::NotInRepeat)
+        );
+        assert_eq!(
+            check_in(r#"{"item": "icon"}"#, Type::Text, &inside),
+            Err(Code::UnknownSource)
+        );
+        assert_eq!(
+            check_in(r#"{"item": "name"}"#, Type::Number, &inside),
+            Err(Code::TypeMismatch)
+        );
+        assert_eq!(
+            check_in(r#"{"count": "apps.list"}"#, Type::Number, &outside),
+            Ok(())
+        );
+        assert_eq!(
+            check_in(r#"{"count": "phones.list"}"#, Type::Number, &outside),
+            Err(Code::UndeclaredSource)
+        );
+        assert_eq!(
+            check_in(r#"{"count": "apps.grid"}"#, Type::Number, &outside),
+            Err(Code::UnknownSource)
+        );
+        assert_eq!(expr(r#"{"count": "apps"}"#), Err(Code::BadExpression));
+        let empty = eval(
+            &expr(r#"{"call": "eq", "args": [{"count": "apps.list"}, 0]}"#).unwrap(),
+            &Fake,
+            &mut 10,
+        );
+        assert_eq!(empty, Some(Value::Bool(false)));
+        assert_eq!(
+            eval(&expr(r#"{"item": "name"}"#).unwrap(), &Fake, &mut 10),
+            text("YouTube")
+        );
     }
 
     #[test]
@@ -1163,8 +1350,9 @@ mod tests {
         );
         assert!(sources().iter().all(|s| is_source_group(s.group)));
         assert_eq!(source_tier("history"), Some(2));
-        assert_eq!(source_tier("apps"), None);
-        assert!(!is_source_group("apps"));
+        assert_eq!(source_tier("apps"), Some(2));
+        assert!(is_source_group("apps") && !is_source_group("weather"));
+        assert!(collections().iter().all(|c| is_source_group(c.group)));
     }
 
     #[test]
@@ -1354,6 +1542,12 @@ mod tests {
             self.0.get(usize::from(field == "b")).cloned()
         }
         fn knob(&self, _: &str) -> Option<Value> {
+            None
+        }
+        fn item(&self, _: &str) -> Option<Value> {
+            None
+        }
+        fn count(&self, _: &str, _: &str) -> Option<usize> {
             None
         }
         fn message(&self, _: &str, _: &[(&str, Arg<'_>)]) -> Option<String> {

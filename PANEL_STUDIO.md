@@ -511,6 +511,19 @@ bindings survive).
   is a feature the launcher lacks). Later slices add `role`, `decorative`,
   `reading_order`, `mirror`, vectors, instances, slots, `repeat`, widgets
   and bindings; the error codes go into CLI.md with `rusttv panel`.
+- **As built (step 2a, repeat slice, 2026-11-27)**: a `repeat` node
+  (`list`, `max` 1…50, `item_w`/`item_h` more than 0 and within the
+  repeat's box, optional `direction` row or column and `gap` 0…200; `clip`
+  and `children` allowed) draws its children once per item, in a cell
+  each. Lists: `apps.list` and `phones.list`, each item a `name` (tier 2;
+  the group goes in `meta.sources`). Inside a repeat, `{"item": "name"}`
+  reads a field; anywhere, `{"count": "apps.list"}` gives how many items
+  the list has (an empty state is a node whose `visible` binding compares
+  it with 0). A repeat's children count `max` times against the node,
+  binding and shadow caps; a repeat inside a repeat is `NESTED_REPEAT`;
+  `{"item"}` outside one is `NOT_IN_REPEAT`; an unknown list or field is
+  `UNKNOWN_SOURCE`, an undeclared group `UNDECLARED_SOURCE`. Windowing,
+  `apps.view`, sort, filter and more item fields are step 2f1.
 - **Four kinds of value** (one table in the format docs): **token**
   (from the theme), **source** (live data, § 6.4), **knob** (a setting the
   person chose, persisted), **state** (§ 5.7, not persisted). Literal
@@ -1750,7 +1763,7 @@ the measurement APK) starts with the owner's go-ahead in that session.
    - 2a `rusttv-panels`: types, validator, JSON Schema, expressions,
      message tables, zip reader, fuzz targets (no UI; meta, document and
      message tables, expressions and the zip reader done 2026-11-24,
-     knobs 2026-11-27); `rusttv panel
+     knobs and repeat 2026-11-27); `rusttv panel
      pack` for people, so packages can be made and tested before the
      studio (unsigned until 4b). Until 4b a package reaches only the
      desktop launcher, or a debug-build TV loader that is compiled out of

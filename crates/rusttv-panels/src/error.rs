@@ -146,6 +146,10 @@ codes! {
     /// An expression reads a knob `meta.knobs` doesn't declare (for
     /// `visible_if`, one declared before it).
     UnknownKnob => "UNKNOWN_KNOB",
+    /// An expression reads `{"item": …}` outside a repeat.
+    NotInRepeat => "NOT_IN_REPEAT",
+    /// A repeat inside another repeat.
+    NestedRepeat => "NESTED_REPEAT",
     /// Not a zip (no end record as the file's last 22 bytes).
     NotZip => "NOT_ZIP",
     /// A zip that doesn't hold together: headers that disagree, gaps,

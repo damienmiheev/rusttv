@@ -247,6 +247,8 @@ pub mod limits {
     pub const EXPR_NODES: usize = 64;
     /// Variants in a document.
     pub const VARIANTS: usize = 32;
+    /// Items a `repeat` draws at most.
+    pub const REPEAT: usize = 50;
     /// JSON objects inside `document` (nodes, variants, strokes, shadows),
     /// counted before parsing so a large file can't build a large tree.
     pub const DOCUMENT_OBJECTS: usize = 8192;

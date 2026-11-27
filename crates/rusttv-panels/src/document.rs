@@ -8,7 +8,7 @@
 //! components, vectors and widgets come with the component slice of step 2a.
 
 use crate::error::{Code, PackageError, Position};
-use crate::expr::{self, Expr, Type};
+use crate::expr::{self, Expr, Scope, Type};
 use crate::meta::{Face, Meta, Name, limits};
 use crate::text::Text;
 use serde::Deserialize;
@@ -160,6 +160,9 @@ pub enum NodeKind {
     Image,
     /// A progress bar.
     Progress,
+    /// Its children drawn once per item of a list (`list`), at most `max`
+    /// times, each in a cell of `item_w`×`item_h` along `direction`.
+    Repeat,
 }
 
 /// Horizontal text alignment, in reading direction.
@@ -173,6 +176,18 @@ pub enum Align {
     Center,
     /// Where reading ends.
     End,
+}
+
+/// Which way a repeat lays out its items, in reading direction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum Direction {
+    /// One after another across (mirrored in right-to-left languages).
+    Row,
+    /// One below another.
+    #[default]
+    Column,
 }
 
 /// How an image fills its box.
@@ -302,6 +317,25 @@ pub struct Node {
     /// Progress: how full, 0 to 1.
     #[serde(default)]
     pub value: Option<f32>,
+
+    /// Repeat: the list it draws, `group.list` (see [`crate::collections`]).
+    #[serde(default)]
+    pub list: Option<String>,
+    /// Repeat: most items drawn, 1 to 50.
+    #[serde(default)]
+    pub max: Option<u8>,
+    /// Repeat: which way items follow each other (default: a column).
+    #[serde(default)]
+    pub direction: Option<Direction>,
+    /// Repeat: space between items in `u`, 0 to 200.
+    #[serde(default)]
+    pub gap: Option<f32>,
+    /// Repeat: each item's cell width in `u`, more than 0, at most the repeat's.
+    #[serde(default)]
+    pub item_w: Option<f32>,
+    /// Repeat: each item's cell height in `u`, more than 0, at most the repeat's.
+    #[serde(default)]
+    pub item_h: Option<f32>,
 
     /// Properties set from expressions; the literal property above is the
     /// fallback while a binding has no value.
@@ -467,8 +501,9 @@ pub(crate) fn check(document: &Document, meta: &Meta) -> Result<(), PackageError
             bindings: 0,
             ids: BTreeSet::new(),
             declared: &declared,
-            sources: &sources,
-            knobs: &knobs,
+            scope: Scope::new(&sources, &knobs),
+            drawn: 0,
+            per_item: 1,
         };
         walk.node(&variant.root, 1)?;
     }
@@ -538,8 +573,13 @@ struct Walk<'a> {
     bindings: usize,
     ids: BTreeSet<&'a str>,
     declared: &'a BTreeSet<&'a str>,
-    sources: &'a BTreeSet<&'a str>,
-    knobs: &'a BTreeMap<&'a str, Type>,
+    /// What bindings may read here (a repeat's children also read its items).
+    scope: Scope<'a>,
+    /// Nodes drawn, counting a repeat's children once per item it may draw.
+    drawn: usize,
+    /// How many times the node being walked is drawn: a repeat's `max`
+    /// inside one, else 1.
+    per_item: usize,
 }
 
 impl<'a> Walk<'a> {
@@ -550,7 +590,9 @@ impl<'a> Walk<'a> {
         };
         let fail = |code| Err(PackageError::new(code, at));
         self.count += 1;
-        if self.count > limits::NODES {
+        // A repeat's children count once per item it may draw (§ 5.1).
+        self.drawn += self.per_item;
+        if self.drawn > limits::NODES {
             return fail(Code::TooManyNodes);
         }
         if depth > limits::DEPTH {
@@ -568,14 +610,13 @@ impl<'a> Walk<'a> {
                 node: self.count - 1,
                 property,
             };
-            self.bindings += 1;
+            self.bindings += self.per_item;
             if self.bindings > limits::BINDINGS {
                 return Err(PackageError::new(Code::TooManyBindings, at));
             }
-            expr::check(expr, want, self.sources, self.knobs)
-                .map_err(|code| PackageError::new(code, at))?;
+            expr::check(expr, want, &self.scope).map_err(|code| PackageError::new(code, at))?;
         }
-        self.shadows += node.shadows.len();
+        self.shadows += node.shadows.len() * self.per_item;
         if self.shadows > limits::SHADOWS {
             return fail(Code::TooManyShadows);
         }
@@ -584,16 +625,39 @@ impl<'a> Walk<'a> {
         if needs_shadow || needs_rotation {
             return fail(Code::UndeclaredFeature);
         }
+        if node.kind != NodeKind::Repeat {
+            for child in &node.children {
+                self.node(child, depth + 1)?;
+            }
+            return Ok(());
+        }
+        if self.per_item > 1 {
+            return fail(Code::NestedRepeat);
+        }
+        let list = node
+            .list
+            .as_deref()
+            .and_then(|path| path.split_once('.'))
+            .and_then(|(group, field)| expr::collection(group, field))
+            .ok_or(PackageError::new(Code::UnknownSource, at))?;
+        if !self.scope.contains_source(list.group) {
+            return fail(Code::UndeclaredSource);
+        }
+        let outside = self.scope;
+        self.scope = outside.in_repeat(list);
+        self.per_item = usize::from(node.max.unwrap_or(1));
         for child in &node.children {
             self.node(child, depth + 1)?;
         }
+        self.scope = outside;
+        self.per_item = 1;
         Ok(())
     }
 }
 
 /// One node's own rules: its numbers in range and only its kind's properties.
 fn check_node(node: &Node) -> Result<(), Code> {
-    use NodeKind::{Ellipse, Frame, Group, Image, Line, Progress, Rectangle, Text};
+    use NodeKind::{Ellipse, Frame, Group, Image, Line, Progress, Rectangle, Repeat, Text};
     let range = |ok: bool| if ok { Ok(()) } else { Err(Code::OutOfRange) };
     range(in_range(node.x, -1920.0..=3840.0) && in_range(node.y, -1080.0..=2160.0))?;
     range(in_range(node.w, 0.0..=1920.0) && in_range(node.h, 0.0..=1080.0))?;
@@ -609,11 +673,24 @@ fn check_node(node: &Node) -> Result<(), Code> {
     range(node.weight.is_none_or(|w| (100..=900).contains(&w)))?;
     range(node.max_lines.is_none_or(|m| (1..=10).contains(&m)))?;
     range(node.value.is_none_or(|v| in_range(v, 0.0..=1.0)))?;
+    range(
+        node.max
+            .is_none_or(|m| (1..=limits::REPEAT).contains(&usize::from(m))),
+    )?;
+    range(node.gap.is_none_or(|g| in_range(g, 0.0..=200.0)))?;
+    range(
+        node.item_w
+            .is_none_or(|w| w > 0.0 && in_range(w, 0.0..=node.w)),
+    )?;
+    range(
+        node.item_h
+            .is_none_or(|h| h > 0.0 && in_range(h, 0.0..=node.h)),
+    )?;
 
     let k = node.kind;
     let b = &node.bindings;
     let allowed = |set: &[NodeKind]| set.contains(&k);
-    let present: [(bool, &[NodeKind]); 14] = [
+    let present: [(bool, &[NodeKind]); 15] = [
         (
             node.fill.is_some() || b.fill.is_some(),
             &[Frame, Rectangle, Ellipse, Progress],
@@ -624,8 +701,8 @@ fn check_node(node: &Node) -> Result<(), Code> {
             !node.shadows.is_empty(),
             &[Frame, Rectangle, Ellipse, Text, Image],
         ),
-        (node.clip, &[Frame, Group]),
-        (!node.children.is_empty(), &[Frame, Group]),
+        (node.clip, &[Frame, Group, Repeat]),
+        (!node.children.is_empty(), &[Frame, Group, Repeat]),
         (node.text.is_some() || b.text.is_some(), &[Text]),
         (node.size.is_some(), &[Text]),
         (node.weight.is_some(), &[Text]),
@@ -640,6 +717,15 @@ fn check_node(node: &Node) -> Result<(), Code> {
             &[Image],
         ),
         (node.value.is_some() || b.value.is_some(), &[Progress]),
+        (
+            node.list.is_some()
+                || node.max.is_some()
+                || node.direction.is_some()
+                || node.gap.is_some()
+                || node.item_w.is_some()
+                || node.item_h.is_some(),
+            &[Repeat],
+        ),
     ];
     if present.iter().any(|(has, kinds)| *has && !allowed(kinds)) {
         return Err(Code::NotForKind);
@@ -649,6 +735,12 @@ fn check_node(node: &Node) -> Result<(), Code> {
         Image => node.asset.is_some(),
         Progress => node.value.is_some(),
         Line => node.stroke.is_some(),
+        Repeat => {
+            node.list.is_some()
+                && node.max.is_some()
+                && node.item_w.is_some()
+                && node.item_h.is_some()
+        }
         Frame | Group | Rectangle | Ellipse => true,
     };
     if needs {
@@ -687,6 +779,98 @@ mod tests {
 
     fn code_of_child(child: &str) -> Option<Code> {
         check(r#""tile""#, "", &tile(child)).err().map(|e| e.code)
+    }
+
+    /// A tile with an `apps` source and a repeat of `max` items holding `child`.
+    fn repeat_tile(max: u32, extra: &str, child: &str) -> Result<(), PackageError> {
+        let repeat = format!(
+            r#"{{"id": "apps", "type": "repeat", "w": 250, "h": 141, "list": "apps.list", "max": {max},
+               "item_w": 250, "item_h": 20, "gap": 2, "direction": "column"{extra}, "children": [{child}]}}"#
+        );
+        let can = Capabilities::new(Version::new(0, 5, 0), [""; 0]);
+        let text = package(r#""tile""#, "", &tile(&repeat)).replacen(
+            r#""faces": ["tile"]"#,
+            r#""faces": ["tile"], "sources": ["apps"]"#,
+            1,
+        );
+        parse_package(&text, &can).map(|_| ())
+    }
+
+    const NAME: &str = r#"{"id": "name", "type": "text", "w": 250, "h": 20, "text": "…", "size": 14,
+        "bindings": {"text": {"item": "name"}}}"#;
+
+    #[test]
+    fn a_repeat_draws_its_list_items_and_counts_them_all() {
+        assert_eq!(repeat_tile(5, "", NAME), Ok(()));
+        // 50 items × (repeat + 9 children) would pass 500; the children count per item.
+        let nine: Vec<String> = (0..9)
+            .map(|i| format!(r#"{{"id": "r{i}", "type": "rectangle", "w": 1, "h": 1}}"#))
+            .collect();
+        assert_eq!(repeat_tile(50, "", &nine.join(",")), Ok(()));
+        let ten: Vec<String> = (0..10)
+            .map(|i| format!(r#"{{"id": "r{i}", "type": "rectangle", "w": 1, "h": 1}}"#))
+            .collect();
+        assert_eq!(
+            repeat_tile(50, "", &ten.join(",")).unwrap_err().code,
+            Code::TooManyNodes
+        );
+        // Bindings count per item too: 50 × 3 > 100.
+        let bound = r##"{"id": "b", "type": "rectangle", "w": 1, "h": 1,
+            "bindings": {"opacity": 1, "visible": true, "fill": "#ffffff"}}"##;
+        assert_eq!(
+            repeat_tile(50, "", bound).unwrap_err().code,
+            Code::TooManyBindings
+        );
+    }
+
+    #[test]
+    fn repeat_rules() {
+        let nested = r#"{"id": "inner", "type": "repeat", "w": 10, "h": 10, "list": "apps.list", "max": 1,
+            "item_w": 10, "item_h": 10}"#;
+        let cases = [
+            (repeat_tile(0, "", NAME), Code::OutOfRange),
+            (repeat_tile(51, "", NAME), Code::OutOfRange),
+            (repeat_tile(5, "", nested), Code::NestedRepeat),
+        ];
+        for (found, want) in cases {
+            assert_eq!(found.unwrap_err().code, want);
+        }
+        let code = |child: &str| code_of_child(child);
+        assert_eq!(
+            code(
+                r#"{"id": "r", "type": "repeat", "w": 10, "h": 10, "list": "apps.list", "max": 1, "item_w": 10}"#
+            ),
+            Some(Code::MissingProperty)
+        );
+        assert_eq!(
+            code(
+                r#"{"id": "r", "type": "repeat", "w": 10, "h": 10, "list": "apps.list", "max": 1, "item_w": 11, "item_h": 10}"#
+            ),
+            Some(Code::OutOfRange)
+        );
+        assert_eq!(
+            code(
+                r#"{"id": "r", "type": "repeat", "w": 10, "h": 10, "list": "apps.grid", "max": 1, "item_w": 10, "item_h": 10}"#
+            ),
+            Some(Code::UnknownSource)
+        );
+        assert_eq!(
+            code(
+                r#"{"id": "r", "type": "repeat", "w": 10, "h": 10, "list": "apps.list", "max": 1, "item_w": 10, "item_h": 10}"#
+            ),
+            Some(Code::UndeclaredSource)
+        );
+        assert_eq!(
+            code(
+                r#"{"id": "r", "type": "repeat", "w": 10, "h": 10, "list": "apps.list", "max": 1, "item_w": 10, "item_h": 10, "gap": 201}"#
+            ),
+            Some(Code::OutOfRange)
+        );
+        assert_eq!(
+            code(r#"{"id": "f", "type": "frame", "w": 10, "h": 10, "max": 3}"#),
+            Some(Code::NotForKind)
+        );
+        assert_eq!(code(NAME), Some(Code::NotInRepeat));
     }
 
     #[test]
