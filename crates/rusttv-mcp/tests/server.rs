@@ -420,6 +420,24 @@ fn history_door_writes_are_above_what_mcp_runs() {
     }
 }
 
+/// Staging a package (RS, SECURITY.md "Packages: staging and install") is
+/// above R0 too, so no MCP tool can send a package to a TV.
+#[test]
+fn staging_is_above_what_mcp_runs() {
+    assert!(RiskClass::Staging > RiskClass::Read);
+    let nonce = rusttv_core::HistoryNonce::new("0123456789abcdef").unwrap();
+    for command in [
+        DeviceCommand::StageBegin(rusttv_core::StageAnnounce::new(5, &"ab".repeat(32)).unwrap()),
+        DeviceCommand::StageWrite {
+            nonce: nonce.clone(),
+            payload: rusttv_core::InboxPayload::new(b"PK".to_vec()),
+        },
+        DeviceCommand::StageEnd(nonce),
+    ] {
+        assert_eq!(command.risk(), RiskClass::Staging);
+    }
+}
+
 /// The core functions behind the tools only run R0 (read) commands.
 #[test]
 fn tools_only_run_read_only_commands() {

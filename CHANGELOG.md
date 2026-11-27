@@ -6,6 +6,13 @@ field in `--json` output says which contract you get, CLI.md).
 
 ## Unreleased
 
+### CLI
+
+- `rusttv theme install <file>` checks a theme package and sends it to the
+  TV, where it waits in Settings → Waiting to install, with its size and
+  hash to compare. Nothing is installed yet: approving it on the TV comes
+  in a later version (SECURITY.md "Packages: staging and install").
+
 ### Launcher
 
 - Safe look: hold Back on the remote for 5 seconds to switch Home to a

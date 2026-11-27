@@ -24,6 +24,11 @@ pub enum RiskClass {
     /// through the launcher's door (HISTORY.md § 5); changes no device state
     /// and needs no inverse. Above R0, so MCP never runs it.
     LauncherPrivate,
+    /// RS: staging. Writes one inert package into the launcher's staging
+    /// slot through its door; nothing is parsed, drawn or installed until a
+    /// person approves it on the TV (SECURITY.md "Packages: staging and
+    /// install"). Needs no inverse; above R0, so MCP never runs it.
+    Staging,
     /// R1: changes runtime state only; an app restart or reboot undoes it.
     Transient,
     /// R2: persistent but trivially reversible setting.
@@ -38,6 +43,7 @@ impl RiskClass {
         match self {
             Self::Read => "R0",
             Self::LauncherPrivate => "RL",
+            Self::Staging => "RS",
             Self::Transient => "R1",
             Self::Setting => "R2",
             Self::PackageState => "R3",
@@ -50,6 +56,7 @@ impl fmt::Display for RiskClass {
         f.write_str(match self {
             Self::Read => "R0 (read-only)",
             Self::LauncherPrivate => "RL (launcher-private)",
+            Self::Staging => "RS (staging)",
             Self::Transient => "R1 (transient)",
             Self::Setting => "R2 (setting)",
             Self::PackageState => "R3 (package state)",
@@ -187,6 +194,24 @@ pub enum DeviceCommand {
         /// The inbox file.
         nonce: HistoryNonce,
     },
+    /// Announces a package for the launcher's staging slot (`adb shell
+    /// content call --uri content://ai.rusttv.launcher.history --method stage
+    /// --arg begin:<size>:<sha256>`); prints a result bundle with a nonce.
+    /// Staging (RS).
+    StageBegin(StageAnnounce),
+    /// Streams the announced package into the slot (`adb exec-in content
+    /// write --uri content://ai.rusttv.launcher.history/stage/<16 hex>`, the
+    /// bytes on stdin). Staging (RS).
+    StageWrite {
+        /// The nonce `StageBegin` answered.
+        nonce: HistoryNonce,
+        /// The package.
+        payload: InboxPayload,
+    },
+    /// Has the launcher check and keep the written bytes (`adb shell content
+    /// call … --method stage --arg end:<16 hex>`); prints a result bundle.
+    /// Staging (RS).
+    StageEnd(HistoryNonce),
     /// Lets the RustTV launcher write its allowlisted settings (`pm grant
     /// ai.rusttv.launcher android.permission.WRITE_SECURE_SETTINGS`,
     /// HISTORY.md § 7). Setting (R2); undone by
@@ -226,6 +251,7 @@ impl DeviceCommand {
             | Self::HistoryExport(_)
             | Self::HistoryPending => RiskClass::Read,
             Self::HistoryInbox { .. } | Self::HistoryCommit { .. } => RiskClass::LauncherPrivate,
+            Self::StageBegin(_) | Self::StageWrite { .. } | Self::StageEnd(_) => RiskClass::Staging,
             Self::ForceStop(_) | Self::StartActivity(_) | Self::PressHome | Self::WakeUp => {
                 RiskClass::Transient
             }
@@ -285,7 +311,9 @@ impl DeviceCommand {
     /// journal, which keeps only its digest); empty for every other command.
     pub fn stdin(&self) -> Option<&[u8]> {
         match self {
-            Self::HistoryInbox { payload, .. } => payload.bytes(),
+            Self::HistoryInbox { payload, .. } | Self::StageWrite { payload, .. } => {
+                payload.bytes()
+            }
             _ => Some(&[]),
         }
     }
@@ -295,7 +323,10 @@ impl DeviceCommand {
     pub fn is_binary(&self) -> bool {
         matches!(
             self,
-            Self::HistoryExport(_) | Self::HistoryPending | Self::HistoryInbox { .. }
+            Self::HistoryExport(_)
+                | Self::HistoryPending
+                | Self::HistoryInbox { .. }
+                | Self::StageWrite { .. }
         )
     }
 
@@ -424,6 +455,35 @@ impl DeviceCommand {
                     DoorKind::Import => nonce.import_arg.as_str(),
                 },
             ],
+            Self::StageBegin(announce) => vec![
+                "shell",
+                "content",
+                "call",
+                "--uri",
+                HISTORY_URI,
+                "--method",
+                "stage",
+                "--arg",
+                announce.arg.as_str(),
+            ],
+            Self::StageWrite { nonce, .. } => vec![
+                "exec-in",
+                "content",
+                "write",
+                "--uri",
+                nonce.stage_uri.as_str(),
+            ],
+            Self::StageEnd(nonce) => vec![
+                "shell",
+                "content",
+                "call",
+                "--uri",
+                HISTORY_URI,
+                "--method",
+                "stage",
+                "--arg",
+                nonce.stage_end_arg.as_str(),
+            ],
             Self::GrantSecureSettings => vec![
                 "shell",
                 "pm",
@@ -525,18 +585,15 @@ pub struct HistoryNonce {
     inbox_uri: String,
     message_arg: String,
     import_arg: String,
+    stage_uri: String,
+    stage_end_arg: String,
 }
 
 impl HistoryNonce {
     /// Validates `nonce`: exactly 16 lowercase hex digits.
     pub fn new(nonce: &str) -> Result<Self, InvalidHistoryValue> {
         if nonce.len() == 16 && is_lower_hex(nonce) {
-            Ok(Self {
-                nonce: nonce.to_owned(),
-                inbox_uri: format!("{HISTORY_URI}/inbox/{nonce}"),
-                message_arg: format!("message:{nonce}"),
-                import_arg: format!("import:{nonce}"),
-            })
+            Ok(Self::from_hex(nonce.to_owned()))
         } else {
             Err(InvalidHistoryValue(nonce.to_owned()))
         }
@@ -544,11 +601,16 @@ impl HistoryNonce {
 
     /// The nonce of a random `value`: its 16 lowercase hex digits.
     pub fn from_u64(value: u64) -> Self {
-        let nonce = format!("{value:016x}");
+        Self::from_hex(format!("{value:016x}"))
+    }
+
+    fn from_hex(nonce: String) -> Self {
         Self {
             inbox_uri: format!("{HISTORY_URI}/inbox/{nonce}"),
             message_arg: format!("message:{nonce}"),
             import_arg: format!("import:{nonce}"),
+            stage_uri: format!("{HISTORY_URI}/stage/{nonce}"),
+            stage_end_arg: format!("end:{nonce}"),
             nonce,
         }
     }
@@ -583,6 +645,50 @@ fn is_lower_hex(text: &str) -> bool {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("`{0}` is not a valid history entry id or nonce")]
 pub struct InvalidHistoryValue(String);
+
+/// What [`DeviceCommand::StageBegin`] announces: a package's size (1 byte
+/// to 4 MiB) and SHA-256, as the door's `begin:<size>:<sha256>` argument.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct StageAnnounce {
+    arg: String,
+}
+
+impl StageAnnounce {
+    /// The largest package that can be staged (PANEL_STUDIO.md § 5.1).
+    pub const MAX: u64 = 4 << 20;
+
+    /// Announces `size` bytes whose SHA-256 is `sha256` (64 lowercase hex).
+    pub fn new(size: u64, sha256: &str) -> Result<Self, InvalidHistoryValue> {
+        if (1..=Self::MAX).contains(&size) && sha256.len() == 64 && is_lower_hex(sha256) {
+            Ok(Self {
+                arg: format!("begin:{size}:{sha256}"),
+            })
+        } else {
+            Err(InvalidHistoryValue(format!("{size}:{sha256}")))
+        }
+    }
+}
+
+impl TryFrom<String> for StageAnnounce {
+    type Error = InvalidHistoryValue;
+
+    fn try_from(text: String) -> Result<Self, Self::Error> {
+        let bad = || InvalidHistoryValue(text.clone());
+        let rest = text.strip_prefix("begin:").ok_or_else(bad)?;
+        let (size, sha256) = rest.split_once(':').ok_or_else(bad)?;
+        if !size.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(bad());
+        }
+        Self::new(size.parse().map_err(|_| bad())?, sha256)
+    }
+}
+
+impl From<StageAnnounce> for String {
+    fn from(announce: StageAnnounce) -> Self {
+        announce.arg
+    }
+}
 
 /// What an inbox file holds, which says how `commit` processes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -1165,6 +1271,12 @@ mod tests {
                 kind: DoorKind::Import,
                 nonce: nonce(),
             },
+            DeviceCommand::StageBegin(StageAnnounce::new(5, &"ab".repeat(32)).unwrap()),
+            DeviceCommand::StageWrite {
+                nonce: nonce(),
+                payload: InboxPayload::new(b"PK".to_vec()),
+            },
+            DeviceCommand::StageEnd(nonce()),
             DeviceCommand::GrantSecureSettings,
             DeviceCommand::RevokeSecureSettings,
         ];
@@ -1208,6 +1320,9 @@ mod tests {
                 | DeviceCommand::HistoryPending
                 | DeviceCommand::HistoryInbox { .. }
                 | DeviceCommand::HistoryCommit { .. }
+                | DeviceCommand::StageBegin(_)
+                | DeviceCommand::StageWrite { .. }
+                | DeviceCommand::StageEnd(_)
                 | DeviceCommand::GrantSecureSettings
                 | DeviceCommand::RevokeSecureSettings => {}
             }
@@ -1238,12 +1353,17 @@ mod tests {
         // `SetSetting`, limited to the allowlisted keys. History (HISTORY.md
         // § 5, § 7) adds the two launcher-private door writes, which only
         // append to RustTV's own history, and granting / revoking the
-        // launcher's WRITE_SECURE_SETTINGS (R2).
+        // launcher's WRITE_SECURE_SETTINGS (R2). Theme install (SECURITY.md
+        // "Packages: staging and install") adds the three staging door
+        // calls (RS), which only fill the launcher's inert slot.
         for command in every_command() {
             let expected = match command {
                 DeviceCommand::HistoryInbox { .. } | DeviceCommand::HistoryCommit { .. } => {
                     RiskClass::LauncherPrivate
                 }
+                DeviceCommand::StageBegin(_)
+                | DeviceCommand::StageWrite { .. }
+                | DeviceCommand::StageEnd(_) => RiskClass::Staging,
                 DeviceCommand::ForceStop(_)
                 | DeviceCommand::StartActivity(_)
                 | DeviceCommand::PressHome

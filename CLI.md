@@ -59,6 +59,7 @@ commands, and the `--dry-run` of `launcher install` / `uninstall` / `restore`,
 | `history apply-pending` | Apply the changes a person approved on the TV that wait for this computer (packages; settings while the launcher lacks the grant), each valid for 2 h of TV uptime. Interactive terminal only (`NOT_APPROVED` otherwise; nothing is consumed). Refused (`PENDING_REFUSED`) when the installed launcher is debuggable or profileable. For each approval: first claims it through the door (the TV allows that once), then plans `history-restore` live (never `--allow-untested`) and applies it with nothing to type if its steps are exactly the approved changes with the same old values; otherwise prints both and asks for the typed confirmation `restore`. The journal records `approved_by = { by = "tv", approval = "<sha256>" }` (or `terminal`). Stops at the first approval that fails | array of [PendingReport](#pendingreport) |
 | `history allow-tv-settings [--dry-run]` | Let the launcher change its three animation settings itself after a person approves each change on the TV: a plan with one R2 step, `pm grant ai.rusttv.launcher android.permission.WRITE_SECURE_SETTINGS` (undone by `pm revoke`), verified with `dumpsys package ai.rusttv.launcher`. Android drops it when the launcher is uninstalled (`history sync` warns). Typed confirmation `allow`. R2 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
 | `history revoke-tv-settings [--dry-run]` | Take that permission back (`pm revoke …`). Typed confirmation `revoke`. R2 | [ChangeReport](#changereport); with `--dry-run`: [DryRun](#dryrun) |
+| `theme install <file>` | Send a theme package to the TV's staging slot (SECURITY.md "Packages: staging and install", risk class RS). Checks a regular file of at most 4 MiB with the same validator the TV runs (as the TV's launcher version reads it, `THEME_INVALID` otherwise; only `kind: theme`), prints its fingerprint (SHA-256 prefix) to compare on the TV, then three door calls: `adb shell content call … --method stage --arg begin:<size>:<sha256>` (answers a nonce valid for 60 s), `adb exec-in content write …/stage/<nonce>`, `adb shell content call … --method stage --arg end:<nonce>` (the TV keeps the bytes only if size and hash match). Refused (`PRECONDITION_FAILED`) when the launcher isn't installed or is debuggable or profileable; `LAUNCHER_TOO_OLD` when it can't stage. Nothing is installed: the package waits, inert, until a person reviews and approves it on the TV (a later release). Writes a line to `<state dir>/staging.log` before and after sending (time, device, size, SHA-256, then `sending`, `staged` or the error code). A `content write` the TV refuses (its nonce expired or was replaced) is `STAGING_EXPIRED`. Never from MCP | `{"id": string, "version": string, "size": number, "sha256": string}` |
 | `compat profile` | Compatibility profile for `compat/devices/` (TOML on stdout; `--json` wraps it) | `{"path": string, "profile": object}` |
 
 Commands that target a device take `--serial <serial>`. Without it, the only
@@ -264,8 +265,10 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
     [HistoryChange](#historychange) has a kind for that switch (`ambient`,
     with `on`). Snapshots in format 9 may hold `launcher.safe_look`
     (written only while the launcher's safe look is on, SECURITY.md), and
-    HistoryChange has a kind for it (`safe_look`, with `on`). Everything
-    else is unchanged.
+    HistoryChange has a kind for it (`safe_look`, with `on`). `theme
+    install` is a new command, with the error codes `THEME_INVALID`,
+    `LAUNCHER_TOO_OLD` and the TV's `STAGING_*` refusals. Everything else
+    is unchanged.
   - `rusttv.v10`: [HistoryChange](#historychange) has new kinds for phones
     paired with RustTV Remote (`phone_paired`, `phone_removed`, each with
     `phone`, the phone's id, and `name`), and `history show`'s `state` may
@@ -361,6 +364,14 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
 | `INCOMPLETE_PROFILE` | 1 | The device didn't report a value a compatibility profile needs |
 | `INVALID_PLAN` | 1 | A plan or journal has a step that can't be undone, or doesn't match its journal (a bug or an edited journal) |
 | `PRECONDITION_FAILED` | 1 | The device isn't in the state the plan needs (e.g. RustTV not installed, Home isn't a stock launcher, firmware changed since planning); nothing changed |
+| `THEME_INVALID` | 1 | `theme install`: the file isn't a regular file of at most 4 MiB, isn't a valid package for the TV's launcher, or isn't a theme; the message has the validator's reason. Nothing was sent |
+| `LAUNCHER_TOO_OLD` | 1 | The launcher on the TV can't take packages yet (`rusttv update launcher`). Nothing was sent |
+| `STAGING_BUSY` | 1 | The TV took 10 packages in the last hour of its uptime; try again later |
+| `STAGING_TOO_BIG` | 1 | More bytes arrived than announced; the previous package waiting on the TV is kept |
+| `STAGING_MISMATCH` | 1 | The bytes that arrived don't match the announced size and SHA-256; the previous package is kept |
+| `STAGING_EXPIRED` | 1 | The write came more than a minute after its nonce, or another staging replaced it; send it again |
+| `STAGING_INVALID` | 1 | The TV refused the staging request as malformed (a bug) |
+| `STAGING_STORAGE` | 1 | The TV couldn't write its staging slot (storage full or unreadable) |
 | `NOT_APPROVED` | 1 | No interactive terminal and no valid [delegation](#delegated-approval) covering the plan, or the confirmation wasn't typed; nothing changed |
 | `JOURNAL_FAILED` | 1 | A journal (or the delegation file) couldn't be read or written; if a change had started, it was rolled back |
 | `TAKEOVER_NOT_TESTED` | 1 | No bundled compat profile matches this device's model and firmware family, or it doesn't record a tested takeover of the stock launcher Home opens; nothing changed |

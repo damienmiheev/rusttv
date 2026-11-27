@@ -586,3 +586,19 @@ msgstr "Безопасный вид"
 #: ui/home.slint
 msgid "Your Home and its extras are off. Hold Back for 5 seconds to bring them back."
 msgstr "Ваш главный экран и его дополнения выключены. Удерживайте «Назад» 5 секунд, чтобы вернуть их."
+
+#: ui/home.slint
+msgid "Waiting to install"
+msgstr "Ожидает установки"
+
+#: ui/home.slint
+msgid "A package from adb (identity unknown)"
+msgstr "Пакет через adb (отправитель неизвестен)"
+
+#: ui/home.slint
+msgid "{} KB · fingerprint {}"
+msgstr "{} КБ · отпечаток {}"
+
+#: ui/home.slint
+msgid "Compare the fingerprint with the one your computer printed. Installing it from the TV comes in a later RustTV version."
+msgstr "Сравните отпечаток с тем, что показал компьютер. Установка прямо с телевизора появится в одной из следующих версий RustTV."

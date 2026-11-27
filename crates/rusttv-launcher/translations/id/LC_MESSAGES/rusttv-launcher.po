@@ -578,3 +578,19 @@ msgstr "Tampilan aman"
 #: ui/home.slint
 msgid "Your Home and its extras are off. Hold Back for 5 seconds to bring them back."
 msgstr "Layar utama Anda dan tambahannya dimatikan. Tahan Kembali selama 5 detik untuk memulihkannya."
+
+#: ui/home.slint
+msgid "Waiting to install"
+msgstr "Menunggu dipasang"
+
+#: ui/home.slint
+msgid "A package from adb (identity unknown)"
+msgstr "Paket dari adb (pengirim tidak diketahui)"
+
+#: ui/home.slint
+msgid "{} KB · fingerprint {}"
+msgstr "{} KB · sidik jari {}"
+
+#: ui/home.slint
+msgid "Compare the fingerprint with the one your computer printed. Installing it from the TV comes in a later RustTV version."
+msgstr "Bandingkan sidik jari dengan yang ditampilkan komputer Anda. Memasang dari TV akan hadir di versi RustTV berikutnya."

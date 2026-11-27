@@ -578,3 +578,19 @@ msgstr "มุมมองปลอดภัย"
 #: ui/home.slint
 msgid "Your Home and its extras are off. Hold Back for 5 seconds to bring them back."
 msgstr "หน้าจอหลักและส่วนเสริมถูกปิดอยู่ กดปุ่มย้อนกลับค้างไว้ 5 วินาทีเพื่อนำกลับมา"
+
+#: ui/home.slint
+msgid "Waiting to install"
+msgstr "รอการติดตั้ง"
+
+#: ui/home.slint
+msgid "A package from adb (identity unknown)"
+msgstr "แพ็กเกจจาก adb (ไม่ทราบผู้ส่ง)"
+
+#: ui/home.slint
+msgid "{} KB · fingerprint {}"
+msgstr "{} KB · ลายนิ้วมือ {}"
+
+#: ui/home.slint
+msgid "Compare the fingerprint with the one your computer printed. Installing it from the TV comes in a later RustTV version."
+msgstr "เทียบลายนิ้วมือกับที่คอมพิวเตอร์ของคุณแสดง การติดตั้งจากทีวีจะมาในเวอร์ชันถัดไปของ RustTV"

@@ -578,3 +578,19 @@ msgstr "安全外觀"
 #: ui/home.slint
 msgid "Your Home and its extras are off. Hold Back for 5 seconds to bring them back."
 msgstr "你的主畫面及其附加功能已關閉。按住返回鍵 5 秒即可恢復。"
+
+#: ui/home.slint
+msgid "Waiting to install"
+msgstr "等待安裝"
+
+#: ui/home.slint
+msgid "A package from adb (identity unknown)"
+msgstr "透過 adb 收到的套件（傳送者不明）"
+
+#: ui/home.slint
+msgid "{} KB · fingerprint {}"
+msgstr "{} KB · 指紋 {}"
+
+#: ui/home.slint
+msgid "Compare the fingerprint with the one your computer printed. Installing it from the TV comes in a later RustTV version."
+msgstr "請與電腦上顯示的指紋比對。從電視上安裝將在 RustTV 的後續版本中提供。"

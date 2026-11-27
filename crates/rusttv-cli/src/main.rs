@@ -6,6 +6,7 @@ mod launcher;
 mod optimize;
 mod output;
 mod performance;
+mod theme;
 mod update;
 
 use std::path::PathBuf;
@@ -64,6 +65,9 @@ enum Command {
     /// snapshot, put it back on the TV, and apply what was approved on the TV.
     #[command(subcommand)]
     History(history::HistoryAction),
+    /// Theme packages: send one to the TV, where you review and approve it.
+    #[command(subcommand)]
+    Theme(theme::ThemeAction),
 }
 
 #[derive(Debug, Subcommand)]
@@ -535,6 +539,7 @@ fn main() -> ExitCode {
         }
         Command::Update(UpdateAction::Cli { dry_run }) => update::cli(*dry_run, cli.json),
         Command::History(action) => history::run(&adb, action, cli.json),
+        Command::Theme(action) => theme::run(&adb, action, cli.json),
     };
 
     match result {

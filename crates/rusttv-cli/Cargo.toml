@@ -26,6 +26,7 @@ doc = false
 [dependencies]
 rusttv-core.workspace = true
 rusttv-history.workspace = true
+rusttv-panels.workspace = true
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true

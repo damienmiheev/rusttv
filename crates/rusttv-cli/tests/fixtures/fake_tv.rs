@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use rusttv_history::door::{ApprovedChange, CommitKind, read_error};
+use rusttv_history::stage::{Moment, Slot};
 use rusttv_history::tv::{TvClock, TvDevice, TvHistory};
 use rusttv_history::{HistoryError, HistoryId, Launcher};
 use serde::{Deserialize, Serialize};
@@ -248,6 +249,39 @@ fn run(dir: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
                 }
             }
         }
+        ["exec-in", "content", "write", "--uri", uri]
+            if uri.starts_with(&format!("{URI}/stage/")) =>
+        {
+            // The provider's pipe: at most the announced size plus one byte.
+            let nonce = &uri[URI.len() + "/stage/".len()..];
+            let clock: Clock = read(&dir.join("clock.toml"))?;
+            let (path, cap) = slot(dir)
+                .incoming(nonce, moment(&clock))
+                .ok_or_else(|| "no staging for that name".to_owned())?;
+            let mut bytes = Vec::new();
+            std::io::stdin()
+                .take(cap + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|error| error.to_string())?;
+            fs::write(path, bytes).map_err(|error| error.to_string())?;
+            Ok(Vec::new())
+        }
+        [
+            "shell",
+            "content",
+            "call",
+            "--uri",
+            URI,
+            "--method",
+            "stage",
+            "--arg",
+            arg,
+        ] => {
+            let clock: Clock = read(&dir.join("clock.toml"))?;
+            let nonce = format!("{:016x}", clock.elapsed_ms ^ 0x5eed_0000_0000);
+            let result = slot(dir).call(arg, &nonce, moment(&clock));
+            text(format!("Result: Bundle[{{rusttv={}}}]\n", result.encode()))
+        }
         ["exec-in", "content", "write", "--uri", uri] => {
             let nonce = uri
                 .strip_prefix(&format!("{URI}/inbox/"))
@@ -350,6 +384,19 @@ fn open(dir: &Path, device: Device) -> Result<TvHistory, String> {
     let clock: Clock = read(&dir.join("clock.toml"))?;
     TvHistory::open(&dir.join("tv"), &mut tv, &clock, &|| new_id(dir))
         .map_err(|error| error.to_string())
+}
+
+/// The launcher's staging slot (`<dir>/staging`).
+fn slot(dir: &Path) -> Slot {
+    Slot::new(dir.join("staging"))
+}
+
+/// The fake TV's clock as the slot reads it.
+fn moment(clock: &Clock) -> Moment {
+    Moment {
+        boot: clock.boot_count,
+        ms: clock.elapsed_ms,
+    }
 }
 
 /// `dumpsys package ai.rusttv.launcher`, trimmed to what RustTV reads.

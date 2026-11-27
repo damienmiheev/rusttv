@@ -582,3 +582,19 @@ msgstr "सुरक्षित रूप"
 #: ui/home.slint
 msgid "Your Home and its extras are off. Hold Back for 5 seconds to bring them back."
 msgstr "आपकी होम स्क्रीन और उसकी अतिरिक्त चीज़ें बंद हैं। उन्हें वापस लाने के लिए 'वापस' को 5 सेकंड तक दबाए रखें।"
+
+#: ui/home.slint
+msgid "Waiting to install"
+msgstr "इंस्टॉल होने का इंतज़ार"
+
+#: ui/home.slint
+msgid "A package from adb (identity unknown)"
+msgstr "adb से आया एक पैकेज (भेजने वाला अज्ञात)"
+
+#: ui/home.slint
+msgid "{} KB · fingerprint {}"
+msgstr "{} KB · फ़िंगरप्रिंट {}"
+
+#: ui/home.slint
+msgid "Compare the fingerprint with the one your computer printed. Installing it from the TV comes in a later RustTV version."
+msgstr "फ़िंगरप्रिंट की तुलना अपने कंप्यूटर पर दिखे फ़िंगरप्रिंट से करें। टीवी से इंस्टॉल करना RustTV के अगले संस्करण में आएगा।"

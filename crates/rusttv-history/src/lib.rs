@@ -10,6 +10,7 @@
 mod diff;
 pub mod door;
 mod entry;
+pub mod stage;
 mod state;
 mod store;
 pub mod tv;
