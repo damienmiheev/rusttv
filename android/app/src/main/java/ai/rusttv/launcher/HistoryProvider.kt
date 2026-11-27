@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
 import android.content.res.AssetFileDescriptor
+import android.os.SystemClock
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentHashMap
@@ -145,8 +146,16 @@ class HistoryProvider : ContentProvider() {
      * would not stop.
      */
     private fun stopCopy(nonce: String): Boolean {
-        val copy = copies.remove(nonce) ?: return true
-        copy.thread.join(COPY_WAIT_MS)
+        // `adb exec-in` can return before the TV's `content write` has even
+        // opened its file (seen on the Philips): wait for the write to start.
+        val deadline = SystemClock.elapsedRealtime() + COPY_WAIT_MS
+        var copy = copies.remove(nonce)
+        while (copy == null && SystemClock.elapsedRealtime() < deadline) {
+            Thread.sleep(OPEN_POLL_MS)
+            copy = copies.remove(nonce)
+        }
+        if (copy == null) return true
+        copy.thread.join(maxOf(1L, deadline - SystemClock.elapsedRealtime()))
         copy.stopped = true
         try {
             copy.source.close()
@@ -251,6 +260,8 @@ class HistoryProvider : ContentProvider() {
         const val MAX_INBOX_BYTES = 64L * 1024 * 1024 + 4096
         /** How long `stage end` waits for the bytes still in the pipe. */
         const val COPY_WAIT_MS = 10_000L
+        /** How often `stage end` looks for a write that hasn't opened yet. */
+        const val OPEN_POLL_MS = 50L
         /** How long a stopped copy may take to notice. */
         const val STOP_WAIT_MS = 2_000L
         /** The copy threads of stage writes, by nonce. */
