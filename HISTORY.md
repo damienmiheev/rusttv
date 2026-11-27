@@ -40,7 +40,7 @@ commands.
 `state.toml`, the only file in each commit's tree:
 
 ```toml
-format = 9                     # the safe look needs it (below)
+format = 10                    # an installed theme needs it (below)
 
 [launcher]                     # the launcher's own state; only the TV writes it
 order = ["com.netflix.ninja/.MainActivity", "folder:1", "about", "settings", "remote", "panel:history"]
@@ -56,6 +56,10 @@ apps = ["com.example.films/.Main", "com.example.series/.Main"]
 
 [launcher.phones]              # format 3; only while a phone is paired
 "0a1b2c3d4e5f60718293a4b5c6d7e8f9" = "iPhone (Safari)"
+
+[themes."user.dusk"]           # format 10; only while a theme package is installed
+version = "1.2.0"
+sha256 = "9098…"               # the package's SHA-256
 
 [settings.global]              # SettingKey allowlist; absent key = unset
 animator_duration_scale = "0.5"
@@ -108,6 +112,16 @@ takeover = "active"
   so a snapshot with it on is format 9, which builds before it refuse.
   Its change is `safe_look` (`on`); undo puts it back like the other
   settings.
+- **Installed themes** (format 10, *since 2026-11-27*, SECURITY.md
+  "Packages: staging and install"): `[themes."<id>"]` with the version and
+  SHA-256 of each theme package installed on the TV, read from the
+  launcher's package store (`<files>/packages`) when a snapshot is made.
+  Only an install approved on the TV with the code changes it (its own
+  journal, `history/install.toml`, with the store's index before and
+  after); a snapshot without themes keeps its older format. Its change is
+  `theme` (`theme`: the id, `old`, `new`: versions, null = not
+  installed). A restore leaves installed themes as they are (removing
+  and reinstalling them comes later, with the full approval).
 - **Linux tile names** (format 5): on Linux, apps are desktop entries, named
   by their id (`org.kde.dolphin.desktop`). A snapshot holding one, in the
   order, hidden or in a folder, is written as format 5, which older builds

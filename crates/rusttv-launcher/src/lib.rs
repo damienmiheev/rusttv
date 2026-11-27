@@ -27,6 +27,7 @@ mod settings;
 mod template_convert;
 #[cfg(test)]
 mod template_convert_tests;
+mod theme_check;
 mod ui;
 
 #[cfg(any(test, feature = "test-util"))]

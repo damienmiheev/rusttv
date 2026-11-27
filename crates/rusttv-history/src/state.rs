@@ -15,10 +15,12 @@ use crate::HistoryError;
 /// (`panel:history`, PANELS.md § 6), 7 built-in and panel tiles hidden or
 /// in a folder (`hidden = ["about"]`), 8 `ambient_off` (the idle screen
 /// turned off, PANELS.md § 9 Q6), 9 `safe_look` (the emergency Home in
-/// place of the person's Home, PANEL_STUDIO.md § 10.4). A snapshot is written in the oldest
+/// place of the person's Home, PANEL_STUDIO.md § 10.4), 10 `[themes]`
+/// (theme packages installed on the TV, SECURITY.md "Packages: staging
+/// and install"). A snapshot is written in the oldest
 /// format that holds it (no folders, no phones, full effects, only Android
 /// names: format 1), so older readers keep reading it until it needs more.
-pub const STATE_FORMAT: u32 = 9;
+pub const STATE_FORMAT: u32 = 10;
 
 /// The longest folder name, in characters (the launcher's limit).
 const FOLDER_NAME_MAX: usize = 40;
@@ -52,6 +54,10 @@ pub struct State {
     /// Catalog packages and their state, as the Mac last saw them.
     #[serde(default)]
     pub packages: BTreeMap<String, PackageState>,
+    /// Theme packages installed on the TV, by id (format 10; only written
+    /// when there is one). Recorded, not restored yet.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub themes: BTreeMap<String, Theme>,
     /// Facts the Mac observed; never restored.
     #[serde(default)]
     pub device: Device,
@@ -121,6 +127,16 @@ impl Default for Launcher {
     }
 }
 
+/// An installed theme package.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Theme {
+    /// `<major>.<minor>.<patch>`.
+    pub version: String,
+    /// The package's SHA-256, lowercase hex.
+    pub sha256: String,
+}
+
 /// A folder on Home.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -181,6 +197,7 @@ impl PartialEq for State {
         self.launcher == other.launcher
             && self.settings == other.settings
             && self.packages == other.packages
+            && self.themes == other.themes
             && self.device == other.device
     }
 }
@@ -232,7 +249,9 @@ impl State {
             .hidden
             .iter()
             .chain(launcher.folders.values().flat_map(|folder| &folder.apps));
-        if launcher.safe_look {
+        if !self.themes.is_empty() {
+            10
+        } else if launcher.safe_look {
             9
         } else if launcher.ambient_off {
             8
@@ -308,6 +327,19 @@ impl State {
                 )));
             }
         }
+        if self.themes.len() > crate::packages::MAX_PACKAGES {
+            return Err(HistoryError::invalid("too many themes".to_owned()));
+        }
+        for (id, theme) in &self.themes {
+            if rusttv_panels::PackageId::parse(id).is_err()
+                || rusttv_panels::Version::parse(&theme.version).is_err()
+                || !crate::door::is_hash(&theme.sha256)
+            {
+                return Err(HistoryError::invalid(format!(
+                    "{id:?} is not a valid theme entry"
+                )));
+            }
+        }
         if let Some(fingerprint) = &self.device.fingerprint
             && (fingerprint.len() > 256 || fingerprint.chars().any(char::is_control))
         {
@@ -328,6 +360,7 @@ impl State {
         self.launcher == other.launcher
             && settings(self) == settings(other)
             && self.packages == other.packages
+            && self.themes == other.themes
             && self.device == other.device
     }
 
@@ -519,8 +552,8 @@ mod tests {
     #[test]
     fn a_newer_format_says_so() {
         assert!(matches!(
-            State::parse("format = 10\nsomething_new = true\n"),
-            Err(HistoryError::FormatNewer(10))
+            State::parse("format = 11\nsomething_new = true\n"),
+            Err(HistoryError::FormatNewer(11))
         ));
     }
 
@@ -693,6 +726,29 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// An installed theme needs format 10; none is never written.
+    #[test]
+    fn installed_themes_need_format_ten() {
+        let mut state = sample();
+        state.themes.insert(
+            "user.dusk".to_owned(),
+            Theme {
+                version: "1.2.0".to_owned(),
+                sha256: "a".repeat(64),
+            },
+        );
+        let text = state.to_toml().unwrap();
+        assert!(text.starts_with("format = 10\n"), "{text}");
+        assert_eq!(State::parse(&text).unwrap(), state);
+        let downgraded = text.replacen("format = 10", "format = 9", 1);
+        assert!(State::parse(&downgraded).is_err());
+        for bad in ["[themes.\"dusk\"]", "[themes.\"user.Dusk\"]"] {
+            let broken = text.replacen("[themes.\"user.dusk\"]", bad, 1);
+            assert!(State::parse(&broken).is_err(), "{broken}");
+        }
+        assert!(!sample().to_toml().unwrap().contains("themes"));
     }
 
     /// The safe look on needs format 9; off (the default) is never written.

@@ -44,6 +44,10 @@ material-colors.workspace = true
 serde.workspace = true
 toml.workspace = true
 rusttv-history.workspace = true
+# The package validator, run on the TV before a theme's review (SECURITY.md
+# "Packages: staging and install" rule 5; already a dependency of
+# rusttv-history).
+rusttv-panels.workspace = true
 rusttv-remote.workspace = true
 getrandom.workspace = true
 qrcode.workspace = true
@@ -88,8 +92,6 @@ jni.workspace = true
 
 [dev-dependencies]
 i-slint-backend-testing.workspace = true
-# Checks that user packages can't take a built-in tile's name (model.rs tests).
-rusttv-panels.workspace = true
 # Checks views against their templates (src/panels.rs). Already in the workspace.
 serde_json.workspace = true
 

@@ -596,5 +596,121 @@ msgid "{} KB · fingerprint {}"
 msgstr "{} KB · huella {}"
 
 #: ui/home.slint
-msgid "Compare the fingerprint with the one your computer printed. Installing it from the TV comes in a later RustTV version."
-msgstr "Compara la huella con la que mostró tu ordenador. La instalación desde la TV llegará en una versión posterior de RustTV."
+msgid "Compare the fingerprint with the one your computer printed, then press OK to review it."
+msgstr "Compara la huella con la que imprimió tu ordenador y pulsa OK para revisarlo."
+
+#: ui/home.slint
+msgid "A package was deleted"
+msgstr "Se eliminó un paquete"
+
+#: ui/home.slint
+msgid "A theme that runs no code"
+msgstr "Un tema que no ejecuta código"
+
+#: ui/home.slint
+msgid "Checking it stopped RustTV. Send it again to try once more."
+msgstr "La comprobación detuvo RustTV. Envíalo de nuevo para volver a intentarlo."
+
+#: ui/home.slint
+msgid "Checking the package…"
+msgstr "Comprobando el paquete…"
+
+#: ui/home.slint
+msgid "Compare the fingerprint with the one your computer printed."
+msgstr "Compara la huella con la que imprimió tu ordenador."
+
+#: ui/home.slint
+msgid "Id: {}"
+msgstr "ID: {}"
+
+#: ui/home.slint
+msgid "Install this theme"
+msgstr "Instalar este tema"
+
+#: ui/home.slint
+msgid "Installed the theme {} {}"
+msgstr "Se instaló el tema {} {}"
+
+#: ui/home.slint
+msgid "Installed themes don't change Home yet; that comes in a later RustTV version."
+msgstr "Los temas instalados aún no cambian el inicio; llegará en una versión posterior de RustTV."
+
+#: ui/home.slint
+msgid "Installed. Installed themes don't change Home yet."
+msgstr "Instalado. Los temas instalados aún no cambian el inicio."
+
+#: ui/home.slint
+msgid "Not installed: a different package with this version is installed. Its version must be higher."
+msgstr "No instalado: hay instalado otro paquete con esta versión. Su versión debe ser mayor."
+
+#: ui/home.slint
+msgid "Not installed: a newer version of this theme is installed."
+msgstr "No instalado: hay instalada una versión más reciente de este tema."
+
+#: ui/home.slint
+msgid "Not installed: another package or a built-in tile has this name."
+msgstr "No instalado: otro paquete o un icono integrado ya tiene este nombre."
+
+#: ui/home.slint
+msgid "Not installed: checking the package took too long."
+msgstr "No instalado: la comprobación del paquete tardó demasiado."
+
+#: ui/home.slint
+msgid "Not installed: the package couldn't be read. Send it again."
+msgstr "No instalado: no se pudo leer el paquete. Envíalo de nuevo."
+
+#: ui/home.slint
+msgid "Not installed: the package is broken ({}). It was deleted."
+msgstr "No instalado: el paquete está dañado ({}). Se eliminó."
+
+#: ui/home.slint
+msgid "Not installed: the package needs a newer RustTV. It was deleted."
+msgstr "No instalado: el paquete necesita un RustTV más reciente. Se ha eliminado."
+
+#: ui/home.slint
+msgid "Not installed: themes that run code can't be installed yet."
+msgstr "No instalado: los temas que ejecutan código aún no se pueden instalar."
+
+#: ui/home.slint
+msgid "Not installed: there is no room for more packages."
+msgstr "No instalado: no hay espacio para más paquetes."
+
+#: ui/home.slint
+msgid "Not installed: this package isn't a theme. It was deleted."
+msgstr "No instalado: este paquete no es un tema. Se eliminó."
+
+#: ui/home.slint
+msgid "Nothing changed: the package or the installed ones changed during the review."
+msgstr "No se cambió nada: el paquete o los instalados cambiaron durante la revisión."
+
+#: ui/home.slint
+msgid "Origin unknown: the package isn't signed"
+msgstr "Origen desconocido: el paquete no está firmado"
+
+#: ui/home.slint
+msgid "Removed the theme {}"
+msgstr "Se quitó el tema {}"
+
+#: ui/home.slint
+msgid "This theme is already installed."
+msgstr "Este tema ya está instalado."
+
+#: ui/home.slint
+msgid "Update this theme"
+msgstr "Actualizar este tema"
+
+#: ui/home.slint
+msgid "Updated the theme {} to {}"
+msgstr "Se actualizó el tema {} a {}"
+
+#: ui/home.slint
+msgid "Version: {}"
+msgstr "Versión: {}"
+
+#: ui/home.slint
+msgid "Version: {} → {}"
+msgstr "Versión: {} → {}"
+
+#: ui/home.slint
+msgid "{} (name unverified)"
+msgstr "{} (nombre sin verificar)"

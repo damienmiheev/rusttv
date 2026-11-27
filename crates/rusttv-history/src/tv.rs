@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
 use serde::{Deserialize, Serialize};
+use sha2::Digest as _;
 
 use crate::HistoryError;
 use crate::door::{
@@ -18,7 +19,9 @@ use crate::door::{
     PendingApproval, PendingList, approval_hash,
 };
 use crate::entry::{ApprovedBy, Author, EntryId, Meta};
-use crate::state::{Launcher, SETTING_KEYS, State};
+use crate::packages::{self, Index, Package, Verdict};
+use crate::stage::{MAX_STAGED, Slot};
+use crate::state::{Launcher, SETTING_KEYS, State, Theme};
 use crate::store::{HistoryId, Limits, Store};
 
 /// How long a pending approval stays valid, in TV uptime (HISTORY.md § 6.3).
@@ -156,6 +159,60 @@ struct Journal {
     pending: Vec<ApprovedChange>,
 }
 
+/// A theme package reviewed on the TV, as the person approves it
+/// (SECURITY.md "Packages: staging and install" rule 7).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThemeInstall {
+    /// The package as reviewed.
+    pub package: Package,
+    /// The installed version it updates, as the review saw it.
+    pub from: Option<Package>,
+}
+
+impl ThemeInstall {
+    /// The SHA-256 (hex) the approval binds to: the package's hash, id,
+    /// version and runtime, and what it replaces.
+    ///
+    /// # Errors
+    ///
+    /// It can't be written as TOML.
+    pub fn approval(&self) -> Result<String, HistoryError> {
+        #[derive(Serialize)]
+        struct Bound<'a> {
+            kind: &'static str,
+            runtime: &'static str,
+            package: &'a Package,
+            from: Option<&'a Package>,
+        }
+        let text = toml::to_string(&Bound {
+            kind: "theme-install",
+            // Code themes are refused at review (rule 11).
+            runtime: "data",
+            package: &self.package,
+            from: self.from.as_ref(),
+        })
+        .map_err(|error| HistoryError::invalid(error.to_string()))?;
+        Ok(sha2::Sha256::digest(text.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect())
+    }
+}
+
+/// The journal of a theme install (`history/install.toml`), written before
+/// the store changes: the whole index before and after, so a crash is
+/// undone or finished from it alone.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InstallJournal {
+    approval: String,
+    status: JournalStatus,
+    sha256: String,
+    original: Index,
+    target: Index,
+}
+
 /// A stored pending approval.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -219,7 +276,135 @@ impl TvHistory {
     /// Whether a TV change is in progress (door writes get `TV_BUSY`, the
     /// UI doesn't write the order file).
     pub fn busy(&self) -> Result<bool, HistoryError> {
-        Ok(self.journal()?.is_some())
+        Ok(self.journal()?.is_some() || self.file("install.toml").exists())
+    }
+
+    fn packages(&self) -> packages::Store {
+        packages::Store::new(&self.root)
+    }
+
+    fn slot(&self) -> Slot {
+        Slot::new(self.root.join("staging"))
+    }
+
+    /// The package store's contents.
+    ///
+    /// # Errors
+    ///
+    /// A broken index or a storage error.
+    pub fn installed(&self) -> Result<Index, HistoryError> {
+        self.packages().index()
+    }
+
+    /// Installs a reviewed theme package (rule 8, HISTORY.md § 4.1): checks
+    /// what was approved against the store and the review copy again, writes
+    /// the journal, copies the package into the store and verifies it,
+    /// writes the new index, records History, then drops the copy and the
+    /// slot if it still holds this package.
+    ///
+    /// # Errors
+    ///
+    /// [`Refused`] with `TV_BUSY`, `CHANGED_MEANWHILE`, `PACKAGE_REPLACED`,
+    /// a store verdict's code, or a storage code.
+    pub fn install(
+        &mut self,
+        theme: &ThemeInstall,
+        device: &dyn TvDevice,
+        clock: &dyn TvClock,
+        new_id: &dyn Fn() -> HistoryId,
+    ) -> Result<ApplyOutcome, Refused> {
+        if self.busy()? {
+            return Err(Refused::new("TV_BUSY", "a change is in progress"));
+        }
+        let package = &theme.package;
+        let original = self.packages().index()?;
+        // What the review saw must still hold.
+        if original.installed(&package.id) != theme.from.as_ref() {
+            return Err(Refused::new(
+                "CHANGED_MEANWHILE",
+                "the installed packages changed since you approved",
+            ));
+        }
+        match original.verdict(package) {
+            Verdict::New | Verdict::Update { .. } => {}
+            Verdict::AlreadyInstalled => {
+                return Err(Refused::new("PACKAGE_INSTALLED", "already installed"));
+            }
+            Verdict::Refused(code) => return Err(Refused::new(code, "refused by the store")),
+        }
+        let review = self.slot().review_path();
+        let copy = crate::stage::hash_file(&review, MAX_STAGED).ok().flatten();
+        if copy != Some((package.size, package.sha256.clone())) {
+            return Err(Refused::new(
+                "PACKAGE_REPLACED",
+                "the reviewed copy changed since you approved",
+            ));
+        }
+        let target = original.with(package.clone());
+        target.validate()?;
+        let journal = InstallJournal {
+            approval: theme.approval()?,
+            status: JournalStatus::Applying,
+            sha256: package.sha256.clone(),
+            original,
+            target,
+        };
+        let path = self.file("install.toml");
+        write_synced_toml(&path, &journal)?;
+        let store = self.packages();
+        let applied = store
+            .put(&review, &package.sha256, package.size)
+            .and_then(|()| {
+                store
+                    .write_index(&journal.target)
+                    .map_err(|error| error.to_string())
+            })
+            .and_then(|()| match store.index() {
+                Ok(index) if index == journal.target => Ok(()),
+                _ => Err("the package store didn't save".to_owned()),
+            });
+        if let Err(reason) = applied {
+            self.undo_install(&journal)?;
+            return Ok(ApplyOutcome::RolledBack { reason });
+        }
+        let journal = InstallJournal {
+            status: JournalStatus::Applied,
+            ..journal
+        };
+        write_synced_toml(&path, &journal)?;
+        // If recording fails, the journal stays and the next start finishes it.
+        self.finish_install(&journal, device, clock, new_id)?;
+        Ok(ApplyOutcome::Applied {
+            pending: Vec::new(),
+        })
+    }
+
+    /// Records an applied install and cleans up after it.
+    fn finish_install(
+        &mut self,
+        journal: &InstallJournal,
+        device: &dyn TvDevice,
+        clock: &dyn TvClock,
+        new_id: &dyn Fn() -> HistoryId,
+    ) -> Result<(), HistoryError> {
+        let state = self.live(device)?;
+        let meta = Meta {
+            author: Author::Tv,
+            journal: None,
+            approved_by: Some(ApprovedBy::TvCode(journal.approval.clone())),
+        };
+        self.record(&state, &meta, clock, new_id)?;
+        self.packages().prune(&journal.target);
+        self.slot().discard(Some(&journal.sha256));
+        fs::remove_file(self.file("install.toml")).map_err(HistoryError::storage)
+    }
+
+    /// Puts the store back as the journal found it.
+    fn undo_install(&self, journal: &InstallJournal) -> Result<(), HistoryError> {
+        let store = self.packages();
+        store.write_index(&journal.original)?;
+        store.prune(&journal.original);
+        fs::remove_file(self.file("install.toml")).map_err(HistoryError::storage)
     }
 
     /// The live state: the head's packages and device facts, with the
@@ -228,6 +413,21 @@ impl TvHistory {
         let mut state = self.store.head_state()?.unwrap_or_else(State::new);
         state.launcher = device.launcher()?;
         state.settings.global = live_settings(device)?;
+        // An unreadable store index keeps the head's themes: it must not
+        // stop the rest of the history (installs and checks refuse it).
+        if let Ok(index) = self.packages().index() {
+            state.themes = index
+                .installed
+                .into_iter()
+                .map(|package| {
+                    let theme = Theme {
+                        version: package.version,
+                        sha256: package.sha256,
+                    };
+                    (package.id, theme)
+                })
+                .collect();
+        }
         Ok(state)
     }
 
@@ -579,6 +779,14 @@ impl TvHistory {
         clock: &dyn TvClock,
         new_id: &dyn Fn() -> HistoryId,
     ) -> Result<bool, HistoryError> {
+        // An interrupted synced write leaves its temp file.
+        let _ = fs::remove_file(self.file("install.new"));
+        if let Some(install) = read_toml::<InstallJournal>(&self.file("install.toml"))? {
+            match install.status {
+                JournalStatus::Applied => self.finish_install(&install, device, clock, new_id)?,
+                JournalStatus::Applying => self.undo_install(&install)?,
+            }
+        }
         let Some(journal) = self.journal()? else {
             return Ok(false);
         };
@@ -756,6 +964,15 @@ fn read_toml<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>, H
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(HistoryError::storage(error)),
     }
+}
+
+/// Writes durably: a synced temp file, a rename, a synced folder.
+fn write_synced_toml<T: Serialize>(path: &Path, value: &T) -> Result<(), HistoryError> {
+    let text = toml::to_string(value).map_err(|error| HistoryError::invalid(error.to_string()))?;
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(HistoryError::storage)?;
+    }
+    packages::write_synced(path, text.as_bytes()).map_err(HistoryError::storage)
 }
 
 /// Writes atomically: a temp file, then a rename.

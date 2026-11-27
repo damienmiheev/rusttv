@@ -592,5 +592,121 @@ msgid "{} KB · fingerprint {}"
 msgstr "{} KB · dấu vân tay {}"
 
 #: ui/home.slint
-msgid "Compare the fingerprint with the one your computer printed. Installing it from the TV comes in a later RustTV version."
-msgstr "Hãy so sánh dấu vân tay với dấu mà máy tính của bạn đã hiển thị. Cài đặt từ TV sẽ có trong phiên bản RustTV sau."
+msgid "Compare the fingerprint with the one your computer printed, then press OK to review it."
+msgstr "So sánh dấu vân tay với dấu máy tính đã in, rồi nhấn OK để xem lại."
+
+#: ui/home.slint
+msgid "A package was deleted"
+msgstr "Một gói đã bị xóa"
+
+#: ui/home.slint
+msgid "A theme that runs no code"
+msgstr "Giao diện không chạy mã"
+
+#: ui/home.slint
+msgid "Checking it stopped RustTV. Send it again to try once more."
+msgstr "Việc kiểm tra đã làm RustTV dừng. Hãy gửi lại để thử một lần nữa."
+
+#: ui/home.slint
+msgid "Checking the package…"
+msgstr "Đang kiểm tra gói…"
+
+#: ui/home.slint
+msgid "Compare the fingerprint with the one your computer printed."
+msgstr "So sánh dấu vân tay với dấu máy tính đã in."
+
+#: ui/home.slint
+msgid "Id: {}"
+msgstr "Id: {}"
+
+#: ui/home.slint
+msgid "Install this theme"
+msgstr "Cài giao diện này"
+
+#: ui/home.slint
+msgid "Installed the theme {} {}"
+msgstr "Đã cài giao diện {} {}"
+
+#: ui/home.slint
+msgid "Installed themes don't change Home yet; that comes in a later RustTV version."
+msgstr "Giao diện đã cài chưa thay đổi màn hình chính; việc này sẽ có ở phiên bản RustTV sau."
+
+#: ui/home.slint
+msgid "Installed. Installed themes don't change Home yet."
+msgstr "Đã cài đặt. Giao diện đã cài chưa thay đổi màn hình chính."
+
+#: ui/home.slint
+msgid "Not installed: a different package with this version is installed. Its version must be higher."
+msgstr "Chưa cài: đã cài một gói khác có phiên bản này. Phiên bản phải cao hơn."
+
+#: ui/home.slint
+msgid "Not installed: a newer version of this theme is installed."
+msgstr "Chưa cài: đã cài phiên bản mới hơn của giao diện này."
+
+#: ui/home.slint
+msgid "Not installed: another package or a built-in tile has this name."
+msgstr "Chưa cài: một gói khác hoặc ô có sẵn đã dùng tên này."
+
+#: ui/home.slint
+msgid "Not installed: checking the package took too long."
+msgstr "Chưa cài: việc kiểm tra gói mất quá nhiều thời gian."
+
+#: ui/home.slint
+msgid "Not installed: the package couldn't be read. Send it again."
+msgstr "Chưa cài: không đọc được gói. Hãy gửi lại."
+
+#: ui/home.slint
+msgid "Not installed: the package is broken ({}). It was deleted."
+msgstr "Chưa cài: gói bị hỏng ({}). Gói đã bị xóa."
+
+#: ui/home.slint
+msgid "Not installed: the package needs a newer RustTV. It was deleted."
+msgstr "Chưa cài đặt: gói cần RustTV mới hơn. Gói đã bị xóa."
+
+#: ui/home.slint
+msgid "Not installed: themes that run code can't be installed yet."
+msgstr "Chưa cài: chưa thể cài giao diện có chạy mã."
+
+#: ui/home.slint
+msgid "Not installed: there is no room for more packages."
+msgstr "Chưa cài: không còn chỗ cho thêm gói."
+
+#: ui/home.slint
+msgid "Not installed: this package isn't a theme. It was deleted."
+msgstr "Chưa cài: gói này không phải giao diện. Gói đã bị xóa."
+
+#: ui/home.slint
+msgid "Nothing changed: the package or the installed ones changed during the review."
+msgstr "Không có gì thay đổi: gói hoặc các gói đã cài đã thay đổi trong lúc xem lại."
+
+#: ui/home.slint
+msgid "Origin unknown: the package isn't signed"
+msgstr "Không rõ nguồn gốc: gói chưa được ký"
+
+#: ui/home.slint
+msgid "Removed the theme {}"
+msgstr "Đã gỡ giao diện {}"
+
+#: ui/home.slint
+msgid "This theme is already installed."
+msgstr "Giao diện này đã được cài."
+
+#: ui/home.slint
+msgid "Update this theme"
+msgstr "Cập nhật giao diện này"
+
+#: ui/home.slint
+msgid "Updated the theme {} to {}"
+msgstr "Đã cập nhật giao diện {} lên {}"
+
+#: ui/home.slint
+msgid "Version: {}"
+msgstr "Phiên bản: {}"
+
+#: ui/home.slint
+msgid "Version: {} → {}"
+msgstr "Phiên bản: {} → {}"
+
+#: ui/home.slint
+msgid "{} (name unverified)"
+msgstr "{} (chưa xác minh tên)"

@@ -270,7 +270,8 @@ export global Strings {
     // 12 folder removed, 13 folder renamed (old → new), 14 app put in a
     // folder (name; old: the folder), 15 app taken out of a folder, 16
     // phone paired, 17 phone removed, 18 effects, 19 idle screen, 20 safe
-    // look.
+    // look, 21 theme installed (name: its id, new: version), 22 theme
+    // updated, 23 theme removed.
     public pure function change-line(kind: int, name: string, old: string, new: string) -> string {
         if kind == 0 { return @tr("Apps reordered"); }
         if kind == 1 { return @tr("Hid {}", name); }
@@ -291,6 +292,9 @@ export global Strings {
         if kind == 18 { return @tr("Effects: {}", new); }
         if kind == 19 { return @tr("Idle screen: {}", new); }
         if kind == 20 { return @tr("Safe look: {}", new); }
+        if kind == 21 { return @tr("Installed the theme {} {}", name, new); }
+        if kind == 22 { return @tr("Updated the theme {} to {}", name, new); }
+        if kind == 23 { return @tr("Removed the theme {}", name); }
         return @tr("No change");
     }
     // 0 changed on the TV now, 1 applied by the computer later.
@@ -313,7 +317,58 @@ export global Strings {
         return @tr("{} KB · fingerprint {}", kilobytes, hash);
     }
     public pure function staged-note() -> string {
-        return @tr("Compare the fingerprint with the one your computer printed. Installing it from the TV comes in a later RustTV version.");
+        return @tr("Compare the fingerprint with the one your computer printed, then press OK to review it.");
+    }
+    public pure function quarantined-title() -> string {
+        return @tr("A package was deleted");
+    }
+    public pure function quarantined-detail() -> string {
+        return @tr("Checking it stopped RustTV. Send it again to try once more.");
+    }
+    // The review of a theme package (ui/settings_view.rs `theme_lines`):
+    // only facts the launcher derived, and the name marked unverified.
+    public pure function theme-review-title(update: bool) -> string {
+        if update { return @tr("Update this theme"); }
+        return @tr("Install this theme");
+    }
+    public pure function theme-name(name: string) -> string {
+        return @tr("{} (name unverified)", name);
+    }
+    public pure function theme-id(id: string) -> string {
+        return @tr("Id: {}", id);
+    }
+    public pure function theme-version(version: string) -> string {
+        return @tr("Version: {}", version);
+    }
+    public pure function theme-version-update(old: string, new: string) -> string {
+        return @tr("Version: {} → {}", old, new);
+    }
+    public pure function theme-kind() -> string {
+        return @tr("A theme that runs no code");
+    }
+    public pure function theme-compare() -> string {
+        return @tr("Compare the fingerprint with the one your computer printed.");
+    }
+    public pure function theme-origin() -> string {
+        return @tr("Origin unknown: the package isn't signed");
+    }
+    public pure function theme-not-shown() -> string {
+        return @tr("Installed themes don't change Home yet; that comes in a later RustTV version.");
+    }
+    // Why a package can't be installed (`settings-status` 16, detail: the code).
+    public pure function package-refused(code: string) -> string {
+        if code == "PACKAGE_HAS_CODE" { return @tr("Not installed: themes that run code can't be installed yet."); }
+        if code == "NOT_A_THEME" { return @tr("Not installed: this package isn't a theme. It was deleted."); }
+        if code == "PACKAGE_INSTALLED" { return @tr("This theme is already installed."); }
+        if code == "PACKAGE_NAME_TAKEN" { return @tr("Not installed: another package or a built-in tile has this name."); }
+        if code == "PACKAGE_SAME_VERSION" { return @tr("Not installed: a different package with this version is installed. Its version must be higher."); }
+        if code == "PACKAGE_OLDER" { return @tr("Not installed: a newer version of this theme is installed."); }
+        if code == "PACKAGE_STORE_FULL" { return @tr("Not installed: there is no room for more packages."); }
+        if code == "PACKAGE_TOO_SLOW" { return @tr("Not installed: checking the package took too long."); }
+        if code == "PACKAGE_REPLACED" || code == "CHANGED_MEANWHILE" { return @tr("Nothing changed: the package or the installed ones changed during the review."); }
+        if code == "PACKAGE_TOO_NEW" { return @tr("Not installed: the package needs a newer RustTV. It was deleted."); }
+        if code == "STAGING_MISMATCH" || code == "STAGING_STORAGE" { return @tr("Not installed: the package couldn't be read. Send it again."); }
+        return @tr("Not installed: the package is broken ({}). It was deleted.", code);
     }
     public pure function history-empty() -> string {
         return @tr("No changes yet. Changes made here or from your computer appear here.");
@@ -340,7 +395,9 @@ export global Strings {
     // ui.rs `settings_status`: 0 none, 1 applied, 2 saved for the computer,
     // 3 nothing changed (detail), 4 wrong code, 5 locked (detail: time),
     // 6 test build, 7 busy, 8 rollback failed (detail), 9 nothing to restore,
-    // 10 newer format, 11 reading, 12 history unreadable (detail).
+    // 10 newer format, 11 reading, 12 history unreadable (detail), 13
+    // phone removed (detail), 14 checking a package, 15 theme installed,
+    // 16 package refused (detail: the code, `package-refused`).
     public pure function settings-status(kind: int, detail: string) -> string {
         if kind == 1 { return @tr("Applied."); }
         if kind == 2 { return @tr("Saved for your computer. {}", detail); }
@@ -355,6 +412,9 @@ export global Strings {
         if kind == 11 { return @tr("Reading history…"); }
         if kind == 12 { return @tr("History couldn't be read: {}. Your computer's copy can put it back.", detail); }
         if kind == 13 { return @tr("Removed {}. It can't control this TV any more.", detail); }
+        if kind == 14 { return @tr("Checking the package…"); }
+        if kind == 15 { return @tr("Installed. Installed themes don't change Home yet."); }
+        if kind == 16 { return package-refused(detail); }
         return "";
     }
 }

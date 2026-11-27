@@ -10,11 +10,18 @@ field in `--json` output says which contract you get, CLI.md).
 
 - `rusttv theme install <file>` checks a theme package and sends it to the
   TV, where it waits in Settings → Waiting to install, with its size and
-  hash to compare. Nothing is installed yet: approving it on the TV comes
-  in a later version (SECURITY.md "Packages: staging and install").
+  hash to compare (SECURITY.md "Packages: staging and install").
+- `rusttv history` shows theme installs (`theme` change kind, snapshot
+  format 10).
 
 ### Launcher
 
+- Install a theme from Settings → Waiting to install: OK checks the
+  package on the TV, the review shows its name (unverified), id, version,
+  size and fingerprint, and Approve, the 4-arrow code and a 2 s hold of
+  OK install it. Installed themes are kept and recorded in History, but
+  don't change Home yet. Themes that run code are refused for now. The
+  package validator is now part of the launcher.
 - Safe look: hold Back on the remote for 5 seconds to switch Home to a
   plain emergency Home (Settings and your apps, A to Z), kept after a
   restart; hold it again to bring your Home back. Recorded in History

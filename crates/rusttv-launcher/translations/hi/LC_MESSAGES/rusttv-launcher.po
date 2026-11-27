@@ -596,5 +596,121 @@ msgid "{} KB · fingerprint {}"
 msgstr "{} KB · फ़िंगरप्रिंट {}"
 
 #: ui/home.slint
-msgid "Compare the fingerprint with the one your computer printed. Installing it from the TV comes in a later RustTV version."
-msgstr "फ़िंगरप्रिंट की तुलना अपने कंप्यूटर पर दिखे फ़िंगरप्रिंट से करें। टीवी से इंस्टॉल करना RustTV के अगले संस्करण में आएगा।"
+msgid "Compare the fingerprint with the one your computer printed, then press OK to review it."
+msgstr "फ़िंगरप्रिंट को अपने कंप्यूटर पर छपे फ़िंगरप्रिंट से मिलाएं, फिर देखने के लिए OK दबाएं।"
+
+#: ui/home.slint
+msgid "A package was deleted"
+msgstr "एक पैकेज हटाया गया"
+
+#: ui/home.slint
+msgid "A theme that runs no code"
+msgstr "बिना कोड चलाने वाली थीम"
+
+#: ui/home.slint
+msgid "Checking it stopped RustTV. Send it again to try once more."
+msgstr "जांच से RustTV बंद हो गया। दोबारा कोशिश के लिए इसे फिर भेजें।"
+
+#: ui/home.slint
+msgid "Checking the package…"
+msgstr "पैकेज जांचा जा रहा है…"
+
+#: ui/home.slint
+msgid "Compare the fingerprint with the one your computer printed."
+msgstr "फ़िंगरप्रिंट को अपने कंप्यूटर पर छपे फ़िंगरप्रिंट से मिलाएं।"
+
+#: ui/home.slint
+msgid "Id: {}"
+msgstr "आईडी: {}"
+
+#: ui/home.slint
+msgid "Install this theme"
+msgstr "यह थीम इंस्टॉल करें"
+
+#: ui/home.slint
+msgid "Installed the theme {} {}"
+msgstr "थीम {} {} इंस्टॉल हुई"
+
+#: ui/home.slint
+msgid "Installed themes don't change Home yet; that comes in a later RustTV version."
+msgstr "इंस्टॉल की गई थीम अभी होम स्क्रीन नहीं बदलतीं; यह RustTV के अगले वर्शन में आएगा।"
+
+#: ui/home.slint
+msgid "Installed. Installed themes don't change Home yet."
+msgstr "इंस्टॉल हो गई। इंस्टॉल की गई थीम अभी होम स्क्रीन नहीं बदलतीं।"
+
+#: ui/home.slint
+msgid "Not installed: a different package with this version is installed. Its version must be higher."
+msgstr "इंस्टॉल नहीं हुई: इसी वर्शन वाला दूसरा पैकेज इंस्टॉल है। इसका वर्शन ऊंचा होना चाहिए।"
+
+#: ui/home.slint
+msgid "Not installed: a newer version of this theme is installed."
+msgstr "इंस्टॉल नहीं हुई: इस थीम का नया वर्शन इंस्टॉल है।"
+
+#: ui/home.slint
+msgid "Not installed: another package or a built-in tile has this name."
+msgstr "इंस्टॉल नहीं हुई: इस नाम का दूसरा पैकेज या बिल्ट-इन टाइल मौजूद है।"
+
+#: ui/home.slint
+msgid "Not installed: checking the package took too long."
+msgstr "इंस्टॉल नहीं हुई: पैकेज की जांच में बहुत समय लगा।"
+
+#: ui/home.slint
+msgid "Not installed: the package couldn't be read. Send it again."
+msgstr "इंस्टॉल नहीं हुई: पैकेज पढ़ा नहीं जा सका। इसे फिर भेजें।"
+
+#: ui/home.slint
+msgid "Not installed: the package is broken ({}). It was deleted."
+msgstr "इंस्टॉल नहीं हुई: पैकेज खराब है ({})। इसे हटा दिया गया।"
+
+#: ui/home.slint
+msgid "Not installed: the package needs a newer RustTV. It was deleted."
+msgstr "इंस्टॉल नहीं हुआ: पैकेज को RustTV का नया संस्करण चाहिए। इसे हटा दिया गया।"
+
+#: ui/home.slint
+msgid "Not installed: themes that run code can't be installed yet."
+msgstr "इंस्टॉल नहीं हुई: कोड चलाने वाली थीम अभी इंस्टॉल नहीं हो सकतीं।"
+
+#: ui/home.slint
+msgid "Not installed: there is no room for more packages."
+msgstr "इंस्टॉल नहीं हुई: और पैकेज के लिए जगह नहीं है।"
+
+#: ui/home.slint
+msgid "Not installed: this package isn't a theme. It was deleted."
+msgstr "इंस्टॉल नहीं हुई: यह पैकेज थीम नहीं है। इसे हटा दिया गया।"
+
+#: ui/home.slint
+msgid "Nothing changed: the package or the installed ones changed during the review."
+msgstr "कुछ नहीं बदला: समीक्षा के दौरान पैकेज या इंस्टॉल किए गए पैकेज बदल गए।"
+
+#: ui/home.slint
+msgid "Origin unknown: the package isn't signed"
+msgstr "स्रोत अज्ञात: पैकेज साइन नहीं किया गया है"
+
+#: ui/home.slint
+msgid "Removed the theme {}"
+msgstr "थीम {} हटाई गई"
+
+#: ui/home.slint
+msgid "This theme is already installed."
+msgstr "यह थीम पहले से इंस्टॉल है।"
+
+#: ui/home.slint
+msgid "Update this theme"
+msgstr "यह थीम अपडेट करें"
+
+#: ui/home.slint
+msgid "Updated the theme {} to {}"
+msgstr "थीम {} को {} में अपडेट किया"
+
+#: ui/home.slint
+msgid "Version: {}"
+msgstr "वर्शन: {}"
+
+#: ui/home.slint
+msgid "Version: {} → {}"
+msgstr "वर्शन: {} → {}"
+
+#: ui/home.slint
+msgid "{} (name unverified)"
+msgstr "{} (नाम सत्यापित नहीं)"

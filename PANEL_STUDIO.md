@@ -1995,7 +1995,13 @@ the measurement APK) starts with the owner's go-ahead in that session.
      CLI tests' fake TV; the provider copies a write through a pipe capped
      at the announced size plus one byte; `RiskClass::Staging` ("RS") holds
      the three door calls; Settings shows "Waiting to install" with the
-     size and a 12-digit hash prefix, and OK on it does nothing until T3c.
+     size and a 12-digit hash prefix. **As built (T3c, 2026-11-27)**: OK
+     on it copies the slot and checks the copy on its own thread
+     (`theme_check.rs`, with the crash marker); the review is the
+     existing review screen with the code; the package store is
+     `rusttv_history::packages`, written through its own TV journal; History
+     snapshot format 10 holds `themes`; the details are in SECURITY.md's
+     as-built note. Remove, rollback and reinstall wait for T2's listing.
    - T4 safety net: the emergency Home, the safe-look key (us; with the
      step 3 safe look and its SECURITY.md entries).
    - T5 the runtime-code engine and host API behind "Allow packages with

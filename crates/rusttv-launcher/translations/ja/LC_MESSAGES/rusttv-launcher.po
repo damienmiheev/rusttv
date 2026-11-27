@@ -592,5 +592,121 @@ msgid "{} KB · fingerprint {}"
 msgstr "{} KB · フィンガープリント {}"
 
 #: ui/home.slint
-msgid "Compare the fingerprint with the one your computer printed. Installing it from the TV comes in a later RustTV version."
-msgstr "パソコンに表示されたフィンガープリントと照らし合わせてください。テレビからのインストールは今後の RustTV で対応します。"
+msgid "Compare the fingerprint with the one your computer printed, then press OK to review it."
+msgstr "フィンガープリントをパソコンに表示されたものと照合し、OK で内容を確認してください。"
+
+#: ui/home.slint
+msgid "A package was deleted"
+msgstr "パッケージが削除されました"
+
+#: ui/home.slint
+msgid "A theme that runs no code"
+msgstr "コードを実行しないテーマ"
+
+#: ui/home.slint
+msgid "Checking it stopped RustTV. Send it again to try once more."
+msgstr "確認中に RustTV が停止しました。もう一度送信してください。"
+
+#: ui/home.slint
+msgid "Checking the package…"
+msgstr "パッケージを確認中…"
+
+#: ui/home.slint
+msgid "Compare the fingerprint with the one your computer printed."
+msgstr "フィンガープリントをパソコンに表示されたものと照合してください。"
+
+#: ui/home.slint
+msgid "Id: {}"
+msgstr "ID：{}"
+
+#: ui/home.slint
+msgid "Install this theme"
+msgstr "このテーマをインストール"
+
+#: ui/home.slint
+msgid "Installed the theme {} {}"
+msgstr "テーマ {} {} をインストールしました"
+
+#: ui/home.slint
+msgid "Installed themes don't change Home yet; that comes in a later RustTV version."
+msgstr "インストールしたテーマはまだホーム画面を変更しません。今後の RustTV で対応予定です。"
+
+#: ui/home.slint
+msgid "Installed. Installed themes don't change Home yet."
+msgstr "インストールしました。テーマはまだホーム画面を変更しません。"
+
+#: ui/home.slint
+msgid "Not installed: a different package with this version is installed. Its version must be higher."
+msgstr "インストールできません：同じバージョンの別のパッケージがあります。より新しいバージョンが必要です。"
+
+#: ui/home.slint
+msgid "Not installed: a newer version of this theme is installed."
+msgstr "インストールできません：このテーマの新しいバージョンが入っています。"
+
+#: ui/home.slint
+msgid "Not installed: another package or a built-in tile has this name."
+msgstr "インストールできません：同じ名前の別のパッケージか標準タイルがあります。"
+
+#: ui/home.slint
+msgid "Not installed: checking the package took too long."
+msgstr "インストールできません：パッケージの確認に時間がかかりすぎました。"
+
+#: ui/home.slint
+msgid "Not installed: the package couldn't be read. Send it again."
+msgstr "インストールできません：パッケージを読み取れません。もう一度送信してください。"
+
+#: ui/home.slint
+msgid "Not installed: the package is broken ({}). It was deleted."
+msgstr "インストールできません：パッケージが壊れています（{}）。削除しました。"
+
+#: ui/home.slint
+msgid "Not installed: the package needs a newer RustTV. It was deleted."
+msgstr "インストールできません：パッケージには新しいRustTVが必要です。削除しました。"
+
+#: ui/home.slint
+msgid "Not installed: themes that run code can't be installed yet."
+msgstr "インストールできません：コードを実行するテーマはまだ入れられません。"
+
+#: ui/home.slint
+msgid "Not installed: there is no room for more packages."
+msgstr "インストールできません：これ以上パッケージを入れる空きがありません。"
+
+#: ui/home.slint
+msgid "Not installed: this package isn't a theme. It was deleted."
+msgstr "インストールできません：テーマではないパッケージです。削除しました。"
+
+#: ui/home.slint
+msgid "Nothing changed: the package or the installed ones changed during the review."
+msgstr "変更されていません：確認中にパッケージまたはインストール済みの内容が変わりました。"
+
+#: ui/home.slint
+msgid "Origin unknown: the package isn't signed"
+msgstr "送信元不明：パッケージに署名がありません"
+
+#: ui/home.slint
+msgid "Removed the theme {}"
+msgstr "テーマ {} を削除しました"
+
+#: ui/home.slint
+msgid "This theme is already installed."
+msgstr "このテーマはインストール済みです。"
+
+#: ui/home.slint
+msgid "Update this theme"
+msgstr "このテーマを更新"
+
+#: ui/home.slint
+msgid "Updated the theme {} to {}"
+msgstr "テーマ {} を {} に更新しました"
+
+#: ui/home.slint
+msgid "Version: {}"
+msgstr "バージョン：{}"
+
+#: ui/home.slint
+msgid "Version: {} → {}"
+msgstr "バージョン：{} → {}"
+
+#: ui/home.slint
+msgid "{} (name unverified)"
+msgstr "{}（名前未確認）"

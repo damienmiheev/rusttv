@@ -592,5 +592,121 @@ msgid "{} KB · fingerprint {}"
 msgstr "{} KB · 지문 {}"
 
 #: ui/home.slint
-msgid "Compare the fingerprint with the one your computer printed. Installing it from the TV comes in a later RustTV version."
-msgstr "컴퓨터에 표시된 지문과 비교하세요. TV에서 설치하는 기능은 이후 RustTV 버전에서 제공됩니다."
+msgid "Compare the fingerprint with the one your computer printed, then press OK to review it."
+msgstr "지문을 컴퓨터에 표시된 지문과 비교한 뒤 OK를 눌러 검토하세요."
+
+#: ui/home.slint
+msgid "A package was deleted"
+msgstr "패키지가 삭제되었습니다"
+
+#: ui/home.slint
+msgid "A theme that runs no code"
+msgstr "코드를 실행하지 않는 테마"
+
+#: ui/home.slint
+msgid "Checking it stopped RustTV. Send it again to try once more."
+msgstr "확인 중 RustTV가 중지되었습니다. 다시 보내 한 번 더 시도하세요."
+
+#: ui/home.slint
+msgid "Checking the package…"
+msgstr "패키지 확인 중…"
+
+#: ui/home.slint
+msgid "Compare the fingerprint with the one your computer printed."
+msgstr "지문을 컴퓨터에 표시된 지문과 비교하세요."
+
+#: ui/home.slint
+msgid "Id: {}"
+msgstr "ID: {}"
+
+#: ui/home.slint
+msgid "Install this theme"
+msgstr "이 테마 설치"
+
+#: ui/home.slint
+msgid "Installed the theme {} {}"
+msgstr "테마 {} {} 설치됨"
+
+#: ui/home.slint
+msgid "Installed themes don't change Home yet; that comes in a later RustTV version."
+msgstr "설치한 테마는 아직 홈 화면을 바꾸지 않습니다. 이후 RustTV 버전에서 지원됩니다."
+
+#: ui/home.slint
+msgid "Installed. Installed themes don't change Home yet."
+msgstr "설치됨. 설치한 테마는 아직 홈 화면을 바꾸지 않습니다."
+
+#: ui/home.slint
+msgid "Not installed: a different package with this version is installed. Its version must be higher."
+msgstr "설치되지 않음: 같은 버전의 다른 패키지가 설치되어 있습니다. 버전이 더 높아야 합니다."
+
+#: ui/home.slint
+msgid "Not installed: a newer version of this theme is installed."
+msgstr "설치되지 않음: 이 테마의 더 새로운 버전이 설치되어 있습니다."
+
+#: ui/home.slint
+msgid "Not installed: another package or a built-in tile has this name."
+msgstr "설치되지 않음: 다른 패키지나 기본 타일이 이 이름을 쓰고 있습니다."
+
+#: ui/home.slint
+msgid "Not installed: checking the package took too long."
+msgstr "설치되지 않음: 패키지 확인에 시간이 너무 오래 걸렸습니다."
+
+#: ui/home.slint
+msgid "Not installed: the package couldn't be read. Send it again."
+msgstr "설치되지 않음: 패키지를 읽을 수 없습니다. 다시 보내세요."
+
+#: ui/home.slint
+msgid "Not installed: the package is broken ({}). It was deleted."
+msgstr "설치되지 않음: 패키지가 손상되었습니다({}). 삭제했습니다."
+
+#: ui/home.slint
+msgid "Not installed: the package needs a newer RustTV. It was deleted."
+msgstr "설치되지 않음: 패키지에 최신 RustTV가 필요합니다. 삭제되었습니다."
+
+#: ui/home.slint
+msgid "Not installed: themes that run code can't be installed yet."
+msgstr "설치되지 않음: 코드를 실행하는 테마는 아직 설치할 수 없습니다."
+
+#: ui/home.slint
+msgid "Not installed: there is no room for more packages."
+msgstr "설치되지 않음: 패키지를 더 둘 공간이 없습니다."
+
+#: ui/home.slint
+msgid "Not installed: this package isn't a theme. It was deleted."
+msgstr "설치되지 않음: 테마가 아닌 패키지입니다. 삭제했습니다."
+
+#: ui/home.slint
+msgid "Nothing changed: the package or the installed ones changed during the review."
+msgstr "변경되지 않음: 검토 중 패키지 또는 설치된 항목이 바뀌었습니다."
+
+#: ui/home.slint
+msgid "Origin unknown: the package isn't signed"
+msgstr "출처 알 수 없음: 패키지에 서명이 없습니다"
+
+#: ui/home.slint
+msgid "Removed the theme {}"
+msgstr "테마 {} 삭제됨"
+
+#: ui/home.slint
+msgid "This theme is already installed."
+msgstr "이미 설치된 테마입니다."
+
+#: ui/home.slint
+msgid "Update this theme"
+msgstr "이 테마 업데이트"
+
+#: ui/home.slint
+msgid "Updated the theme {} to {}"
+msgstr "테마 {}을(를) {}(으)로 업데이트함"
+
+#: ui/home.slint
+msgid "Version: {}"
+msgstr "버전: {}"
+
+#: ui/home.slint
+msgid "Version: {} → {}"
+msgstr "버전: {} → {}"
+
+#: ui/home.slint
+msgid "{} (name unverified)"
+msgstr "{} (이름 미확인)"

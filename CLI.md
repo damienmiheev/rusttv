@@ -265,7 +265,10 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
     [HistoryChange](#historychange) has a kind for that switch (`ambient`,
     with `on`). Snapshots in format 9 may hold `launcher.safe_look`
     (written only while the launcher's safe look is on, SECURITY.md), and
-    HistoryChange has a kind for it (`safe_look`, with `on`). `theme
+    HistoryChange has a kind for it (`safe_look`, with `on`). Snapshots
+    in format 10 may hold `themes` (the theme packages installed on the
+    TV, by id, with `version` and `sha256`), and HistoryChange has a kind
+    for them (`theme`, with `theme`, `old`, `new`). `theme
     install` is a new command, with the error codes `THEME_INVALID`,
     `LAUNCHER_TOO_OLD` and the TV's `STAGING_*` refusals. Everything else
     is unchanged.
@@ -600,7 +603,8 @@ phone's id, 32 hex digits; `name`), `hidden` (`tile`: an app or a
 built-in tile, `hidden`; a tile hidden or shown again is not also
 `removed` or `added`), `update_check` (`on`), `effects` (`reduced`), `ambient` (`on`: the
 launcher's idle screen), `safe_look` (`on`: the launcher's emergency Home,
-SECURITY.md), `setting` (`key`, `old`, `new`; null =
+SECURITY.md), `theme` (`theme`: a theme package's id, `old`, `new`: its
+versions, null = not installed), `setting` (`key`, `old`, `new`; null =
 unset), `package` (`package`, `old`, `new`: `enabled` \| `disabled`, null =
 not observed), `firmware` (`old`, `new`), `takeover` (`active`).
 

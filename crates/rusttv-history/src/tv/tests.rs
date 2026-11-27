@@ -521,3 +521,214 @@ fn wrong_codes_lock_approvals_for_longer_each_time() {
     history.correct_code().unwrap();
     assert_eq!(history.locked_ms(&clock).unwrap(), 0);
 }
+
+fn sha_hex(bytes: &[u8]) -> String {
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// Stages `bytes` in the slot and copies them for review, as the launcher
+/// does before the person approves.
+fn reviewed(dir: &Path, clock: &FakeClock, bytes: &[u8], version: &str) -> ThemeInstall {
+    let staging = dir.join("staging");
+    fs::create_dir_all(&staging).unwrap();
+    fs::write(staging.join("slot"), bytes).unwrap();
+    fs::write(
+        staging.join("slot.meta"),
+        format!(
+            "{} {} {} {}\n",
+            bytes.len(),
+            sha_hex(bytes),
+            clock.boot_count(),
+            clock.elapsed_ms()
+        ),
+    )
+    .unwrap();
+    fs::write(staging.join("review"), bytes).unwrap();
+    ThemeInstall {
+        package: Package {
+            id: "user.dusk".to_owned(),
+            version: version.to_owned(),
+            sha256: sha_hex(bytes),
+            size: bytes.len() as u64,
+            names: vec!["dusk".to_owned()],
+        },
+        from: None,
+    }
+}
+
+#[test]
+fn an_approved_theme_is_stored_recorded_and_its_slot_dropped() {
+    let (dir, device, clock, mut history) = setup();
+    let theme = reviewed(&dir.0, &clock, b"PK theme one", "1.0.0");
+    let outcome = history.install(&theme, &device, &clock, &id).unwrap();
+    assert_eq!(outcome, ApplyOutcome::Applied { pending: vec![] });
+    let sha = sha_hex(b"PK theme one");
+    assert_eq!(
+        fs::read(dir.0.join("packages").join(format!("{sha}.zip"))).unwrap(),
+        b"PK theme one"
+    );
+    assert!(!dir.0.join("staging/review").exists());
+    assert!(!dir.0.join("staging/slot").exists());
+    assert!(!history.busy().unwrap());
+    let head = history.store().log(1).unwrap().remove(0);
+    assert_eq!(
+        head.meta.approved_by,
+        Some(ApprovedBy::TvCode(theme.approval().unwrap()))
+    );
+    let state = history.store().head_state().unwrap().unwrap();
+    assert_eq!(state.themes["user.dusk"].version, "1.0.0");
+    assert_eq!(state.needed_format(), 10);
+
+    // An update: the review saw 1.0.0 installed; it is kept.
+    let mut update = reviewed(&dir.0, &clock, b"PK theme two", "1.1.0");
+    update.from = Some(theme.package.clone());
+    history.install(&update, &device, &clock, &id).unwrap();
+    let index = history.installed().unwrap();
+    assert_eq!(index.installed("user.dusk").unwrap().version, "1.1.0");
+    assert_eq!(index.kept[0].version, "1.0.0");
+    assert!(dir.0.join("packages").join(format!("{sha}.zip")).exists());
+}
+
+#[test]
+fn an_install_checks_what_was_approved_again() {
+    let (dir, device, clock, mut history) = setup();
+    let theme = reviewed(&dir.0, &clock, b"PK theme", "1.0.0");
+    // The copy changed after the approval.
+    fs::write(dir.0.join("staging/review"), b"PK other").unwrap();
+    let refused = history.install(&theme, &device, &clock, &id).unwrap_err();
+    assert_eq!(refused.code, "PACKAGE_REPLACED");
+    // The store changed after the review: what it updates isn't there.
+    let mut stale = reviewed(&dir.0, &clock, b"PK theme", "1.0.0");
+    stale.from = Some(stale.package.clone());
+    let refused = history.install(&stale, &device, &clock, &id).unwrap_err();
+    assert_eq!(refused.code, "CHANGED_MEANWHILE");
+    // Installed once; the same one again is refused.
+    history.install(&theme, &device, &clock, &id).unwrap();
+    let again = reviewed(&dir.0, &clock, b"PK theme", "1.0.0");
+    let refused = history
+        .install(
+            &ThemeInstall {
+                from: Some(again.package.clone()),
+                ..again
+            },
+            &device,
+            &clock,
+            &id,
+        )
+        .unwrap_err();
+    assert_eq!(refused.code, "PACKAGE_INSTALLED");
+    // Nothing was left half done; the slot of a refused install stays.
+    assert!(!history.busy().unwrap());
+    assert!(dir.0.join("staging/slot").exists());
+}
+
+#[test]
+fn a_crash_mid_install_is_undone_and_one_after_it_is_finished() {
+    let (dir, mut device, clock, mut history) = setup();
+    let theme = reviewed(&dir.0, &clock, b"PK theme", "1.0.0");
+    history.install(&theme, &device, &clock, &id).unwrap();
+    let entries = history.store().log(10).unwrap().len();
+    let installed = history.installed().unwrap();
+    let journal_path = dir.0.join("history/install.toml");
+
+    // Crashed while applying an update: the store is put back.
+    let mut update = reviewed(&dir.0, &clock, b"PK newer", "2.0.0");
+    update.from = Some(theme.package.clone());
+    let target = installed.with(update.package.clone());
+    let journal = InstallJournal {
+        approval: update.approval().unwrap(),
+        status: JournalStatus::Applying,
+        sha256: update.package.sha256.clone(),
+        original: installed.clone(),
+        target: target.clone(),
+    };
+    write_synced_toml(&journal_path, &journal).unwrap();
+    let new_zip = dir
+        .0
+        .join("packages")
+        .join(format!("{}.zip", update.package.sha256));
+    fs::write(&new_zip, b"PK newer").unwrap();
+    packages::Store::new(&dir.0).write_index(&target).unwrap();
+    drop(history);
+    let history = TvHistory::open(&dir.0, &mut device, &clock, &id).unwrap();
+    assert_eq!(history.installed().unwrap(), installed);
+    assert!(!journal_path.exists());
+    assert_eq!(history.store().log(10).unwrap().len(), entries);
+    assert!(!new_zip.exists(), "the half-installed zip is pruned");
+    // The slot stays for another try.
+    assert!(dir.0.join("staging/slot").exists());
+
+    // Crashed after it applied: recorded, copy and slot gone.
+    let update = reviewed(&dir.0, &clock, b"PK newer", "2.0.0");
+    let update = ThemeInstall {
+        from: Some(theme.package.clone()),
+        ..update
+    };
+    let store = packages::Store::new(&dir.0);
+    store
+        .put(
+            &dir.0.join("staging/review"),
+            &update.package.sha256,
+            update.package.size,
+        )
+        .unwrap();
+    store.write_index(&target).unwrap();
+    write_synced_toml(
+        &journal_path,
+        &InstallJournal {
+            status: JournalStatus::Applied,
+            ..journal
+        },
+    )
+    .unwrap();
+    drop(history);
+    let history = TvHistory::open(&dir.0, &mut device, &clock, &id).unwrap();
+    assert!(!journal_path.exists());
+    assert!(!dir.0.join("staging/slot").exists());
+    let head = history.store().head_state().unwrap().unwrap();
+    assert_eq!(head.themes["user.dusk"].version, "2.0.0");
+    assert_eq!(history.store().log(10).unwrap().len(), entries + 1);
+}
+
+#[test]
+fn a_failed_copy_rolls_back_and_keeps_the_slot() {
+    let (dir, device, clock, mut history) = setup();
+    let theme = reviewed(&dir.0, &clock, b"PK theme", "1.0.0");
+    // The store's file can't be written: a folder is in its place.
+    let blocked = dir
+        .0
+        .join("packages")
+        .join(format!("{}.zip", theme.package.sha256));
+    fs::create_dir_all(blocked.join("x")).unwrap();
+    let entries = history.store().log(10).unwrap().len();
+    let outcome = history.install(&theme, &device, &clock, &id).unwrap();
+    assert!(
+        matches!(outcome, ApplyOutcome::RolledBack { .. }),
+        "{outcome:?}"
+    );
+    assert!(!history.busy().unwrap());
+    assert_eq!(history.installed().unwrap(), Index::default());
+    assert_eq!(history.store().log(10).unwrap().len(), entries);
+    assert!(dir.0.join("staging/slot").exists());
+}
+
+#[test]
+fn a_broken_store_index_does_not_stop_the_history() {
+    let (dir, mut device, clock, mut history) = setup();
+    fs::create_dir_all(dir.0.join("packages")).unwrap();
+    fs::write(dir.0.join("packages/index.toml"), "installed = 5\n").unwrap();
+    device.launcher.order.push("settings".into());
+    assert!(
+        history
+            .record_launcher_edit(&device, &clock, &id)
+            .unwrap()
+            .is_some()
+    );
+    let theme = reviewed(&dir.0, &clock, b"PK theme", "1.0.0");
+    assert!(history.install(&theme, &device, &clock, &id).is_err());
+    drop(history);
+    TvHistory::open(&dir.0, &mut device, &clock, &id).unwrap();
+}

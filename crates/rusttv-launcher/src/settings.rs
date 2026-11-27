@@ -12,6 +12,7 @@ use rusttv_history::{Author, Change, EntryId, Launcher, SETTING_KEYS};
 
 use crate::device::{Adjust, ControlKind, Tab, Value, adjust};
 use crate::model::Input;
+use crate::theme_check::ThemeReview;
 
 /// What the history thread knows when the page opens.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -35,6 +36,8 @@ pub(crate) struct Overview {
     /// The package waiting in the staging slot (SECURITY.md "Packages:
     /// staging and install"): only facts the launcher derived.
     pub staged: Option<rusttv_history::stage::Waiting>,
+    /// A package was deleted because checking it stopped the launcher.
+    pub quarantined: bool,
 }
 
 /// One history entry, ready to show.
@@ -121,6 +124,8 @@ pub(crate) enum Action {
         title: String,
         secret: bool,
     },
+    /// Check the package waiting in the staging slot, then review it.
+    ReviewStaged,
     /// Install the available launcher update, else check for one.
     Update,
     /// Open the licence and third-party notices (the About page).
@@ -134,12 +139,14 @@ pub(crate) struct Draft {
     pub changes: Vec<ApprovedChange>,
     /// The launcher's state to write, if it changes.
     pub launcher: Option<Launcher>,
+    /// A theme package to install (it comes alone, with the code).
+    pub theme: Option<Box<ThemeReview>>,
 }
 
 impl Draft {
     /// Whether there is nothing to do.
     pub fn is_empty(&self) -> bool {
-        self.changes.is_empty() && self.launcher.is_none()
+        self.changes.is_empty() && self.launcher.is_none() && self.theme.is_none()
     }
 }
 
@@ -306,7 +313,7 @@ impl SettingsPage {
         if !self.overview.pending.is_empty() {
             sections.push(Section::Waiting);
         }
-        if self.overview.staged.is_some() {
+        if self.overview.staged.is_some() || self.overview.quarantined {
             sections.push(Section::Staged);
         }
         sections.extend((0..self.tabs.len()).map(Section::Tab));
@@ -410,7 +417,9 @@ impl SettingsPage {
             Section::Effects | Section::Ambient | Section::Updates => 2,
             Section::History => self.overview.entries.len(),
             Section::Waiting => self.overview.pending.len(),
-            Section::Staged => usize::from(self.overview.staged.is_some()),
+            Section::Staged => {
+                usize::from(self.overview.staged.is_some()) + usize::from(self.overview.quarantined)
+            }
             Section::Tab(tab) => self.tabs.get(tab).map_or(0, |tab| tab.controls.len()),
             Section::About => self.about_rows().len(),
         }
@@ -506,6 +515,7 @@ impl SettingsPage {
                 Some(Action::Review(Draft {
                     changes,
                     launcher: None,
+                    theme: None,
                 }))
             }
             Section::Effects => {
@@ -518,6 +528,7 @@ impl SettingsPage {
                 Some(Action::Apply(Draft {
                     changes: Vec::new(),
                     launcher: Some(launcher),
+                    theme: None,
                 }))
             }
             Section::Ambient => {
@@ -530,6 +541,7 @@ impl SettingsPage {
                 Some(Action::Apply(Draft {
                     changes: Vec::new(),
                     launcher: Some(launcher),
+                    theme: None,
                 }))
             }
             Section::Updates => {
@@ -542,11 +554,16 @@ impl SettingsPage {
                 Some(Action::Apply(Draft {
                     changes: Vec::new(),
                     launcher: Some(launcher),
+                    theme: None,
                 }))
             }
             Section::History => {
                 self.focus = Focus::Detail(row);
                 None
+            }
+            // The first row is the package waiting, when there is one.
+            Section::Staged if row == 0 && self.overview.staged.is_some() => {
+                Some(Action::ReviewStaged)
             }
             Section::Waiting | Section::Staged | Section::Tab(_) => None,
             Section::About => match self.about_rows().get(row)? {
@@ -699,7 +716,7 @@ mod tests {
     }
 
     /// A staged package adds "Waiting to install" with one row; OK on it
-    /// does nothing yet (the review comes with T3c).
+    /// checks it for its review. A quarantine notice is a row of its own.
     #[test]
     fn a_staged_package_shows_its_own_section() {
         let mut page = page();
@@ -717,6 +734,12 @@ mod tests {
         }
         assert_eq!(page.section(), Section::Staged);
         assert_eq!(page.handle(Input::Right), None);
+        assert_eq!(page.handle(Input::OkReleased), Some(Action::ReviewStaged));
+        let mut overview = page.overview().clone();
+        overview.staged = None;
+        overview.quarantined = true;
+        page.refresh(overview);
+        assert_eq!(page.sections()[5], Section::Staged);
         assert_eq!(page.handle(Input::OkReleased), None);
     }
 
