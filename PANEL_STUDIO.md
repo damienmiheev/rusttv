@@ -1984,7 +1984,11 @@ the measurement APK) starts with the owner's go-ahead in that session.
    - T2 Settings → Theme listing installed theme packages, translated
      (#79's author; after T3, though its UI can be reviewed earlier).
    - T3 install over MCP: `theme_install_plan`, staging, the review on the
-     TV, History (us; parts of 4b and 4d).
+     TV, History (us; parts of 4b and 4d). Owner's split (2026-11-27): T3a
+     the SECURITY.md rules (section "Packages: staging and install", risk
+     class RS), T3b `rusttv theme install` and the inert staging slot with
+     its waiting row, T3c the review with the code, the package store and
+     History, T3d the MCP tool.
    - T4 safety net: the emergency Home, the safe-look key (us; with the
      step 3 safe look and its SECURITY.md entries).
    - T5 the runtime-code engine and host API behind "Allow packages with
