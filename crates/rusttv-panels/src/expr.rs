@@ -5,6 +5,7 @@
 //! "hello"                                          a literal (text, or a colour where one is wanted)
 //! 12.5, true                                       number, yes/no
 //! {"source": "network.connected"}                  a field of a source group in meta.sources
+//! {"knob": "accent"}                               a knob in meta.knobs
 //! {"msg": "unread", "args": {"count": {...}}}      a message from the package's tables
 //! {"if": [condition, then, else]}
 //! {"call": "format_time", "args": [{"source": "clock.now"}, "HH:mm"]}
@@ -25,11 +26,11 @@
 use crate::Color;
 use crate::error::Code;
 use crate::messages::{Arg, MessageId, PlaceholderName};
-use crate::meta::limits;
+use crate::meta::{Name, limits};
 use crate::text::clean_keeping_ends;
 use serde::Deserialize;
 use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 /// A value's type.
@@ -78,6 +79,9 @@ pub trait Inputs {
     /// The value of `group.field`, or `None` while it is loading, empty or
     /// unavailable.
     fn source(&self, group: &str, field: &str) -> Option<Value>;
+    /// The value of knob `name`: [`crate::Knob::resolve`] of the stored
+    /// one, so it has the knob's type and rules.
+    fn knob(&self, name: &str) -> Option<Value>;
     /// The message `id` in the panel's language with `args` filled in.
     fn message(&self, id: &str, args: &[(&str, Arg<'_>)]) -> Option<String>;
 }
@@ -225,6 +229,8 @@ pub enum Expr {
         /// The field.
         field: String,
     },
+    /// A knob's value (`{"knob": name}`).
+    Knob(Name),
     /// A message with its placeholders' values.
     Msg {
         /// The message id.
@@ -343,6 +349,7 @@ impl<'de> Deserialize<'de> for Expr {
                                 field: field.to_owned(),
                             }
                         }
+                        "knob" => Expr::Knob(map.next_value()?),
                         "if" => Expr::If(Box::new(map.next_value::<[Expr; 3]>()?)),
                         "msg" => Expr::Msg {
                             id: map.next_value()?,
@@ -414,23 +421,35 @@ struct Budget {
 }
 
 /// Checks `expr` where a `want` is expected, reading only `sources` (the
-/// groups in `meta.sources`).
+/// groups in `meta.sources`) and `knobs` (names and value types).
 ///
 /// # Errors
 ///
 /// [`Code::TypeMismatch`], [`Code::UnknownSource`],
-/// [`Code::UndeclaredSource`], [`Code::BadExpression`] (wrong argument count,
+/// [`Code::UndeclaredSource`], [`Code::UnknownKnob`], [`Code::BadExpression`] (wrong argument count,
 /// a non-literal time pattern), [`Code::BadColor`] or
 /// [`Code::ExpressionTooLarge`].
-pub fn check(expr: &Expr, want: Type, sources: &BTreeSet<&str>) -> Result<(), Code> {
+pub fn check(
+    expr: &Expr,
+    want: Type,
+    sources: &BTreeSet<&str>,
+    knobs: &BTreeMap<&str, Type>,
+) -> Result<(), Code> {
     let mut budget = Budget { nodes: 0 };
-    check_at(expr, Some(want), sources, &mut budget, 1).map(|_| ())
+    let scope = Scope { sources, knobs };
+    check_at(expr, Some(want), &scope, &mut budget, 1).map(|_| ())
+}
+
+/// What an expression may read.
+struct Scope<'a> {
+    sources: &'a BTreeSet<&'a str>,
+    knobs: &'a BTreeMap<&'a str, Type>,
 }
 
 fn check_at(
     expr: &Expr,
     want: Option<Type>,
-    sources: &BTreeSet<&str>,
+    scope: &Scope<'_>,
     budget: &mut Budget,
     depth: usize,
 ) -> Result<Checked, Code> {
@@ -454,14 +473,15 @@ fn check_at(
                 .iter()
                 .find(|s| s.group == group && s.field == field)
                 .ok_or(Code::UnknownSource)?;
-            if !sources.contains(known.group) {
+            if !scope.sources.contains(known.group) {
                 return Err(Code::UndeclaredSource);
             }
             Checked::Is(known.kind)
         }
+        Expr::Knob(name) => Checked::Is(*scope.knobs.get(name.as_str()).ok_or(Code::UnknownKnob)?),
         Expr::Msg { args, .. } => {
             for (_, arg) in args {
-                let got = check_at(arg, None, sources, budget, depth + 1)?;
+                let got = check_at(arg, None, scope, budget, depth + 1)?;
                 if !matches!(
                     got,
                     Checked::StrLiteral | Checked::Is(Type::Text | Type::Number)
@@ -473,16 +493,16 @@ fn check_at(
         }
         Expr::If(parts) => {
             let [condition, then, otherwise] = &**parts;
-            check_at(condition, Some(Type::Bool), sources, budget, depth + 1)?;
-            let first = check_at(then, want, sources, budget, depth + 1)?;
+            check_at(condition, Some(Type::Bool), scope, budget, depth + 1)?;
+            let first = check_at(then, want, scope, budget, depth + 1)?;
             let second_want = match first {
                 Checked::Is(t) => Some(t),
                 Checked::StrLiteral => want,
             };
-            let second = check_at(otherwise, second_want, sources, budget, depth + 1)?;
+            let second = check_at(otherwise, second_want, scope, budget, depth + 1)?;
             unify(first, second)?
         }
-        Expr::Call { function, args } => check_call(*function, args, sources, budget, depth)?,
+        Expr::Call { function, args } => check_call(*function, args, scope, budget, depth)?,
     };
     match (got, want) {
         (_, None) | (Checked::StrLiteral, Some(Type::Text)) => Ok(got),
@@ -494,14 +514,14 @@ fn check_at(
 fn check_call(
     function: Function,
     args: &[Expr],
-    sources: &BTreeSet<&str>,
+    scope: &Scope<'_>,
     budget: &mut Budget,
     depth: usize,
 ) -> Result<Checked, Code> {
     use Function as F;
     let each = |want: Type, budget: &mut Budget| -> Result<(), Code> {
         for arg in args {
-            check_at(arg, Some(want), sources, budget, depth + 1)?;
+            check_at(arg, Some(want), scope, budget, depth + 1)?;
         }
         Ok(())
     };
@@ -546,7 +566,7 @@ fn check_call(
         }
         F::FormatTime => {
             count(n == 2)?;
-            check_at(&args[0], Some(Type::Time), sources, budget, depth + 1)?;
+            check_at(&args[0], Some(Type::Time), scope, budget, depth + 1)?;
             match &args[1] {
                 Expr::Str(pattern) if time_pattern(pattern).is_some() => {}
                 _ => return Err(Code::BadExpression),
@@ -556,12 +576,12 @@ fn check_call(
         }
         F::Eq | F::Ne | F::Lt | F::Le | F::Gt | F::Ge => {
             count(n == 2)?;
-            let first = check_at(&args[0], None, sources, budget, depth + 1)?;
+            let first = check_at(&args[0], None, scope, budget, depth + 1)?;
             let second_want = match first {
                 Checked::Is(t) => Some(t),
                 Checked::StrLiteral => None,
             };
-            let second = check_at(&args[1], second_want, sources, budget, depth + 1)?;
+            let second = check_at(&args[1], second_want, scope, budget, depth + 1)?;
             let kind = match unify(first, second)? {
                 Checked::Is(t) => t,
                 Checked::StrLiteral => Type::Text,
@@ -590,7 +610,7 @@ pub(crate) fn each_message<'a>(
         }
         Expr::If(parts) => parts.iter().for_each(|part| each_message(part, f)),
         Expr::Call { args, .. } => args.iter().for_each(|arg| each_message(arg, f)),
-        Expr::Str(_) | Expr::Number(_) | Expr::Bool(_) | Expr::Source { .. } => {}
+        Expr::Str(_) | Expr::Number(_) | Expr::Bool(_) | Expr::Source { .. } | Expr::Knob(_) => {}
     }
 }
 
@@ -744,6 +764,7 @@ pub fn eval(expr: &Expr, inputs: &dyn Inputs, fuel: &mut u32) -> Option<Value> {
         Expr::Number(n) => finite(*n),
         Expr::Bool(b) => Some(Value::Bool(*b)),
         Expr::Source { group, field } => inputs.source(group, field),
+        Expr::Knob(name) => inputs.knob(name.as_str()),
         Expr::Msg { id, args } => {
             // A whole, non-negative number is a count (it picks plural
             // forms); any other value is text.
@@ -817,6 +838,10 @@ fn call(function: Function, args: &[Expr], inputs: &dyn Inputs, fuel: &mut u32) 
             let same = match (values.first()?, values.get(1)?) {
                 // The same moment, whatever offset each is shown in.
                 (Value::Time(a), Value::Time(b)) => a.unix == b.unix,
+                // A colour literal evaluates to text; compare it as a colour.
+                (a @ Value::Color(_), b) | (b, a @ Value::Color(_)) => {
+                    a.as_color().is_some() && a.as_color() == b.as_color()
+                }
                 (a, b) => a == b,
             };
             Some(Value::Bool(same == (function == F::Eq)))
@@ -892,7 +917,8 @@ mod tests {
     fn checked(json: &str, want: Type) -> Result<Expr, Code> {
         let expr = expr(json)?;
         let sources = BTreeSet::from(["clock", "network", "history"]);
-        check(&expr, want, &sources).map(|()| expr)
+        let knobs = BTreeMap::from([("size", Type::Number), ("accent", Type::Color)]);
+        check(&expr, want, &sources, &knobs).map(|()| expr)
     }
 
     struct Fake;
@@ -908,6 +934,9 @@ mod tests {
                 })),
                 _ => None,
             }
+        }
+        fn knob(&self, name: &str) -> Option<Value> {
+            (name == "size").then_some(Value::Number(4.0))
         }
         fn message(&self, id: &str, args: &[(&str, Arg<'_>)]) -> Option<String> {
             match (id, args) {
@@ -1051,6 +1080,70 @@ mod tests {
         assert_eq!(
             mismatch(r#"{"msg": "a", "args": {"x": true}}"#, Type::Text),
             Some(Code::TypeMismatch)
+        );
+    }
+
+    #[test]
+    fn colours_compare_as_colours() {
+        struct Accent;
+        impl Inputs for Accent {
+            fn source(&self, _: &str, _: &str) -> Option<Value> {
+                None
+            }
+            fn knob(&self, _: &str) -> Option<Value> {
+                Some(Value::Color(Color::parse("#3478f6").ok()?))
+            }
+            fn message(&self, _: &str, _: &[(&str, Arg<'_>)]) -> Option<String> {
+                None
+            }
+        }
+        let same = |literal: &str| {
+            let json = format!(r#"{{"call": "eq", "args": [{{"knob": "accent"}}, "{literal}"]}}"#);
+            eval(&checked(&json, Type::Bool).unwrap(), &Accent, &mut 10)
+        };
+        assert_eq!(same("#3478f6"), Some(Value::Bool(true)));
+        assert_eq!(same("#3478F6ff"), Some(Value::Bool(true)));
+        assert_eq!(same("#000000"), Some(Value::Bool(false)));
+    }
+
+    #[test]
+    fn knobs_are_read_by_name_and_type() {
+        assert_eq!(
+            run(
+                r#"{"call": "mul", "args": [{"knob": "size"}, 2]}"#,
+                Type::Number
+            ),
+            Some(Value::Number(8.0))
+        );
+        assert!(checked(r#"{"knob": "accent"}"#, Type::Color).is_ok());
+        let cases = [
+            (r#"{"knob": "nope"}"#, Type::Number, Code::UnknownKnob),
+            (r#"{"knob": "accent"}"#, Type::Text, Code::TypeMismatch),
+            (r#"{"knob": "Size"}"#, Type::Number, Code::BadName),
+            (
+                r#"{"knob": "size", "args": []}"#,
+                Type::Number,
+                Code::BadExpression,
+            ),
+        ];
+        for (json, want, code) in cases {
+            assert_eq!(checked(json, want).err(), Some(code), "{json}");
+        }
+        assert_eq!(
+            run(
+                r#"{"if": [{"call": "gt", "args": [{"knob": "size"}, 3]}, {"msg": "unread", "args": {"count": {"knob": "size"}}}, "no"]}"#,
+                Type::Text
+            ),
+            text("4 waiting")
+        );
+        // A knob with no value (the host has none) shows the fallback.
+        assert_eq!(
+            eval(
+                &checked(r#"{"knob": "accent"}"#, Type::Color).unwrap(),
+                &Fake,
+                &mut 10
+            ),
+            None
         );
     }
 
@@ -1259,6 +1352,9 @@ mod tests {
     impl Inputs for Pair {
         fn source(&self, _: &str, field: &str) -> Option<Value> {
             self.0.get(usize::from(field == "b")).cloned()
+        }
+        fn knob(&self, _: &str) -> Option<Value> {
+            None
         }
         fn message(&self, _: &str, _: &[(&str, Arg<'_>)]) -> Option<String> {
             None

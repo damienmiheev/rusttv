@@ -364,6 +364,34 @@ mod tests {
     }
 
     #[test]
+    fn knob_labels_are_checked_in_the_zip() {
+        let json = package_json("").replace(
+            r#""sources": ["history"]"#,
+            r#""sources": ["history"], "knobs": [{"name": "on", "type": "toggle", "label": "on", "default": true}]"#,
+        );
+        let files =
+            |en: &'static [u8]| [("package.json", json.as_bytes()), ("strings/en.json", en)];
+        let contents = read(&files(br#"{"messages": {"on": "On"}}"#)).unwrap();
+        assert_eq!(contents.package.meta.knobs.len(), 1);
+        let error = read(&files(br#"{"messages": {"off": "Off"}}"#)).unwrap_err();
+        assert_eq!(
+            (error.code, error.file, error.at),
+            (
+                Code::UnknownMessage,
+                PackageFile::PackageJson,
+                Position::Field {
+                    path: "meta.knobs",
+                    index: Some(0)
+                }
+            )
+        );
+        assert_eq!(
+            code(&[("package.json", json.as_bytes())]).map(|c| c.0),
+            Some(Code::NoDefaultStrings)
+        );
+    }
+
+    #[test]
     fn per_file_caps_hold_inside_the_zip() {
         let huge = vec![b' '; MAX_PACKAGE_JSON + 1];
         let stored = zip(&[("package.json", &huge, false)]);

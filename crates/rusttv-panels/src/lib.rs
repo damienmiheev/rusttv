@@ -30,11 +30,39 @@ macro_rules! deserialize_via {
     };
 }
 
+/// Declares a lower-case enum read from JSON, with `as_str` and `Display`.
+macro_rules! word_enum {
+    ($(#[$meta:meta])* $name:ident { $($(#[$doc:meta])* $variant:ident => $word:literal,)* }) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Deserialize)]
+        #[non_exhaustive]
+        pub enum $name {
+            $($(#[$doc])* #[serde(rename = $word)] $variant,)*
+        }
+
+        impl $name {
+            /// Its spelling in `package.json`.
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $word,)*
+                }
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(self.as_str())
+            }
+        }
+    };
+}
+
 mod archive;
 mod document;
 mod error;
 mod expr;
 mod json;
+mod knob;
 mod messages;
 mod meta;
 mod plural;
@@ -51,6 +79,7 @@ pub use expr::{
     Expr, Function, Inputs, Moment, SourceField, Type, Value, eval, is_source_group, source_tier,
     sources,
 };
+pub use knob::{Knob, KnobKind, KnobOption, KnobType};
 pub use messages::{
     Arg, Message, MessageId, Messages, Piece, PlaceholderName, Template, check_document_messages,
     check_messages, fallback_chain, lookup, parse_messages,
@@ -192,6 +221,29 @@ mod tests {
             "Годинник Київ"
         );
         assert_eq!(*meta.faces, [Face::Tile, Face::Page]);
+    }
+
+    #[test]
+    fn bindings_read_declared_knobs() {
+        let knobs = r##""actions": ["open-page"],
+            "knobs": [{ "name": "accent", "type": "color", "label": "accent", "default": "#3478f6" }]"##;
+        let bound = |property: &str, expr: &str| {
+            edit(r#""actions": ["open-page"]"#, knobs).replacen(
+                r##""color": "#ffffff""##,
+                &format!(r##""color": "#ffffff", "bindings": {{ "{property}": {expr} }}"##),
+                1,
+            )
+        };
+        let package = parse_package(&bound("color", r#"{ "knob": "accent" }"#), &can()).unwrap();
+        assert_eq!(package.meta.knobs[0].name.as_str(), "accent");
+        assert_eq!(
+            error(&bound("color", r#"{ "knob": "other" }"#)).code,
+            Code::UnknownKnob
+        );
+        assert_eq!(
+            error(&bound("text", r#"{ "knob": "accent" }"#)).code,
+            Code::TypeMismatch
+        );
     }
 
     #[test]
