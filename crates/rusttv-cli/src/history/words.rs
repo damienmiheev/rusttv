@@ -127,6 +127,8 @@ pub(crate) enum ChangeView {
     Effects { reduced: bool },
     /// The launcher's idle screen switch: Home dims to a clock after a while.
     Ambient { on: bool },
+    /// The safe look: the launcher's plain emergency Home in place of Home.
+    SafeLook { on: bool },
     /// A global setting; null = unset.
     Setting {
         key: String,
@@ -196,6 +198,7 @@ impl ChangeView {
             Change::UpdateCheck { on } => Self::UpdateCheck { on: *on },
             Change::Effects { reduced } => Self::Effects { reduced: *reduced },
             Change::Ambient { on } => Self::Ambient { on: *on },
+            Change::SafeLook { on } => Self::SafeLook { on: *on },
             Change::Setting { key, old, new } => Self::Setting {
                 key: key.clone(),
                 old: old.clone(),
@@ -263,6 +266,7 @@ pub(crate) fn change(change: &Change) -> String {
             format!("Effects: {}", if *reduced { "reduced" } else { "full" })
         }
         Change::Ambient { on } => format!("Idle screen: {}", if *on { "on" } else { "off" }),
+        Change::SafeLook { on } => format!("Safe look: {}", if *on { "on" } else { "off" }),
         Change::Setting { key, old, new } => {
             format!("{}: {} → {}", setting_name(key), setting(old), setting(new))
         }

@@ -262,7 +262,10 @@ With `--json`, stdout carries exactly one JSON object, success or failure:
     `added`. Snapshots in format 8 may hold `launcher.ambient_off`
     (written only while the launcher's idle screen is off), and
     [HistoryChange](#historychange) has a kind for that switch (`ambient`,
-    with `on`). Everything else is unchanged.
+    with `on`). Snapshots in format 9 may hold `launcher.safe_look`
+    (written only while the launcher's safe look is on, SECURITY.md), and
+    HistoryChange has a kind for it (`safe_look`, with `on`). Everything
+    else is unchanged.
   - `rusttv.v10`: [HistoryChange](#historychange) has new kinds for phones
     paired with RustTV Remote (`phone_paired`, `phone_removed`, each with
     `phone`, the phone's id, and `name`), and `history show`'s `state` may
@@ -585,7 +588,8 @@ built-in tile went into the folder, or out of it), `phone_paired` / `phone_remov
 phone's id, 32 hex digits; `name`), `hidden` (`tile`: an app or a
 built-in tile, `hidden`; a tile hidden or shown again is not also
 `removed` or `added`), `update_check` (`on`), `effects` (`reduced`), `ambient` (`on`: the
-launcher's idle screen), `setting` (`key`, `old`, `new`; null =
+launcher's idle screen), `safe_look` (`on`: the launcher's emergency Home,
+SECURITY.md), `setting` (`key`, `old`, `new`; null =
 unset), `package` (`package`, `old`, `new`: `enabled` \| `disabled`, null =
 not observed), `firmware` (`old`, `new`), `takeover` (`active`).
 

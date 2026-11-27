@@ -40,7 +40,7 @@ commands.
 `state.toml`, the only file in each commit's tree:
 
 ```toml
-format = 8                     # the idle screen switch needs it (below)
+format = 9                     # the safe look needs it (below)
 
 [launcher]                     # the launcher's own state; only the TV writes it
 order = ["com.netflix.ninja/.MainActivity", "folder:1", "about", "settings", "remote", "panel:history"]
@@ -48,6 +48,7 @@ hidden = ["com.example/.Main"]
 update_check = true
 reduced_effects = true         # format 4; only when effects are reduced
 ambient_off = true             # format 8; only when the idle screen is off
+safe_look = true               # format 9; only while the safe look is on
 
 [launcher.folders."folder:1"]  # format 2; only when a folder exists
 name = "Video"
@@ -100,6 +101,13 @@ takeover = "active"
   older format; one with it off is format 8, which builds before it refuse
   (they would turn it back on when writing the snapshot again). Its change
   is `ambient` (`on`); undo puts the switch back like the other settings.
+- **The safe look** (format 9, *since 2026-11-27*, SECURITY.md "Safe
+  look"): `safe_look = true` while the plain emergency Home shows in place
+  of Home. Holding Back for 5 s on the remote switches it, with no review,
+  and is recorded as a TV change; off is the default and is never written,
+  so a snapshot with it on is format 9, which builds before it refuse.
+  Its change is `safe_look` (`on`); undo puts it back like the other
+  settings.
 - **Linux tile names** (format 5): on Linux, apps are desktop entries, named
   by their id (`org.kde.dolphin.desktop`). A snapshot holding one, in the
   order, hidden or in a folder, is written as format 5, which older builds

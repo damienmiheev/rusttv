@@ -343,6 +343,7 @@ impl Controller {
             && self.prompt.is_none()
             && self.renaming.is_none()
             && self.home.state() == State::Browse
+            && !self.home.safe_look()
     }
 
     /// Shows the next banner when Home can, or takes the one on screen

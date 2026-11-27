@@ -209,6 +209,11 @@ export global Strings {
         if kind == 4 { return @tr("Pairing stopped after three wrong tries. Back returns; open Pair a phone again for a new code."); }
         return @tr("Couldn't make the code.");
     }
+    // The toast when holding Back switches the safe look (ui.rs).
+    public pure function safe-look-toast(on: bool) -> string {
+        if on { return @tr("Safe look is on"); }
+        return @tr("Your Home is back");
+    }
     public pure function on-off(on: bool) -> string {
         return on ? @tr("On") : @tr("Off");
     }
@@ -263,7 +268,8 @@ export global Strings {
     // 9 added to Home (installed), 10 removed from Home, 11 folder made,
     // 12 folder removed, 13 folder renamed (old → new), 14 app put in a
     // folder (name; old: the folder), 15 app taken out of a folder, 16
-    // phone paired, 17 phone removed, 18 effects, 19 idle screen.
+    // phone paired, 17 phone removed, 18 effects, 19 idle screen, 20 safe
+    // look.
     public pure function change-line(kind: int, name: string, old: string, new: string) -> string {
         if kind == 0 { return @tr("Apps reordered"); }
         if kind == 1 { return @tr("Hid {}", name); }
@@ -283,6 +289,7 @@ export global Strings {
         if kind == 17 { return @tr("Removed the phone {}", name); }
         if kind == 18 { return @tr("Effects: {}", new); }
         if kind == 19 { return @tr("Idle screen: {}", new); }
+        if kind == 20 { return @tr("Safe look: {}", new); }
         return @tr("No change");
     }
     // 0 changed on the TV now, 1 applied by the computer later.
@@ -372,6 +379,8 @@ global Mode {
     // Focus in the top-right menu; a quick panel open over Home.
     out property <int> bar: 11;
     out property <int> quick: 12;
+    // The emergency Home: the safe look is on (ui.rs `SAFE_MODE`).
+    out property <int> safe: 13;
 }
 
 // Picture or placeholder for one app, filling its parent.
@@ -1587,8 +1596,11 @@ export component HomeWindow inherits Window {
     }
 
     // Hidden apps: the same tiles on their own page; the grid scrolls by
-    // whole rows to keep the focused row among the first three.
-    if mode == Mode.hidden: Rectangle {
+    // whole rows to keep the focused row among the first three. The
+    // emergency Home (the safe look, PANEL_STUDIO.md § 10.4) is the same
+    // page with Settings and every shown app.
+    if mode == Mode.hidden || mode == Mode.safe: Rectangle {
+        property <bool> safe: mode == Mode.safe;
         background: Theme.bg;
 
         Text {
@@ -1596,7 +1608,7 @@ export component HomeWindow inherits Window {
             y: 90 * u;
             width: 1740 * u;
             horizontal-alignment: Dir.start;
-            text: @tr("Hidden apps");
+            text: safe ? @tr("Safe look") : @tr("Hidden apps");
             font-size: 57 * u;
             font-weight: 500;
             color: Theme.text;
@@ -1606,7 +1618,7 @@ export component HomeWindow inherits Window {
             y: 176 * u;
             width: 1740 * u;
             horizontal-alignment: Dir.start;
-            text: @tr("OK puts it back on Home. Back returns.");
+            text: safe ? @tr("Your Home and its extras are off. Hold Back for 5 seconds to bring them back.") : @tr("OK puts it back on Home. Back returns.");
             font-size: 25 * u;
             color: Theme.text-dim;
         }

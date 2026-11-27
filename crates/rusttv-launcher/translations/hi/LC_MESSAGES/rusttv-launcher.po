@@ -562,3 +562,23 @@ msgid "Your computer applied {n} change"
 msgid_plural "Your computer applied {n} changes"
 msgstr[0] "आपके कंप्यूटर ने {n} बदलाव लागू किया"
 msgstr[1] "आपके कंप्यूटर ने {n} बदलाव लागू किए"
+
+#: ui/home.slint
+msgid "Safe look is on"
+msgstr "सुरक्षित रूप चालू है"
+
+#: ui/home.slint
+msgid "Your Home is back"
+msgstr "आपकी होम स्क्रीन वापस आ गई"
+
+#: ui/home.slint
+msgid "Safe look: {}"
+msgstr "सुरक्षित रूप: {}"
+
+#: ui/home.slint
+msgid "Safe look"
+msgstr "सुरक्षित रूप"
+
+#: ui/home.slint
+msgid "Your Home and its extras are off. Hold Back for 5 seconds to bring them back."
+msgstr "आपकी होम स्क्रीन और उसकी अतिरिक्त चीज़ें बंद हैं। उन्हें वापस लाने के लिए 'वापस' को 5 सेकंड तक दबाए रखें।"

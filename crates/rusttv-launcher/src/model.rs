@@ -837,6 +837,17 @@ pub struct Home {
     /// The folder a built-in tile's page was opened from: Back from the
     /// page opens it again, as after an app launched from it.
     page_folder: Option<OpenFolder>,
+    /// The safe look is on: the plain emergency Home shows in place of the
+    /// tiles ([`Home::set_safe_look`]).
+    plain: Option<Plain>,
+}
+
+/// The emergency Home (PANEL_STUDIO.md § 10.4): Settings, then every app
+/// that isn't hidden, by label. No folders, menus, moves or panels.
+#[derive(Debug, Clone, Default)]
+struct Plain {
+    tiles: Vec<TileId>,
+    focus: usize,
 }
 
 impl Home {
@@ -867,6 +878,7 @@ impl Home {
             quick_actions: Vec::new(),
             settings_tiles: false,
             page_folder: None,
+            plain: None,
         }
     }
 
@@ -1106,8 +1118,58 @@ impl Home {
             },
             _ => {}
         }
+        self.refresh_plain();
         self.update_scroll();
         changed
+    }
+
+    /// Turns the safe look on or off: the emergency Home in place of the
+    /// tiles. Focus starts on Settings.
+    pub fn set_safe_look(&mut self, on: bool) {
+        if on == self.plain.is_some() {
+            return;
+        }
+        self.plain = on.then(Plain::default);
+        self.refresh_plain();
+    }
+
+    /// Whether the safe look is on.
+    pub fn safe_look(&self) -> bool {
+        self.plain.is_some()
+    }
+
+    /// The emergency Home's tiles and focus, while it is showing: the safe
+    /// look is on and nothing is open over Home.
+    pub fn plain(&self) -> Option<(&[TileId], usize)> {
+        match (&self.plain, &self.mode) {
+            (Some(plain), Mode::Browse) => Some((&plain.tiles, plain.focus)),
+            _ => None,
+        }
+    }
+
+    fn refresh_plain(&mut self) {
+        let Some(plain) = &mut self.plain else {
+            return;
+        };
+        let focused = plain.tiles.get(plain.focus).cloned();
+        let mut apps: Vec<&App> = self
+            .apps
+            .iter()
+            .filter(|app| !self.hidden.contains(&app.id))
+            .collect();
+        apps.sort_by(|a, b| {
+            a.label
+                .to_lowercase()
+                .cmp(&b.label.to_lowercase())
+                .then_with(|| a.id.cmp(&b.id))
+        });
+        apps.dedup_by(|a, b| a.id == b.id);
+        plain.tiles = std::iter::once(TileId::Settings)
+            .chain(apps.into_iter().map(|app| TileId::App(app.id.clone())))
+            .collect();
+        plain.focus = focused
+            .and_then(|id| plain.tiles.iter().position(|tile| *tile == id))
+            .unwrap_or(0);
     }
 
     /// Moves focus to `id` if it is shown; returns whether it was.
@@ -1127,6 +1189,12 @@ impl Home {
     /// one of its apps, then opens it (or its menu) as OK would. Anywhere
     /// else (moving, menus, Settings, About) it does nothing.
     pub fn point(&mut self, id: &TileId, long: bool, now: Duration) -> Option<Effect> {
+        if let Some(plain) = &mut self.plain
+            && matches!(self.mode, Mode::Browse)
+        {
+            plain.focus = plain.tiles.iter().position(|tile| tile == id)?;
+            return if long { None } else { self.open_plain(now) };
+        }
         match self.mode {
             Mode::Browse => {
                 let index = self.tiles.iter().position(|tile| tile == id)?;
@@ -1168,6 +1236,9 @@ impl Home {
     /// the arrows would move it, on Home (also from the top-right menu) and
     /// in an open folder. Returns whether focus moved.
     pub fn hover(&mut self, id: &TileId) -> bool {
+        if self.plain.is_some() {
+            return false;
+        }
         match self.mode {
             Mode::Browse | Mode::Bar { .. } => {
                 let Some(index) = self.tiles.iter().position(|tile| tile == id) else {
@@ -1256,7 +1327,7 @@ impl Home {
     /// holding OK opens it.
     pub fn long_press(&mut self) {
         let shown = match self.mode {
-            Mode::Browse => true,
+            Mode::Browse => self.plain.is_none(),
             Mode::Folder(open) => open.focus.is_some(),
             _ => false,
         };
@@ -1271,6 +1342,7 @@ impl Home {
     /// whether it is moving now.
     pub fn pick_up(&mut self, id: &TileId, now: Duration) -> bool {
         match self.mode {
+            Mode::Browse if self.plain.is_some() => return false,
             Mode::Browse => {
                 let Some(index) = self.tiles.iter().position(|tile| tile == id) else {
                     return false;
@@ -1753,6 +1825,7 @@ impl Home {
                 let open = *open;
                 self.handle_folder(open, input, now)
             }
+            (Mode::Browse, _) if self.plain.is_some() => self.handle_plain(input, now),
             (Mode::Browse, _) => self.handle_browse(input, now),
             _ => None,
         }
@@ -1786,6 +1859,50 @@ impl Home {
                 None
             }
             _ => self.handle_ok(input, now),
+        }
+    }
+
+    /// The emergency Home: arrows move in its grid, OK opens the tile, Back
+    /// goes to the first tile (Settings).
+    fn handle_plain(&mut self, input: Input, now: Duration) -> Option<Effect> {
+        let direction = self.direction(input);
+        let plain = self.plain.as_mut()?;
+        if let Some(direction) = direction {
+            if let Some(target) = neighbour(plain.focus, plain.tiles.len(), direction) {
+                plain.focus = target;
+            }
+            return None;
+        }
+        match input {
+            Input::Back => {
+                plain.focus = 0;
+                None
+            }
+            // Opens on release, as Home does, so the release doesn't reach
+            // the page it opened.
+            Input::OkPressed => {
+                self.ok_since = Some(now);
+                None
+            }
+            Input::OkReleased if self.ok_since.take().is_some() => self.open_plain(now),
+            _ => None,
+        }
+    }
+
+    /// Opens the emergency Home's focused tile: an app, or Settings.
+    fn open_plain(&mut self, now: Duration) -> Option<Effect> {
+        let plain = self.plain.as_ref()?;
+        match plain.tiles.get(plain.focus)?.clone() {
+            TileId::App(component) => {
+                self.mode = Mode::Launching {
+                    app: component.clone(),
+                    since: now,
+                    folder: None,
+                    from_tile: false,
+                };
+                Some(Effect::Launch(component))
+            }
+            tile => self.open_builtin(&tile),
         }
     }
 
@@ -4686,5 +4803,48 @@ mod tests {
         );
         assert!(!home.tiles().contains(&id("p")));
         assert_eq!(home.hidden_apps(), ["p"]);
+    }
+
+    /// The emergency Home: Settings, then every shown app by label (also
+    /// those in folders), never a hidden one; no menu, no move; OK opens.
+    #[test]
+    fn the_safe_look_shows_settings_and_the_apps_by_label() {
+        let mut home = home(0);
+        home.set_apps(&[app("z", "Zed"), app("a", "alpha"), app("h", "Hid")]);
+        home.hidden.insert("h".to_owned());
+        home.set_safe_look(true);
+        let (tiles, focus) = home.plain().unwrap();
+        assert_eq!(tiles, [TileId::Settings, id("a"), id("z")]);
+        assert_eq!(focus, 0);
+
+        home.long_press();
+        assert!(home.menu().is_none());
+        assert!(!home.pick_up(&id("a"), ms(0)));
+        assert!(!home.hover(&id("a")));
+
+        press(&mut home, &[Input::Right]);
+        assert_eq!(home.plain().unwrap().1, 1);
+        assert_eq!(press(&mut home, &[Input::OkPressed]), None);
+        assert_eq!(
+            press(&mut home, &[Input::OkReleased]),
+            Some(Effect::Launch("a".to_owned()))
+        );
+        assert!(home.plain().is_none(), "launching");
+        home.handle(Input::Paused, ms(10));
+        assert_eq!(home.plain().unwrap().1, 1, "back on the app");
+
+        // A release with no press (the one after an app) opens nothing.
+        assert_eq!(press(&mut home, &[Input::OkReleased, Input::Back]), None);
+        assert_eq!(home.plain().unwrap().1, 0);
+        assert_eq!(
+            press(&mut home, &[Input::OkPressed, Input::OkReleased]),
+            Some(Effect::OpenSettings)
+        );
+        home.close_settings();
+        assert!(home.plain().is_some());
+
+        home.set_safe_look(false);
+        assert!(home.plain().is_none());
+        assert_eq!(home.state(), State::Browse);
     }
 }

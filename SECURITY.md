@@ -78,6 +78,15 @@ One exception, inside Home takeover only: a system package with a Home activity 
 5. **`WRITE_SECURE_SETTINGS` stays contained.** Only `SecureSettings.kt` writes a setting, for three keys by enum and the CLI's value rule. `android/check-dex.sh` (run by `build.sh` for every APK) fails the build on any other `Settings.*.put*` call, any `ContentResolver` write, or reflection in the launcher's classes; a Rust test keeps settings names out of the Rust code. Every `history sync` compares a watchlist of sensitive settings with a baseline on the computer.
 6. **Agents** must never try to pass the code: it exists to keep them out. Reading the screen another way to defeat it (e.g. a camera) is the same breach as faking a terminal.
 
+## Safe look
+
+*Owner decision 2026-11-24 (PANEL_STUDIO.md § 16 Q17), built 2026-11-27.* The second exception to "every modifying operation is a plan": **holding Back for 5 s** on the remote turns the launcher's **safe look** on, with no plan, review or code. It switches Home to the plain **emergency Home** (Settings, then every app the person hasn't hidden, by label; no folders, menus, moves, panels, banners or idle screen) and keeps it there across restarts (a flag file in the launcher's own storage). Holding Back for 5 s again turns it off. History records each switch as a TV change (`safe_look`, HISTORY.md § 1), so it can also be undone from History like any launcher setting.
+
+- **Why no approval.** It only takes the look away, or puts back the launcher's own Home, and it needs no readable screen: a person whose Home is broken or unreadable can still reach their apps and Settings. An adb peer injecting the hold (it can, see [Approval on the TV](#approval-on-the-tv)) can only switch between those two launcher-drawn Homes: a nuisance, not a risk.
+- **What sees the key.** Measured on the Philips 65OLED818 on 2026-11-27: Back reaches the app as a key-down followed by repeats about every 50 ms from about 0.4 s, so the 5 s hold is counted from those repeats. The colour keys never reach an app there (the TV opens its manual), so they can't be part of it. Android never delivers Home to an app.
+- **Where it works.** Everywhere the launcher has the keys, except the pairing, trust and review screens and the text prompt, which take only their own keys. No package or theme can change or block it: the key is handled before anything else draws or reads it.
+- **Today and later.** No themes or user packages can be installed yet. When they can (PANEL_STUDIO.md T3), the safe look also turns them off, keeping them for later, and turning it off again (it adds things back) takes the full approval; until then switching it off brings back only the launcher's compiled Home. `rusttv panel safe-look` (a plan with plain Approve, § 16 Q18) comes with T3.
+
 ## Change lifecycle (R2–R3)
 
 1. **Analyze** (read-only): collect device info and current state.

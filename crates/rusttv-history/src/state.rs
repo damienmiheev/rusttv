@@ -14,10 +14,11 @@ use crate::HistoryError;
 /// (`org.kde.dolphin.desktop`) and `remote`, 6 panel tiles' names
 /// (`panel:history`, PANELS.md § 6), 7 built-in and panel tiles hidden or
 /// in a folder (`hidden = ["about"]`), 8 `ambient_off` (the idle screen
-/// turned off, PANELS.md § 9 Q6). A snapshot is written in the oldest
+/// turned off, PANELS.md § 9 Q6), 9 `safe_look` (the emergency Home in
+/// place of the person's Home, PANEL_STUDIO.md § 10.4). A snapshot is written in the oldest
 /// format that holds it (no folders, no phones, full effects, only Android
 /// names: format 1), so older readers keep reading it until it needs more.
-pub const STATE_FORMAT: u32 = 8;
+pub const STATE_FORMAT: u32 = 9;
 
 /// The longest folder name, in characters (the launcher's limit).
 const FOLDER_NAME_MAX: usize = 40;
@@ -86,6 +87,11 @@ pub struct Launcher {
     /// a while (format 8; on by default, so only written when off).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ambient_off: bool,
+    /// Whether the safe look is on: the plain emergency Home shows in place
+    /// of the person's Home (format 9; off by default, so only written when
+    /// on; PANEL_STUDIO.md § 10.4).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub safe_look: bool,
 }
 
 impl Launcher {
@@ -110,6 +116,7 @@ impl Default for Launcher {
             update_check: true,
             reduced_effects: false,
             ambient_off: false,
+            safe_look: false,
         }
     }
 }
@@ -225,7 +232,9 @@ impl State {
             .hidden
             .iter()
             .chain(launcher.folders.values().flat_map(|folder| &folder.apps));
-        if launcher.ambient_off {
+        if launcher.safe_look {
+            9
+        } else if launcher.ambient_off {
             8
         } else if off_home.into_iter().any(|name| is_builtin_name(name)) {
             7
@@ -510,8 +519,8 @@ mod tests {
     #[test]
     fn a_newer_format_says_so() {
         assert!(matches!(
-            State::parse("format = 9\nsomething_new = true\n"),
-            Err(HistoryError::FormatNewer(9))
+            State::parse("format = 10\nsomething_new = true\n"),
+            Err(HistoryError::FormatNewer(10))
         ));
     }
 
@@ -684,6 +693,24 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The safe look on needs format 9; off (the default) is never written.
+    #[test]
+    fn the_safe_look_on_needs_format_nine() {
+        let mut on = sample();
+        on.launcher.safe_look = true;
+        assert_eq!(on.needed_format(), 9);
+        let text = on.to_toml().unwrap();
+        assert!(text.starts_with("format = 9\n"), "{text}");
+        assert!(text.contains("safe_look = true"), "{text}");
+        assert_eq!(State::parse(&text).unwrap().launcher, on.launcher);
+        let downgraded = text.replacen("format = 9", "format = 8", 1);
+        assert!(matches!(
+            State::parse(&downgraded),
+            Err(HistoryError::Invalid(_))
+        ));
+        assert!(!sample().to_toml().unwrap().contains("safe_look"));
     }
 
     /// The idle screen turned off needs format 8; on (the default) is never
