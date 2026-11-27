@@ -20,6 +20,12 @@ CPU time from Slint's BeforeRendering to AfterRendering, 600 frames after a
 
 ## Results
 
+**2026-11-27, `interp-home`** (build with `spike.sh build --interp`): the
+same Home as `compiled-home`, built from `ui/spike.slint` at run time by
+`slint-interpreter` 1.18.1. Render p50/p95 9.4/10.2 ms vs 6.2/7.1 ms
+compiled, PSS about 51 MB for both, source compiled in 30 ms, library
+21 MB. See PANEL_STUDIO.md § 6.7.
+
 | nodes | generic render p50 / p95 | compiled render p50 / p95 | PSS generic / compiled |
 |---|---|---|---|
 | 180 (Home: 18 tiles) | 7.4 / 8.3 ms | 6.3 / 7.2 ms | 41.5 / 41.1 MB |
