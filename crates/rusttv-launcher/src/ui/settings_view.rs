@@ -503,7 +503,9 @@ impl Controller {
         let ambient_off = path
             .parent()
             .is_some_and(|dir| dir.join(order_file::AMBIENT_OFF).exists());
+        let safe_look = super::safe_look_flag(path);
         self.set_ambient_setting(ambient_off);
+        self.home.set_safe_look(safe_look);
         self.home
             .replace_order(loaded.order, loaded.folders, loaded.hidden);
         // A restore may have removed phones.
@@ -992,6 +994,7 @@ fn change_line(
             strings.invoke_effects_choice(*reduced),
         ),
         Change::Ambient { on } => (19, "".into(), "".into(), strings.invoke_on_off(*on)),
+        Change::SafeLook { on } => (20, "".into(), "".into(), strings.invoke_on_off(*on)),
         Change::Setting { key, old, new } => {
             let index = SETTING_KEYS
                 .iter()

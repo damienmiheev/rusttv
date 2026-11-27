@@ -257,6 +257,22 @@ fn android_main(app: AndroidApp) {
     }
 
     let ui = Spike::new().unwrap();
+    let weak = ui.as_weak();
+    let start = Instant::now();
+    ui.on_key(move |text, pressed, repeat| {
+        let codes: Vec<String> = text.chars().map(|c| format!("U+{:04X}", u32::from(c))).collect();
+        let line = format!(
+            "KEY {:>7.0} ms {} {}{}",
+            start.elapsed().as_secs_f64() * 1e3,
+            if pressed { "down" } else { "up  " },
+            codes.join(" "),
+            if repeat { " repeat" } else { "" }
+        );
+        log::info!("{line}");
+        if let Some(ui) = weak.upgrade() {
+            ui.set_status(line.into());
+        }
+    });
     let t = Instant::now();
     let (generic, count) = match mode.split_once('-') {
         Some(("compiled", "home")) => (false, 18),

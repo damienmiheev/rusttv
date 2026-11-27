@@ -101,6 +101,11 @@ pub enum Change {
         /// Its new value: Home dims to a clock after a while.
         on: bool,
     },
+    /// The safe look turned on or off (PANEL_STUDIO.md § 10.4).
+    SafeLook {
+        /// Its new value: the emergency Home shows in place of Home.
+        on: bool,
+    },
     /// A global setting changed; `None` = unset.
     Setting {
         /// The key.
@@ -278,6 +283,11 @@ pub fn diff(old: &State, new: &State) -> Vec<Change> {
             on: !new.launcher.ambient_off,
         });
     }
+    if old.launcher.safe_look != new.launcher.safe_look {
+        changes.push(Change::SafeLook {
+            on: new.launcher.safe_look,
+        });
+    }
 
     for key in SETTING_KEYS {
         if old.setting(key) != new.setting(key) {
@@ -365,6 +375,9 @@ pub(crate) fn summary(changes: &[Change]) -> String {
         Change::Ambient { on } => {
             format!("Idle screen {}", if *on { "on" } else { "off" })
         }
+        Change::SafeLook { on } => {
+            format!("Safe look {}", if *on { "on" } else { "off" })
+        }
         Change::Setting { key, new, .. } => {
             format!("{key} = {}", new.as_deref().unwrap_or("unset"))
         }
@@ -428,6 +441,10 @@ mod tests {
         assert_eq!(summary(&changes), "Idle screen off");
         let changes = diff(&off, &on);
         assert_eq!(changes, [Change::Ambient { on: true }]);
+        let mut safe = State::new();
+        safe.launcher.safe_look = true;
+        assert_eq!(diff(&State::new(), &safe), [Change::SafeLook { on: true }]);
+        assert_eq!(summary(&[Change::SafeLook { on: true }]), "Safe look on");
         assert_eq!(summary(&changes), "Idle screen on");
     }
 

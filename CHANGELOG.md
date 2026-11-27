@@ -8,6 +8,10 @@ field in `--json` output says which contract you get, CLI.md).
 
 ### Launcher
 
+- Safe look: hold Back on the remote for 5 seconds to switch Home to a
+  plain emergency Home (Settings and your apps, A to Z), kept after a
+  restart; hold it again to bring your Home back. Recorded in History
+  (snapshot format 9). For when a future theme breaks Home.
 - Launcher settings (effects, idle screen, update check) now apply on one
   click and are recorded in History; Animations and restores without
   packages ask for Approve on the review screen; only changes your

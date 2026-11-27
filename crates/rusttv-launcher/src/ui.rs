@@ -88,6 +88,10 @@ const TOAST_TIME: Duration = Duration::from_secs(3);
 /// Tiles per row of Hidden apps (home.slint).
 const HIDDEN_COLUMNS: usize = 6;
 
+/// How long Back is held to turn the safe look on or off (SECURITY.md,
+/// "Safe look"; PANEL_STUDIO.md § 3).
+const SAFE_LOOK_HOLD: Duration = Duration::from_secs(5);
+
 /// Size of the small copy of each banner kept to compute its hero glow.
 const GLOW_SOURCE_SIZE: (u32, u32) = (48, 27);
 
@@ -866,6 +870,10 @@ struct Controller {
     tiles: Rc<VecModel<TileData>>,
     /// Apps on the hidden apps page while it is open, and the window's model of them.
     hidden_shown: Vec<TileId>,
+    /// When Back went down, while it is held (the safe-look hold), and
+    /// whether this hold already switched the safe look.
+    back_since: Option<Duration>,
+    back_fired: bool,
     hidden_tiles: Rc<VecModel<TileData>>,
     /// Apps of the open folder (kept while it closes), and the window's model of them.
     folder_shown: Vec<TileId>,
@@ -1059,6 +1067,8 @@ impl Controller {
         // Focus is restored before the app list arrives, which keeps it by identity.
         let mut home = Home::new(order, folders, hidden, options.right_to_left);
         home.set_launch_timeout(platform.launch_timeout());
+        // The safe look: on while its flag file is there.
+        home.set_safe_look(options.order_file.as_deref().is_some_and(safe_look_flag));
         home.set_app_sizes(platform.scales_apps());
         let quick_actions = device_view::quick_actions(platform.as_ref());
         // Without a top-right menu (Android), About and Settings are tiles.
@@ -1100,6 +1110,8 @@ impl Controller {
                 shown: Vec::new(),
                 tiles,
                 hidden_shown: Vec::new(),
+                back_since: None,
+                back_fired: false,
                 hidden_tiles,
                 folder_shown: Vec::new(),
                 folder_tiles,
@@ -1373,6 +1385,17 @@ impl Controller {
         if self.prompt.is_some() {
             return false;
         }
+        // Holding Back switches the safe look, over anything but the pairing,
+        // trust and review screens (they take only their own keys).
+        if matches!(text, "\u{F748}" | "\u{1b}") {
+            if self.pairing.is_some() || self.review.is_some() {
+                // Nothing pressed there counts toward a hold.
+                self.back_since = None;
+                self.back_fired = false;
+            } else if self.back_hold(pressed, repeat) {
+                return true;
+            }
+        }
         // The idle screen: the key that wakes it does nothing else, its
         // repeats and release neither (PANELS.md § 9 Q6). Any other key
         // ends that, so a lost release can't swallow a later press.
@@ -1412,6 +1435,70 @@ impl Controller {
             self.input(input);
         }
         true
+    }
+
+    /// Watches Back for the safe-look hold: [`SAFE_LOOK_HOLD`] of key-down
+    /// repeats after a press it saw switches it once. Returns whether the
+    /// key is used up: the repeats and release after the switch, so they
+    /// don't also go back. Before that, the press and its repeats go back
+    /// as usual, so a hold inside a page ends on Home first.
+    fn back_hold(&mut self, pressed: bool, repeat: bool) -> bool {
+        let now = (self.clock)();
+        if !pressed {
+            self.back_since = None;
+            return std::mem::take(&mut self.back_fired);
+        }
+        if !repeat {
+            self.back_since = Some(now);
+            self.back_fired = false;
+            return false;
+        }
+        // Repeats of a press made on the pairing, trust or review screen
+        // never count.
+        let Some(since) = self.back_since else {
+            return false;
+        };
+        if self.back_fired {
+            return true;
+        }
+        if now.saturating_sub(since) < SAFE_LOOK_HOLD {
+            return false;
+        }
+        self.back_fired = true;
+        // The press woke the idle screen: this release isn't its to swallow.
+        self.faces.ambient_key = None;
+        self.switch_safe_look();
+        true
+    }
+
+    /// Turns the safe look on or off (PANEL_STUDIO.md § 10.4): the plain
+    /// emergency Home in place of Home. No review: it only takes the look
+    /// away, or brings back the launcher's own Home (SECURITY.md, "Safe
+    /// look"); History records it as a TV change.
+    fn switch_safe_look(&mut self) {
+        let on = !self.home.safe_look();
+        if let Some(dir) = self
+            .options
+            .order_file
+            .as_deref()
+            .and_then(std::path::Path::parent)
+            && let Err(error) = order_file::set_flag(&dir.join(order_file::SAFE_LOOK), on)
+        {
+            // It still switches until the launcher restarts.
+            log::warn!("saving the safe look failed: {error}");
+        }
+        log::info!("safe look {}", if on { "on" } else { "off" });
+        self.home.set_safe_look(on);
+        if let Some(history) = History::get() {
+            history.launcher_edited();
+        }
+        let text = self
+            .window
+            .upgrade()
+            .map(|window| window.global::<Strings>().invoke_safe_look_toast(on));
+        self.show_toast(text.unwrap_or_default());
+        self.shown.clear();
+        self.render();
     }
 
     fn input(&mut self, input: Input) {
@@ -2136,6 +2223,10 @@ impl Controller {
             self.queue_artwork(&self.shown.clone());
         }
         let hidden: Vec<TileId> = match self.home.hidden_focus() {
+            None => self
+                .home
+                .plain()
+                .map_or_else(Vec::new, |(tiles, _)| tiles.to_vec()),
             Some(_) => self
                 .home
                 .hidden_apps()
@@ -2143,7 +2234,6 @@ impl Controller {
                 .cloned()
                 .map(order_file::tile_for_name)
                 .collect(),
-            None => Vec::new(),
         };
         if hidden != self.hidden_shown {
             self.hidden_shown = hidden;
@@ -2155,7 +2245,11 @@ impl Controller {
             self.hidden_tiles.set_vec(rows);
             self.queue_artwork(&self.hidden_shown.clone());
         }
-        if let Some(focus) = self.home.hidden_focus() {
+        if let Some(focus) = self
+            .home
+            .hidden_focus()
+            .or_else(|| self.home.plain().map(|(_, focus)| focus))
+        {
             window.set_hidden_focus(i32::try_from(focus).unwrap_or(i32::MAX));
         }
         self.render_folder(&window);
@@ -2194,6 +2288,8 @@ impl Controller {
             7
         } else if self.pairing.is_some() {
             9
+        } else if self.home.plain().is_some() {
+            SAFE_MODE
         } else {
             mode_value(self.home.state())
         });
@@ -3156,6 +3252,17 @@ impl Notices {
     fn fraction(&self) -> f32 {
         (NOTICES_SCREEN_LINES as f32 / self.starts.len() as f32).min(1.0)
     }
+}
+
+/// The emergency Home's `Mode` value (home.slint): Browse with the safe
+/// look on.
+const SAFE_MODE: i32 = 13;
+
+/// Whether the safe look's flag file is next to the order file.
+fn safe_look_flag(order_file: &std::path::Path) -> bool {
+    order_file
+        .parent()
+        .is_some_and(|dir| dir.join(order_file::SAFE_LOOK).exists())
 }
 
 /// The value of the `Mode` global in `home.slint` for a model state.
@@ -6871,6 +6978,86 @@ mod tests {
         assert!((screen.window.get_volume_level() - 0.45).abs() < 0.001);
         screen.wait(VOLUME_SHOWN_MS);
         assert!(!screen.window.get_volume_shown());
+    }
+
+    /// Holds Back for `millis`, with a remote's key repeats every 50 ms.
+    fn hold_back(screen: &Screen, millis: u64) {
+        screen.key(BACK, true);
+        for _ in 0..millis / 50 {
+            screen.wait(50);
+            screen
+                .window
+                .window()
+                .dispatch_event(WindowEvent::KeyPressRepeated { text: BACK.into() });
+        }
+        screen.key(BACK, false);
+    }
+
+    /// Holding Back for 5 s turns the safe look on: the emergency Home with
+    /// Settings first, kept in its flag file; holding it again turns it off.
+    /// A shorter hold does nothing.
+    #[test]
+    fn holding_back_five_seconds_switches_the_safe_look() {
+        let dir = temp_dir("safe-look");
+        let screen = screen(Some(dir.join("order.toml")));
+        hold_back(&screen, 4_500);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert!(!dir.join(order_file::SAFE_LOOK).exists());
+
+        hold_back(&screen, 5_100);
+        assert_eq!(screen.window.get_mode(), SAFE_MODE);
+        assert!(dir.join(order_file::SAFE_LOOK).exists());
+        assert_eq!(screen.window.get_toast(), "Safe look is on");
+        let tiles = screen.window.get_hidden_tiles();
+        assert_eq!(tiles.row_data(0).unwrap().kind, 6, "Settings first");
+        assert!(tiles.row_count() > 1, "and the apps");
+        // No menu, no move: the Menu key and a long OK do nothing.
+        screen.tap("\u{F735}");
+        assert_eq!(screen.window.get_mode(), SAFE_MODE);
+        // OK on Settings opens it; Back comes back to the emergency Home.
+        screen.tap(OK);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Settings));
+        settle(&screen);
+        screen.tap(BACK);
+        assert_eq!(screen.window.get_mode(), SAFE_MODE);
+        // OK on an app opens it.
+        screen.tap(RIGHT);
+        screen.tap(OK);
+        assert_eq!(screen.launched().len(), 1);
+        screen.lifecycle.paused();
+        screen.wait(1);
+
+        hold_back(&screen, 5_100);
+        assert_eq!(screen.window.get_mode(), mode_value(State::Browse));
+        assert!(!dir.join(order_file::SAFE_LOOK).exists());
+        assert_eq!(screen.window.get_toast(), "Your Home is back");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Only repeats of a Back press the launcher saw count: repeats left
+    /// over from a press on another screen never switch it.
+    #[test]
+    fn back_repeats_without_their_press_never_switch_the_safe_look() {
+        let screen = screen(None);
+        for _ in 0..120 {
+            screen.wait(50);
+            screen
+                .window
+                .window()
+                .dispatch_event(WindowEvent::KeyPressRepeated { text: BACK.into() });
+        }
+        screen.key(BACK, false);
+        assert!(!screen._controller.borrow().home.safe_look());
+    }
+
+    /// The safe look is still on after a restart, from its flag file.
+    #[test]
+    fn the_safe_look_survives_a_restart() {
+        let dir = temp_dir("safe-look-restart");
+        std::fs::write(dir.join(order_file::SAFE_LOOK), b"").unwrap();
+        let screen = screen(Some(dir.join("order.toml")));
+        assert_eq!(screen.window.get_mode(), SAFE_MODE);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// How long the volume bar stays (ui/device_view.rs), with a margin.

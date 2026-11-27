@@ -26,6 +26,12 @@ same Home as `compiled-home`, built from `ui/spike.slint` at run time by
 compiled, PSS about 51 MB for both, source compiled in 30 ms, library
 21 MB. See PANEL_STUDIO.md § 6.7.
 
+**2026-11-27, `keys`** (`spike.sh keys 90`, the Philips remote): a held
+Back arrives as one key-down (U+F748), then key-down repeats about every
+50 ms from about 0.4 s, then one key-up (a 7.6 s hold logged all of
+them). Red, green, yellow and blue never reached the app: the TV opened
+its manual. Hence the safe look's "hold Back for 5 s" (SECURITY.md).
+
 | nodes | generic render p50 / p95 | compiled render p50 / p95 | PSS generic / compiled |
 |---|---|---|---|
 | 180 (Home: 18 tiles) | 7.4 / 8.3 ms | 6.3 / 7.2 ms | 41.5 / 41.1 MB |

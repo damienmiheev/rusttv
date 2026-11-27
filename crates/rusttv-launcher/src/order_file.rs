@@ -189,6 +189,11 @@ pub(crate) const REDUCED_EFFECTS: &str = "effects-reduced";
 /// its clock; PANELS.md § 9 Q6). Settings changes it.
 pub(crate) const AMBIENT_OFF: &str = "ambient-off";
 
+/// The file whose presence turns the safe look on: the plain emergency
+/// Home in place of Home (PANEL_STUDIO.md § 10.4). Holding Back for 5 s
+/// changes it.
+pub(crate) const SAFE_LOOK: &str = "safe-look";
+
 /// The launcher's own state as history records it: tiles in order,
 /// folders, hidden tiles, the paired phones and the update switch. `dir` holds `order.toml` and
 /// the flag file.
@@ -224,6 +229,7 @@ pub(crate) fn launcher_state(dir: &Path) -> rusttv_history::Launcher {
         update_check: !dir.join(UPDATE_CHECK_OFF).exists(),
         reduced_effects: dir.join(REDUCED_EFFECTS).exists(),
         ambient_off: dir.join(AMBIENT_OFF).exists(),
+        safe_look: dir.join(SAFE_LOOK).exists(),
     }
 }
 
@@ -253,11 +259,12 @@ pub(crate) fn write_launcher_state(dir: &Path, state: &rusttv_history::Launcher)
     crate::remote::keep_phones(dir, &state.phones).map_err(io::Error::other)?;
     set_flag(&dir.join(UPDATE_CHECK_OFF), !state.update_check)?;
     set_flag(&dir.join(REDUCED_EFFECTS), state.reduced_effects)?;
-    set_flag(&dir.join(AMBIENT_OFF), state.ambient_off)
+    set_flag(&dir.join(AMBIENT_OFF), state.ambient_off)?;
+    set_flag(&dir.join(SAFE_LOOK), state.safe_look)
 }
 
 /// Creates or removes an empty flag file.
-fn set_flag(path: &Path, on: bool) -> io::Result<()> {
+pub(crate) fn set_flag(path: &Path, on: bool) -> io::Result<()> {
     if on {
         return fs::write(path, b"");
     }
@@ -348,6 +355,22 @@ mod tests {
             order.keys().iter().map(|(id, _)| id.clone()).collect()
         };
         assert_eq!(ids(&load(&back.file()).order), ids(&order));
+    }
+
+    /// The safe look is a flag file too: history records it on (format 9)
+    /// and writes it back, which a restore uses.
+    #[test]
+    fn the_safe_look_goes_through_history() {
+        let dir = TempDir::new("safe-look-flag");
+        let mut state = launcher_state(&dir.0);
+        assert!(!state.safe_look);
+        state.safe_look = true;
+        write_launcher_state(&dir.0, &state).unwrap();
+        assert!(dir.0.join(SAFE_LOOK).exists());
+        assert!(launcher_state(&dir.0).safe_look);
+        state.safe_look = false;
+        write_launcher_state(&dir.0, &state).unwrap();
+        assert!(!dir.0.join(SAFE_LOOK).exists());
     }
 
     /// The idle screen switch is a flag file: history records it off

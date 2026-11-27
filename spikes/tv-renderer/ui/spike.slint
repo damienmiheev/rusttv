@@ -48,7 +48,9 @@ export component Spike inherits Window {
     in property <[Node]> nodes;
     in property <int> compiled-tiles;
     in property <bool> animate;
-    in property <string> status;
+    in-out property <string> status;
+    callback key(string, bool, bool);
+    forward-focus: keys;
     property <float> u: self.width / 1920px;
     property <float> t;
     init => { t = 1; }
@@ -66,4 +68,9 @@ export component Spike inherits Window {
         }
     }
     Text { x: 20px; y: 10px; text: status; color: #9aa4b2; font-size: 14px; }
+    // Key logger (2026-11-27): which remote keys reach a Slint app, with repeats.
+    keys := FocusScope {
+        key-pressed(e) => { root.key(e.text, true, e.repeat); accept }
+        key-released(e) => { root.key(e.text, false, false); accept }
+    }
 }

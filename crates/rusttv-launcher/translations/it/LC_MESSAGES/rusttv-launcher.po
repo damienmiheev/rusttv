@@ -562,3 +562,23 @@ msgid "Your computer applied {n} change"
 msgid_plural "Your computer applied {n} changes"
 msgstr[0] "Il computer ha applicato {n} modifica"
 msgstr[1] "Il computer ha applicato {n} modifiche"
+
+#: ui/home.slint
+msgid "Safe look is on"
+msgstr "Aspetto sicuro attivo"
+
+#: ui/home.slint
+msgid "Your Home is back"
+msgstr "La tua schermata Home è tornata"
+
+#: ui/home.slint
+msgid "Safe look: {}"
+msgstr "Aspetto sicuro: {}"
+
+#: ui/home.slint
+msgid "Safe look"
+msgstr "Aspetto sicuro"
+
+#: ui/home.slint
+msgid "Your Home and its extras are off. Hold Back for 5 seconds to bring them back."
+msgstr "La tua schermata Home e i suoi extra sono disattivati. Tieni premuto Indietro per 5 secondi per ripristinarli."
