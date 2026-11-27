@@ -144,22 +144,33 @@ object Bridge {
     @JvmStatic
     fun takeAppsChanged(): Boolean = appsChanged.getAndSet(false)
 
-    /** Launchable TV apps as "component\nlabel\ncategory", without this launcher. */
+    /**
+     * Launchable apps as "component\nlabel\ncategory\nphone", without this
+     * launcher: the TV apps (LEANBACK_LAUNCHER, "0"), then the apps with only
+     * a phone entry (LAUNCHER, "1"). An app with a TV entry shows only that
+     * one; phone-only apps start hidden so a fresh Home stays clean.
+     */
     @JvmStatic
     fun listApps(context: Context): Array<String> {
         val pm = context.packageManager
-        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
-        return pm.queryIntentActivities(intent, 0)
-            .map { it.activityInfo }
-            .filter { it.packageName != context.packageName }
-            .map { info ->
+        val tv = pm.queryIntentActivities(mainIntent(Intent.CATEGORY_LEANBACK_LAUNCHER), 0)
+        val tvPackages = tv.map { it.activityInfo.packageName }.toSet()
+        val phone = pm.queryIntentActivities(mainIntent(Intent.CATEGORY_LAUNCHER), 0)
+            .filter { it.activityInfo.packageName !in tvPackages }
+        val entries = tv.map { it.activityInfo to false } + phone.map { it.activityInfo to true }
+        return entries
+            .filter { (info, _) -> info.packageName != context.packageName }
+            .map { (info, phoneOnly) ->
                 val component = ComponentName(info.packageName, info.name).flattenToShortString()
                 val label = info.loadLabel(pm).toString().replace('\n', ' ')
+                val flag = if (phoneOnly) "1" else "0"
                 // ApplicationInfo.CATEGORY_*: names a new folder (API 26+).
-                "$component\n$label\n${info.applicationInfo.category}"
+                "$component\n$label\n${info.applicationInfo.category}\n$flag"
             }
             .toTypedArray()
     }
+
+    private fun mainIntent(category: String) = Intent(Intent.ACTION_MAIN).addCategory(category)
 
     /** The activity's (or else the app's) TV banner as ARGB pixels, or null if it has none. */
     @JvmStatic
@@ -234,12 +245,18 @@ object Bridge {
     private fun webpFormat() =
         if (android.os.Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
 
-    /** Starts the TV activity; false if it no longer exists. */
+    /** Starts the app's TV or phone entry; false if it no longer exists. */
     @JvmStatic
     fun launch(context: Context, component: String): Boolean {
         val name = ComponentName.unflattenFromString(component) ?: return false
-        val intent = Intent(Intent.ACTION_MAIN)
-            .addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER)
+        // The category the entry declares, so the intent matches the one the
+        // app's task was started with and RESET_TASK_IF_NEEDED brings it back.
+        // By package: a query for an explicit component skips the filters.
+        val tv = context.packageManager
+            .queryIntentActivities(mainIntent(Intent.CATEGORY_LEANBACK_LAUNCHER).setPackage(name.packageName), 0)
+            .any { it.activityInfo.name == name.className }
+        val category = if (tv) Intent.CATEGORY_LEANBACK_LAUNCHER else Intent.CATEGORY_LAUNCHER
+        val intent = mainIntent(category)
             .setComponent(name)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
         return try {

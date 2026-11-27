@@ -221,6 +221,10 @@ pub struct App {
     pub label: String,
     /// What kind of app it says it is; names a new folder.
     pub category: Category,
+    /// Starts in the hidden apps list on first sight (Android phone-only
+    /// apps with no TV launcher entry). Once unhidden, it stays on Home or
+    /// in a folder like any other app.
+    pub start_hidden: bool,
 }
 
 /// An app's own category (Android's `ApplicationInfo.category`).
@@ -974,7 +978,28 @@ impl Home {
         } else if self.apps.is_empty() {
             self.apps = self.stored_apps();
         }
-        self.refresh()
+        let hidden_changed = self.hide_unplaced_defaults();
+        self.refresh() || hidden_changed
+    }
+
+    /// Hides any [`App::start_hidden`] app that is not already placed on Home
+    /// or in a folder; returns whether `self.hidden` changed.
+    fn hide_unplaced_defaults(&mut self) -> bool {
+        let mut changed = false;
+        for app in &self.apps {
+            if !app.start_hidden {
+                continue;
+            }
+            let on_home = self.order.contains(&TileId::App(app.id.clone()));
+            let in_folder = self
+                .folders
+                .values()
+                .any(|folder| folder.apps.contains(&app.id));
+            if !on_home && !in_folder && self.hidden.insert(app.id.clone()) {
+                changed = true;
+            }
+        }
+        changed
     }
 
     /// Stand-ins for every app the order, a folder or the hidden tiles
@@ -995,6 +1020,7 @@ impl Home {
                 id: name.clone(),
                 label: name.clone(),
                 category: Category::Other,
+                start_hidden: false,
             })
             .collect()
     }
@@ -1495,6 +1521,7 @@ impl Home {
         self.order = order;
         self.folders = folders;
         self.hidden = hidden;
+        self.hide_unplaced_defaults();
         self.refresh();
     }
 
@@ -2445,6 +2472,7 @@ mod tests {
             id: id.to_owned(),
             label: label.to_owned(),
             category: Category::Other,
+            start_hidden: false,
         }
     }
 
@@ -4574,5 +4602,89 @@ mod tests {
                 TileId::Remote
             ]
         );
+    }
+
+    #[test]
+    fn start_hidden_apps_begin_hidden_and_stay_shown_once_unhidden() {
+        let phone = App {
+            start_hidden: true,
+            ..app("p", "Phone")
+        };
+        let list = [app("a", "A"), phone];
+        let mut home = Home::new(Order::default(), BTreeMap::new(), BTreeSet::new(), false);
+        assert!(home.set_apps(&list));
+        assert!(!home.tiles().contains(&id("p")));
+        assert_eq!(home.tiles().last(), Some(&TileId::Hidden));
+        assert_eq!(home.hidden_apps(), ["p"]);
+        assert!(home.hidden().contains("p"));
+        // Second identical pass reports no change.
+        assert!(!home.set_apps(&list));
+
+        // Unhide from the Hidden apps page.
+        assert!(home.focus_on(&TileId::Hidden));
+        home.handle(Input::OkPressed, Duration::ZERO);
+        assert_eq!(
+            home.handle(Input::OkReleased, Duration::from_millis(50)),
+            Some(Effect::OpenHidden)
+        );
+        assert_eq!(
+            home.handle(Input::OkPressed, Duration::from_millis(100)),
+            Some(Effect::SaveOrder)
+        );
+        assert!(home.tiles().contains(&id("p")));
+        assert!(home.hidden_apps().is_empty());
+        assert!(!home.hidden().contains("p"));
+
+        // Reloading apps and restarting with the saved state keep it on Home.
+        assert!(!home.set_apps(&list));
+        assert!(home.tiles().contains(&id("p")));
+        let mut restarted = Home::new(
+            home.order().clone(),
+            home.folders().clone(),
+            home.hidden().clone(),
+            false,
+        );
+        assert!(!restarted.set_apps(&list));
+        assert!(restarted.tiles().contains(&id("p")));
+        assert!(restarted.hidden_apps().is_empty());
+    }
+
+    #[test]
+    fn start_hidden_app_in_a_folder_stays_in_the_folder_on_restart() {
+        let phone = App {
+            start_hidden: true,
+            ..app("p", "Phone")
+        };
+        let list = [app("a", "A"), phone];
+        let folders = BTreeMap::from([(
+            1,
+            Folder {
+                name: "Tools".to_owned(),
+                apps: vec!["p".to_owned()],
+            },
+        )]);
+        let mut home = Home::new(Order::default(), folders, BTreeSet::new(), false);
+        home.set_apps(&list);
+        assert!(home.hidden_apps().is_empty());
+        assert_eq!(home.folders()[&1].apps, ["p"]);
+    }
+
+    #[test]
+    fn replace_order_keeps_unplaced_start_hidden_apps_hidden() {
+        let phone = App {
+            start_hidden: true,
+            ..app("p", "Phone")
+        };
+        let list = [app("a", "A"), phone];
+        let mut home = Home::new(Order::default(), BTreeMap::new(), BTreeSet::new(), false);
+        home.set_apps(&list);
+        // Restoring an older order that predates the phone app does not put it on Home.
+        home.replace_order(
+            Order::from_keys([(id("a"), KEY_STEP)]),
+            BTreeMap::new(),
+            BTreeSet::new(),
+        );
+        assert!(!home.tiles().contains(&id("p")));
+        assert_eq!(home.hidden_apps(), ["p"]);
     }
 }

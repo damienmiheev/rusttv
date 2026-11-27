@@ -588,6 +588,7 @@ mod tests {
                 id: format!("com.example.{id}/.Main"),
                 label: id.to_uppercase(),
                 category: Category::Other,
+                start_hidden: false,
             })
             .collect();
         home.set_apps(&apps);

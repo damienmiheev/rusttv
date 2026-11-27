@@ -866,6 +866,7 @@ impl FakePlatform {
                 "Games" => Category::Game,
                 _ => Category::Other,
             },
+            start_hidden: false,
         }));
         for entry in &mut platform.apps {
             match entry.app.label.as_str() {
@@ -1229,6 +1230,7 @@ mod tests {
             id: id.to_owned(),
             label: id.to_uppercase(),
             category: crate::model::Category::Other,
+            start_hidden: false,
         }
     }
 

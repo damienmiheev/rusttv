@@ -261,9 +261,9 @@ impl Platform for AndroidPlatform {
                 let item = JString::from(env.get_object_array_element(&array, index)?);
                 let text: String = env.get_string(&item)?.into();
                 env.delete_local_ref(item)?;
-                // "component\nlabel\ncategory"; the bridge never puts a
+                // "component\nlabel\ncategory\nphone"; the bridge never puts a
                 // newline in a component or a label.
-                let mut parts = text.splitn(3, '\n');
+                let mut parts = text.splitn(4, '\n');
                 let (Some(id), Some(label)) = (parts.next(), parts.next()) else {
                     log::warn!("bridge returned a malformed app entry: {text:?}");
                     continue;
@@ -272,6 +272,7 @@ impl Platform for AndroidPlatform {
                     .next()
                     .and_then(|value| value.parse().ok())
                     .map_or(Category::Other, Category::from_android);
+                let start_hidden = parts.next() == Some("1");
                 // Drawing banners takes ~7 ms per app: they load after the
                 // first frame, through `artwork`.
                 apps.push(AppEntry {
@@ -279,6 +280,7 @@ impl Platform for AndroidPlatform {
                         id: id.to_owned(),
                         label: label.to_owned(),
                         category,
+                        start_hidden,
                     },
                     artwork: Artwork::Later,
                 });
