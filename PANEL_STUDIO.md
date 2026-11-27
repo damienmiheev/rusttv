@@ -709,8 +709,8 @@ a removed one is deprecated for one release first.
   makes are cut to 500 characters and cleaned again. No variables, so no
   cycles. Messages bindings use must exist in the default table with the
   placeholders they fill. Binding states beyond value/no value, `stale`,
-  variant switching on state, knobs, tokens and locals come with later
-  slices. Number literals are at most 2^53 in size (`OUT_OF_RANGE`); a
+  variant switching on state, tokens and locals come with later
+  slices; knobs came with the knobs slice (§ 7). Number literals are at most 2^53 in size (`OUT_OF_RANGE`); a
   colour literal that doesn't parse is `BAD_COLOR`. Codes:
   `BAD_EXPRESSION`, `UNKNOWN_FUNCTION`, `TYPE_MISMATCH`,
   `UNKNOWN_SOURCE`, `UNDECLARED_SOURCE`, `EXPRESSION_TOO_LARGE`,
@@ -827,6 +827,23 @@ What it settles:
   (a synced copy on the computer can bring them back). A pending reset is
   cancelled with the PIN or from the designated phone. After a reset the
   lock is off until a new PIN is set (§ 14, § 16 Q16).
+- **As built (step 2a, knobs slice, 2026-11-27)**: `meta.knobs` lists
+  up to 32 knobs `{name, type, label, group?, visible_if?, default}`;
+  `name` is `[a-z0-9-]{1,32}` and distinct; `label`, `group` and option
+  labels are message ids that must be in the default table with no
+  placeholders. Types so far: `toggle` (yes/no), `number` (`min` < `max`,
+  optional `step` > 0 and no wider than the range, default in range),
+  `choice` (2 to 32 `options` `{id, label}` with distinct ids; the value
+  is the id, as text), `color`, `text` (`max_length` 1…200, default 200;
+  the default may be empty). A field of another type is `NOT_FOR_KIND`.
+  Bindings read `{"knob": name}` with the knob's type; `visible_if` is a
+  yes/no expression over knobs declared before it (so no cycles) and no
+  sources. Text knobs are the only ones that aren't one-click. A stored
+  value the knob no longer accepts falls back to the default. Date, time,
+  duration, unit, time zone, icon, image, app and list knobs come with
+  their slices (formatting, assets, app sources, `repeat`). Codes:
+  `BAD_KNOB` (empty range, step wider than it, fewer than two options, a
+  default that isn't an option), `UNKNOWN_KNOB`.
 - **Knobs never switch surfaces**: a knob may switch a face's variants,
   but not turn on a surface or a banner declaration; that is placement,
   under the first-activation rule (§ 8.2).
@@ -1391,7 +1408,7 @@ the measurement APK) starts with the owner's go-ahead in that session.
    (all answered 2026-11-24); Q12 before 4e; Q5 before step 7.
    - 2a `rusttv-panels`: types, validator, JSON Schema, expressions,
      message tables, zip reader, fuzz targets (no UI; meta, document and
-     message tables, expressions and the zip reader done 2026-11-24); `rusttv panel
+     message tables, expressions and the zip reader done 2026-11-24, knobs 2026-11-27); `rusttv panel
      pack` for people, so packages can be made and tested before the
      studio (unsigned until 4b). Until 4b a package reaches only the
      desktop launcher, or a debug-build TV loader that is compiled out of
