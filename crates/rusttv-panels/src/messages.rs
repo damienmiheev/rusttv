@@ -435,8 +435,9 @@ pub fn parse_messages(language: Language, text: &str) -> Result<Messages, Packag
 }
 
 /// Checks a package's tables against each other and its `meta`: a default
-/// language table whenever there are any, and translations with no message
-/// or placeholder the default language lacks.
+/// language table whenever there are any (or any knobs), translations with
+/// no message or placeholder the default language lacks, and the knobs'
+/// labels in the default table without placeholders.
 ///
 /// # Errors
 ///
@@ -446,6 +447,7 @@ pub fn check_messages(
     meta: &Meta,
     tables: &BTreeMap<Language, Messages>,
 ) -> Result<(), PackageError> {
+    check_knob_messages(meta, tables.get(&meta.default_language))?;
     if tables.is_empty() {
         return Ok(());
     }
@@ -467,6 +469,56 @@ pub fn check_messages(
             if !message.names().is_subset(&original.names()) {
                 return Err(PackageError::new(Code::PlaceholderMismatch, at).in_file(file));
             }
+        }
+    }
+    Ok(())
+}
+
+/// Checks the messages `meta.knobs` uses: every label, group heading and
+/// option label must be in the default table and fill no placeholder (a
+/// label has nothing to fill it with), and messages in `visible_if` must
+/// exist with the placeholders they fill.
+fn check_knob_messages(meta: &Meta, default: Option<&Messages>) -> Result<(), PackageError> {
+    for (index, knob) in meta.knobs.iter().enumerate() {
+        let at = Position::Field {
+            path: "meta.knobs",
+            index: Some(index),
+        };
+        let fail = |code| Err(PackageError::new(code, at));
+        let Some(default) = default else {
+            return fail(Code::NoDefaultStrings);
+        };
+        let options = match &knob.kind {
+            crate::KnobKind::Choice { options, .. } => options.as_slice(),
+            _ => &[],
+        };
+        let labels = [Some(&knob.label), knob.group.as_ref()]
+            .into_iter()
+            .flatten()
+            .chain(options.iter().map(|o| &o.label));
+        for id in labels {
+            match default.get(id.as_str()) {
+                None => return fail(Code::UnknownMessage),
+                Some(message) if !message.names().is_empty() => {
+                    return fail(Code::PlaceholderMismatch);
+                }
+                Some(_) => {}
+            }
+        }
+        let mut found = Ok(());
+        if let Some(condition) = &knob.visible_if {
+            crate::expr::each_message(condition, &mut |id, args| {
+                if found.is_ok() {
+                    found = match default.get(id.as_str()) {
+                        None => Err(Code::UnknownMessage),
+                        Some(m) if args.iter().all(|(name, _)| m.names().contains(name)) => Ok(()),
+                        Some(_) => Err(Code::PlaceholderMismatch),
+                    };
+                }
+            });
+        }
+        if let Err(code) = found {
+            return fail(code);
         }
     }
     Ok(())
@@ -792,6 +844,58 @@ mod tests {
         list.iter()
             .map(|(code, messages)| (lang(code), table(code, messages).unwrap()))
             .collect()
+    }
+
+    fn knob_meta(knobs: &str) -> Meta {
+        let text = format!(
+            r#"{{"meta": {{"format": 2, "min_launcher": "0.5.0", "id": "user.test", "kind": "theme",
+               "version": "1.0.0", "default_language": "en", "name": {{"en": "Test"}}, "knobs": [{knobs}]}}}}"#
+        );
+        crate::parse_package(
+            &text,
+            &crate::Capabilities::new(crate::Version::new(0, 5, 0), [""; 0]),
+        )
+        .unwrap()
+        .meta
+    }
+
+    #[test]
+    fn knob_labels_are_plain_messages_in_the_default_table() {
+        let choice = r#"{"name": "style", "type": "choice", "label": "style", "group": "look", "default": "a",
+            "options": [{"id": "a", "label": "round"}, {"id": "b", "label": "square"}]}"#;
+        let shown = r#"{"name": "on", "type": "toggle", "label": "style", "default": true,
+            "visible_if": {"call": "eq", "args": [{"msg": "round"}, "x"]}}"#;
+        let en = r#""style": "Style", "look": "Look", "round": "Round", "square": "Square""#;
+        let check = |knobs: &str, list: &[(&str, &str)]| {
+            check_messages(&knob_meta(knobs), &tables(list))
+                .err()
+                .map(|e| (e.code, e.at))
+        };
+        let at = |index| Position::Field {
+            path: "meta.knobs",
+            index: Some(index),
+        };
+        assert_eq!(check(&format!("{choice},{shown}"), &[("en", en)]), None);
+        assert_eq!(check(choice, &[]), Some((Code::NoDefaultStrings, at(0))));
+        for missing in ["style", "look", "square"] {
+            let without = en.replace(&format!(r#""{missing}":"#), r#""other":"#);
+            assert_eq!(
+                check(choice, &[("en", &without)]),
+                Some((Code::UnknownMessage, at(0))),
+                "{missing}"
+            );
+        }
+        let with_placeholder = en.replace(r#""Look""#, r#""Look {x}""#);
+        assert_eq!(
+            check(choice, &[("en", &with_placeholder)]),
+            Some((Code::PlaceholderMismatch, at(0)))
+        );
+        let no_round = en.replace(r#""round":"#, r#""other":"#);
+        let toggle_first = shown.replace(r#""label": "style""#, r#""label": "look""#);
+        assert_eq!(
+            check(&toggle_first, &[("en", &no_round)]),
+            Some((Code::UnknownMessage, at(0)))
+        );
     }
 
     #[test]

@@ -138,6 +138,13 @@ codes! {
     ExpressionTooLarge => "EXPRESSION_TOO_LARGE",
     /// More bindings in a variant than [`crate::limits::BINDINGS`].
     TooManyBindings => "TOO_MANY_BINDINGS",
+    /// A knob whose own fields disagree: a range that is empty or a step
+    /// wider than it, a choice with fewer than two options or a default
+    /// that isn't one of them.
+    BadKnob => "BAD_KNOB",
+    /// An expression reads a knob `meta.knobs` doesn't declare (for
+    /// `visible_if`, one declared before it).
+    UnknownKnob => "UNKNOWN_KNOB",
     /// Not a zip (no end record as the file's last 22 bytes).
     NotZip => "NOT_ZIP",
     /// A zip that doesn't hold together: headers that disagree, gaps,

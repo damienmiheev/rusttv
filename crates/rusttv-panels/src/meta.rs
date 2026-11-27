@@ -2,6 +2,7 @@
 //! before strict parsing (§ 5.1).
 
 use crate::error::{Code, PackageError, Position};
+use crate::knob::{Knob, RawKnob};
 use crate::text::{Language, Text};
 use serde::{Deserialize, Deserializer};
 use std::collections::{BTreeMap, BTreeSet};
@@ -176,33 +177,6 @@ impl fmt::Display for PackageId {
 
 deserialize_via!(PackageId, PackageId::parse);
 
-/// Declares a lower-case enum read from JSON, with `as_str` and `Display`.
-macro_rules! word_enum {
-    ($(#[$meta:meta])* $name:ident { $($(#[$doc:meta])* $variant:ident => $word:literal,)* }) => {
-        $(#[$meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize)]
-        #[non_exhaustive]
-        pub enum $name {
-            $($(#[$doc])* #[serde(rename = $word)] $variant,)*
-        }
-
-        impl $name {
-            /// Its spelling in `package.json`.
-            pub const fn as_str(self) -> &'static str {
-                match self {
-                    $(Self::$variant => $word,)*
-                }
-            }
-        }
-
-        impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str(self.as_str())
-            }
-        }
-    };
-}
-
 word_enum! {
     /// What a package is.
     Kind {
@@ -276,6 +250,12 @@ pub mod limits {
     /// JSON objects inside `document` (nodes, variants, strokes, shadows),
     /// counted before parsing so a large file can't build a large tree.
     pub const DOCUMENT_OBJECTS: usize = 8192;
+    /// Knobs in a package.
+    pub const KNOBS: usize = 32;
+    /// Options of a choice knob.
+    pub const KNOB_OPTIONS: usize = 32;
+    /// Longest text a text knob holds, in characters.
+    pub const KNOB_TEXT: usize = 200;
 }
 
 /// The homepage: an `https://` link with a plain host (ASCII letters,
@@ -363,7 +343,7 @@ impl<'de, T: Deserialize<'de> + Ord> Deserialize<'de> for List<T> {
 
 /// The meta of a format-2 package. Only [`crate::parse_package`] makes one,
 /// so every `Meta` has passed the version check and every rule.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct Meta {
     /// The oldest launcher that reads it.
@@ -394,6 +374,8 @@ pub struct Meta {
     pub sources: List<Name>,
     /// The actions it uses (checked against the action list in a later slice).
     pub actions: List<Name>,
+    /// The settings it offers (§ 7).
+    pub knobs: Vec<Knob>,
 }
 
 /// `meta` as written, strictly parsed; [`check_meta`] turns it into a [`Meta`].
@@ -423,6 +405,8 @@ pub(crate) struct RawMeta {
     sources: List<Name>,
     #[serde(default)]
     actions: List<Name>,
+    #[serde(default)]
+    knobs: Vec<RawKnob>,
 }
 
 /// What the launcher reading a package can do.
@@ -551,6 +535,7 @@ pub(crate) fn check_meta(raw: RawMeta) -> Result<Meta, PackageError> {
         faces: raw.faces,
         sources: raw.sources,
         actions: raw.actions,
+        knobs: crate::knob::check(raw.knobs)?,
     })
 }
 

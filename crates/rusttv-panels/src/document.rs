@@ -12,7 +12,7 @@ use crate::expr::{self, Expr, Type};
 use crate::meta::{Face, Meta, Name, limits};
 use crate::text::Text;
 use serde::Deserialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 /// A colour, `#rrggbb` or `#rrggbbaa`.
@@ -426,6 +426,11 @@ fn root_fits(face: Face, size: SizeClass, w: f32, h: f32) -> bool {
 pub(crate) fn check(document: &Document, meta: &Meta) -> Result<(), PackageError> {
     let declared: BTreeSet<&str> = meta.requires.iter().map(Name::as_str).collect();
     let sources: BTreeSet<&str> = meta.sources.iter().map(Name::as_str).collect();
+    let knobs: BTreeMap<&str, Type> = meta
+        .knobs
+        .iter()
+        .map(|k| (k.name.as_str(), k.value_type()))
+        .collect();
     if document.variants.len() > limits::VARIANTS {
         return Err(PackageError::new(
             Code::TooMany,
@@ -463,6 +468,7 @@ pub(crate) fn check(document: &Document, meta: &Meta) -> Result<(), PackageError
             ids: BTreeSet::new(),
             declared: &declared,
             sources: &sources,
+            knobs: &knobs,
         };
         walk.node(&variant.root, 1)?;
     }
@@ -533,6 +539,7 @@ struct Walk<'a> {
     ids: BTreeSet<&'a str>,
     declared: &'a BTreeSet<&'a str>,
     sources: &'a BTreeSet<&'a str>,
+    knobs: &'a BTreeMap<&'a str, Type>,
 }
 
 impl<'a> Walk<'a> {
@@ -565,7 +572,8 @@ impl<'a> Walk<'a> {
             if self.bindings > limits::BINDINGS {
                 return Err(PackageError::new(Code::TooManyBindings, at));
             }
-            expr::check(expr, want, self.sources).map_err(|code| PackageError::new(code, at))?;
+            expr::check(expr, want, self.sources, self.knobs)
+                .map_err(|code| PackageError::new(code, at))?;
         }
         self.shadows += node.shadows.len();
         if self.shadows > limits::SHADOWS {
