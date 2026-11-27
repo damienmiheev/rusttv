@@ -103,6 +103,8 @@ class HistoryProvider : ContentProvider() {
         val path = target.substringBefore(' ', "")
         val cap = target.substringAfter(' ', "").toLongOrNull()
         require(path.isNotEmpty() && cap != null) { "no staging for that name" }
+        // Writes whose `end` never came (the computer gave up) are done by now.
+        copies.values.removeIf { !it.thread.isAlive }
         val pipe = ParcelFileDescriptor.createPipe()
         try {
             lateinit var copy: Copy
