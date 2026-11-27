@@ -3830,7 +3830,7 @@ mod tests {
         assert_eq!(home.state(), State::Folder);
         // Not in Settings.
         home.handle(Input::Back, now);
-        home.set_quick_actions(vec![QuickAction::Audio]);
+        home.set_quick_actions(vec![QuickAction::Settings]);
         home.point_quick(0);
         assert_eq!(home.state(), State::Settings);
         assert!(!home.pick_up(&id("a03"), now));

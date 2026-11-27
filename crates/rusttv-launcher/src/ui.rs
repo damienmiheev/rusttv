@@ -1387,12 +1387,14 @@ impl Controller {
         }
         // Holding Back switches the safe look, over anything but the pairing,
         // trust and review screens (they take only their own keys).
-        if matches!(text, "\u{F748}" | "\u{1b}")
-            && self.pairing.is_none()
-            && self.review.is_none()
-            && self.back_hold(pressed, repeat)
-        {
-            return true;
+        if matches!(text, "\u{F748}" | "\u{1b}") {
+            if self.pairing.is_some() || self.review.is_some() {
+                // Nothing pressed there counts toward a hold.
+                self.back_since = None;
+                self.back_fired = false;
+            } else if self.back_hold(pressed, repeat) {
+                return true;
+            }
         }
         // The idle screen: the key that wakes it does nothing else, its
         // repeats and release neither (PANELS.md § 9 Q6). Any other key
