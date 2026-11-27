@@ -169,13 +169,19 @@ codes! {
     BadEntryName => "BAD_ENTRY_NAME",
     /// Two entries with the same name, also ignoring case.
     DuplicateEntry => "DUPLICATE_ENTRY",
-    /// A file the package must have (`package.json`) is missing.
+    /// A file the package must have (`package.json`, or `code/home.slint`
+    /// in a `runtime: code` theme) is missing.
     MissingFile => "MISSING_FILE",
     /// An image node's asset, or a variant's base image, isn't in the
     /// package.
     MissingAsset => "MISSING_ASSET",
     /// An image that isn't a PNG.
     BadImage => "BAD_IMAGE",
+    /// A `code/` or `scripts/` file that isn't UTF-8 text, or holds a
+    /// control character (other than tab and line breaks) or an invisible
+    /// or direction-changing one, which could make code read differently
+    /// from what it does in a viewer, diff or editor.
+    BadSource => "BAD_SOURCE",
 }
 
 impl Code {
@@ -235,7 +241,9 @@ pub enum Position {
         index: usize,
     },
     /// A field path built only from this format's own field names, e.g.
-    /// `meta.requires`, and an index into a list; never a key from the package.
+    /// `meta.requires`, and an index into a list; never a key from the
+    /// package. In [`PackageFile::Zip`] it may name a file the format
+    /// requires (`code/home.slint`).
     Field {
         /// The path, e.g. `meta.requires`.
         path: &'static str,

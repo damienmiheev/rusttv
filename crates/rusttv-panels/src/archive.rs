@@ -8,7 +8,16 @@
 //! assets/<lang>/<name>.png      a language's variant of an image
 //! assets/<mode>/<name>.png      a theme mode's variant (light, dark, high-contrast, night)
 //! thumbnail.png                 for the studio and the Panels page
+//! code/<name>.slint             a `runtime: code` theme's layout (home.slint required)
+//! scripts/<name>.rhai           its scripts
 //! ```
+//!
+//! `code/` and `scripts/` files are only read here: UTF-8 with no control
+//! character but tab and line breaks and no invisible or direction-changing
+//! character (so code can't read differently from what it does in any
+//! viewer, diff or editor), each
+//! capped and all together capped; nothing interprets them yet
+//! (PANEL_STUDIO.md § 5.9).
 //!
 //! Images are kept as PNG bytes with their signature and end chunk checked
 //! (so no archive hides behind one); decoding,
@@ -17,7 +26,7 @@
 use crate::document::{AssetName, NodeKind, each_node};
 use crate::error::{Code, PackageError, PackageFile, Position};
 use crate::messages::{Messages, check_document_messages, check_messages, parse_messages};
-use crate::meta::{Capabilities, limits};
+use crate::meta::{Capabilities, Runtime, limits};
 use crate::text::Language;
 use crate::zip::{self, MAX_ZIP};
 use crate::{MAX_PACKAGE_JSON, Package, parse_package};
@@ -77,6 +86,30 @@ pub struct Asset {
     pub png: Vec<u8>,
 }
 
+/// A `code/` or `scripts/` file of a `runtime: code` theme.
+#[derive(Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Source {
+    /// Its name without folder and extension, e.g. `home`; the same rule as
+    /// image names (`[a-z0-9_-]{1,40}`).
+    pub name: AssetName,
+    /// Its text.
+    pub text: String,
+}
+
+impl std::fmt::Debug for Source {
+    // The text stays out of logs and error reports.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Source")
+            .field("name", &self.name)
+            .field("bytes", &self.text.len())
+            .finish()
+    }
+}
+
+/// The most all `code/` and `scripts/` files of one theme may hold together.
+pub const MAX_SOURCES: usize = 1 << 20;
+
 /// A package read from its zip and checked as a whole.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -89,6 +122,10 @@ pub struct Contents {
     pub assets: Vec<Asset>,
     /// `thumbnail.png`, if there is one.
     pub thumbnail: Option<Vec<u8>>,
+    /// `code/*.slint`, in zip order.
+    pub code: Vec<Source>,
+    /// `scripts/*.rhai`, in zip order.
+    pub scripts: Vec<Source>,
 }
 
 /// What an entry is, from its name.
@@ -97,6 +134,8 @@ enum Kind {
     Strings(Language),
     Asset(AssetName, AssetVariant),
     Thumbnail,
+    Code(AssetName),
+    Script(AssetName),
 }
 
 fn kind(name: &str) -> Option<Kind> {
@@ -111,6 +150,18 @@ fn kind(name: &str) -> Option<Kind> {
         .and_then(|rest| rest.strip_suffix(".json"))
     {
         return Language::parse(language).ok().map(Kind::Strings);
+    }
+    if let Some(file) = name
+        .strip_prefix("code/")
+        .and_then(|rest| rest.strip_suffix(".slint"))
+    {
+        return AssetName::parse(file).ok().map(Kind::Code);
+    }
+    if let Some(file) = name
+        .strip_prefix("scripts/")
+        .and_then(|rest| rest.strip_suffix(".rhai"))
+    {
+        return AssetName::parse(file).ok().map(Kind::Script);
     }
     let rest = name.strip_prefix("assets/")?.strip_suffix(".png")?;
     let (variant, file) = match rest.split_once('/') {
@@ -135,13 +186,35 @@ fn cap(name: &str) -> Result<usize, Code> {
         // A PNG is already compressed, so one larger than a whole package
         // zip can only be a bomb.
         Kind::Asset(..) | Kind::Thumbnail => Ok(MAX_ZIP),
+        Kind::Code(_) | Kind::Script(_) => Ok(limits::SOURCE),
     }
+}
+
+/// `bytes` as source text: UTF-8 with no control character but tab and
+/// line feed (and carriage return only before a line feed), none of the
+/// invisible or direction-changing characters package text cleans out or
+/// keeps for display ([`crate::text`]: zero-width joiners, direction marks
+/// and isolates, emoji style selectors, a byte order mark), no braille
+/// blank and no noncharacter. User-facing text belongs in
+/// `strings/<lang>.json`, where those characters are handled.
+fn source_text(bytes: Vec<u8>) -> Option<String> {
+    let text = String::from_utf8(bytes).ok()?;
+    let bad = |c: char| {
+        ((crate::text::removed(c) || crate::text::is_format(c)) && !matches!(c, '\t' | '\n' | '\r'))
+            || matches!(c, '\u{2800}' | '\u{FFFC}'..='\u{FFFF}' | '\u{FE0E}' | '\u{FE0F}' | '\u{2066}'..='\u{2069}' | '\u{061C}')
+    };
+    let lone_cr = text
+        .char_indices()
+        .any(|(i, c)| c == '\r' && !text[i + 1..].starts_with('\n'));
+    (!lone_cr && !text.contains(bad)).then_some(text)
 }
 
 /// Reads a package zip for a launcher that can do `can`, and checks it as a
 /// whole: entry names, `package.json`, the message tables against each
-/// other and the document, PNG signatures, and that every image node's
-/// asset (and every variant's base image) is there.
+/// other and the document, PNG signatures, that every image node's asset
+/// (and every variant's base image) is there, and for a theme with
+/// `runtime: code` its `code/` and `scripts/` files (only it may have them;
+/// `code/home.slint` is required; text rules and caps as the module says).
 ///
 /// # Errors
 ///
@@ -162,6 +235,10 @@ pub fn read_package(zip: &[u8], can: &Capabilities) -> Result<Contents, PackageE
     let mut assets = Vec::new();
     let mut asset_entries = Vec::new();
     let mut thumbnail = None;
+    // Source files stay bytes until `package.json` says the theme runs
+    // code, so the wrong kind of package gets `NOT_FOR_KIND` before any
+    // check of their content.
+    let mut sources = Vec::new();
     for (index, entry) in entries.into_iter().enumerate() {
         let is_png = entry.bytes.starts_with(&PNG_SIGNATURE) && entry.bytes.ends_with(&PNG_END);
         match kind(&entry.name).ok_or_else(|| in_zip(Code::BadEntryName, index))? {
@@ -181,6 +258,8 @@ pub fn read_package(zip: &[u8], can: &Capabilities) -> Result<Contents, PackageE
                 });
             }
             Kind::Thumbnail if is_png => thumbnail = Some(entry.bytes),
+            Kind::Code(name) => sources.push((index, true, name, entry.bytes)),
+            Kind::Script(name) => sources.push((index, false, name, entry.bytes)),
             Kind::Asset(..) | Kind::Thumbnail => return Err(in_zip(Code::BadImage, index)),
         }
     }
@@ -190,6 +269,27 @@ pub fn read_package(zip: &[u8], can: &Capabilities) -> Result<Contents, PackageE
     })?;
     let package = parse_package(&text, can)?;
     check_messages(&package.meta, &strings)?;
+    if package.meta.runtime != Runtime::Code
+        && let Some((index, ..)) = sources.first()
+    {
+        return Err(in_zip(Code::NotForKind, *index));
+    }
+    let (mut code, mut scripts, mut total) = (Vec::new(), Vec::new(), 0_usize);
+    for (index, is_code, name, bytes) in sources {
+        total += bytes.len();
+        if total > MAX_SOURCES {
+            return Err(in_zip(Code::TooLarge, index));
+        }
+        let text = source_text(bytes).ok_or_else(|| in_zip(Code::BadSource, index))?;
+        let list = if is_code { &mut code } else { &mut scripts };
+        list.push(Source { name, text });
+    }
+    if package.meta.runtime == Runtime::Code && !code.iter().any(|s| s.name.as_str() == "home") {
+        return Err(
+            PackageError::new(Code::MissingFile, Position::field("code/home.slint"))
+                .in_file(PackageFile::Zip),
+        );
+    }
 
     let bases: BTreeSet<&str> = assets
         .iter()
@@ -215,6 +315,8 @@ pub fn read_package(zip: &[u8], can: &Capabilities) -> Result<Contents, PackageE
         strings,
         assets,
         thumbnail,
+        code,
+        scripts,
     })
 }
 
@@ -388,6 +490,259 @@ mod tests {
         assert_eq!(
             code(&[("package.json", json.as_bytes())]).map(|c| c.0),
             Some(Code::NoDefaultStrings)
+        );
+    }
+
+    type File<'a> = (&'a str, &'a [u8]);
+
+    fn theme_json(runtime: &str) -> String {
+        format!(
+            r#"{{"meta": {{"format": 2, "min_launcher": "0.5.0", "id": "user.dock", "kind": "theme",
+               "version": "1.0.0", "default_language": "en", "name": {{"en": "Dock"}}{runtime}}}}}"#
+        )
+    }
+
+    #[test]
+    fn a_code_theme_carries_its_slint_and_scripts() {
+        let json = theme_json(r#", "runtime": "code""#);
+        let contents = read(&[
+            ("package.json", json.as_bytes()),
+            (
+                "code/home.slint",
+                b"import { RustTV } from \"@rusttv/theme.slint\";",
+            ),
+            ("code/tile.slint", b"// a tile"),
+            ("scripts/sort.rhai", b"fn key(app) { app.name }"),
+        ])
+        .unwrap();
+        assert_eq!(contents.package.meta.runtime, Runtime::Code);
+        let names: Vec<&str> = contents.code.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["home", "tile"]);
+        assert_eq!(contents.scripts[0].text, "fn key(app) { app.name }");
+        // A data theme (the default) has none.
+        let data = theme_json("");
+        assert_eq!(
+            read(&[("package.json", data.as_bytes())])
+                .unwrap()
+                .package
+                .meta
+                .runtime,
+            Runtime::Data
+        );
+    }
+
+    #[test]
+    fn code_files_have_their_rules() {
+        let json = theme_json(r#", "runtime": "code""#);
+        let data = theme_json(r#", "runtime": "data""#);
+        let home: (&str, &[u8]) = ("code/home.slint", b"x");
+        let cases: [(&[File<'_>], Code); 7] = [
+            (&[("package.json", json.as_bytes())], Code::MissingFile),
+            (
+                &[("package.json", json.as_bytes()), ("code/tile.slint", b"x")],
+                Code::MissingFile,
+            ),
+            (&[("package.json", data.as_bytes()), home], Code::NotForKind),
+            (
+                &[("package.json", data.as_bytes()), ("scripts/a.rhai", b"x")],
+                Code::NotForKind,
+            ),
+            (
+                &[
+                    ("package.json", json.as_bytes()),
+                    ("code/home.slint", b"a\xffb"),
+                ],
+                Code::BadSource,
+            ),
+            (
+                &[
+                    ("package.json", json.as_bytes()),
+                    ("code/home.slint", "a\u{202e}b".as_bytes()),
+                ],
+                Code::BadSource,
+            ),
+            (
+                &[
+                    ("package.json", json.as_bytes()),
+                    home,
+                    ("scripts/a.rhai", b"a\0b"),
+                ],
+                Code::BadSource,
+            ),
+        ];
+        for (files, want) in cases {
+            assert_eq!(read(files).err().map(|e| e.code), Some(want));
+        }
+        for name in [
+            "code/Home.slint",
+            "code/home.rs",
+            "code/a/home.slint",
+            "scripts/a.lua",
+        ] {
+            assert_eq!(
+                code(&[("package.json", json.as_bytes()), home, (name, b"x")]),
+                Some((Code::BadEntryName, PackageFile::Zip)),
+                "{name}"
+            );
+        }
+        let big = vec![b'a'; limits::SOURCE + 1];
+        assert_eq!(
+            code(&[("package.json", json.as_bytes()), ("code/home.slint", &big)]),
+            Some((Code::TooLarge, PackageFile::Zip))
+        );
+        let at_limit = vec![b'a'; limits::SOURCE];
+        let stored = zip(&[
+            ("package.json", json.as_bytes(), false),
+            ("code/home.slint", &at_limit, false),
+        ]);
+        let can = Capabilities::new(Version::new(0, 5, 0), [""; 0]);
+        assert!(read_package(&stored, &can).is_ok());
+    }
+
+    #[test]
+    fn source_text_refuses_hidden_characters_and_keeps_the_rest_exact() {
+        let json = theme_json(r#", "runtime": "code""#);
+        let with = |text: &str| {
+            read(&[
+                ("package.json", json.as_bytes()),
+                ("code/home.slint", text.as_bytes()),
+            ])
+        };
+        assert_eq!(with("a\rb").unwrap_err().code, Code::BadSource);
+        assert_eq!(with("\u{FEFF}a").unwrap_err().code, Code::BadSource);
+        let exact = "a\tb\r\nc\n  d  ";
+        assert_eq!(with(exact).unwrap().code[0].text, exact);
+        assert!(with("emoji ✓ und Grüße").is_ok());
+        for c in [
+            '\0',
+            '\u{1B}',
+            '\u{7F}',
+            '\u{85}',
+            '\u{0B}',
+            '\u{0C}',
+            '\u{08}',
+            '\u{200B}',
+            '\u{200C}',
+            '\u{200D}',
+            '\u{200E}',
+            '\u{200F}',
+            '\u{061C}',
+            '\u{202A}',
+            '\u{202E}',
+            '\u{2066}',
+            '\u{2069}',
+            '\u{2028}',
+            '\u{2029}',
+            '\u{2060}',
+            '\u{FEFF}',
+            '\u{00AD}',
+            '\u{FE0F}',
+            '\u{E0041}',
+        ] {
+            let error = with(&format!("a{c}b")).unwrap_err();
+            assert_eq!(
+                (error.code, error.at, error.file),
+                (
+                    Code::BadSource,
+                    Position::Entry { index: 1 },
+                    PackageFile::Zip
+                ),
+                "U+{:04X}",
+                u32::from(c)
+            );
+        }
+    }
+
+    #[test]
+    fn code_entries_belong_to_code_themes_only() {
+        let code_theme = theme_json(r#", "runtime": "code""#);
+        let data_theme = theme_json(r#", "runtime": "data""#);
+        let panel = package_json("");
+        // The wrong kind of package is told so before its content is read.
+        for json in [&data_theme, &panel] {
+            let error = read(&[
+                ("package.json", json.as_bytes()),
+                ("code/home.slint", b"a\0b"),
+            ])
+            .unwrap_err();
+            assert_eq!(
+                (error.code, error.at),
+                (Code::NotForKind, Position::Entry { index: 1 })
+            );
+        }
+        assert!(read(&[("package.json", panel.as_bytes())]).is_ok());
+        // Scripts alone don't make a home.
+        let error = read(&[
+            ("package.json", code_theme.as_bytes()),
+            ("scripts/home.rhai", b"x"),
+        ])
+        .unwrap_err();
+        assert_eq!(
+            (error.code, error.at),
+            (Code::MissingFile, Position::field("code/home.slint"))
+        );
+        let home: (&str, &[u8]) = ("code/home.slint", b"x");
+        let forty = format!("code/{}.slint", "a".repeat(40));
+        assert!(
+            read(&[
+                ("package.json", code_theme.as_bytes()),
+                home,
+                (&forty, b"x")
+            ])
+            .is_ok()
+        );
+        let forty_one = format!("code/{}.slint", "a".repeat(41));
+        for name in [
+            "code/x.rhai",
+            "scripts/x.slint",
+            "scripts/a/b.rhai",
+            "code/.slint",
+            "code/home.SLINT",
+            forty_one.as_str(),
+        ] {
+            assert_eq!(
+                code(&[("package.json", code_theme.as_bytes()), home, (name, b"x")]),
+                Some((Code::BadEntryName, PackageFile::Zip)),
+                "{name}"
+            );
+        }
+        assert_eq!(
+            code(&[("package.json", code_theme.as_bytes()), home, home]).map(|c| c.0),
+            Some(Code::DuplicateEntry)
+        );
+        // All sources together are capped too (stored, to stay under the ratio cap).
+        let part = vec![b'a'; limits::SOURCE];
+        let names: Vec<String> = (0..5).map(|i| format!("code/p{i}.slint")).collect();
+        let mut files = vec![
+            ("package.json", code_theme.as_bytes(), false),
+            ("code/home.slint", b"x".as_slice(), false),
+        ];
+        files.extend(names.iter().map(|n| (n.as_str(), part.as_slice(), false)));
+        let can = Capabilities::new(Version::new(0, 5, 0), [""; 0]);
+        let error = read_package(&zip(&files), &can).unwrap_err();
+        assert_eq!(
+            (error.code, error.at),
+            // 1 byte + 4 × 256 KiB passes 1 MiB at the fourth part, entry 5.
+            (Code::TooLarge, Position::Entry { index: 5 })
+        );
+    }
+
+    #[test]
+    fn only_a_theme_may_run_code() {
+        let panel = package_json("").replacen(
+            r#""kind": "panel","#,
+            r#""kind": "panel", "runtime": "code","#,
+            1,
+        );
+        let error = read(&[("package.json", panel.as_bytes())]).unwrap_err();
+        assert_eq!(
+            (error.code, error.at),
+            (Code::NotForKind, Position::field("meta.runtime"))
+        );
+        let odd = theme_json(r#", "runtime": "wasm""#);
+        assert_eq!(
+            read(&[("package.json", odd.as_bytes())]).unwrap_err().code,
+            Code::BadValue
         );
     }
 

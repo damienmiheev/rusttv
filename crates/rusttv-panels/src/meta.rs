@@ -188,6 +188,16 @@ word_enum! {
 }
 
 word_enum! {
+    /// How a theme is drawn (PANEL_STUDIO.md § 5.9).
+    Runtime {
+        /// By the launcher's compiled components, from data.
+        Data => "data",
+        /// By `slint-interpreter`, from the theme's `code/*.slint`.
+        Code => "code",
+    }
+}
+
+word_enum! {
     /// Where a panel can show (PANEL_STUDIO.md § 5.3, § 8.1).
     Face {
         /// A Home tile.
@@ -258,6 +268,8 @@ pub mod limits {
     pub const KNOB_OPTIONS: usize = 32;
     /// Longest text a text knob holds, in characters.
     pub const KNOB_TEXT: usize = 200;
+    /// Largest `code/*.slint` or `scripts/*.rhai` file, in bytes.
+    pub const SOURCE: usize = 256 << 10;
     /// Most steps from a number knob's `min` to its `max`.
     pub const KNOB_STEPS: usize = 10_000;
 }
@@ -380,6 +392,10 @@ pub struct Meta {
     pub actions: List<Name>,
     /// The settings it offers (§ 7).
     pub knobs: Vec<Knob>,
+    /// How it is drawn; only a theme may be `code`. [`crate::parse_package`]
+    /// reads only `package.json`, so the `code/` files a `code` theme needs
+    /// are checked by [`crate::read_package`].
+    pub runtime: Runtime,
 }
 
 /// `meta` as written, strictly parsed; [`check_meta`] turns it into a [`Meta`].
@@ -411,6 +427,8 @@ pub(crate) struct RawMeta {
     actions: List<Name>,
     #[serde(default)]
     knobs: Vec<RawKnob>,
+    #[serde(default)]
+    runtime: Option<Runtime>,
 }
 
 /// What the launcher reading a package can do.
@@ -540,6 +558,15 @@ pub(crate) fn check_meta(raw: RawMeta) -> Result<Meta, PackageError> {
         sources: raw.sources,
         actions: raw.actions,
         knobs: crate::knob::check(raw.knobs)?,
+        runtime: match (raw.kind, raw.runtime) {
+            (Kind::Panel, Some(Runtime::Code)) => {
+                return Err(PackageError::new(
+                    Code::NotForKind,
+                    Position::field("meta.runtime"),
+                ));
+            }
+            (_, runtime) => runtime.unwrap_or(Runtime::Data),
+        },
     })
 }
 
