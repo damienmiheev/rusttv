@@ -1,6 +1,6 @@
 # Panel Studio — plan
 
-Status (2026-11-24): **plan, not started; review rounds 1–20 done; the last round found nothing new** (§ Review
+Status (2026-11-27): **plan, step 2a under way; review rounds 1–20 done (round 20 found nothing new); owner request 13 added full customisation (§ 5.7, § 5.8, § 6.7, § 10.4), reviewed in round 21; round 22 pending** (§ Review
 log). Written from the owner's requests of 2026-11-20, 2026-11-21 and
 2026-11-24 (§ 1) and research into FigCraft and its sibling apps, Rust GUI
 toolkits and RustTV's own code (§ 17). Nothing here is built. § 16 lists
@@ -21,8 +21,9 @@ Words: *package* = one installable file (a panel or a theme); *face* = one
 of a panel's views (PANELS.md § 2 names); *surface* = a place on the TV a
 face can show (Home grid, Settings list, top-right menu, status corner,
 banner, idle screen, phone mirror); *source* = live data RustTV provides;
-*knob* = a typed setting a package offers; *locked surface* = a screen no
-package can change (§ 4).
+*knob* = a typed setting a package offers; *state* = a value a document
+keeps while shown (§ 5.7); *locked surface* = a screen no package can
+change (§ 4).
 
 ## 1. Owner requests
 
@@ -174,7 +175,9 @@ These hold for every option, format version and theme.
   inside them: the review screen and code entry, pairing and trust
   screens, the preview "Allow" prompt, the safe-look notice, the update
   confirmation, the Panels page's install review. A test renders each
-  under a hostile theme and checks it is unchanged. For low vision they
+  under a hostile theme and checks it is unchanged; a hostile Home
+  document (§ 10.4) gets the same test, and can't cover the launcher's
+  notices either. For low vision they
   have large-text and high-contrast variants driven only by a
   launcher-owned accessibility setting (never by a package or theme).
   **Accessible approvals** (owner decision Q13, 2026-11-24), both opt-in
@@ -508,7 +511,7 @@ bindings survive).
   and bindings; the error codes go into CLI.md with `rusttv panel`.
 - **Four kinds of value** (one table in the format docs): **token**
   (from the theme), **source** (live data, § 6.4), **knob** (a setting the
-  person chose, persisted), **local** (panel state, not persisted). Literal
+  person chose, persisted), **state** (§ 5.7, not persisted). Literal
   colours are allowed but flagged "doesn't follow the theme".
 
 ### 5.4 Motion (v2)
@@ -523,7 +526,8 @@ bindings survive).
   still panels).
 - **Triggers**: on focus, on press, on a source change, after a delay
   while visible. Timer and source triggers may only switch the panel's
-  own variants, never run actions. A banner is a separate, host-owned
+  own variants, never run actions (§ 5.7 also lets them set states and
+  play animations). A banner is a separate, host-owned
   declaration (which source change raises which banner), not a variant.
 - **No flashing**: a loop's period is at least 1 s, at most 3 flashes per
   second and no large-area luminance flash (WCAG 2.3.1), enforced in the
@@ -563,7 +567,8 @@ timer or a source):
   decided by the owner on 2026-11-24 (§ 16 Q7).
 
 Pages may map remote keys (colour keys, Play/Pause, Menu, numbers) to
-these actions. Back, Home and long-press Home are reserved. Built-in-only
+these actions. The reserved keys of § 5.7 never reach a package, and Back
+only as § 5.7 allows. Built-in-only
 actions (pairing, installing updates, approving) can't be named by a
 stored package.
 
@@ -612,70 +617,159 @@ too; each is its own later decision (§ 15 step 8).
   § 5.1's (2 000 strings, 16 placeholders a string, 1 MiB a table;
   `TOO_MANY`, `BAD_PLACEHOLDER`, `TOO_LARGE`).
 
-### 5.7 Events, states and navigation (full customisation, data)
+### 5.7 Full customisation as data: layout, lists, states, events
 
-Owner request 13: everything a theme or panel needs to behave its own
-way is data, so the studio can edit it and the review can say what it
-does.
+Owner request 13: everything a theme or panel needs to look and behave
+its own way is data, so the studio edits it visually and the review can
+say what it does. First numbers are guesses, measured in step 2f.
 
-- **States**: a document declares named states (yes/no, number, text, or
-  one of a list) with a start value; expressions read `{"state": name}`.
-  States are the "local" values of § 5.3: kept while the face is shown,
-  never persisted (a value meant to last is a knob, § 7).
-- **Events**: handlers on focusable nodes and on the document:
-  - a key (OK, the arrows, Menu, colour keys, numbers, Play/Pause), with
-    long press (600 ms or more), double press, hold for 1 to 5 s, or a
-    sequence of up to 8 keys;
-  - focus entering or leaving a node, a list's first or last item
-    reached;
-  - a source change, a timer while visible.
+**Layout and drawing**
 
-  Each handler has an optional `when` (a yes/no expression) and up to 8
-  steps: set a state, move focus to a node or list item, scroll a list,
-  switch a variant, play an animation, or one of § 5.5's actions. Timer
-  and source events may only set states, switch variants and play
-  animations, never § 5.5 actions (as today).
-- **No loops**: a handler runs its steps once per event; a step can't
-  raise another event in the same frame, so handlers can't chain into a
-  cycle. Fuel and the watchdog (§ 6.5) cover the rest.
-- **Reserved keys**: Home, long-press Home and the safe-look chord can't
-  be bound. Back may be bound only while a state differs from its start
-  value (to close a menu or a tab); with every state at its start, Back
-  does what the launcher does, so a person can always get out.
-- **Navigation as data**: each container says how the arrows move inside
-  it (a row, a column, a grid, with or without wrap) and where focus goes
-  at an edge (another container, or nowhere); without it the host moves
-  to the nearest node in that direction. Right to left mirrors it (§ 5.3).
-- **Lists**: `repeat` (§ 5.3) gains `sort` (by an item field or a
-  source such as launch counts, either way) and `filter` (a yes/no
-  expression over the item), and per-item stagger (§ 5.4).
-- The error codes and limits come with the slice (§ 15 step 2f).
+- Frames may set `layout` (row, column, grid or wrap) with gap, padding
+  and alignment, each child fixed, hug or fill with a min and max
+  (mapped onto Slint's layouts, § 6.1), so large text and long
+  translations reflow instead of overflowing.
+- A `scroller` node: an axis, how focus is kept in view (start, centre,
+  nearest or a page at a time), snap and a scroll animation; `pages`: a
+  stack of pages across or down with a page indicator.
+- A Home root fills the window inside the safe area; children anchor to
+  start, end or stretch (other aspect ratios, Linux windows, overscan).
+- `mask` (an alpha gradient or image) on a group, for edge fades;
+  `transform` (scale, move, skew, 2D rotation); image focal point, zoom,
+  offset, saturation and brightness; text shadow, marquee on focus and fit
+  (shrink or cut); gradient stops that bind and animate. Each has a tier
+  per renderer (§ 6.2) and a fallback the studio shows.
+
+**Lists**
+
+- `repeat` (§ 5.3) gains `sort` (a list of keys, each an expression,
+  either way, stable), `filter` (a yes/no expression), `from` and `count`
+  (a dock with the first five, a shelf with the rest), `group_by`
+  (sections with headers), per-item stagger and a layout transition
+  (move, enter, exit). Sort and filter run again only when their inputs
+  change.
+- **The app list stays the person's**: a `repeat` over `apps.list` is
+  windowed (only the visible items and a margin are built, so a TV with
+  120 apps fits the node budget and § 5.1's cap of 50 doesn't apply) and
+  always shows every app the person hasn't hidden, in the person's order
+  (§ 8.2); `sort` and `filter` are refused on it. Other views of the same
+  apps (a "most used" row, a tab per kind) are extra lists; the full list
+  stays reachable (§ 10.4).
+- `apps.list` items have: name, banner, icon, a monochrome icon and a
+  small colour palette (both made by the host), kind (app, game, folder,
+  panel), new (until first opened) and launch count. A folder's `children`
+  are laid out by the theme's `folder` document, or with tokens only.
+- **Item and focus values**: inside a `repeat`, `{"item": …}` reads the
+  item's fields and its index, first or last, row, column, whether it is
+  focused and how far it is from the focused item; anywhere,
+  `{"focus": …}` reads the focused item's fields and box. These are
+  in-document values, not the focused-app source § 6.4 keeps out. A
+  focus-frame node may follow the focus box with a transition.
+- **Functions** added to expressions (§ 6.4): colour (mix, alpha,
+  lighten, darken, a readable text colour on a background), time (hour,
+  minute, weekday, between two times) and `select` (several branches),
+  with a matching `select` form in message tables for grammar.
+
+**States**
+
+- A document declares named states (yes/no, number, text, or one of a
+  list) with a start value; `{"state": name}` reads one; a `repeat`
+  item may have its own. States replace § 5.3's "local" values: kept
+  while the document is shown, never persisted. To remember a choice (the
+  last tab), a step may set one of the package's own one-click knobs
+  (§ 7), at most once every 5 s.
+- A variant may be picked by an expression (`variant_when`), with a hard
+  cut (shared transitions stay later); a reduced-motion variant is picked
+  this way.
+
+**Events**
+
+- **Keys**: OK, the arrows, Menu (unless reserved), colour keys, numbers,
+  Play/Pause; long press (600 ms or more); double press (the single
+  press then waits a declared window of at most 400 ms, shown on the
+  review); hold and key repeat (from 300 ms, or after N repeats); a
+  sequence of up to 8 keys with at most 2 s between them. `start` and
+  `end` name the arrows in reading direction; `left` and `right` are
+  physical.
+- **Other events**: focus entering or leaving a node, a list's first or
+  last item reached, shown or hidden (`on_show`, for icons bouncing in),
+  a source change, a timer while visible (every 1 s or slower), idle for
+  N s since the last key.
+- Each handler has an optional `when` (a yes/no expression) and up to 8
+  steps: set a state; move focus (to a node, an item by index, first,
+  last, a row, or the first item where an expression holds); scroll; open
+  or close a focus scope (a menu that keeps focus until it closes, then
+  focus goes back); switch a variant; play an animation; set a one-click
+  knob (above); and § 5.5's actions.
+- **Only key presses act**: § 5.5's actions and focus moves run only
+  from a key handler on a focused node. Document-level key handlers (key
+  sequences) and focus, edge, show, timer, idle and source handlers only
+  set states, switch variants and play animations. So nothing moves focus
+  or opens anything without a key press, and focus handlers can't bounce
+  focus back and forth.
+- **OK opens what it shows**: `open_item` opens the focused item only,
+  resolved by the host, and an app item's name and image must come from
+  that same item (a lint), so a theme can't show one app and open
+  another.
+- **No loops**: a handler runs its steps once per event, and a step
+  can't raise another event in the same frame. Fuel and the watchdog
+  (§ 6.5) cover the rest.
+- **Reserved keys** go through the launcher first and never reach a
+  package: Home, long-press Home, long-press Back, the safe-look chord
+  (and any hold or sequence that contains it), the Settings way in and
+  the all-apps key (§ 10.4), and a long press of OK on app items and tiles
+  (the tile menu: move, hide, folders). A package may bind Back only while
+  a state differs from its start, and only to put states back or close a
+  focus scope; a second Back within 1 s always goes to the launcher.
+- While a locked surface, a review, a launcher page or the idle screen is
+  in front, a Home document gets no keys, timers or sources.
+
+**Limits** (first guesses): 32 states, 64 handlers, 8 steps each, 4
+timers; sort and filter within the frame's fuel. § 5.4's no-flash rule
+covers keyframes, stagger and animations and state changes from events.
+Pointer and touch (the phone touchpad, REMOTE.md) move focus in v2;
+hover and scroll events are later; sound stays later (§ 9.8). The error
+codes come with each slice.
 
 ### 5.8 Scripts (later, opt-in)
 
-Owner decision 2026-11-27: code is a later layer on top of § 5.7, for
-power users, never needed for a look the data can describe.
+Owner decision 2026-11-27 (level 3, Q9): code is a later layer on top of
+§ 5.7 for power users, never needed for a look or behaviour the data can
+describe.
 
-- A package may carry small scripts, used in two places only: a `script`
-  function in expressions that computes a value from its arguments, and a
-  `script` step in an event handler that returns state changes and steps
-  from § 5.7's list. Scripts never call actions themselves; the steps they
-  return pass the same checks as written ones.
-- **What a script can read**: the arguments it is given (declared
-  sources, knobs, states, the list item), nothing else: no files,
-  network, clipboard, settings, other packages or the wall clock beyond
-  the clock source; randomness only from a seed the host passes.
-- **Budget**: an operation (fuel) limit per call and per frame and a
-  memory cap; over budget, the call gives no value (the fallback shows)
-  and the watchdog counts it; a script over budget again and again is
-  paused like a heavy face (§ 6.5).
-- **Review**: "contains code" in amber, with the scripts listed by size.
-  The review says what a script can read (its sources' tiers), not what
-  it computes. Packages with scripts install only when the person has
-  turned on "Allow packages with code" (off by default; turning it on
-  takes the code and hold, and the look lock covers it).
-- Scripts never run on locked surfaces (§ 4), and the safe look disables
-  scripted packages like every user package.
+- A package (panel or theme) may carry small scripts, used in two places
+  only: a `script` function in expressions (sort keys and filters
+  included) that computes a value from its arguments, and a `script` step
+  in an event handler that returns state changes and steps.
+- **Returned steps are checked at run time** against what the event may
+  do (§ 5.7) and against the package's declared actions, apps, sources
+  and knobs; anything else is dropped and counted. A script can't bind
+  keys, change Back, touch the floors or the app list, or call actions
+  itself.
+- **What a script can read**: its arguments (declared sources, knobs,
+  states, the item), nothing else: no files, network, clipboard,
+  settings, other packages, or time beyond the clock source; randomness
+  only from a seed the host passes.
+- **Budget**: an operation limit per call, one shared limit per frame
+  (every item's calls count against it) and a memory cap; over budget,
+  the call gives no value (the fallback shows) and the watchdog counts
+  it; again and again, the package is paused (§ 6.5), or a Home document
+  falls back to the built-in Home (§ 10.4). The crash marker names
+  scripts (§ 9.6).
+- **Review**: "contains code" in amber, with the scripts listed by size;
+  it says what they can read (the highest tier among their sources), not
+  what they compute; the approval covers the scripts through the package
+  hash.
+- **"Allow packages with code"** (Settings, off by default): turning it
+  on takes the code and hold, on the TV only (never from the phone or an
+  MCP); turning it off is one click and disables scripted packages; both
+  are recorded in History, and the look lock covers it. The safe look
+  turns it off (its undo turns it back on). A restore or bundle brings
+  scripted packages back disabled while it is off. The capability set
+  (§ 12.3) says whether a launcher runs scripts. On Linux, where
+  approval is a convenience (§ 4), only the sandbox protects.
+- Scripts never run on locked surfaces (§ 4). The engine lives in its own
+  crate, used by the launcher and the CLI's validator.
 - The studio edits scripts as text with checks; an agent-written script
   is untrusted like any package content.
 - The language (Rhai, as #79 uses, or WASM) and its cost on the Philips
@@ -688,7 +782,8 @@ power users, never needed for a look the data can describe.
 
 - A **fixed set of generic Slint components** driven by models from Rust
   (not the Slint interpreter: not a dependency, unmeasured cost, more
-  power than data needs; the step 1 spike measures both). Slint can't
+  power than data needs; measured in § 6.7 at about 50% more per frame).
+  Slint can't
   recurse, so the tree is drawn by **typed nested repeaters to the depth
   limit (8)**; group effects (clip, opacity, rotation) belong to their
   level. The step 1 spike measures per-node cost and sets the node limit.
@@ -718,8 +813,8 @@ From Slint 1.18 (checked in its source; confirmed by the step 1 spike):
 |---|---|
 | **Native** | per-corner radius; linear and radial gradients; one drop shadow per element; opacity; clip; rotation; paths with fill rule, caps and joins; letter spacing, line height, max lines, italic, text stroke; image fit, tiling, colorize; transitions |
 | **Unverified until step 1** | conic gradients; inner shadow and shadow spread (not Slint element properties as far as we know; maybe drawn as layers) |
-| **Costly** (allowed, counted in the budget) | several shadows (stacked layers, each an offscreen blur); cached layers; large images |
-| **Not on the TV in v2** | layer blur; background blur; blend modes; dashed strokes; per-side or outside/centre strokes; corner smoothing; keyframes; text gradient |
+| **Costly** (allowed, counted in the budget) | several shadows (stacked layers, each an offscreen blur); cached layers; large images; keyframes and stagger (step 2f) |
+| **Not on the TV in v2** | layer blur; background blur; blend modes; dashed strokes; per-side or outside/centre strokes; corner smoothing; text gradient |
 
 On the software renderer (Linux, desktop) shadows and rotation move to
 "not drawn". The studio greys out what the selected target can't draw; on export,
@@ -799,10 +894,16 @@ a removed one is deprecated for one release first.
   `BAD_EXPRESSION`, `UNKNOWN_FUNCTION`, `TYPE_MISMATCH`,
   `UNKNOWN_SOURCE`, `UNDECLARED_SOURCE`, `EXPRESSION_TOO_LARGE`,
   `TOO_MANY_BINDINGS`.
-- **For full customisation** (§ 15 step 2f): launch counts (how often
-  RustTV opened each app, kept by the launcher itself, so no usage-access
-  permission) and an app icon's main colour (computed by the launcher),
-  both tier 2 like the app list.
+- **For full customisation** (§ 15 step 2f):
+  - launch counts: how often RustTV opened each app in the last 30 days,
+    kept by the launcher itself (so no usage-access permission; launches
+    from elsewhere don't count), hidden apps excluded, reset in Settings,
+    never in History, the Mac backup or MCP tools, tier 2;
+  - an app icon's palette and monochrome icon, made by the launcher, tier
+    2 like the app list;
+  - `ui.text_scale`, `ui.reduced_motion`, `ui.high_contrast`, `ui.rtl`,
+    `ui.language` and the window size, tier 0;
+  - `wallpaper.blurred` (§ 10.4), tier 0.
 - **Later sources**, each with its own SECURITY.md section: web data
   through one RustTV fetcher with fixed endpoints and no package-supplied
   parameters; data from an app's content provider the person allows; data
@@ -813,7 +914,8 @@ a removed one is deprecated for one release first.
 - Per-face cost estimate (nodes, layers, shadows, images, animations,
   bindings) checked against the caps (§ 5.1); the studio shows it.
 - **Watchdog**: a face that misses frames repeatedly loses effects first,
-  then animations, then pauses ("panel paused"), recorded in History. With
+  then animations, then pauses ("panel paused"), recorded in History (a
+  Home document isn't paused: the built-in Home loads instead, § 10.4). With
   several user faces visible, the one with the highest cost estimate is
   degraded first.
 - **BENCHMARK_PLAN.md** gets a synthetic-panel fixture set (small,
@@ -840,9 +942,8 @@ What it settles:
   about 18–20% more per frame than hand-written Slint (≈ 0.031 vs
   0.026 ms per node), with the same cold start (`am start -W` 212–246 vs
   208–219 ms) and about 0.4–2.4 MB more memory. Parsing is cheap (0.5 ms
-  for 180 nodes). The slint-interpreter route wasn't built: the generic
-  route is close enough, and the interpreter would put a compiler in the
-  APK.
+  for 180 nodes). The slint-interpreter route was measured later
+  (§ 6.7).
 - **Node budget.** A full redraw passes 16.7 ms at about 450 generic
   nodes, so the per-face cap of 500 (§ 5.1) stays, and a new **visible
   total** for user faces is added: about 250 nodes on screen at once,
@@ -885,8 +986,11 @@ drew the same screen (checked by screenshot) on the Philips:
 | compiled (today) | 6.2 / 7.1 ms | about 51 MB |
 | `slint-interpreter` | 9.4 / 10.2 ms | about 51 MB |
 
-- The interpreter costs about 50% more per frame than compiled code (the
-  JSON route of § 6.6: about 18%); both keep 60 fps on this screen.
+- Spike numbers, not a BENCHMARK_PLAN.md measurement. The interpreter
+  costs about 50% more per frame than compiled code (the JSON route of
+  § 6.6: about 18%); both kept a frame every 16.7 ms on this screen. PSS is
+  about 51 MB in both modes because this APK links the interpreter (§ 6.6's
+  41 MB is the APK without it).
   Compiling the `.slint` source took 30 ms; the spike's library grew to
   21 MB with the interpreter.
 - So owner request 13 is met with data drawn by compiled components
@@ -1006,6 +1110,7 @@ drew the same screen (checked by screenshot) on the Philips:
 | Status corner | corner | ≤ 2 glyphs total | no | priority order set by the person |
 | Banners | banner | capped card | no | only on a source change the package declares; one at a time; ≤ 1 per package per 10 min and ≤ 1 per 2 min overall; never over pages or locked surfaces |
 | Idle screen | ambient | one line or a capped block | no | OLED rules below |
+| Home layout | home (themes only) | the window | yes | § 10.4's floors; the first pick needs the code |
 | Phone mirror | phone | a tile image | — | rendered by the TV as a PNG and sent as an image (no package JSON reaches the phone page, so no second renderer and no injection) |
 
 **OLED** (the Philips is OLED): ambient faces have a luminance cap, no
@@ -1040,8 +1145,10 @@ dim after a set time.
   and picks among installed themes are look settings: one click (owner
   decision Q3, 2026-11-24). A placement listed on the install review is approved with the
   install.
-- Placement survives theme changes (the Home order is a flat list; the
-  theme only decides how it wraps). The order file and History keep it
+- Placement survives theme changes (the Home order is a flat list; a
+  theme decides how it is laid out, § 10.4, but never reorders or hides
+  it, and tweaks that don't apply to a Home document, such as grid
+  columns, are ignored). The order file and History keep it
   (§ 9.5).
 
 ## 9. Installing and managing packages
@@ -1199,7 +1306,8 @@ The launcher keeps a marker naming each user package that is **at risk**
 since the last clean start — not every tile that merely sits on Home) and
 clears it when that is over. A cheap "last package drawing or
 evaluating" slot, written by the panic hook before the abort, names the
-package that was busy (an expression, a source change, a banner) even if
+package that was busy (an expression, a source change, a banner, an event
+handler, a script call) even if
 it only sat on Home; the launcher runs `panic = "abort"`, so a crash at any
 of those moments leaves the marker. At the next start the marked packages
 are disabled one at a time (newest change first, then highest cost
@@ -1214,7 +1322,8 @@ three times in a row. A
 crash during staged validation deletes the staged file,
 and after two crashes in a row every user package is disabled and the
 default look loads (the safe-look notice says what happened). Same for a
-theme.
+theme; a crashing Home document falls back to the built-in Home and the
+default theme.
 
 ### 9.7 Profiles and several TVs
 
@@ -1256,6 +1365,7 @@ Each token says where it is used, `since` and `deprecated`.
   the system, or by a clock range.
 - **Floors enforced on the TV**: contrast of text pairs and of the focus
   indicator (WCAG AA), minimum text size, ranges for every layout token
+  of the built-in Home (a Home document has § 10.4's floors instead)
   (a theme can't hide the grid or the focus). A theme below a floor is
   refused at install.
 - **Ranges for every token**, motion included (focus zoom, sway, glow,
@@ -1272,7 +1382,8 @@ Each token says where it is used, `since` and `deprecated`.
 
 | Surface | Theme can |
 |---|---|
-| Home, folders, tile menu, top-right menu, banners, idle screen | tokens, and Home's whole layout through the Home document (§ 10.4) within its floors |
+| Home screen | tokens and the Home document (§ 10.4), within its floors |
+| Folders, tile menu, top-right menu, banners, idle screen | tokens, and the slots § 10.4 lists (a `folder` document, the `menu` slot, banner tokens, the `ambient` face) |
 | Settings, History, Optimizer, Remote pages | tokens only (layout stays the launcher's) |
 | User and built-in panels | tokens (panels read tokens) |
 | Review screen, code entry, pairing and trust screens, Recovery, safe-look notice, update confirmation | **nothing** (locked) |
@@ -1292,31 +1403,61 @@ Each token says where it is used, `since` and `deprecated`.
 
 ### 10.4 Home as a document (owner request 13)
 
-- A theme may carry `home`: a document like a panel's (§ 5.3) for the
-  Home screen, with the same nodes, bindings, states, events, navigation
-  and motion (§ 5.4, § 5.7). Home-only parts are slots it places and
-  styles: the app list (a `repeat` over `apps.list`, with each app's
-  banner, icon and name), folders, the panel tiles the person placed
-  (§ 8), the hero, the clock and the status corner.
-- **Layout styles are sample documents, not modes**: grid, shelf, dock,
-  top tabs, carousel, floating pills, sidebar, blade and zen (the last
-  ones from #79) ship as starting points in the studio, each fully
-  editable.
-- **Floors**, checked at install and on every load:
-  - every app the person hasn't hidden stays reachable (the app list must
-    be present and reachable by focus), and the person's placement still
-    decides which panels appear;
-  - the focus is always visible (the focus floor, § 10.1), and contrast
-    and minimum text size hold;
-  - Settings stays reachable through a launcher-owned way in that a theme
-    can't remove (the Menu key or a long press, decided with the safe look
-    in step 3);
+- A theme may carry `home`: a document for the face `home` (themes only;
+  its root fills the window, § 5.7) with the same nodes, bindings, states,
+  events, navigation and motion as panels. A theme without one gets the
+  built-in Home with its tokens; the built-in Home becomes the default
+  theme's Home document when the built-ins move to v2 (§ 15 step 2e).
+- **Slots** the theme places and styles, never changes the content of:
+  - the app list (the windowed host list, § 5.7) and folders (a `folder`
+    document, or tokens);
+  - the panel tiles the person placed (§ 8): the theme places and sizes
+    each slot and picks the face by size (a dock icon uses the panel's
+    `icon` from its meta, else a generated icon and name), but never
+    changes what the panel draws, its user badge or its focus look;
+  - the hero (the focused tile's, § 8.1), the clock (the minute tick;
+    seconds only while visible and not idle, at most once a second) and
+    the status corner (the person's priority and its 2-glyph cap stay);
+  - the tile menu and top-right menu: a `menu` slot that repeats the
+    launcher's entries, placed and styled, never remapped or removed;
+    banners (tokens for how they enter, where and for how long, within
+    § 8.1's caps) and the idle screen (the `ambient` face, OLED rules).
+- **Layout samples**, not modes: grid, shelf, dock, top tabs, carousel,
+  floating pills, sidebar, blade and zen (several from PR #79) ship as
+  editable starting points; step 2f's acceptance table lists each with
+  the primitives it uses and a Philips screenshot test.
+- A theme may declare knobs (§ 7) that drive its tokens, variants and
+  list options (columns, density, labels, hero on or off), and named
+  images (within § 5.1's caps) that image nodes pick by expression (a
+  wallpaper per time of day). `wallpaper.blurred` (blurred once per
+  wallpaper by the host) gives frosted glass where background blur isn't
+  drawn (§ 6.2).
+- **Floors, enforced while Home runs**, not only at install:
+  - the app list, the focus frame and the Settings way in ignore
+    `visible`, opacity and size bindings; focus lands only on a node that
+    is drawn, on screen and at least the minimum size, and the host
+    scrolls it into view;
+  - the all-apps key opens a launcher-drawn list of every app the person
+    hasn't hidden, whatever the document does;
+  - a contrast guard remaps text colours at run time when bound colours
+    fail the floor (as in high contrast, § 5.3);
+  - a launcher-drawn "custom Home · name" mark and the launcher's own
+    notices (pending PIN reset, a waiting package, the safe-look notice)
+    sit in a slot the document can't cover or move;
   - Back follows § 5.7.
-- A theme without `home` gets the built-in Home with its tokens. The
-  built-in Home becomes the default theme's Home document when the
-  built-ins move to v2 (§ 15 step 2e).
-- Home's node budget may be larger than a face's (measured in step 2f;
-  the node count is after `repeat`).
+
+  If a floor fails, or the document goes over budget, crashes or trips
+  the watchdog, the built-in Home loads with a notice, recorded in
+  History (§ 9.6).
+- **First pick**: picking a theme with a Home document for the first
+  time needs the code, like a first activation (§ 8.2); a schedule or
+  named look that would switch to it counts as that pick. Later picks
+  among installed themes stay one click.
+- **Budget**: until step 2f measures it (18, 50 and 100 apps with the
+  three heaviest samples), § 5.1's caps apply to the Home document.
+- Accessibility: the label is an expression (an item's position, "3 of
+  18"); TalkBack support stays as § 5.3 says. RustTV profiles (a kids'
+  Home behind a PIN) are a separate decision (§ 16 Q20).
 
 ## 11. Live preview on the TV (optional)
 
@@ -1359,8 +1500,8 @@ Each token says where it is used, `since` and `deprecated`.
 - **Crates**, layered: `rusttv-panels` (format, validator, layout model,
   expressions, shared by TV, CLI and studio), `rusttv-panels-ui` (the Slint
   components of § 6), `studio-engine`, `studio-mcp`, `studio-ui`. The
-  launcher's dependency tree must not contain the studio's (egui, wasmi,
-  FigCraft): a CI check enforces it.
+  launcher's dependency tree must not contain the studio's (egui,
+  FigCraft, and wasmi unless Q19 picks WASM for scripts): a CI check enforces it.
 
 ### 12.2 Workspace and canvas
 
@@ -1397,7 +1538,9 @@ against each target and shows "won't draw on <TV>: background blur".
   unsupported on target, over a limit or the budget, text fit (advice),
   contrast, missing focus look, focus order holes, RTL issues, literal
   colours, unused assets, missing translations and plural forms, unbound
-  or undeclared sources, id collision, version not bumped, licence
+  or undeclared sources, a Back trap, apps or focus islands out of reach,
+  a timer faster than 1 s, a flash, a script over budget, an app item whose
+  name and image come from different items, id collision, version not bumped, licence
   missing, metadata leaks (author paths), placement conflicts.
 
 ### 12.5 Project files
@@ -1509,6 +1652,13 @@ capabilities; install and preview never go through FigCraft.
   activation of non-tile surfaces needing the code.
 - Sources and tiers; the phone and preview get mock or mirror-only data.
 - The preview session and its transport; the studio MCP's scope.
+- Full customisation (step 2f): the Home document, its run-time floors,
+  the reserved keys and the all-apps and Settings ways in, events and
+  timers, launch counts as a launcher-kept store (and their exclusions),
+  the icon palette source.
+- Level 3 by the owner's dated decision (2026-11-27, Q9): scripts (§ 5.8),
+  the "Allow packages with code" setting and its tier, before the scripts
+  slice.
 - Supply chain: FigCraft and new decoders pinned, vendored with notices,
   `cargo deny` source rules, audited for network calls; each new
   dependency justified in its PR.
@@ -1542,7 +1692,7 @@ the measurement APK) starts with the owner's go-ahead in that session.
    through `accessible-*`; offscreen rendering of a face to a PNG (for the
    phone mirror; until it works the mirror shows a launcher-drawn tile with
    the name, or the thumbnail); the studio preview route (§ 6.1); the
-   slint-interpreter route for comparison. Output: renderer route, node and
+   slint-interpreter route for comparison (measured later, § 6.7). Output: renderer route, node and
    effect limits, the preview route.
 2. **Format and renderer**, in slices:
    **Owner decisions before step 2**: Q4 (lift "parked"), Q7 (open an
@@ -1581,16 +1731,20 @@ the measurement APK) starts with the owner's go-ahead in that session.
    - 2d function faces (rows, corner, banner, idle line, hero) as
      launcher slots.
    - 2e (after step 3) built-in panels moved to v2 with no visible change.
-   - 2f full customisation (owner request 13, § 5.7, § 10.4): `repeat`
-     with `sort` and `filter`, states and events, declared navigation,
-     keyframes and stagger, the Home document with its floors, the layout
-     samples; Home's node budget measured on the Philips.
      The release APK carries both paths behind a flag; BENCHMARK_PLAN.md
      measures each as Home on the Philips (cold start from Home, PSS,
      first draw, key-to-frame latency, sway CPU), and v2 becomes the
      default only when every metric is within the noise band of the
      compiled path. `convert.rs`, schema 1 and the compiled path are
      retired only after install ships (4b).
+   - 2f (after step 3 and 2e) full customisation (owner request 13, § 5.7,
+     § 10.4), in slices: 2f1 layout, scroller, pages, `repeat` options and
+     item values; 2f2 states, events, navigation and the reserved-key
+     filter; 2f3 keyframes, stagger, masks, transforms and the other
+     effects; 2f4 the Home document, its floors and slots, the layout
+     samples with their acceptance table, and Home's node budget measured
+     on the Philips (18, 50 and 100 apps). Its SECURITY.md entries (§ 14)
+     land first.
 3. **Tokens**, in slices with the screenshot checks byte-identical after
    each, starting with the SECURITY.md entries for locked surfaces, the
    safe look, its CLI plan and the Approve-only tier — blocked on the
@@ -1601,7 +1755,8 @@ the measurement APK) starts with the owner's go-ahead in that session.
    first the locked surfaces on `LockedTheme` with the hostile-theme
    test, the safe look with its key chord proven on the Philips and one
    other remote; then colours → type scale and radii → spacing and sizes → motion →
-   Home layout tokens; `Theme` driven from Rust; the default theme as a
+   Home layout tokens (for the built-in Home); the Settings way in and
+   the all-apps key, decided with the safe-look chord; `Theme` driven from Rust; the default theme as a
    package (system fonts, Q6).
 4. **Install and placement**:
    - 4a the remaining SECURITY.md sections (§ 14) not already written in
@@ -1666,7 +1821,9 @@ the measurement APK) starts with the owner's go-ahead in that session.
    **Decided 2026-11-24: allowed, and only apps named on the install
    review.**
 8. **Tiles bigger than 1×1** (PANELS.md decision 3): stay 1×1 in v2?
-9. **Code panels (level 3) and settings actions:** later, each its own decision?
+9. **Code panels (level 3) and settings actions:** later, each its own decision? — **Scripts decided 2026-11-27: later, opt-in, on top of
+   data-first full customisation (§ 5.8, Q19).** Settings actions stay
+   open.
 10. **Web data sources** (weather…): later, each its own review?
 11. **Install from the phone and from a file on the TV:** in the first
     install release (step 4e) or later? — **Decided 2026-11-24: in the
@@ -1699,6 +1856,9 @@ the measurement APK) starts with the owner's go-ahead in that session.
     Decided before the scripts slice, with a Philips measurement of each
     (frame time with scripts computing values, memory, library size) and
     a dependency review.
+20. **RustTV profiles** (a kids' Home with its own hidden apps, theme and
+    knobs, switched with a PIN): wanted, and when? They need a SECURITY.md
+    decision, since Settings behind a PIN meets § 10.4's floors.
 
 ## 17. Research
 
@@ -1991,3 +2151,24 @@ folded in: adb peers have no fingerprint; the PIN is `FLAG_SECURE` with a
 stricter lockout; Q5 gates step 7; "system packages" defined (YouTube,
 Netflix and the Play Store stay allowed); `theme_install_plan` lands in
 4d.
+
+**Round 21 (2026-11-27)**, owner request 13 (full customisation, scripts
+later), two fresh reviewers:
+
+- *Coverage* (70): no auto-layout, scroller or pages; the 50-item cap
+  vs every app reachable; no item or focus values, per-item states or
+  gliding focus; regions, folders, Zen's idle timer; edge, focus-scope,
+  logical keys, key repeat, focus targets, double-press delay; launch
+  counts' rules; multi-key sort vs the person's order; time, colour and
+  `select` functions; masks, transforms, particles, image and text
+  effects; per-surface rules; accessibility sources; profiles; a `home`
+  face; `open_item`; Home's fallback; scripts in themes; step 2f too big.
+- *Consistency and safety* (37): Back and reserved keys; actions from
+  non-key events; keyframes still "not on the TV"; the interpreter "not
+  measured"; PSS labels; budgets; "local" vs "state"; themes over
+  panels; first pick of a Home-replacing theme; 2f's place; wasmi; Q9;
+  floors only static; focus and Back traps; fake locked screens; timers
+  behind locked surfaces; script steps checked at run time; the code
+  setting's tier; § 14 entries; crash marker and watchdog for Home.
+
+All findings were folded into this version (§ 5.7, § 5.8, § 10.4 rewritten).
