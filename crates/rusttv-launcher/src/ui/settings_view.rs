@@ -269,6 +269,7 @@ impl Controller {
                 self.settings_status = (status::NONE, String::new());
                 self.home.close_settings();
             }
+            Some(Action::Apply(draft)) => self.apply_now(draft),
             Some(Action::Review(draft)) => self.open_review(draft),
             Some(Action::Restore(id)) => {
                 let Some(history) = History::get() else {
@@ -302,6 +303,8 @@ impl Controller {
         }
     }
 
+    /// Opens the review screen for `draft`; [`needs_code`] says whether
+    /// it asks for the code after Approve.
     fn open_review(&mut self, draft: Draft) {
         let Some(page) = &self.settings else {
             return;
@@ -311,7 +314,8 @@ impl Controller {
             self.settings_status = (status::TEST_BUILD, String::new());
             return;
         }
-        if overview.locked_ms > 0 {
+        let needs_code = needs_code(&draft.changes, overview.can_write_settings);
+        if needs_code && overview.locked_ms > 0 {
             self.settings_status = (status::LOCKED, self.duration_text(overview.locked_ms));
             return;
         }
@@ -319,18 +323,64 @@ impl Controller {
             return;
         };
         let lines = self.review_lines_for(&window, &draft, overview);
-        let code = self.platform.random_code().map(Arrow::from_random);
+        let code = needs_code.then(|| self.platform.random_code().map(Arrow::from_random));
         let count = lines.len();
         self.review_lines.set_vec(lines);
         self.review_code.set_vec(
             code.iter()
+                .flatten()
                 .map(|arrow| arrow_value(*arrow))
                 .collect::<Vec<_>>(),
         );
-        // Secure before the code can ever be drawn (it appears after Approve).
+        // Secure before the code can ever be drawn (it appears after
+        // Approve), and for every review: it also hides other apps'
+        // overlays, so what is approved is what the person sees.
         self.platform.set_secure(true);
         self.review = Some(Review::new(draft, count, code, (self.clock)()));
         self.settings_status = (status::NONE, String::new());
+    }
+
+    /// Opens the review for one package change, as a restore with one
+    /// would: the screen that still asks for the code.
+    #[cfg(test)]
+    pub(super) fn review_package_change(&mut self) {
+        self.open_review(Draft {
+            changes: vec![ApprovedChange::Package {
+                name: "com.example.app".into(),
+                old: Some(rusttv_history::PackageState::Enabled),
+                new: rusttv_history::PackageState::Disabled,
+            }],
+            launcher: None,
+        });
+        self.render();
+    }
+
+    /// Applies a reversible launcher setting directly without a review.
+    fn apply_now(&mut self, draft: Draft) {
+        let Some(page) = &self.settings else {
+            return;
+        };
+        if page.overview().test_build {
+            self.settings_status = (status::TEST_BUILD, String::new());
+            return;
+        }
+        self.start_apply(draft);
+    }
+
+    /// Hands `draft` to the history thread; [`Self::applied`] reports.
+    fn start_apply(&mut self, draft: Draft) {
+        let Some(history) = History::get() else {
+            return;
+        };
+        self.settings_status = (status::BUSY, String::new());
+        let started = in_background(
+            "rusttv-apply",
+            move || history.apply(draft),
+            Controller::applied,
+        );
+        if let Err(error) = started {
+            self.settings_status = (status::NOTHING_CHANGED, error.to_string());
+        }
     }
 
     fn review_input(&mut self, input: Input) {
@@ -365,22 +415,18 @@ impl Controller {
                 self.refresh_settings_data();
             }
             Some(Outcome::Confirmed) => {
+                let needs_code = review.needs_code();
                 let draft = review.draft().clone();
                 self.close_review();
-                self.swallow_ok_release = true;
-                let Some(history) = History::get() else {
-                    return;
-                };
-                history.correct_code();
-                self.settings_status = (status::BUSY, String::new());
-                let started = in_background(
-                    "rusttv-apply",
-                    move || history.apply(draft),
-                    Controller::applied,
-                );
-                if let Err(error) = started {
-                    self.settings_status = (status::NOTHING_CHANGED, error.to_string());
+                if needs_code {
+                    // Holding OK confirmed on a tick; swallow the release that follows.
+                    self.swallow_ok_release = true;
+                    // Clears a lockout's count of wrong codes.
+                    if let Some(history) = History::get() {
+                        history.correct_code();
+                    }
                 }
+                self.start_apply(draft);
             }
         }
     }
@@ -1031,6 +1077,19 @@ fn format_time(local_unix: i64) -> String {
     )
 }
 
+/// Whether approving `changes` on the TV needs the 4-arrow code and hold
+/// (SECURITY.md § Approval on the TV). Changes the launcher can't make
+/// itself (packages; settings without `WRITE_SECURE_SETTINGS`) go on to
+/// the computer, which carries them out because a person approved them
+/// here, and only the code shown on a `FLAG_SECURE` screen proves that.
+/// Everything else takes a plain Approve (owner decision 2026-11-24).
+fn needs_code(changes: &[ApprovedChange], can_write_settings: bool) -> bool {
+    changes.iter().any(|change| match change {
+        ApprovedChange::Package { .. } => true,
+        ApprovedChange::Setting { .. } => !can_write_settings,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1047,5 +1106,37 @@ mod tests {
         assert!(is_bidi_control('\u{202E}'));
         assert!(is_bidi_control('\u{2067}'));
         assert!(!is_bidi_control('a'));
+    }
+}
+
+#[cfg(test)]
+mod code_tests {
+    use super::*;
+
+    fn setting() -> ApprovedChange {
+        ApprovedChange::Setting {
+            key: "animator_duration_scale".into(),
+            old: None,
+            new: Some("0.5".into()),
+        }
+    }
+
+    fn package() -> ApprovedChange {
+        ApprovedChange::Package {
+            name: "com.example.app".into(),
+            old: None,
+            new: rusttv_history::PackageState::Disabled,
+        }
+    }
+
+    #[test]
+    fn only_changes_for_the_computer_need_the_code() {
+        // A launcher-only restore, and settings the launcher writes itself.
+        assert!(!needs_code(&[], true));
+        assert!(!needs_code(&[setting()], true));
+        // Packages always go to the computer; settings do without the grant.
+        assert!(needs_code(&[package()], true));
+        assert!(needs_code(&[setting(), package()], true));
+        assert!(needs_code(&[setting()], false));
     }
 }

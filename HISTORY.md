@@ -167,11 +167,25 @@ RustTV-Approved-By: tv-code sha256:… | terminal | delegation | upgrade | none
 
 ### What needs the code on the TV
 
+*Owner decision 2026-11-24* (updates the 2026-10-24 rule): the 4-arrow
+code and 2 s hold are too much for RustTV's own reversible settings.
+
 | Change | On the TV |
 |---|---|
 | Move, hide, unhide, folders (make, rename, apps in and out; the launcher's direct edits, as today) | recorded as `tv` entries without a code |
-| Settings, the update switch, any restore | review + code + hold OK (§ 6) |
-| Packages | review + code + hold OK → pending for the Mac |
+| Launcher settings (effects, idle screen, the update switch) | applied on OK, recorded as a `tv` entry; another OK undoes it |
+| Animations (with `WRITE_SECURE_SETTINGS` granted) and restores the launcher can carry out itself | review, then OK on Approve |
+| Packages (in a restore), and settings while the grant is missing | review + code + hold OK (§ 6) → pending for the Mac |
+
+One click applies what one click undoes. Animations write system settings
+and a restore changes many things at once, so both ask for Approve. Only
+changes that go on to the Mac keep the 4-arrow code and the 2 s hold
+(packages, and settings while the launcher lacks the grant): the Mac
+carries them out because a person approved them on the TV, and only the
+code on a `FLAG_SECURE` screen proves a person (§ 6.1); adb can inject any
+other key. Every review screen, with a code or without, sets `FLAG_SECURE`
+and hides other apps' overlays, so what is approved is what the person
+sees.
 
 ## 3. The store
 
@@ -219,7 +233,9 @@ RustTV-Approved-By: tv-code sha256:… | terminal | delegation | upgrade | none
 2. **Review** (§ 8.5): each change, old → new, grouped "This TV changes now"
    / "Needs your computer" (packages, with their state "as last seen by your
    computer": the TV can't see catalog packages; the computer re-checks).
-3. **Code + hold OK** (§ 6).
+3. **Approve**; for changes that go on to the computer (packages, and
+   settings while the launcher lacks `WRITE_SECURE_SETTINGS`), then the
+   **code + hold OK** (§ 6).
 4. **TV journal first:** `files/history/journal.toml` (atomic): approval
    hash, each step's key, original value and target, status `applying`.
 5. **Apply** step by step; verify by reading back; journal per step. On the
@@ -319,8 +335,9 @@ the door they can only add observations and notes (labelled as such,
 separately capped), consume a pending approval, or import into an empty
 history. They can't change the launcher's state, create or approve
 anything, or rewrite history. A forged observation is visible as a `drift`
-entry from "your computer"; restoring to it from the TV still needs the
-code and shows exactly what it changes.
+entry from "your computer"; restoring to it from the TV shows exactly what
+it changes and needs Approve, and the code too for anything that goes on
+to the computer.
 
 Typed `DeviceCommand`s, fixed URIs plus validated hex:
 
