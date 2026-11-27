@@ -355,6 +355,7 @@ Typed `DeviceCommand`s, fixed URIs plus validated hex:
 | `HistoryPending` | `adb exec-out content read --uri …/pending` | R0 |
 | `HistoryInbox { nonce, payload }` | `adb exec-in content write --uri …/inbox/<16-hex>`, payload on stdin | RL |
 | `HistoryCommit { kind, nonce }` | `adb shell content call --uri content://ai.rusttv.launcher.history --method commit --arg <kind>:<16-hex>` | RL |
+| `StageBegin`, `StageWrite`, `StageEnd` | `content call … --method stage --arg begin:<size>:<sha256>`, `content write …/stage/<16-hex>`, `content call … --method stage --arg end:<16-hex>`: one inert package into the staging slot, not into the history (SECURITY.md "Packages: staging and install") | RS |
 
 - **Class RL (new): launcher-private.** A `RiskClass` variant ordered between
   `Read` and `Transient`: above R0 (MCP never runs it; the "only listed

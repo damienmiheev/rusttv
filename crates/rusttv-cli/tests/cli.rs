@@ -396,8 +396,15 @@ fn every_error_code_is_documented_in_cli_md() {
         "HISTORY_NOT_EMPTY",
         "HISTORY_STORAGE",
         "PENDING_REFUSED",
+        "THEME_INVALID",
+        "LAUNCHER_TOO_OLD",
     ];
-    for code in rusttv_core::ERROR_CODES.iter().chain(&cli_only) {
+    let staging = rusttv_history::stage::STAGE_ERRORS;
+    for code in rusttv_core::ERROR_CODES
+        .iter()
+        .chain(&cli_only)
+        .chain(&staging)
+    {
         assert!(
             docs.contains(&format!("| `{code}` |")),
             "{code} is missing from the error code table in CLI.md"

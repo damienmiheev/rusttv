@@ -582,3 +582,19 @@ msgstr "Apparence sûre"
 #: ui/home.slint
 msgid "Your Home and its extras are off. Hold Back for 5 seconds to bring them back."
 msgstr "Votre écran d’accueil et ses extras sont désactivés. Maintenez Retour 5 secondes pour les rétablir."
+
+#: ui/home.slint
+msgid "Waiting to install"
+msgstr "En attente d’installation"
+
+#: ui/home.slint
+msgid "A package from adb (identity unknown)"
+msgstr "Un paquet reçu par adb (expéditeur inconnu)"
+
+#: ui/home.slint
+msgid "{} KB · hash {}"
+msgstr "{} Ko · empreinte {}"
+
+#: ui/home.slint
+msgid "Compare the hash with the one your computer printed. Installing it from the TV comes in a later RustTV version."
+msgstr "Comparez l’empreinte avec celle affichée par votre ordinateur. L’installation depuis le téléviseur arrive dans une prochaine version de RustTV."

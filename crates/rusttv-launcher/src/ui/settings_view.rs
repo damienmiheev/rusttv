@@ -793,6 +793,21 @@ impl Controller {
                         .into_iter()
                         .map(|about| self.about_row(window, page, about))
                         .collect(),
+                    Section::Staged => {
+                        note.push(strings.invoke_staged_note().to_string());
+                        overview
+                            .staged
+                            .iter()
+                            .map(|staged| {
+                                let kilobytes = staged.size.div_ceil(1024).to_string();
+                                let hash = staged.sha256.get(..12).unwrap_or_default();
+                                row(
+                                    strings.invoke_staged_title(),
+                                    &strings.invoke_staged_detail(kilobytes.into(), hash.into()),
+                                )
+                            })
+                            .collect()
+                    }
                     Section::Waiting => overview
                         .pending
                         .iter()
@@ -925,6 +940,7 @@ fn section_value(section: Section) -> i32 {
         Section::Waiting => 3,
         Section::Effects => 4,
         Section::Ambient => 6,
+        Section::Staged => 7,
         // Tabs are named by the platform.
         Section::About | Section::Tab(_) => 5,
     }

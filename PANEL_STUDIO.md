@@ -1988,7 +1988,14 @@ the measurement APK) starts with the owner's go-ahead in that session.
      the SECURITY.md rules (section "Packages: staging and install", risk
      class RS), T3b `rusttv theme install` and the inert staging slot with
      its waiting row, T3c the review with the code, the package store and
-     History, T3d the MCP tool.
+     History, T3d the MCP tool. **As built (T3b, 2026-11-27)**: the
+     protocol and the slot are `rusttv_history::stage` (`StageArg`,
+     `StageResult`, `Slot`: files under `<files>/staging`, times as boot
+     count plus uptime), shared by the launcher's door provider and the
+     CLI tests' fake TV; the provider copies a write through a pipe capped
+     at the announced size plus one byte; `RiskClass::Staging` ("RS") holds
+     the three door calls; Settings shows "Waiting to install" with the
+     size and a 12-digit hash prefix, and OK on it does nothing until T3c.
    - T4 safety net: the emergency Home, the safe-look key (us; with the
      step 3 safe look and its SECURITY.md entries).
    - T5 the runtime-code engine and host API behind "Allow packages with

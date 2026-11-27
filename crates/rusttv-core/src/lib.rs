@@ -47,8 +47,8 @@ pub use catalog::{
 pub use command::{
     ApkPath, Component, DeviceCommand, DoorKind, HistoryNonce, HistorySince, InboxPayload,
     InvalidApk, InvalidComponent, InvalidHistoryValue, InvalidPackageName, InvalidSettingValue,
-    PackageName, RiskClass, SettingKey, SettingState, SettingValue, WRITE_SECURE_SETTINGS,
-    WatchKey,
+    PackageName, RiskClass, SettingKey, SettingState, SettingValue, StageAnnounce,
+    WRITE_SECURE_SETTINGS, WatchKey,
 };
 pub use compat::{
     DeviceKind, DeviceProfile, InvalidPrivacyCategory, MissingField, PROFILE_SCHEMA_VERSION,

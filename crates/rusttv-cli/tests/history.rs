@@ -548,3 +548,109 @@ fn history_errors_have_codes() {
     let (code, _) = setup.fails(&["history", "restore-tv", "--dry-run"], None);
     assert_eq!(code, "HISTORY_NOT_FOUND");
 }
+
+/// A zip of stored entries, as `rusttv panel pack` writes one (tests only).
+fn stored_zip(files: &[(&str, &[u8])]) -> Vec<u8> {
+    fn crc32(bytes: &[u8]) -> u32 {
+        let mut crc = !0_u32;
+        for &byte in bytes {
+            crc ^= u32::from(byte);
+            for _ in 0..8 {
+                crc = if crc & 1 == 1 {
+                    (crc >> 1) ^ 0xEDB8_8320
+                } else {
+                    crc >> 1
+                };
+            }
+        }
+        !crc
+    }
+    let mut out = Vec::new();
+    let mut directory = Vec::new();
+    for (name, bytes) in files {
+        let offset = u32::try_from(out.len()).unwrap();
+        let head = |sig: u32, central: bool| {
+            let mut h = Vec::new();
+            h.extend(sig.to_le_bytes());
+            if central {
+                h.extend(20_u16.to_le_bytes());
+            }
+            h.extend(20_u16.to_le_bytes());
+            h.extend([0; 2]); // flags
+            h.extend([0; 2]); // stored
+            h.extend([0; 4]); // time and date
+            h.extend(crc32(bytes).to_le_bytes());
+            h.extend(u32::try_from(bytes.len()).unwrap().to_le_bytes());
+            h.extend(u32::try_from(bytes.len()).unwrap().to_le_bytes());
+            h.extend(u16::try_from(name.len()).unwrap().to_le_bytes());
+            h.extend([0; 2]);
+            if central {
+                h.extend([0; 10]);
+                h.extend(offset.to_le_bytes());
+            }
+            h.extend(name.as_bytes());
+            h
+        };
+        out.extend(head(0x0403_4b50, false));
+        out.extend(*bytes);
+        directory.extend(head(0x0201_4b50, true));
+    }
+    let start = u32::try_from(out.len()).unwrap();
+    out.extend(&directory);
+    out.extend(0x0605_4b50_u32.to_le_bytes());
+    out.extend([0; 4]);
+    let n = u16::try_from(files.len()).unwrap();
+    out.extend(n.to_le_bytes());
+    out.extend(n.to_le_bytes());
+    out.extend(u32::try_from(directory.len()).unwrap().to_le_bytes());
+    out.extend(start.to_le_bytes());
+    out.extend([0; 2]);
+    out
+}
+
+/// A theme package for the fake TV's launcher (0.1.0).
+fn theme_package(kind: &str) -> Vec<u8> {
+    let json = format!(
+        r#"{{"meta": {{"format": 2, "min_launcher": "0.1.0", "id": "user.dock", "kind": "{kind}",
+           "version": "1.0.0", "default_language": "en", "name": {{"en": "Dock"}}}}}}"#
+    );
+    stored_zip(&[("package.json", json.as_bytes())])
+}
+
+/// `theme install` checks the package, then the TV keeps exactly its bytes
+/// in the staging slot, and this computer logs it.
+#[test]
+fn theme_install_stages_the_package_on_the_tv() {
+    let setup = Setup::new("theme-install");
+    let package = theme_package("theme");
+    let file = setup.root.join("dock.zip");
+    std::fs::write(&file, &package).unwrap();
+    let data = setup.ok(&["theme", "install", file.to_str().unwrap()], None);
+    assert_eq!(data["id"], "user.dock");
+    assert_eq!(data["version"], "1.0.0");
+    assert_eq!(data["size"], package.len());
+    let slot = setup.tv_dir().join("staging/slot");
+    assert_eq!(std::fs::read(slot).unwrap(), package);
+    let log = std::fs::read_to_string(setup.state().join("staging.log")).unwrap();
+    assert!(log.contains(data["sha256"].as_str().unwrap()), "{log}");
+}
+
+/// A panel, a broken file or a test build of the launcher: nothing is sent.
+#[test]
+fn theme_install_refuses_what_it_must_not_send() {
+    let setup = Setup::new("theme-refused");
+    let panel = setup.root.join("panel.zip");
+    std::fs::write(&panel, theme_package("panel")).unwrap();
+    let (code, message) = setup.fails(&["theme", "install", panel.to_str().unwrap()], None);
+    assert_eq!(code, "THEME_INVALID", "{message}");
+    let broken = setup.root.join("broken.zip");
+    std::fs::write(&broken, b"not a zip").unwrap();
+    let (code, _) = setup.fails(&["theme", "install", broken.to_str().unwrap()], None);
+    assert_eq!(code, "THEME_INVALID");
+    let theme = setup.root.join("dock.zip");
+    std::fs::write(&theme, theme_package("theme")).unwrap();
+    setup.edit_device("debuggable = false", "debuggable = true");
+    let (code, _) = setup.fails(&["theme", "install", theme.to_str().unwrap()], None);
+    assert_eq!(code, "PRECONDITION_FAILED");
+    assert!(!setup.tv_dir().join("staging/slot").exists());
+}

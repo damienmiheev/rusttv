@@ -6,6 +6,7 @@
 //! their answer. Packing runs here at background priority while the
 //! launcher is off screen, and stops when it comes back (HISTORY.md § 9).
 
+use rusttv_history::stage::{Moment, Slot};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -282,6 +283,7 @@ fn work(mut platform: Box<dyn HistoryPlatform>, jobs: &Receiver<Job>, shared: &H
 }
 
 fn run(history: &mut TvHistory, job: Job, platform: &mut dyn HistoryPlatform, shared: &History) {
+    let staging = platform.root().join("staging");
     let id = platform.new_id();
     let new_id = || id.clone();
     let test_build = platform.test_build();
@@ -306,7 +308,12 @@ fn run(history: &mut TvHistory, job: Job, platform: &mut dyn HistoryPlatform, sh
             refresh_summary(history, clock, shared);
         }
         Job::Overview(reply) => {
-            let overview = overview(history, device, clock, test_build);
+            let mut overview = overview(history, device, clock, test_build);
+            let now = Moment {
+                boot: clock.boot_count(),
+                ms: clock.elapsed_ms(),
+            };
+            overview.staged = Slot::new(staging).waiting(now);
             if overview.error.is_none() {
                 shared.set_summary(Summary {
                     last_unix: overview.entries.first().map(|entry| entry.time_unix),
@@ -442,6 +449,7 @@ fn overview(
             locked_ms: history.locked_ms(clock)?,
             test_build,
             error: None,
+            staged: None,
         })
     };
     read().unwrap_or_else(|error| Overview {

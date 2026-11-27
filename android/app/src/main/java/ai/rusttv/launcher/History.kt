@@ -83,4 +83,12 @@ object History {
     /** The door's `commit` call: processes an inbox file; returns the result line. */
     @JvmStatic
     external fun nativeCommit(context: Context, arg: String, bytes: ByteArray): String
+
+    /** `content call … stage`: the result line (staging.rs, SECURITY.md class RS). */
+    @JvmStatic
+    external fun nativeStage(dir: String, arg: String, boot: Long, ms: Long): String
+
+    /** Where the bytes of a `stage/<nonce>` write go and at most how many, "path size", or "". */
+    @JvmStatic
+    external fun nativeStageIncoming(dir: String, nonce: String, boot: Long, ms: Long): String
 }

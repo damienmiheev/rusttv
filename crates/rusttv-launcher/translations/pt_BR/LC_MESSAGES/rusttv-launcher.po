@@ -582,3 +582,19 @@ msgstr "Visual seguro"
 #: ui/home.slint
 msgid "Your Home and its extras are off. Hold Back for 5 seconds to bring them back."
 msgstr "Sua tela inicial e os extras estão desativados. Segure Voltar por 5 segundos para trazê-los de volta."
+
+#: ui/home.slint
+msgid "Waiting to install"
+msgstr "Aguardando instalação"
+
+#: ui/home.slint
+msgid "A package from adb (identity unknown)"
+msgstr "Um pacote recebido por adb (remetente desconhecido)"
+
+#: ui/home.slint
+msgid "{} KB · hash {}"
+msgstr "{} KB · hash {}"
+
+#: ui/home.slint
+msgid "Compare the hash with the one your computer printed. Installing it from the TV comes in a later RustTV version."
+msgstr "Compare o hash com o que o seu computador mostrou. A instalação pela TV chega numa versão futura do RustTV."

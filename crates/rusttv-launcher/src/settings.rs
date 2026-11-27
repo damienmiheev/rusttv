@@ -32,6 +32,9 @@ pub(crate) struct Overview {
     pub test_build: bool,
     /// Reading the history failed (shown instead of the list).
     pub error: Option<String>,
+    /// The package waiting in the staging slot (SECURITY.md "Packages:
+    /// staging and install"): only facts the launcher derived.
+    pub staged: Option<rusttv_history::stage::Waiting>,
 }
 
 /// One history entry, ready to show.
@@ -63,6 +66,8 @@ pub(crate) enum Section {
     Updates,
     History,
     Waiting,
+    /// A package from adb waits in the staging slot.
+    Staged,
     /// A tab the platform adds, by its index in [`SettingsPage::tabs`].
     Tab(usize),
     /// RustTV and the host; always last.
@@ -301,6 +306,9 @@ impl SettingsPage {
         if !self.overview.pending.is_empty() {
             sections.push(Section::Waiting);
         }
+        if self.overview.staged.is_some() {
+            sections.push(Section::Staged);
+        }
         sections.extend((0..self.tabs.len()).map(Section::Tab));
         if self.about {
             sections.push(Section::About);
@@ -388,7 +396,11 @@ impl SettingsPage {
             Section::Effects => usize::from(self.overview.launcher.reduced_effects),
             Section::Ambient => usize::from(self.overview.launcher.ambient_off),
             Section::Updates => usize::from(!self.overview.launcher.update_check),
-            Section::History | Section::Waiting | Section::Tab(_) | Section::About => 0,
+            Section::History
+            | Section::Waiting
+            | Section::Staged
+            | Section::Tab(_)
+            | Section::About => 0,
         }
     }
 
@@ -398,6 +410,7 @@ impl SettingsPage {
             Section::Effects | Section::Ambient | Section::Updates => 2,
             Section::History => self.overview.entries.len(),
             Section::Waiting => self.overview.pending.len(),
+            Section::Staged => usize::from(self.overview.staged.is_some()),
             Section::Tab(tab) => self.tabs.get(tab).map_or(0, |tab| tab.controls.len()),
             Section::About => self.about_rows().len(),
         }
@@ -535,7 +548,7 @@ impl SettingsPage {
                 self.focus = Focus::Detail(row);
                 None
             }
-            Section::Waiting | Section::Tab(_) => None,
+            Section::Waiting | Section::Staged | Section::Tab(_) => None,
             Section::About => match self.about_rows().get(row)? {
                 AboutRow::Update => Some(Action::Update),
                 AboutRow::RustTv => Some(Action::Notices),
@@ -683,6 +696,28 @@ mod tests {
         page.refresh(overview);
         assert_eq!(page.sections()[5], Section::Waiting);
         assert_eq!(page.sections().last(), Some(&Section::About));
+    }
+
+    /// A staged package adds "Waiting to install" with one row; OK on it
+    /// does nothing yet (the review comes with T3c).
+    #[test]
+    fn a_staged_package_shows_its_own_section() {
+        let mut page = page();
+        let mut overview = page.overview().clone();
+        overview.staged = Some(rusttv_history::stage::Waiting {
+            size: 2048,
+            sha256: "ab".repeat(32),
+        });
+        page.refresh(overview);
+        let sections = page.sections();
+        assert_eq!(sections[5], Section::Staged);
+        assert_eq!(sections.last(), Some(&Section::About));
+        for _ in 0..5 {
+            page.handle(Input::Down);
+        }
+        assert_eq!(page.section(), Section::Staged);
+        assert_eq!(page.handle(Input::Right), None);
+        assert_eq!(page.handle(Input::OkReleased), None);
     }
 
     #[test]

@@ -582,3 +582,19 @@ msgstr "Veilige weergave"
 #: ui/home.slint
 msgid "Your Home and its extras are off. Hold Back for 5 seconds to bring them back."
 msgstr "Je startscherm en de extra's zijn uit. Houd Terug 5 seconden ingedrukt om ze terug te halen."
+
+#: ui/home.slint
+msgid "Waiting to install"
+msgstr "Wacht op installatie"
+
+#: ui/home.slint
+msgid "A package from adb (identity unknown)"
+msgstr "Een pakket via adb (afzender onbekend)"
+
+#: ui/home.slint
+msgid "{} KB · hash {}"
+msgstr "{} kB · hash {}"
+
+#: ui/home.slint
+msgid "Compare the hash with the one your computer printed. Installing it from the TV comes in a later RustTV version."
+msgstr "Vergelijk de hash met die op je computer. Installeren vanaf de tv komt in een latere versie van RustTV."

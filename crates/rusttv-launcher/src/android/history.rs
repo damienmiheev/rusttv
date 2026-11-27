@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use jni::objects::{GlobalRef, JByteArray, JClass, JObject, JString, JValue};
-use jni::sys::{jbyteArray, jstring};
+use jni::sys::{jbyteArray, jlong, jstring};
 use jni::{JNIEnv, JavaVM};
 use rusttv_history::door::{self, CommitKind, CommitResult};
 use rusttv_history::tv::{TvClock, TvDevice};
@@ -15,6 +15,7 @@ use rusttv_history::{HistoryError, HistoryId, Launcher, SETTING_KEYS};
 
 use crate::history::{History, HistoryPlatform};
 use crate::order_file;
+use rusttv_history::stage::{Moment, Slot};
 
 /// The VM, the application context and the Kotlin `History` class.
 struct Jni {
@@ -374,4 +375,60 @@ pub extern "system" fn Java_ai_rusttv_launcher_History_nativeCommit<'local>(
     .unwrap_or_else(|| failed("HISTORY_STORAGE"));
     env.new_string(result.encode())
         .map_or(std::ptr::null_mut(), |text| text.into_raw())
+}
+
+/// A moment from Kotlin's boot count and uptime; negatives read as 0.
+fn moment(boot: jlong, ms: jlong) -> Moment {
+    Moment {
+        boot: u64::try_from(boot).unwrap_or(0),
+        ms: u64::try_from(ms).unwrap_or(0),
+    }
+}
+
+fn java_string(env: &mut JNIEnv<'_>, text: &str) -> jstring {
+    env.new_string(text)
+        .map_or(std::ptr::null_mut(), |text| text.into_raw())
+}
+
+/// `History.nativeStage(dir, arg, boot, ms)`: the staging door's result line.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ai_rusttv_launcher_History_nativeStage<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    dir: JString<'local>,
+    arg: JString<'local>,
+    boot: jlong,
+    ms: jlong,
+) -> jstring {
+    let result = (|| {
+        let dir = String::from(env.get_string(&dir).ok()?);
+        let arg = String::from(env.get_string(&arg).ok()?);
+        let mut bytes = [0_u8; 8];
+        getrandom::fill(&mut bytes).ok()?;
+        let nonce: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+        Some(Slot::new(dir).call(&arg, &nonce, moment(boot, ms)))
+    })()
+    .unwrap_or_else(|| rusttv_history::stage::StageResult::error("STAGING_STORAGE"));
+    java_string(&mut env, &result.encode())
+}
+
+/// `History.nativeStageIncoming(dir, nonce, boot, ms)`: "path size" for the
+/// latest `begin`'s nonce within its minute, else "".
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_ai_rusttv_launcher_History_nativeStageIncoming<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    dir: JString<'local>,
+    nonce: JString<'local>,
+    boot: jlong,
+    ms: jlong,
+) -> jstring {
+    let answer = (|| {
+        let dir = String::from(env.get_string(&dir).ok()?);
+        let nonce = String::from(env.get_string(&nonce).ok()?);
+        let (path, cap) = Slot::new(dir).incoming(&nonce, moment(boot, ms))?;
+        Some(format!("{} {cap}", path.to_str()?))
+    })()
+    .unwrap_or_default();
+    java_string(&mut env, &answer)
 }
