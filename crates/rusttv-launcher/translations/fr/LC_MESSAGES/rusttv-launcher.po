@@ -569,7 +569,7 @@ msgstr "Apparence sûre activée"
 
 #: ui/home.slint
 msgid "Your Home is back"
-msgstr "Votre écran d'accueil est de retour"
+msgstr "Votre écran d’accueil est de retour"
 
 #: ui/home.slint
 msgid "Safe look: {}"
@@ -581,4 +581,4 @@ msgstr "Apparence sûre"
 
 #: ui/home.slint
 msgid "Your Home and its extras are off. Hold Back for 5 seconds to bring them back."
-msgstr "Votre écran d'accueil et ses extras sont désactivés. Maintenez Retour 5 secondes pour les rétablir."
+msgstr "Votre écran d’accueil et ses extras sont désactivés. Maintenez Retour 5 secondes pour les rétablir."

@@ -1436,17 +1436,24 @@ impl Controller {
     }
 
     /// Watches Back for the safe-look hold: [`SAFE_LOOK_HOLD`] of key-down
-    /// repeats switches it once. Returns whether the key is used up: the
-    /// repeats after the switch, so they don't also go back.
+    /// repeats after a press it saw switches it once. Returns whether the
+    /// key is used up: the repeats and release after the switch, so they
+    /// don't also go back. Before that, the press and its repeats go back
+    /// as usual, so a hold inside a page ends on Home first.
     fn back_hold(&mut self, pressed: bool, repeat: bool) -> bool {
         let now = (self.clock)();
         if !pressed {
             self.back_since = None;
             return std::mem::take(&mut self.back_fired);
         }
-        let Some(since) = self.back_since.filter(|_| repeat) else {
+        if !repeat {
             self.back_since = Some(now);
             self.back_fired = false;
+            return false;
+        }
+        // Repeats of a press made on the pairing, trust or review screen
+        // never count.
+        let Some(since) = self.back_since else {
             return false;
         };
         if self.back_fired {
@@ -1456,6 +1463,8 @@ impl Controller {
             return false;
         }
         self.back_fired = true;
+        // The press woke the idle screen: this release isn't its to swallow.
+        self.faces.ambient_key = None;
         self.switch_safe_look();
         true
     }
@@ -3243,7 +3252,6 @@ impl Notices {
     }
 }
 
-/// The value of the `Mode` global in `home.slint` for a model state.
 /// The emergency Home's `Mode` value (home.slint): Browse with the safe
 /// look on.
 const SAFE_MODE: i32 = 13;
@@ -3255,6 +3263,7 @@ fn safe_look_flag(order_file: &std::path::Path) -> bool {
         .is_some_and(|dir| dir.join(order_file::SAFE_LOOK).exists())
 }
 
+/// The value of the `Mode` global in `home.slint` for a model state.
 fn mode_value(state: State) -> i32 {
     match state {
         State::Browse => 0,
@@ -7021,6 +7030,22 @@ mod tests {
         assert!(!dir.join(order_file::SAFE_LOOK).exists());
         assert_eq!(screen.window.get_toast(), "Your Home is back");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Only repeats of a Back press the launcher saw count: repeats left
+    /// over from a press on another screen never switch it.
+    #[test]
+    fn back_repeats_without_their_press_never_switch_the_safe_look() {
+        let screen = screen(None);
+        for _ in 0..120 {
+            screen.wait(50);
+            screen
+                .window
+                .window()
+                .dispatch_event(WindowEvent::KeyPressRepeated { text: BACK.into() });
+        }
+        screen.key(BACK, false);
+        assert!(!screen._controller.borrow().home.safe_look());
     }
 
     /// The safe look is still on after a restart, from its flag file.

@@ -226,7 +226,8 @@ These hold for every option, format version and theme.
   chord. The chord itself (not its undo) stays open under the look lock
   (§ 7), so a child can switch a parent's look back to the emergency Home; that is accepted, because it can't add anything. The
   safe-look notice says what happened and how to turn packages back on. Until the chord is proven, the CLI and Recovery are the real
-  reset. Neither screen exists today; both are built in step 3 (§ 15).
+  reset. The emergency Home and the chord exist since T4 (below); the
+  safe-look notice and the CLI come with step 3 (§ 15).
 - **As built (theme track T4, 2026-11-27; owner chose "Home only")**: on
   the Philips, a held Back repeats about every 50 ms from about 0.4 s and
   the colour keys never reach an app (the TV opens its manual), so the
@@ -240,7 +241,13 @@ These hold for every option, format version and theme.
   them back") and a toast; undo is the same hold, or History. With no
   themes or packages yet, the off switch only brings the compiled Home
   back, so it takes no approval; T3 adds disabling packages, the full
-  approval to turn them back on, and `rusttv panel safe-look`.
+  approval to turn them back on, and `rusttv panel safe-look`. **Not
+  yet**: proving the chord on a second remote (only the Philips is
+  measured), turning look tweaks off (none exist but effects and the idle
+  screen, which the emergency Home doesn't draw anyway), the look lock
+  (§ 7), and a notice with its own Undo; the emergency Home uses the
+  launcher's compiled look like the hidden-apps page, with no text-scale
+  or high-contrast setting to follow yet.
 - **Package content never appears on the review screen.** The review
   shows only facts the launcher derived: the name (rules below, shown in
   a fixed font, marked "unverified", with the author key's fingerprint

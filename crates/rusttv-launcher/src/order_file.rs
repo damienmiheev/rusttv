@@ -357,6 +357,22 @@ mod tests {
         assert_eq!(ids(&load(&back.file()).order), ids(&order));
     }
 
+    /// The safe look is a flag file too: history records it on (format 9)
+    /// and writes it back, which a restore uses.
+    #[test]
+    fn the_safe_look_goes_through_history() {
+        let dir = TempDir::new("safe-look-flag");
+        let mut state = launcher_state(&dir.0);
+        assert!(!state.safe_look);
+        state.safe_look = true;
+        write_launcher_state(&dir.0, &state).unwrap();
+        assert!(dir.0.join(SAFE_LOOK).exists());
+        assert!(launcher_state(&dir.0).safe_look);
+        state.safe_look = false;
+        write_launcher_state(&dir.0, &state).unwrap();
+        assert!(!dir.0.join(SAFE_LOOK).exists());
+    }
+
     /// The idle screen switch is a flag file: history records it off
     /// (format 8) and writes it back, and on removes the file again.
     #[test]

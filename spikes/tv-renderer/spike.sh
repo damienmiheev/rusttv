@@ -8,6 +8,7 @@
 #   spike.sh startup <mode>     cold start: am start -W (3 times)
 #   spike.sh stage <bytes>      stream <bytes> random bytes via content write
 #   spike.sh a11y               dump the accessibility tree of the running spike
+#   spike.sh keys <secs>        log every remote key the app gets for <secs>
 #   spike.sh uninstall          remove the spike APK
 set -eu
 cd "$(dirname "$0")"
@@ -68,6 +69,13 @@ shot)
     sleep 4
     adb_ exec-out screencap -p > "shot-$mode.png"
     adb_ shell am force-stop $PKG; ls -l "shot-$mode.png" ;;
+keys)
+    secs="$2"; case "$secs" in *[!0-9]*) echo "bad secs" >&2; exit 2 ;; esac
+    adb_ shell am force-stop $PKG; adb_ logcat -c
+    adb_ shell am start -n $ACT --es mode keys >/dev/null
+    sleep "$secs"
+    adb_ logcat -d -s RustTVSpike:I | grep KEY | sed 's/^.*KEY/KEY/'
+    adb_ shell am force-stop $PKG ;;
 uninstall) adb_ uninstall $PKG ;;
 *) sed -n '2,13p' "$0"; exit 2 ;;
 esac

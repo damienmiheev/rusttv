@@ -1157,12 +1157,7 @@ impl Home {
             .iter()
             .filter(|app| !self.hidden.contains(&app.id))
             .collect();
-        apps.sort_by(|a, b| {
-            a.label
-                .to_lowercase()
-                .cmp(&b.label.to_lowercase())
-                .then_with(|| a.id.cmp(&b.id))
-        });
+        apps.sort_by_cached_key(|app| (app.label.to_lowercase(), &app.id));
         apps.dedup_by(|a, b| a.id == b.id);
         plain.tiles = std::iter::once(TileId::Settings)
             .chain(apps.into_iter().map(|app| TileId::App(app.id.clone())))
@@ -1277,7 +1272,9 @@ impl Home {
     /// The pointer over entry `index` of the top-right menu: it gets the
     /// focus, as the D-pad would give it. Returns whether anything changed.
     pub fn hover_quick(&mut self, index: usize) -> bool {
+        // No top-right menu over the emergency Home.
         if index >= self.quick_actions.len()
+            || self.plain.is_some()
             || !matches!(self.mode, Mode::Browse | Mode::Bar { .. })
         {
             return false;
@@ -1290,6 +1287,7 @@ impl Home {
 
     pub fn point_quick(&mut self, index: usize) -> Option<Effect> {
         if index >= self.quick_actions.len()
+            || self.plain.is_some()
             || !matches!(
                 self.mode,
                 Mode::Browse | Mode::Bar { .. } | Mode::Quick { .. }
@@ -1868,6 +1866,8 @@ impl Home {
         let direction = self.direction(input);
         let plain = self.plain.as_mut()?;
         if let Some(direction) = direction {
+            // OK held while moving opens nothing on release.
+            self.ok_since = None;
             if let Some(target) = neighbour(plain.focus, plain.tiles.len(), direction) {
                 plain.focus = target;
             }
@@ -3830,7 +3830,7 @@ mod tests {
         assert_eq!(home.state(), State::Folder);
         // Not in Settings.
         home.handle(Input::Back, now);
-        home.set_quick_actions(vec![QuickAction::Settings]);
+        home.set_quick_actions(vec![QuickAction::Audio]);
         home.point_quick(0);
         assert_eq!(home.state(), State::Settings);
         assert!(!home.pick_up(&id("a03"), now));
@@ -4821,6 +4821,15 @@ mod tests {
         assert!(home.menu().is_none());
         assert!(!home.pick_up(&id("a"), ms(0)));
         assert!(!home.hover(&id("a")));
+        // No top-right menu either.
+        home.set_quick_actions(vec![QuickAction::Audio]);
+        assert!(!home.hover_quick(0));
+        assert_eq!(home.point_quick(0), None);
+        assert!(home.plain().is_some());
+        // OK held while moving opens nothing.
+        let moved = [Input::OkPressed, Input::Right, Input::OkReleased];
+        assert_eq!(press(&mut home, &moved), None);
+        press(&mut home, &[Input::Left]);
 
         press(&mut home, &[Input::Right]);
         assert_eq!(home.plain().unwrap().1, 1);
