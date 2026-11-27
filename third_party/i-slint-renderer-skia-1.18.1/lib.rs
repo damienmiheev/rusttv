@@ -385,6 +385,9 @@ pub struct SkiaRenderer {
     /// RustTV: frames left that repaint the whole window without computing
     /// the dirty region first (see `render_to_canvas`).
     full_repaint_frames: Cell<u8>,
+    /// RustTV: the frame after such a run also repaints the whole window
+    /// (see `render_to_canvas`).
+    repaint_after_skip: Cell<bool>,
     shared_context: SkiaSharedContext,
 }
 
@@ -432,6 +435,7 @@ impl SkiaRenderer {
             dirty_region_debug_mode: Default::default(),
             dirty_region_history: Default::default(),
             full_repaint_frames: Default::default(),
+            repaint_after_skip: Default::default(),
             shared_context: context.clone(),
         }
     }
@@ -778,13 +782,17 @@ impl SkiaRenderer {
             // dirty: 2.5 ms a frame on the stock Home, 5 ms on interpreted
             // skins, on the HY320F's Cortex-A53 (a quarter of the frame
             // budget). After such a frame the next few frames repaint the
-            // whole window directly; then the pass runs again. Skipping it is
-            // safe: the item caches it maintains only go stale, which makes
-            // the next pass mark more, never less.
+            // whole window directly; then the pass runs again. The pass is also
+            // where the item caches learn where each item was drawn, so the
+            // first pass after a skip compares with where items were before
+            // it and misses where they were drawn during it: that frame, too,
+            // repaints the whole window and records it so in the history
+            // (else a buffer of age 1 or 2 keeps an item's old pixels).
             let skip_dirty_pass =
                 self.partial_rendering_state().is_some() && self.full_repaint_frames.get() > 0;
             if skip_dirty_pass {
                 self.full_repaint_frames.set(self.full_repaint_frames.get() - 1);
+                self.repaint_after_skip.set(true);
                 let full: DirtyRegion = LogicalRect::from_size(logical_window_size).into();
                 let mut dirty_region_history = self.dirty_region_history.borrow_mut();
                 dirty_region_history.rotate_right(1);
@@ -809,7 +817,7 @@ impl SkiaRenderer {
                     Some(LogicalRect::from_size(logical_window_size).into())
                 };
 
-                let dirty_region_for_this_frame = partial_rendering_state.apply_dirty_region(
+                let mut dirty_region_for_this_frame = partial_rendering_state.apply_dirty_region(
                     &mut partial_renderer,
                     components,
                     logical_window_size,
@@ -829,7 +837,11 @@ impl SkiaRenderer {
                 {
                     self.full_repaint_frames.set(FULL_REPAINT_FRAMES);
                 }
-                if partial_renderer.dirty_region.iter().nth(1).is_some() {
+                if self.repaint_after_skip.replace(false) {
+                    let full: DirtyRegion = LogicalRect::from_size(logical_window_size).into();
+                    partial_renderer.dirty_region = full.clone();
+                    dirty_region_for_this_frame = full;
+                } else if partial_renderer.dirty_region.iter().nth(1).is_some() {
                     partial_renderer.dirty_region =
                         partial_renderer.dirty_region.bounding_rect().into();
                 }
